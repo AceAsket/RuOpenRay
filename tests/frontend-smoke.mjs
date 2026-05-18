@@ -15,11 +15,13 @@ import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
+import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
+import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
@@ -121,6 +123,61 @@ const actions = createDiagnosticsActions({
   byteSize: (value) => `${value} B`,
   xrayActiveStats: () => ({ tag: 'proxy' }),
   activeProxyTag: () => 'proxy',
+});
+const runtimeState = {
+  logKind: 'all',
+  logLevel: 'all',
+  logQuery: 'chatgpt',
+  logLines: 50,
+  logSort: 'asc',
+  trafficHistory: [],
+  xrayTrafficHistory: [],
+  status: {},
+};
+const runtime = createRuntimeController({
+  state: runtimeState,
+  api: { text: async () => '2\n1' },
+  request: async () => ({}),
+  render,
+  numberValue: (value) => Number(value || 0),
+  activeProxyTag: () => 'proxy',
+  syncConfig: () => {},
+  proxyOutbounds: () => [{ tag: 'proxy' }],
+  setActiveServerTag: () => {},
+  inferredActiveProxyTag: () => 'proxy',
+  syncLanDnsStatus: () => {},
+  disabledRouteRulesStorageKey: 'ruopenray:test:disabled',
+  syncLoggingSettings: () => {},
+  syncServiceSettings: () => {},
+  clearAuth: () => {},
+});
+const setupConfig = {
+  inbounds: [],
+  outbounds: [{ tag: 'proxy', protocol: 'vless', settings: { vnext: [{ address: 'cloudone.example', port: 443 }] } }],
+  routing: { rules: [{ outboundTag: 'direct', ip: ['geoip:private'] }] },
+  dns: { servers: ['https://dns.google/dns-query'] },
+};
+const setupState = {
+  config: setupConfig,
+  status: { core: { available: true, version: 'Xray test' } },
+  geoStatus: { geoip: { exists: true, size: 1 }, geosite: { exists: true, size: 1 } },
+  firewallStatus: { active: true, persistent: true, routerMode: 'tproxy' },
+  lanDnsStatus: { mode: 'xray', readiness: { ready: true } },
+  firewallRouterMode: 'tproxy',
+};
+const setupModel = createSetupModel({
+  state: setupState,
+  byteSize: formatByteSize,
+  firewallInfo: () => ({ ready: true, transparent: [{}], transparentPort: 52345 }),
+  proxyOutbounds: () => setupConfig.outbounds,
+  setupSnapshotStorageKey: 'ruopenray:test:setup-snapshot',
+  request: async () => ({}),
+  syncConfig: (config) => { setupState.config = config; },
+  ensureDnsServer: (config, server) => {
+    config.dns = config.dns || {};
+    config.dns.servers = config.dns.servers || [];
+    if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
+  },
 });
 
 const sni = createSniView({
@@ -369,6 +426,8 @@ const checks = [
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
+  ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
+  ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],

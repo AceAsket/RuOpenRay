@@ -19,7 +19,7 @@ import { bindImportControls } from './import-bindings.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
 import { bindProfileControls } from './profile-bindings.js';
 import { createSettingsView } from './settings-view.js';
-import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
+import { createRuntimeController } from './runtime-controller.js';
 import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
 import { createRoutingDsl } from './routing-dsl.js';
@@ -28,6 +28,7 @@ import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
+import { createSetupModel } from './setup-model.js';
 import { createSniView } from './sni-view.js';
 import { createInitialState } from './state.js';
 import { createXrayConfigModel } from './xray-config-model.js';
@@ -518,263 +519,70 @@ async function refreshFirewallStatus() {
   render();
 }
 
-function logsUrl() {
-  const params = new URLSearchParams({
-    kind: state.logKind,
-    level: state.logLevel,
-    q: state.logQuery,
-    sort: 'desc',
-    lines: state.logLines
-  });
-  return `/api/logs?${params.toString()}`;
-}
-
-function displayLogText(text) {
-  if (state.logSort !== 'asc') return text;
-  const lines = String(text || '').split('\n');
-  if (lines.length <= 1) return text;
-  return lines.reverse().join('\n');
-}
-
-async function refreshLogs(renderAfter = true, patchOnly = false) {
-  state.logs = displayLogText(await api.text(logsUrl()));
-  if (!renderAfter) return;
-  if (patchOnly) {
-    const consoles = document.querySelectorAll('.log-console');
-    if (consoles.length) {
-      consoles.forEach((node) => {
-        node.textContent = state.logs;
-      });
-      scrollLogsToBottom();
-      return;
-    }
-    return;
-  }
-  render();
-}
-
-async function refreshDomainMonitor(renderAfter = true) {
-  state.domainMonitor = await request('/api/domain-monitor?limit=1200');
-  if (renderAfter) render();
-}
-
-async function controlDomainMonitor(action) {
-  const result = await request('/api/domain-monitor', {
-    method: 'POST',
-    body: JSON.stringify({ action })
-  });
-  state.message = result.stdout || result.stderr || 'SNI-монитор обновлен';
-  await refreshDomainMonitor(true);
-}
-
-async function probeMonitoredDomain(host) {
-  const cleanHost = String(host || '').trim();
-  if (!cleanHost) return;
-  state.domainProbeChecking = cleanHost;
-  state.message = `Проверяю ${cleanHost}: напрямую и через proxy...`;
-  render();
-  try {
-    const result = await request('/api/diagnostics/domain-probe', {
-      method: 'POST',
-      body: JSON.stringify({
-        host: cleanHost,
-        tag: activeProxyTag() || '',
-        timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
-      })
-    });
-    state.domainProbeResults = { ...state.domainProbeResults, [cleanHost]: result };
-    state.message = `${cleanHost}: ${result.verdict?.label || 'проверено'}`;
-  } catch (error) {
-    state.domainProbeResults = {
-      ...state.domainProbeResults,
-      [cleanHost]: { ok: false, stderr: error.message, host: cleanHost }
-    };
-    state.message = error.message;
-  } finally {
-    state.domainProbeChecking = '';
-    render();
-  }
-}
-
-function scrollLogsToBottom() {
-  if (!state.logFollow || state.logSort === 'desc') return;
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.log-console').forEach((node) => {
-      node.scrollTop = node.scrollHeight;
-    });
-  });
-}
-
-function shouldDeferBackgroundRender() {
-  if (document.querySelector('[data-modal], .modal-backdrop')) return true;
-  if (document.querySelector('details[open]:not(.dashboard-log-details)')) return true;
-  if (state.tab === 'dashboard' && state.configExpanded) return true;
-  const active = document.activeElement;
-  if (!active || active === document.body) return false;
-  const tag = active.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable;
-}
-
-function backgroundRender() {
-  if (shouldDeferBackgroundRender()) {
-    state.pendingBackgroundRender = true;
-    return;
-  }
-  state.pendingBackgroundRender = false;
-  render();
-}
-
-function flushPendingBackgroundRender() {
-  if (!state.pendingBackgroundRender || shouldDeferBackgroundRender()) return;
-  state.pendingBackgroundRender = false;
-  render();
-}
-
-function recordTrafficSample(status = state.status) {
-  const traffic = status?.system?.traffic || {};
-  if (!traffic.interface && traffic.rxRate === undefined && traffic.txRate === undefined) return;
-  const previous = state.trafficHistory[state.trafficHistory.length - 1];
-  const sample = {
-    at: Date.now(),
-    iface: traffic.interface || previous?.iface || 'WAN',
-    rxRate: Math.max(0, numberValue(traffic.rxRate)),
-    txRate: Math.max(0, numberValue(traffic.txRate)),
-    rxBytes: Math.max(0, numberValue(traffic.rxBytes)),
-    txBytes: Math.max(0, numberValue(traffic.txBytes))
-  };
-  state.trafficHistory = [...state.trafficHistory, sample].slice(-72);
-}
-
-function recordXrayStatsSample(status = state.status) {
-  const stats = status?.xrayStats || {};
-  if (!stats.enabled || !Array.isArray(stats.outbounds)) return;
-  const active = state.activeServerTag || activeProxyTag();
-  const outbound = stats.outbounds.find((item) => item.tag === active) || stats.outbounds.find((item) => item.kind === 'proxy');
-  if (!outbound) return;
-  const sample = {
-    at: Date.now(),
-    tag: outbound.tag || active || 'proxy',
-    downRate: Math.max(0, numberValue(outbound.downRate)),
-    upRate: Math.max(0, numberValue(outbound.upRate)),
-    downlink: Math.max(0, numberValue(outbound.downlink)),
-    uplink: Math.max(0, numberValue(outbound.uplink))
-  };
-  state.xrayTrafficHistory = [...state.xrayTrafficHistory.filter((item) => item.tag === sample.tag), sample].slice(-72);
-}
-
-function recordStatusSnapshot(status) {
-  state.status = status;
-  recordTrafficSample(status);
-  recordXrayStatsSample(status);
-}
-
-const refreshTimers = createRefreshTimers({
+const runtimeController = createRuntimeController({
   state,
+  api,
   request,
+  render,
+  numberValue,
+  activeProxyTag,
+  syncConfig,
+  proxyOutbounds,
+  setActiveServerTag,
+  inferredActiveProxyTag,
+  syncLanDnsStatus,
+  disabledRouteRulesStorageKey,
+  syncLoggingSettings,
+  syncServiceSettings,
+  clearAuth
+});
+const {
+  logsUrl,
+  displayLogText,
   refreshLogs,
   refreshDomainMonitor,
-  recordStatus: recordStatusSnapshot,
+  controlDomainMonitor,
+  probeMonitoredDomain,
+  scrollLogsToBottom,
+  shouldDeferBackgroundRender,
   backgroundRender,
-  clearAuth,
-  setMessage: (message) => {
-    state.message = message;
-  }
+  flushPendingBackgroundRender,
+  recordTrafficSample,
+  recordXrayStatsSample,
+  recordStatusSnapshot,
+  configureLogTimer,
+  configureStatusTimer,
+  refresh
+} = runtimeController;
+
+const setupModel = createSetupModel({
+  state,
+  byteSize,
+  firewallInfo,
+  proxyOutbounds,
+  setupSnapshotStorageKey,
+  request,
+  syncConfig,
+  ensureDnsServer
 });
-
-function configureLogTimer() {
-  refreshTimers.configureLogTimer();
-}
-
-function configureStatusTimer() {
-  refreshTimers.configureStatusTimer();
-}
-
-async function refresh(options = {}) {
-  const renderAfter = options.renderAfter !== false;
-  const background = Boolean(options.background);
-  try {
-    const {
-      status,
-      profiles,
-      config,
-      logs,
-      leases,
-      releases,
-      appRelease,
-      geo,
-      domainMonitor,
-      logging,
-      serviceSettings,
-      tcpFastOpen,
-      lanDns,
-      firewallStatus,
-      subscriptions,
-      disabledRoutes
-    } = await loadAppSnapshot({ request, text: api.text, logsUrl });
-    recordStatusSnapshot(status);
-    state.profiles = Array.isArray(profiles) ? profiles : [];
-    syncConfig(config);
-    if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {
-      setActiveServerTag(inferredActiveProxyTag());
-    }
-    state.logs = displayLogText(logs);
-    state.leases = leases.leases || [];
-    state.leasesSource = leases.source || '';
-    state.coreReleases = releases.releases || [];
-    state.coreAsset = releases.asset || '';
-    state.coreArch = releases.arch || null;
-    state.appRelease = appRelease?.release || null;
-    if (!state.selectedCoreVersion) {
-      const latestStable = state.coreReleases.find((release) => release.assetUrl && !release.prerelease);
-      const latestInstallable = state.coreReleases.find((release) => release.assetUrl);
-      state.selectedCoreVersion = latestStable?.tag || latestInstallable?.tag || state.coreReleases[0]?.tag || '';
-    }
-    state.geoStatus = geo;
-    state.domainMonitor = domainMonitor;
-    state.tcpFastOpen = tcpFastOpen;
-    syncLanDnsStatus(lanDns);
-    state.firewallStatus = firewallStatus;
-    state.subscriptionPools = Array.isArray(subscriptions?.pools) ? subscriptions.pools : [];
-    if (Array.isArray(disabledRoutes?.rules)) {
-      state.disabledRouteRules = disabledRoutes.rules.filter((item) => item && item.rule);
-      localStorage.setItem(disabledRouteRulesStorageKey, JSON.stringify(state.disabledRouteRules));
-    }
-    syncLoggingSettings(logging);
-    syncServiceSettings(serviceSettings);
-    state.geoCustomSources = Array.isArray(geo?.customSources) ? geo.customSources : state.geoCustomSources;
-    if (geo?.schedule && !state.geoScheduleLoaded) {
-      const schedule = geo.schedule;
-      state.geoScheduleLoaded = true;
-      state.geoScheduleEnabled = Boolean(schedule.enabled);
-      state.geoScheduleInterval = schedule.interval || 'weekly';
-      state.geoScheduleWeekday = String(schedule.weekday ?? '0');
-      state.geoScheduleTime = schedule.time || '04:20';
-      state.geoBackup = schedule.backup !== false;
-      const scheduledPresets = Array.isArray(schedule.presets) ? schedule.presets : [schedule.preset || 'loyalsoldier'];
-      const presetList = Array.isArray(geo?.presets) ? geo.presets : [];
-      const base = scheduledPresets.find((id) => presetList.find((preset) => preset.id === id && preset.mode !== 'extra-geosite')) || 'loyalsoldier';
-      state.geoBasePreset = base;
-      state.geoPreset = base;
-      state.geoExtraPresets = scheduledPresets.filter((id) => presetList.find((preset) => preset.id === id && preset.mode === 'extra-geosite'));
-      state.geoCustomSourceIds = Array.isArray(schedule.customSourceIds) ? schedule.customSourceIds : [];
-    }
-    if (renderAfter) {
-      if (background) backgroundRender();
-      else render();
-    }
-  } catch (error) {
-    if (isAuthError(error)) {
-      clearAuth();
-      configureLogTimer();
-      configureStatusTimer();
-    }
-    state.message = error.message;
-    if (renderAfter) {
-      if (background) backgroundRender();
-      else render();
-    }
-  }
-}
+const {
+  setupReadiness,
+  loadSetupSnapshot,
+  saveSetupSnapshot,
+  clearSetupSnapshot,
+  captureSetupSnapshot,
+  lanDnsRestorePayload,
+  privateBypassCidrs,
+  normalizePrivateBypassRules,
+  setupRuleSignature,
+  isIpLiteral,
+  hostnameFromUrl,
+  serverBootstrapDomains,
+  ensureDnsBootstrapHosts,
+  isSetupManagedRule,
+  normalizeSetupRules,
+  prepareSetupDraft
+} = setupModel;
 
 async function openInstallWizard() {
   state.installWizardOpen = true;
@@ -787,272 +595,6 @@ async function openInstallWizard() {
     state.installPlan = { ok: false, error: error.message, steps: [] };
   }
   render();
-}
-
-function setupReadiness() {
-  const status = state.status || {};
-  const geo = state.geoStatus || {};
-  const firewall = state.firewallStatus || {};
-  const lanDns = state.lanDnsStatus || {};
-  const transparent = firewallInfo();
-  const dnsReadiness = lanDns.readiness || {};
-  const proxyCount = proxyOutbounds().length;
-  const items = [
-    {
-      key: 'core',
-      ok: Boolean(status.core?.available),
-      title: 'Xray установлен',
-      detail: status.core?.available ? String(status.core.version || '').split('\n')[0] : 'Нужен пакет xray-core и зависимости TPROXY.'
-    },
-    {
-      key: 'geo',
-      ok: Boolean(geo.geoip?.exists && geo.geosite?.exists),
-      warn: Boolean(geo.geoip?.exists || geo.geosite?.exists),
-      title: 'Geo-файлы готовы',
-      detail: geo.geoip?.exists && geo.geosite?.exists
-        ? `${byteSize(geo.geoip.size)} geoip.dat · ${byteSize(geo.geosite.size)} geosite.dat`
-        : 'Для правил geoip/geosite нужны geoip.dat и geosite.dat.'
-    },
-    {
-      key: 'servers',
-      ok: proxyCount > 0,
-      title: 'Proxy-сервер добавлен',
-      detail: proxyCount ? `${proxyCount} proxy-направлений в конфигурации` : 'Добавьте VLESS/Vmess/Trojan/SS-сервер или подписку.'
-    },
-    {
-      key: 'transparent',
-      ok: Boolean(transparent.ready),
-      warn: Boolean(transparent.transparent.length),
-      title: 'Transparent inbound',
-      detail: transparent.ready
-        ? `Порт ${transparent.transparentPort}, dns-out и local bypass найдены`
-        : 'Мастер подготовит inbound transparent_ipv4, dns-out и базовые bypass-правила.'
-    },
-    {
-      key: 'firewall',
-      ok: Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix),
-      warn: Boolean(firewall.active),
-      title: 'Перехват nftables',
-      detail: firewall.active
-        ? `${firewall.routerMode || state.firewallRouterMode} · ${firewall.persistent ? 'сохранен' : 'только до перезапуска'}`
-        : 'Нужно применить nftables и policy routing из RuOpenRay.'
-    },
-    {
-      key: 'dns',
-      ok: Boolean(dnsReadiness.ready && lanDns.mode === 'xray'),
-      warn: Boolean(dnsReadiness.inbound || lanDns.mode === 'upstream'),
-      title: 'LAN DNS',
-      detail: lanDns.mode === 'xray'
-        ? 'dnsmasq направлен на Xray DNS.'
-        : lanDns.mode === 'upstream'
-          ? `dnsmasq направлен на внешний DNS: ${(lanDns.servers || []).join(', ') || state.lanDnsUpstream || 'не задан'}`
-          : 'Можно оставить OpenWrt DNS как есть или направить dnsmasq на Xray.'
-    }
-  ];
-  const required = items.filter((item) => ['core', 'geo', 'servers', 'transparent', 'firewall'].includes(item.key));
-  return {
-    items,
-    ready: required.every((item) => item.ok),
-    canApply: Boolean(status.core?.available && proxyCount > 0)
-  };
-}
-
-function loadSetupSnapshot() {
-  if (state.setupSnapshot) return state.setupSnapshot;
-  try {
-    const snapshot = JSON.parse(localStorage.getItem(setupSnapshotStorageKey) || 'null');
-    if (snapshot && snapshot.config) {
-      state.setupSnapshot = snapshot;
-      return snapshot;
-    }
-  } catch {}
-  return null;
-}
-
-function saveSetupSnapshot(snapshot) {
-  state.setupSnapshot = snapshot;
-  try {
-    localStorage.setItem(setupSnapshotStorageKey, JSON.stringify(snapshot));
-  } catch {}
-}
-
-function clearSetupSnapshot() {
-  state.setupSnapshot = null;
-  state.setupRollbackResult = null;
-  localStorage.removeItem(setupSnapshotStorageKey);
-}
-
-async function captureSetupSnapshot() {
-  const [config, firewall, lanDns] = await Promise.all([
-    request('/api/config'),
-    request('/api/firewall/snapshot').catch(async () => ({ status: await request('/api/firewall/status').catch(() => null) })),
-    request('/api/dns/lan-upstream').catch(() => null)
-  ]);
-  const snapshot = {
-    createdAt: new Date().toISOString(),
-    config,
-    firewall,
-    lanDns
-  };
-  saveSetupSnapshot(snapshot);
-  return snapshot;
-}
-
-function lanDnsRestorePayload(lanDns) {
-  const mode = lanDns?.mode || 'system';
-  if (mode === 'xray') return { mode: 'xray', restart: true };
-  if (mode === 'upstream') return { mode: 'upstream', upstream: (lanDns.servers || [])[0] || '', restart: true };
-  return { mode: 'system', restart: true };
-}
-
-function privateBypassCidrs() {
-  return ['10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/3', '::1/128', 'fc00::/7', 'fe80::/10'];
-}
-
-function normalizePrivateBypassRules(config) {
-  const cidrs = privateBypassCidrs();
-  const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
-  for (const rule of rules) {
-    if (!Array.isArray(rule.ip)) continue;
-    if (!rule.ip.includes('geoip:private')) continue;
-    rule.ip = [...new Set(rule.ip.flatMap((item) => item === 'geoip:private' ? cidrs : [item]))];
-  }
-}
-
-function setupRuleSignature(rule) {
-  const normalize = (value) => {
-    if (Array.isArray(value)) return value.map(normalize).sort();
-    if (!value || typeof value !== 'object') return value;
-    return Object.keys(value).sort().reduce((acc, key) => {
-      acc[key] = normalize(value[key]);
-      return acc;
-    }, {});
-  };
-  return JSON.stringify(normalize(rule));
-}
-
-function isIpLiteral(value) {
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(value || '') || /^\[[0-9a-f:]+\]$/i.test(value || '') || /^[0-9a-f:]+$/i.test(value || '');
-}
-
-function hostnameFromUrl(value) {
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return '';
-  }
-}
-
-function serverBootstrapDomains(config) {
-  const domains = new Set();
-  const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
-  for (const outbound of outbounds) {
-    const host = outbound?.settings?.vnext?.[0]?.address || outbound?.settings?.servers?.[0]?.address || outbound?.settings?.address || '';
-    if (host && !isIpLiteral(host)) domains.add(`domain:${host}`);
-  }
-  const dnsServers = Array.isArray(config?.dns?.servers) ? config.dns.servers : [];
-  for (const server of dnsServers) {
-    const value = typeof server === 'string' ? server : server?.address;
-    if (!value) continue;
-    const host = value.includes('://') ? hostnameFromUrl(value) : String(value).split(':')[0];
-    if (host && !isIpLiteral(host)) domains.add(`domain:${host}`);
-  }
-  return [...domains];
-}
-
-function ensureDnsBootstrapHosts(config) {
-  config.dns = config.dns && typeof config.dns === 'object' ? config.dns : {};
-  config.dns.hosts = config.dns.hosts && typeof config.dns.hosts === 'object' && !Array.isArray(config.dns.hosts) ? config.dns.hosts : {};
-  if (!config.dns.hosts['dns.google']) config.dns.hosts['dns.google'] = ['8.8.8.8', '8.8.4.4'];
-  if (!config.dns.hosts['dns.adguard-dns.com']) config.dns.hosts['dns.adguard-dns.com'] = ['94.140.14.14', '94.140.15.15'];
-}
-
-function isSetupManagedRule(rule, bootstrapDomains = []) {
-  const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
-  const ips = Array.isArray(rule?.ip) ? rule.ip : [];
-  const domains = Array.isArray(rule?.domain) ? rule.domain : [];
-  if (rule?.outboundTag === 'direct' && inbound.includes('transparent_ipv4') && ips.some((item) => privateBypassCidrs().includes(item) || item === 'geoip:private')) return true;
-  if (rule?.outboundTag === 'dns-out' && inbound.includes('ruopenray_dns_in')) return true;
-  if (rule?.outboundTag === 'dns-out' && String(rule?.port || '') === '53') return true;
-  if (rule?.outboundTag === 'direct' && domains.length && domains.every((item) => bootstrapDomains.includes(item))) return true;
-  return false;
-}
-
-function normalizeSetupRules(config) {
-  normalizePrivateBypassRules(config);
-  ensureDnsBootstrapHosts(config);
-  config.routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
-  const rules = Array.isArray(config.routing.rules) ? config.routing.rules : [];
-  const bootstrapDomains = serverBootstrapDomains(config);
-  const managedRules = [
-    { type: 'field', outboundTag: 'direct', inboundTag: ['transparent_ipv4'], ip: privateBypassCidrs() },
-    ...(bootstrapDomains.length ? [{ type: 'field', outboundTag: 'direct', domain: bootstrapDomains }] : []),
-    { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
-    { type: 'field', outboundTag: 'dns-out', port: '53' }
-  ];
-  const seen = new Set();
-  const keptRules = [];
-  for (const rule of rules) {
-    if (isSetupManagedRule(rule, bootstrapDomains)) continue;
-    const signature = setupRuleSignature(rule);
-    if (seen.has(signature)) continue;
-    seen.add(signature);
-    keptRules.push(rule);
-  }
-  config.routing.rules = [...managedRules, ...keptRules];
-}
-
-function prepareSetupDraft({ message = true } = {}) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
-  next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
-  next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
-  next.routing.rules = Array.isArray(next.routing.rules) ? next.routing.rules : [];
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) && next.dns.servers.length ? next.dns.servers : [];
-
-  const redirectMode = state.firewallRouterMode === 'redirect';
-  const sockoptMode = redirectMode ? 'redirect' : 'tproxy';
-  const transparentNetwork = redirectMode ? 'tcp' : 'tcp,udp';
-  const transparentInbound = next.inbounds.find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy);
-  if (!transparentInbound) {
-    next.inbounds.push({
-      tag: 'transparent_ipv4',
-      port: 52345,
-      listen: '0.0.0.0',
-      protocol: 'dokodemo-door',
-      sniffing: { enabled: true, destOverride: ['http', 'tls'], routeOnly: true },
-      settings: { network: transparentNetwork, followRedirect: true },
-      streamSettings: { sockopt: { tproxy: sockoptMode } }
-    });
-  } else {
-    transparentInbound.settings = transparentInbound.settings && typeof transparentInbound.settings === 'object' ? transparentInbound.settings : {};
-    transparentInbound.settings.network = transparentNetwork;
-    transparentInbound.settings.followRedirect = true;
-    transparentInbound.streamSettings = transparentInbound.streamSettings && typeof transparentInbound.streamSettings === 'object' ? transparentInbound.streamSettings : {};
-    transparentInbound.streamSettings.sockopt = transparentInbound.streamSettings.sockopt && typeof transparentInbound.streamSettings.sockopt === 'object' ? transparentInbound.streamSettings.sockopt : {};
-    transparentInbound.streamSettings.sockopt.tproxy = sockoptMode;
-  }
-
-  if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {
-    next.outbounds.push({ tag: 'dns-out', protocol: 'dns', settings: { address: '8.8.8.8', port: 53, network: 'udp' } });
-  }
-  if (!next.inbounds.some((item) => item?.tag === 'ruopenray_dns_in')) {
-    next.inbounds.push({
-      tag: 'ruopenray_dns_in',
-      listen: '127.0.0.1',
-      port: 5353,
-      protocol: 'dokodemo-door',
-      settings: { address: '8.8.8.8', port: 53, network: 'tcp,udp' }
-    });
-  }
-  ensureDnsServer(next, 'https://dns.google:443/dns-query');
-  ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');
-
-  normalizeSetupRules(next);
-
-  syncConfig(next);
-  if (message) state.message = 'Черновик активного режима подготовлен: transparent inbound, DNS inbound, dns-out и базовые правила добавлены.';
 }
 
 async function openSetupWizard() {
