@@ -15,6 +15,7 @@ import { createDnsModel } from '../cmd/ruopenray-ui/web/dns-model.js';
 import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { createFirewallActions } from '../cmd/ruopenray-ui/web/firewall-actions.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
+import { createImportActions } from '../cmd/ruopenray-ui/web/import-actions.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
 import { createProfileActions } from '../cmd/ruopenray-ui/web/profile-actions.js';
@@ -292,6 +293,52 @@ const profileActions = createProfileActions({
 });
 await profileActions.activateProfile('default');
 await profileActions.backup();
+
+const importActionState = {
+  importLink: 'link-placeholder',
+  importOutboundTag: 'proxy-new',
+  importPreview: null,
+  profileName: '',
+  profiles: [{ name: 'default', active: true }],
+  config: {
+    outbounds: [{ tag: 'direct', protocol: 'freedom' }],
+    routing: { rules: [] }
+  },
+  subscriptionAutoBalancer: true,
+  subscriptionBalancerTag: '',
+  subscriptionUrl: '',
+};
+const importActions = createImportActions({
+  state: importActionState,
+  request: async (path) => {
+    if (path === '/api/import/preview') {
+      return {
+        links: 1,
+        items: [{ tag: 'preview-tag', protocol: 'vless', address: 'example.com:443' }],
+        outbound: { tag: 'preview-tag', protocol: 'vless', settings: {} },
+        outbounds: [{ tag: 'preview-tag', protocol: 'vless', settings: {} }]
+      };
+    }
+    return { ok: true };
+  },
+  render,
+  refresh: async () => { importActionState.refreshed = true; },
+  syncConfig: (config) => { importActionState.config = config; },
+  applyConfig: async () => { importActionState.applied = true; },
+  isSystemOutbound: (outbound) => ['direct', 'block'].includes(outbound?.tag),
+  cloneOutboundWithTag: (outbound, tag) => ({ ...JSON.parse(JSON.stringify(outbound)), tag }),
+  routeRules: () => importActionState.config.routing?.rules || [],
+  activeProxyTag: () => 'proxy-old',
+  setRoutingDraft: (rules) => {
+    importActionState.config = {
+      ...importActionState.config,
+      routing: { ...(importActionState.config.routing || {}), rules }
+    };
+  },
+  setActiveServerTag: (tag) => { importActionState.activeServerTag = tag; },
+});
+await importActions.previewImport();
+await importActions.importToCurrent(true);
 
 const configActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
@@ -664,6 +711,7 @@ const checks = [
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
+  ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],

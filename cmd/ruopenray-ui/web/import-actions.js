@@ -1,0 +1,221 @@
+export function createImportActions({
+  state,
+  request,
+  render,
+  refresh,
+  syncConfig,
+  applyConfig,
+  isSystemOutbound,
+  cloneOutboundWithTag,
+  routeRules,
+  activeProxyTag,
+  setRoutingDraft,
+  setActiveServerTag
+}) {
+  async function importLink() {
+    const result = await request('/api/import', {
+      method: 'POST',
+      body: JSON.stringify({ link: state.importLink, profileName: state.profileName, outboundTag: state.importOutboundTag })
+    });
+    state.message = `Импортирован ${result.outbound.protocol} в профиль ${result.profile}`;
+    state.importLink = '';
+    state.importOutboundTag = '';
+    state.importPreview = null;
+    state.importDialog = '';
+    await refresh();
+  }
+
+  function serverImportOutbound() {
+    if (!state.importPreview?.outbound) return null;
+    const outbound = JSON.parse(JSON.stringify(state.importPreview.outbound));
+    const tag = String(state.importOutboundTag || '').trim();
+    if (tag) outbound.tag = tag;
+    return outbound;
+  }
+
+  function serverImportPreviewItem() {
+    if (!state.importPreview?.items?.length) return null;
+    const item = { ...state.importPreview.items[0] };
+    const tag = String(state.importOutboundTag || '').trim();
+    if (tag) item.tag = tag;
+    return item;
+  }
+
+  function activeProfileName() {
+    return (Array.isArray(state.profiles) ? state.profiles : []).find((profile) => profile.active)?.name || 'default';
+  }
+
+  function mergeOutboundsIntoConfig(config, outbounds) {
+    const next = JSON.parse(JSON.stringify(config || {}));
+    const imported = outbounds.filter(Boolean).map((outbound) => JSON.parse(JSON.stringify(outbound)));
+    const tags = new Set(imported.map((outbound) => outbound?.tag).filter(Boolean));
+    const existing = Array.isArray(next.outbounds) ? next.outbounds.filter((outbound) => !tags.has(outbound?.tag)) : [];
+    const regular = existing.filter((outbound) => !isSystemOutbound(outbound));
+    const system = existing.filter((outbound) => isSystemOutbound(outbound));
+    next.outbounds = [...imported, ...regular, ...system];
+    return next;
+  }
+
+  function slugTag(value, fallback = 'subscription-auto') {
+    const clean = String(value || '')
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+    return clean || fallback;
+  }
+
+  function suggestedSubscriptionBalancerTag() {
+    return slugTag(state.subscriptionBalancerTag || state.profileName || state.subscriptionPreview?.items?.[0]?.tag || state.subscriptionUrl, 'subscription-auto');
+  }
+
+  function setActiveProxyDraft(tag) {
+    const rules = routeRules();
+    if (!rules.length) {
+      setRoutingDraft([{ type: 'field', outboundTag: tag, port: '0-65535' }]);
+    } else {
+      const currentTag = activeProxyTag();
+      const switchable = new Set(['proxy', currentTag].filter(Boolean));
+      let changed = 0;
+      const nextRules = rules.map((rule) => {
+        if (rule?.outboundTag && switchable.has(rule.outboundTag)) {
+          changed += 1;
+          return { ...rule, outboundTag: tag };
+        }
+        return rule;
+      });
+      setRoutingDraft(changed ? nextRules : [{ type: 'field', outboundTag: tag, port: '0-65535' }, ...rules]);
+    }
+    setActiveServerTag(tag);
+  }
+
+  function setActiveProxyBalancerDraft(tag) {
+    const rules = routeRules();
+    const currentTag = activeProxyTag();
+    const switchable = new Set(['proxy', currentTag].filter(Boolean));
+    if (!rules.length) {
+      setRoutingDraft([{ type: 'field', balancerTag: tag, port: '0-65535' }]);
+    } else {
+      let changed = 0;
+      const nextRules = rules.map((rule) => {
+        if (rule?.balancerTag === tag) return rule;
+        if (rule?.outboundTag && switchable.has(rule.outboundTag)) {
+          changed += 1;
+          const next = { ...rule, balancerTag: tag };
+          delete next.outboundTag;
+          return next;
+        }
+        return rule;
+      });
+      setRoutingDraft(changed ? nextRules : [{ type: 'field', balancerTag: tag, port: '0-65535' }, ...rules]);
+    }
+    setActiveServerTag('');
+  }
+
+  async function saveCurrentProfileConfig() {
+    const name = activeProfileName();
+    await request('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ name, config: state.config })
+    });
+    await request('/api/profiles/activate', { method: 'POST', body: JSON.stringify({ name }) });
+  }
+
+  async function importToCurrent(makeActive = false) {
+    if (!state.importPreview?.outbound) await previewImport();
+    const outbound = serverImportOutbound();
+    if (!outbound) return;
+    syncConfig(mergeOutboundsIntoConfig(state.config, [outbound]));
+    if (makeActive) setActiveProxyDraft(outbound.tag);
+    await saveCurrentProfileConfig();
+    state.importLink = '';
+    state.importOutboundTag = '';
+    state.importPreview = null;
+    state.importDialog = '';
+    state.message = makeActive
+      ? `Сервер ${outbound.tag} добавлен в текущий профиль и выбран активным`
+      : `Сервер ${outbound.tag} добавлен в текущий профиль`;
+    if (makeActive) await applyConfig();
+    else await refresh();
+  }
+
+  async function importSubscriptionToCurrent(makeActive = false) {
+    if (!state.subscriptionPreview?.outbounds?.length) await previewSubscription();
+    const outbounds = state.subscriptionPreview?.outbounds || [];
+    if (!outbounds.length) return;
+    let stableTag = '';
+    if (state.subscriptionAutoBalancer) {
+      stableTag = suggestedSubscriptionBalancerTag();
+      syncConfig(mergeOutboundsIntoConfig(state.config, [cloneOutboundWithTag(outbounds[0], stableTag)]));
+      await request('/api/subscriptions/pool', {
+        method: 'POST',
+        body: JSON.stringify({ tag: stableTag, url: state.subscriptionUrl, outbounds, active: 0 })
+      });
+    } else {
+      syncConfig(mergeOutboundsIntoConfig(state.config, outbounds));
+    }
+    if (makeActive && stableTag) setActiveProxyDraft(stableTag);
+    else if (makeActive && outbounds[0]?.tag) setActiveProxyDraft(outbounds[0].tag);
+    await saveCurrentProfileConfig();
+    state.subscriptionUrl = '';
+    state.subscriptionPreview = null;
+    state.subscriptionBalancerTag = '';
+    state.importDialog = '';
+    state.message = makeActive
+      ? `Подписка добавлена в текущий профиль, активная цель ${stableTag || outbounds[0].tag}`
+      : `Подписка добавлена в текущий профиль: ${outbounds.length} серверов${stableTag ? `, стабильная цель ${stableTag}` : ''}`;
+    if (makeActive) await applyConfig();
+    else await refresh();
+  }
+
+  async function previewImport() {
+    const result = await request('/api/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ link: state.importLink, outboundTag: state.importOutboundTag })
+    });
+    state.importPreview = result;
+    state.message = `Распознано: ${result.items[0]?.protocol || 'сервер'} ${result.items[0]?.address || ''}`;
+    render();
+  }
+
+  async function previewSubscription() {
+    const result = await request('/api/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ url: state.subscriptionUrl })
+    });
+    state.subscriptionPreview = result;
+    state.message = `В подписке найдено серверов: ${result.links}`;
+    render();
+  }
+
+  async function importSubscription() {
+    const result = await request('/api/import/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ url: state.subscriptionUrl, profileName: state.profileName })
+    });
+    state.subscriptionUrl = '';
+    state.subscriptionPreview = null;
+    state.importDialog = '';
+    state.message = `Импортировано серверов: ${result.imported.length}. Профиль: ${result.profile}`;
+    await refresh();
+  }
+
+  return {
+    importLink,
+    serverImportOutbound,
+    serverImportPreviewItem,
+    activeProfileName,
+    mergeOutboundsIntoConfig,
+    slugTag,
+    suggestedSubscriptionBalancerTag,
+    setActiveProxyDraft,
+    setActiveProxyBalancerDraft,
+    saveCurrentProfileConfig,
+    importToCurrent,
+    importSubscriptionToCurrent,
+    previewImport,
+    previewSubscription,
+    importSubscription
+  };
+}
