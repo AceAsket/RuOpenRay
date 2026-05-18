@@ -1,5 +1,6 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
 import { createApiClient } from './api-client.js';
+import { createAuxPanelsView } from './aux-panels-view.js';
 import { createDashboardView } from './dashboard-view.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
 import { createDnsView } from './dns-view.js';
@@ -11,6 +12,7 @@ import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
 import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
+import { createSniView } from './sni-view.js';
 import {
   customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
@@ -4767,129 +4769,28 @@ function serversPanel(...args) {
   return serversView.serversPanel(...args);
 }
 
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
+const sniView = createSniView({
+  state,
+  escapeHtml,
+  stat,
+  outboundAddress,
+  activeProxyOutbound,
+});
+
+function clamp(...args) {
+  return sniView.clamp(...args);
 }
 
-function ipParts(ip = '') {
-  const parts = String(ip).split('.').map((part) => Number(part));
-  return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? parts : null;
+function ipParts(...args) {
+  return sniView.ipParts(...args);
 }
 
-function sniRadar(results, scan) {
-  const targetIp = scan?.targetIp || '';
-  const targetParts = ipParts(targetIp);
-  const visible = results.filter((item) => item.ip !== targetIp).slice(0, 12);
-  const slots = [
-    [16, 18], [50, 14], [84, 18], [8, 40], [92, 40], [8, 60],
-    [92, 60], [16, 82], [50, 86], [84, 82], [30, 12], [70, 88]
-  ];
-  const points = visible.map((item, index) => {
-    const proximity = clamp(Number(item.proximity || 0), 0, 100);
-    const [x, y] = slots[index % slots.length];
-    const near = proximity >= 90;
-    const shortName = String(item.domain || item.ip).replace(/^\*\./, '').split('.')[0].slice(0, 10);
-    return `<button class="sni-map-point ${near ? 'near' : ''}" data-sni-map="${index}" style="left:${x}%; top:${y}%; --delay:${index * 70}ms; --z:${30 - index}" title="${escapeHtml(item.domain || item.ip)} · ${escapeHtml(item.proximity)}%">
-      <span>${escapeHtml(item.proximity)}%</span>
-      <small>${escapeHtml(shortName)}</small>
-    </button>`;
-  }).join('');
-  const radiusLabel = targetParts ? `${targetParts[0]}.${targetParts[1]}.${targetParts[2]}.x` : scan?.network || 'диапазон';
-  return `
-    <section class="panel sni-map-panel">
-      <div class="panel-title">
-        <div><h2>Карта близости SNI</h2><span>Центр — ваш адрес, ближе к центру — выше шанс, что SNI живет рядом с сервером.</span></div>
-      </div>
-      <div class="sni-map">
-        <div class="sni-map-grid"></div>
-        <div class="sni-map-ring ring-a"></div>
-        <div class="sni-map-ring ring-b"></div>
-        <div class="sni-map-center">
-          <strong>${escapeHtml(targetIp || scan?.target || 'цель')}</strong>
-          <span>${escapeHtml(radiusLabel)}</span>
-        </div>
-        ${points || '<div class="sni-map-empty">После поиска здесь появятся ближайшие SNI-точки</div>'}
-      </div>
-    </section>
-  `;
+function sniRadar(...args) {
+  return sniView.sniRadar(...args);
 }
 
-function sniPanel() {
-  const targetIp = state.sniScan?.targetIp || '';
-  const results = (state.sniScan?.results || []).filter((item) => item.ip !== targetIp);
-  const best = results[0];
-  const targetHint = outboundAddress(activeProxyOutbound() || {}).split(':')[0] || 'example-sni.test';
-  return `
-    <section class="route-hero">
-      <div>
-        <h2>SNI-поисковик</h2>
-        <p>Ищет TLS-хосты рядом с IP или доменом, снимает сертификат и показывает домены, которые могут быть полезны для REALITY/SNI-настроек.</p>
-      </div>
-      <div class="route-score">
-        <strong>${results.length}</strong>
-        <span>кандидатов</span>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-title">
-        <div><h2>Поиск рядом с адресом</h2><span>По умолчанию ограничиваем поиск /24 и 256 адресами, чтобы не перегружать роутер.</span></div>
-        <button class="btn" data-action="scanSni" ${state.sniScanning ? 'disabled' : ''}>${state.sniScanning ? 'Ищу...' : 'Начать поиск'}</button>
-      </div>
-      <div class="sni-form">
-        <div class="form-row">
-          <label>IP или домен</label>
-          <input id="sniTarget" value="${escapeHtml(state.sniTarget)}" placeholder="${escapeHtml(targetHint)}" />
-        </div>
-        <div class="form-row">
-          <label>CIDR</label>
-          <select id="sniCidr">
-            ${[24, 25, 26, 27, 28, 29, 30, 32].map((cidr) => `<option value="${cidr}" ${state.sniCidr === String(cidr) ? 'selected' : ''}>/${cidr}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Таймаут, мс</label>
-          <input id="sniTimeout" type="number" min="500" max="8000" step="100" value="${escapeHtml(state.sniTimeout)}" />
-        </div>
-        <div class="form-row">
-          <label>Потоков</label>
-          <input id="sniThreads" type="number" min="1" max="128" step="1" value="${escapeHtml(state.sniThreads)}" />
-        </div>
-        <div class="form-row">
-          <label>Лимит IP</label>
-          <input id="sniLimit" type="number" min="1" max="1024" step="1" value="${escapeHtml(state.sniLimit)}" />
-        </div>
-      </div>
-      <p class="muted">Сканируйте только свои адреса или диапазоны, где у вас есть разрешение. Это активная проверка TCP/443.</p>
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
-    </section>
-
-    ${state.sniScan ? `<section class="stats route-stats">
-      ${stat('Диапазон', state.sniScan.network || '-', `${state.sniScan.scanned || 0} IP проверено`)}
-      ${stat('Найдено', results.length, 'ответили TLS-сертификатом')}
-      ${stat('Ближайший', best?.ip || '-', best?.domain || 'нет результатов')}
-      ${stat('Цель', state.sniScan.targetIp || '-', state.sniScan.target || '')}
-    </section>` : ''}
-
-    ${sniRadar(results, state.sniScan || { target: state.sniTarget || targetHint })}
-
-    <section class="panel">
-      <div class="panel-title">
-        <div><h2>Кандидаты SNI</h2><span>Сортировка по близости к целевому IP. Клик по точке на карте перематывает к строке в списке.</span></div>
-      </div>
-      <div class="sni-results">
-        ${results
-          .map((item, index) => `<article class="sni-row ${state.sniFocusedIndex === index ? 'focused' : ''}" data-sni-result="${index}">
-            <div class="sni-proximity"><strong>${escapeHtml(item.proximity)}%</strong><span>близость</span></div>
-            <div class="sni-main">
-              <strong>${escapeHtml(item.domain || item.ip)}</strong>
-              <span>${escapeHtml(item.ip)} · ${escapeHtml(item.issuer || 'issuer не указан')} · ${escapeHtml(item.latencyMs || 0)} мс</span>
-            </div>
-          </article>`)
-          .join('') || '<p class="muted">Пока нет результатов. Запустите поиск по IP или домену вашего сервера.</p>'}
-      </div>
-    </section>
-  `;
+function sniPanel(...args) {
+  return sniView.sniPanel(...args);
 }
 
 const geoView = createGeoView({ state, escapeHtml, stat });
@@ -4934,100 +4835,6 @@ function geoPanel(...args) {
   return geoView.geoPanel(...args);
 }
 
-function devicesPanel() {
-  const devices = deviceRules();
-  const stats = deviceStats();
-  const options = outboundOptions();
-  return `
-    <section class="route-hero devices-hero">
-      <div>
-        <h2>Устройства LAN</h2>
-        <p>Назначайте режимы по IP: телевизор напрямую, приставку через proxy, отдельный клиент в block. RuOpenRay делает это обычными Xray source-правилами.</p>
-      </div>
-      <div class="route-score">
-        <strong>${devices.length}</strong>
-        <span>устройств с правилами</span>
-      </div>
-    </section>
-
-    <section class="stats route-stats">
-      ${stat('Через proxy', stats.proxy, 'Устройства идут через сервер')}
-      ${stat('Напрямую', stats.direct, 'Обход прокси')}
-      ${stat('Блокировка', stats.block, 'Доступ остановлен')}
-      ${stat('Другое', stats.other, 'Особые направления')}
-    </section>
-
-    <div class="route-layout devices-layout">
-      <section class="panel">
-        <div class="panel-title">
-          <div><h2>Добавить устройство</h2><span>${state.leases.length ? `${state.leases.length} DHCP leases · ${state.leasesSource || '/tmp/dhcp.leases'}` : 'Выберите клиента из DHCP leases или введите IP вручную.'}</span></div>
-          <button class="btn secondary" data-action="refreshDhcpLeases">Обновить DHCP</button>
-        </div>
-        <input class="lease-search" data-lease-search value="${escapeHtml(state.leaseSearch)}" placeholder="Найти устройство: имя, IP или MAC" />
-        <div class="lease-grid">
-          ${state.leases.map((lease) => `<button class="lease-card" data-lease-search-item data-lease-search-text="${escapeHtml(leaseSearchText(lease))}" data-lease-ip="${escapeHtml(lease.ip)}" data-lease-name="${escapeHtml(lease.name || lease.mac)}">
-            <strong>${escapeHtml(lease.name || 'Без имени')}</strong>
-            <span>${escapeHtml([lease.ip, lease.mac, lease.remaining ? `осталось ${formatDuration(lease.remaining)}` : ''].filter(Boolean).join(' · '))}</span>
-          </button>`).join('') || '<p class="muted">DHCP leases пока не найдены. На OpenWrt обычно читается /tmp/dhcp.leases.</p>'}
-          <p class="muted lease-search-empty" data-lease-search-empty hidden>По этому запросу устройств нет.</p>
-        </div>
-        <div class="device-form">
-          <div class="form-row">
-            <label>Название</label>
-            <input id="deviceName" value="${escapeHtml(state.deviceName)}" placeholder="Телевизор, консоль, ноутбук" />
-          </div>
-          <div class="form-row">
-            <label>IP устройства</label>
-            <input id="deviceIp" value="${escapeHtml(state.deviceIp)}" placeholder="192.168.50.42" />
-          </div>
-          <div class="form-row">
-            <label>Режим</label>
-            <select id="deviceMode">
-              ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.deviceMode === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
-            </select>
-          </div>
-          <button class="btn" data-action="addDevice">Добавить правило</button>
-        </div>
-        <div class="device-modes">
-          <button class="mode-card" data-device-mode="proxy"><strong>Через proxy</strong><span>YouTube, Discord, ChatGPT и заблокированные сайты.</span></button>
-          <button class="mode-card" data-device-mode="direct"><strong>Напрямую</strong><span>Банки, локальные сервисы, умный дом и IPTV.</span></button>
-          <button class="mode-card" data-device-mode="block"><strong>Блокировка</strong><span>Отключить доступ для отдельного клиента.</span></button>
-        </div>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
-      </section>
-
-      <section class="panel">
-        <div class="panel-title">
-          <div><h2>Найденные правила устройств</h2><span>Это source-правила из текущей маршрутизации.</span></div>
-          <div class="split-actions">
-            <button class="btn secondary" data-action="test">Проверить конфигурацию</button>
-            <button class="btn warning" data-action="apply">Применить</button>
-          </div>
-        </div>
-        <div class="device-list">
-          ${devices
-            .map(({ rule, index }) => {
-              const sources = rule.source.join(', ');
-              const lease = leaseByIp(rule.source[0]);
-              return `<article class="device-row">
-                <div class="device-ip">${escapeHtml(sources)}</div>
-                <div class="device-main">
-                  <strong>${escapeHtml(lease?.name || rule.outboundTag || 'не задано')}</strong>
-                  <span>${escapeHtml(lease ? `${rule.outboundTag} · ${lease.mac}` : ((rule.inboundTag || []).join(', ') || 'все входящие'))}</span>
-                </div>
-                <select data-device-outbound="${index}">
-                  ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${rule.outboundTag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
-                </select>
-                <button class="btn secondary" data-device-delete="${index}">Удалить</button>
-              </article>`;
-            })
-            .join('') || '<p class="muted">Пока нет правил для отдельных LAN-устройств.</p>'}
-        </div>
-      </section>
-    </div>
-  `;
-}
-
 const dnsView = createDnsView({
   activeProxyTag,
   configInbounds,
@@ -5047,157 +4854,37 @@ function dnsPanel(...args) {
   return dnsView.dnsPanel(...args);
 }
 
-function profilesPanel(compact = false) {
-  const rows = compact ? state.profiles.slice(0, 5) : state.profiles;
-  return `
-    <section class="panel">
-      <div class="panel-title">
-        <div><h2>Профили</h2><span>Каждый профиль хранится отдельным JSON-файлом.</span></div>
-        <div class="split-actions">
-          <button class="btn secondary" data-action="backup">Бэкап активного</button>
-          <button class="btn danger" data-action="restoreLatestBackup">Откатить apply</button>
-        </div>
-      </div>
-      <table class="table">
-        <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th></th></tr></thead>
-        <tbody>
-          ${rows
-            .map(
-              (p) => `<tr>
-                <td>${escapeHtml(p.name)}</td>
-                <td>${new Date(p.updatedAt).toLocaleString()}</td>
-                <td>${Math.round(p.size / 10) / 100} KB</td>
-                <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
-                <td><button class="btn secondary" data-profile="${escapeHtml(p.name)}">Активировать</button></td>
-              </tr>`
-            )
-            .join('')}
-        </tbody>
-      </table>
-    </section>
-  `;
+const auxPanelsView = createAuxPanelsView({
+  state,
+  labels,
+  escapeHtml,
+  stat,
+  deviceRules,
+  deviceStats,
+  outboundOptions,
+  leaseSearchText,
+  formatDuration,
+  leaseByIp,
+});
+
+function devicesPanel(...args) {
+  return auxPanelsView.devicesPanel(...args);
 }
 
-function logsPanel(compact = false) {
-  if (compact) {
-    return `
-      <section class="panel log-panel compact dashboard-log-card">
-        <div class="panel-title dashboard-log-title">
-          <div><h2>Логи</h2><span>Журнал Xray и RuOpenRay</span></div>
-          <div class="split-actions">
-            <button class="btn secondary" data-action="refreshLogs">Обновить</button>
-          </div>
-        </div>
-        <details class="dashboard-log-details" ${state.dashboardLogsOpen ? 'open' : ''}>
-          <summary>Последние строки</summary>
-          <pre class="console log-console">${escapeHtml(state.logs)}</pre>
-        </details>
-      </section>
-    `;
-  }
-  return `
-    <section class="panel log-panel">
-      <div class="panel-title">
-        <div><h2>Логи</h2><span>Обновляются в реальном времени, можно фильтровать и менять порядок записей.</span></div>
-        <div class="split-actions">
-          <label class="toggle-row log-toggle">
-            <input id="logLive" type="checkbox" ${state.logLive ? 'checked' : ''} />
-            <span>Live</span>
-          </label>
-          <button class="btn secondary" data-action="refreshLogs">Обновить</button>
-        </div>
-      </div>
-      <div class="log-filters">
-        <div class="form-row">
-          <label>Источник</label>
-          <select id="logKind">
-            ${[
-              ['all', 'Все'],
-              ['error', 'Error'],
-              ['access', 'Access'],
-              ['system', 'System']
-            ].map(([value, label]) => `<option value="${value}" ${state.logKind === value ? 'selected' : ''}>${label}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Уровень</label>
-          <select id="logLevel">
-            ${['all', 'error', 'warning', 'info', 'debug'].map((value) => `<option value="${value}" ${state.logLevel === value ? 'selected' : ''}>${value}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Время</label>
-          <select id="logSort">
-            ${[
-              ['asc', 'Старые → новые'],
-              ['desc', 'Новые → старые']
-            ].map(([value, label]) => `<option value="${value}" ${state.logSort === value ? 'selected' : ''}>${label}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-row">
-          <label>Строк</label>
-          <input id="logLines" type="number" min="20" max="2000" step="20" value="${escapeHtml(state.logLines)}" />
-        </div>
-        <div class="form-row">
-          <label>Live, сек</label>
-          <input id="logIntervalSec" type="number" min="1" max="60" step="1" value="${escapeHtml(state.logIntervalSec)}" />
-        </div>
-        <div class="form-row">
-          <label>Поиск</label>
-          <input id="logQuery" value="${escapeHtml(state.logQuery)}" placeholder="domain, error, outbound..." />
-        </div>
-      </div>
-      <label class="toggle-row log-follow">
-        <input id="logFollow" type="checkbox" ${state.logFollow ? 'checked' : ''} ${state.logSort === 'desc' ? 'disabled' : ''} />
-        <span>Держать окно внизу при новых строках</span>
-      </label>
-      <pre class="console log-console">${escapeHtml(state.logs)}</pre>
-    </section>
-  `;
+function profilesPanel(...args) {
+  return auxPanelsView.profilesPanel(...args);
 }
 
-function accessLogRows(text = '') {
-  return String(text || '')
-    .split('\n')
-    .map((line) => {
-      const lower = line.toLowerCase();
-      const protocol = lower.includes(' udp:') || lower.includes('udp:') ? 'UDP' : 'TCP';
-      const endpoints = [...line.matchAll(/\b(?:tcp|udp):([^/\s,[\]()]+)(?::(\d+))?/gi)];
-      const target = endpoints.length ? `${endpoints[endpoints.length - 1][1]}${endpoints[endpoints.length - 1][2] ? `:${endpoints[endpoints.length - 1][2]}` : ''}` : '';
-      const sourceMatch = line.match(/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::\d+)?\b/);
-      const sourceIp = (sourceMatch?.[0] || '').replace(/:\d+$/, '');
-      const lease = sourceIp ? leaseByIp(sourceIp) : null;
-      const source = lease ? `${lease.name || lease.mac || 'LAN'} · ${sourceIp}` : sourceIp;
-      const outbound = line.match(/\[([A-Za-z0-9_.:-]+)\](?:\s|$)/)?.[1] || '';
-      const time = line.match(/\d{2}:\d{2}:\d{2}/)?.[0] || line.slice(0, 19);
-      if (!target && !source && !outbound) return null;
-      return { time, source, target, outbound, protocol };
-    })
-    .filter(Boolean);
+function logsPanel(...args) {
+  return auxPanelsView.logsPanel(...args);
 }
 
-function accessLogTable(rows = []) {
-  if (!rows.length) return '';
-  return `<div class="access-log-table">
-    <div class="access-log-summary">
-      <strong>Access view</strong>
-      <span>${rows.length} строк разобрано из текущего окна логов</span>
-    </div>
-    <div class="access-log-head">
-      <span>Время</span>
-      <span>Устройство</span>
-      <span>Домен / IP</span>
-      <span>Направление</span>
-      <span>Протокол</span>
-    </div>
-    ${rows.map((row) => `<article>
-      <span>${escapeHtml(row.time)}</span>
-      <strong>${escapeHtml(row.source || 'источник ?')}</strong>
-      <code>${escapeHtml(row.target || 'цель ?')}</code>
-      <em>${escapeHtml(row.outbound || 'направление ?')}</em>
-      <b>${escapeHtml(row.protocol || 'tcp')}</b>
-    </article>`).join('')}
-  </div>`;
+function accessLogRows(...args) {
+  return auxPanelsView.accessLogRows(...args);
+}
+
+function accessLogTable(...args) {
+  return auxPanelsView.accessLogTable(...args);
 }
 
 function applyLeaseSearch(scope, query) {
