@@ -28,3 +28,21 @@ func TestRouterUptimeNonNegative(t *testing.T) {
 		t.Fatalf("RouterUptimeSeconds = %f, want non-negative", got)
 	}
 }
+
+func TestSamplerMetricsShape(t *testing.T) {
+	stats := NewSampler().Metrics()
+	for _, key := range []string{"cpu", "memory", "tcp", "conntrack", "disk", "traffic", "uptime"} {
+		if _, ok := stats[key]; !ok {
+			t.Fatalf("Metrics missing %s: %#v", key, stats)
+		}
+	}
+}
+
+func TestTCPFastOpenStatusShape(t *testing.T) {
+	status := TCPFastOpenStatus()
+	for _, key := range []string{"ok", "available", "enabled", "value"} {
+		if _, ok := status[key]; !ok {
+			t.Fatalf("TCPFastOpenStatus missing %s: %#v", key, status)
+		}
+	}
+}

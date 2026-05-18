@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
 )
 
 func main() {
 	cfg := loadAppConfig()
-	state := &serverState{cfg: cfg, sessions: map[string]bool{}, started: time.Now()}
+	state := &serverState{cfg: cfg, sessions: map[string]bool{}, started: time.Now(), systemSampler: rsystem.NewSampler()}
 	if err := state.ensureData(); err != nil {
 		log.Fatal(err)
 	}

@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
 )
 
 func writeJSON(w http.ResponseWriter, code int, payload any) {
@@ -103,10 +105,10 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/install/plan" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.installPlan())
 	case path == "/network/tcp-fast-open" && r.Method == http.MethodGet:
-		writeJSON(w, 200, tcpFastOpenStatus())
+		writeJSON(w, 200, rsystem.TCPFastOpenStatus())
 	case path == "/network/tcp-fast-open" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
-		writeJSON(w, 200, setTCPFastOpen(boolPayload(payload, "enabled", true)))
+		writeJSON(w, 200, rsystem.SetTCPFastOpen(boolPayload(payload, "enabled", true)))
 	case path == "/firewall/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallStatus())
 	case path == "/firewall/snapshot" && r.Method == http.MethodGet:

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
 )
 
 type appConfig struct {
@@ -25,14 +27,8 @@ type serverState struct {
 	cfg              appConfig
 	sessions         map[string]bool
 	started          time.Time
+	systemSampler    *rsystem.Sampler
 	metricsMu        sync.Mutex
-	prevCPUTotal     uint64
-	prevCPUIdle      uint64
-	prevCPUSeenAt    time.Time
-	prevTrafficIf    string
-	prevTrafficRx    uint64
-	prevTrafficTx    uint64
-	prevTrafficAt    time.Time
 	prevXrayStats    map[string]uint64
 	prevXrayStatsAt  time.Time
 	coreVersionCache map[string]any

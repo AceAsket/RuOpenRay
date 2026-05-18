@@ -193,7 +193,7 @@ go test ./...
 ## Структура
 
 ```text
-cmd/ruopenray-ui/               backend на Go и embedded frontend
+cmd/ruopenray-ui/               точка входа сервиса, HTTP API и embedded frontend
 cmd/ruopenray-ui/web/app.js      основное состояние и отрисовка фронтенда
 cmd/ruopenray-ui/web/api-client.js общий клиент API и обработка авторизации
 cmd/ruopenray-ui/web/diagnostics-view.js отрисовка диагностики, доменов, трафика и observatory
@@ -204,7 +204,7 @@ cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настро
 cmd/ruopenray-ui/web/presets.js  пресеты маршрутизации и подписи UI
 cmd/ruopenray-ui/web/styles.css  точка входа CSS через imports
 cmd/ruopenray-ui/web/styles/     CSS по разделам интерфейса
-internal/                       внутренние Go-пакеты
+internal/                       внутренние Go-пакеты с основной backend-логикой
 tools/dev-server/index.js       локальный Node-стенд
 scripts/install-openwrt.sh      установка с GitHub Releases
 packaging/openwrt/              заготовка пакета и LuCI launcher
