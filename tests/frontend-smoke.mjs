@@ -8,6 +8,7 @@ import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js'
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
+import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
@@ -207,6 +208,12 @@ bindRoutingControls({
 bindProfileControls({
   activateProfile: () => {},
 });
+
+bindNavigationControls({
+  state,
+  render,
+});
+bindModalControls();
 
 bindConfigControls({ state });
 

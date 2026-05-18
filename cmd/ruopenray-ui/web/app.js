@@ -10,6 +10,7 @@ import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
 import { createImportDialogView } from './import-dialog-view.js';
 import { bindImportControls } from './import-bindings.js';
+import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
 import { bindProfileControls } from './profile-bindings.js';
 import { createSettingsView } from './settings-view.js';
 import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
@@ -5320,75 +5321,8 @@ function restoreConfigScroll() {
 }
 
 function bind() {
-  document.querySelectorAll('[data-tab]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.tab = button.dataset.tab;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-tab-jump]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.tab = button.dataset.tabJump;
-      if (button.dataset.routingViewJump) state.routingView = button.dataset.routingViewJump;
-      if (button.dataset.diagnosticsJump) state.diagnosticsView = button.dataset.diagnosticsJump;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-diagnostics-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.diagnosticsView = button.dataset.diagnosticsView;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-import-dialog]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.importDialog = button.dataset.importDialog;
-      state.message = '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-settings-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.settingsView = button.dataset.settingsView;
-      state.message = '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-routing-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.routingView = button.dataset.routingView;
-      state.message = '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-dns-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.dnsView = button.dataset.dnsView;
-      state.message = '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-servers-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.serversView = button.dataset.serversView;
-      state.message = '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-setup-dns-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.setupLanDnsMode = button.dataset.setupDnsMode;
-      if (state.setupLanDnsMode === 'upstream' && !state.setupLanDnsUpstream) {
-        state.setupLanDnsUpstream = state.lanDnsUpstream || state.lanDnsStatus?.servers?.[0] || '';
-      }
-      render();
-    });
-  });
-  document.querySelectorAll('.modal-backdrop[data-action]').forEach((backdrop) => {
-    backdrop.addEventListener('pointerdown', (event) => {
-      backdrop.dataset.pointerStartedInModal = event.target.closest('[data-modal]') ? '1' : '0';
-    }, true);
-  });
+  bindNavigationControls({ state, render });
+  bindModalControls();
   document.querySelectorAll('[data-action]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       try {
@@ -5651,9 +5585,6 @@ function bind() {
     refreshLogs,
     configureLogTimer,
     scrollLogsToBottom,
-  });
-  document.querySelectorAll('[data-modal]').forEach((modal) => {
-    modal.addEventListener('click', (event) => event.stopPropagation());
   });
   bindProfileControls({ activateProfile });
   bindConfigControls({ state });
