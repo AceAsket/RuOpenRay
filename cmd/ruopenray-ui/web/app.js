@@ -25,6 +25,7 @@ import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
 import { createSniView } from './sni-view.js';
 import { createInitialState } from './state.js';
+import { createXrayConfigModel } from './xray-config-model.js';
 import {
   customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
@@ -160,41 +161,17 @@ async function refreshDisabledRouteRules() {
 
 
 
-function configInbounds() {
-  if (!Array.isArray(state.config.inbounds)) state.config.inbounds = [];
-  return state.config.inbounds;
-}
-
-function configOutbounds() {
-  if (!Array.isArray(state.config.outbounds)) state.config.outbounds = [];
-  return state.config.outbounds;
-}
-
-function advancedInbounds() {
-  const inbounds = configInbounds();
-  const transparent = inbounds.filter((item) => {
-    const tag = String(item?.tag || '').toLowerCase();
-    return tag.includes('transparent') || item?.streamSettings?.sockopt?.tproxy || item?.protocol === 'dokodemo-door';
-  });
-  return transparent.length ? transparent : inbounds;
-}
-
-function currentSnifferSettings() {
-  const inbound = advancedInbounds().find((item) => item?.sniffing?.enabled) || advancedInbounds()[0] || {};
-  const sniffing = inbound?.sniffing || {};
-  const overrides = Array.isArray(sniffing.destOverride) ? sniffing.destOverride : [];
-  const mode = !sniffing.enabled
-    ? 'off'
-    : overrides.includes('quic')
-      ? 'http-tls-quic'
-      : 'http-tls';
-  return {
-    mode,
-    routeOnly: sniffing.routeOnly !== false,
-    excluded: Array.isArray(sniffing.domainsExcluded) ? sniffing.domainsExcluded.join('\n') : '',
-    targets: advancedInbounds().length
-  };
-}
+const xrayConfigModel = createXrayConfigModel(state);
+const {
+  configInbounds,
+  configOutbounds,
+  advancedInbounds,
+  currentSnifferSettings,
+  tcpFastOpenDraftEnabled,
+  currentDnsMode,
+  outboundAddress,
+  outboundTransport
+} = xrayConfigModel;
 
 function setSnifferDraft(mode, patch = {}) {
   const next = JSON.parse(JSON.stringify(state.config || {}));
@@ -234,10 +211,6 @@ function setSnifferDraft(mode, patch = {}) {
   render();
 }
 
-function tcpFastOpenDraftEnabled() {
-  return [...configOutbounds(), ...advancedInbounds()].some((item) => item?.streamSettings?.sockopt?.tcpFastOpen === true);
-}
-
 function setTcpFastOpenDraft(enabled) {
   const next = JSON.parse(JSON.stringify(state.config || {}));
   const proxyTags = new Set(proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean));
@@ -258,12 +231,6 @@ function setTcpFastOpenDraft(enabled) {
   syncConfig(next);
   state.message = enabled ? 'TCP Fast Open добавлен в черновик Xray.' : 'TCP Fast Open выключен в черновике Xray.';
   render();
-}
-
-function currentDnsMode() {
-  const dns = state.config?.dns || {};
-  const fakeDNS = Array.isArray(dns.fakeDNS) && dns.fakeDNS.length;
-  return fakeDNS ? 'fakedns' : 'normal';
 }
 
 function setDnsModeDraft(mode) {
@@ -297,34 +264,6 @@ function setDnsModeDraft(mode) {
   syncConfig(next);
   state.message = 'DNS-режим возвращен к обычному черновику.';
   render();
-}
-
-function outboundAddress(outbound) {
-  const protocol = outbound?.protocol;
-  if (protocol === 'vless' || protocol === 'vmess') {
-    const vnext = outbound?.settings?.vnext?.[0];
-    return [vnext?.address, vnext?.port].filter(Boolean).join(':') || 'адрес не задан';
-  }
-  if (protocol === 'trojan' || protocol === 'shadowsocks') {
-    const server = outbound?.settings?.servers?.[0];
-    return [server?.address, server?.port].filter(Boolean).join(':') || 'адрес не задан';
-  }
-  if (protocol === 'dns') {
-    return [outbound?.settings?.address, outbound?.settings?.port].filter(Boolean).join(':') || 'DNS';
-  }
-  if (protocol === 'freedom') return 'напрямую';
-  if (protocol === 'blackhole') return 'блокировка';
-  return outbound?.sendThrough || 'служебное направление';
-}
-
-function outboundTransport(outbound) {
-  const stream = outbound?.streamSettings || {};
-  const network = stream.network || 'tcp';
-  const security = stream.security || 'none';
-  if (outbound?.protocol === 'freedom') return 'direct';
-  if (outbound?.protocol === 'blackhole') return 'block';
-  if (outbound?.protocol === 'dns') return 'dns';
-  return `${network} / ${security}`;
 }
 
 function outboundUsage(tag) {

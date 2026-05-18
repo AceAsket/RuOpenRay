@@ -17,6 +17,7 @@ import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
+import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
 
 const state = {
   clientTrafficUrl: 'https://www.gstatic.com/generate_204',
@@ -145,6 +146,13 @@ const routingModel = createRoutingModel({
   routePresets: {},
   proxyOutbounds: () => [{ tag: 'proxy' }],
 });
+const xrayConfigModel = createXrayConfigModel({
+  config: {
+    inbounds: [{ tag: 'transparent_ipv4', protocol: 'dokodemo-door', sniffing: { enabled: true, destOverride: ['http', 'tls'] } }],
+    outbounds: [{ tag: 'proxy', protocol: 'vless', settings: { vnext: [{ address: 'example.com', port: 443 }] } }],
+    dns: {},
+  },
+});
 
 bindDiagnosticsControls({
   state,
@@ -271,6 +279,7 @@ const checks = [
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
+  ['xray config model', xrayConfigModel.currentSnifferSettings().mode === 'http-tls' && xrayConfigModel.outboundAddress(xrayConfigModel.configOutbounds()[0]) === 'example.com:443'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
