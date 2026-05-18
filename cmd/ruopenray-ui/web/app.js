@@ -1,5 +1,6 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
 import { createApiClient } from './api-client.js';
+import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
 import {
   customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
@@ -1709,85 +1710,56 @@ function recordXrayStatsSample(status = state.status) {
   state.xrayTrafficHistory = [...state.xrayTrafficHistory.filter((item) => item.tag === sample.tag), sample].slice(-72);
 }
 
-function configureLogTimer() {
-  if (state.logTimer) {
-    clearInterval(state.logTimer);
-    state.logTimer = null;
+function recordStatusSnapshot(status) {
+  state.status = status;
+  recordTrafficSample(status);
+  recordXrayStatsSample(status);
+}
+
+const refreshTimers = createRefreshTimers({
+  state,
+  request,
+  refreshLogs,
+  refreshDomainMonitor,
+  recordStatus: recordStatusSnapshot,
+  backgroundRender,
+  clearAuth,
+  setMessage: (message) => {
+    state.message = message;
   }
-  const liveLogs = state.tab === 'diagnostics' && state.diagnosticsView === 'live';
-  const liveDomainMonitor = state.tab === 'diagnostics' && ['domains', 'devices'].includes(state.diagnosticsView);
-  if (!state.logLive || !state.token || (!liveLogs && !liveDomainMonitor)) return;
-  const interval = Math.max(1, Number(state.logIntervalSec) || 2) * 1000;
-  state.logTimer = setInterval(async () => {
-    try {
-      if (liveLogs) {
-        await refreshLogs(true, true);
-      }
-      if (liveDomainMonitor) {
-        await refreshDomainMonitor(false);
-        backgroundRender();
-      }
-    } catch (error) {
-      if (/Authentication|авторизац/i.test(error.message)) {
-        state.token = '';
-        localStorage.removeItem('openray_token');
-        configureLogTimer();
-      }
-      state.message = error.message;
-      backgroundRender();
-    }
-  }, interval);
+});
+
+function configureLogTimer() {
+  refreshTimers.configureLogTimer();
 }
 
 function configureStatusTimer() {
-  if (state.statusTimer) {
-    clearInterval(state.statusTimer);
-    state.statusTimer = null;
-  }
-  if (!state.token) return;
-  state.statusTimer = setInterval(async () => {
-    if (state.tab !== 'dashboard' && state.tab !== 'servers' && !(state.tab === 'diagnostics' && state.diagnosticsView === 'traffic')) return;
-    try {
-      state.status = await request('/api/status');
-      recordTrafficSample(state.status);
-      recordXrayStatsSample(state.status);
-      backgroundRender();
-    } catch (error) {
-      if (/Authentication|авторизац/i.test(error.message)) {
-        state.token = '';
-        localStorage.removeItem('openray_token');
-        configureLogTimer();
-        configureStatusTimer();
-      }
-    }
-  }, 5000);
+  refreshTimers.configureStatusTimer();
 }
 
 async function refresh(options = {}) {
   const renderAfter = options.renderAfter !== false;
   const background = Boolean(options.background);
   try {
-    const [status, profiles, config, logs, leases, releases, appRelease, geo, domainMonitor, logging, serviceSettings, tcpFastOpen, lanDns, firewallStatus, subscriptions, disabledRoutes] = await Promise.all([
-      request('/api/status'),
-      request('/api/profiles'),
-      request('/api/config'),
-      api.text(logsUrl()),
-      request('/api/dhcp/leases').catch(() => ({ leases: [] })),
-      request('/api/core/releases').catch(() => ({ releases: [], asset: '' })),
-      request('/api/app/releases').catch(() => null),
-      request('/api/geo/status').catch(() => null),
-      request('/api/domain-monitor?limit=1200').catch(() => null),
-      request('/api/settings/logging').catch(() => null),
-      request('/api/settings/service').catch(() => null),
-      request('/api/network/tcp-fast-open').catch(() => null),
-      request('/api/dns/lan-upstream').catch(() => null),
-      request('/api/firewall/status').catch(() => null),
-      request('/api/subscriptions').catch(() => ({ pools: [] })),
-      request('/api/routing/disabled').catch(() => null)
-    ]);
-    state.status = status;
-    recordTrafficSample(status);
-    recordXrayStatsSample(status);
+    const {
+      status,
+      profiles,
+      config,
+      logs,
+      leases,
+      releases,
+      appRelease,
+      geo,
+      domainMonitor,
+      logging,
+      serviceSettings,
+      tcpFastOpen,
+      lanDns,
+      firewallStatus,
+      subscriptions,
+      disabledRoutes
+    } = await loadAppSnapshot({ request, text: api.text, logsUrl });
+    recordStatusSnapshot(status);
     state.profiles = Array.isArray(profiles) ? profiles : [];
     syncConfig(config);
     if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {
@@ -1839,9 +1811,8 @@ async function refresh(options = {}) {
       else render();
     }
   } catch (error) {
-    if (/Authentication|авторизац/i.test(error.message)) {
-      state.token = '';
-      localStorage.removeItem('openray_token');
+    if (isAuthError(error)) {
+      clearAuth();
       configureLogTimer();
       configureStatusTimer();
     }

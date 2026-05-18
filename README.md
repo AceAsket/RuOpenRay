@@ -211,6 +211,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\router-regression.ps
 cmd/ruopenray-ui/               backend на Go и embedded frontend
 cmd/ruopenray-ui/web/app.js      основное состояние и отрисовка фронтенда
 cmd/ruopenray-ui/web/api-client.js общий клиент API и обработка авторизации
+cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status polling
 cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настроек
 cmd/ruopenray-ui/web/presets.js  пресеты маршрутизации и подписи UI
 cmd/ruopenray-ui/web/styles.css  стили панели
