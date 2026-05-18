@@ -196,9 +196,11 @@ go test ./...
 cmd/ruopenray-ui/               точка входа сервиса, HTTP API и embedded frontend
 cmd/ruopenray-ui/web/app.js      основное состояние и отрисовка фронтенда
 cmd/ruopenray-ui/web/api-client.js общий клиент API и обработка авторизации
+cmd/ruopenray-ui/web/dashboard-view.js отрисовка главной, метрик и статистики Xray
 cmd/ruopenray-ui/web/diagnostics-view.js отрисовка диагностики, доменов, трафика и observatory
 cmd/ruopenray-ui/web/dns-view.js отрисовка DNS, hosts, LAN DNS и защиты от утечек
 cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status polling
+cmd/ruopenray-ui/web/routing-view.js отрисовка маршрутизации, сценариев и перехвата
 cmd/ruopenray-ui/web/servers-view.js отрисовка вкладки прокси, подписок и групп
 cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настроек
 cmd/ruopenray-ui/web/presets.js  пресеты маршрутизации и подписи UI

@@ -1,0 +1,573 @@
+export function createRoutingView(deps) {
+  const {
+    state,
+    escapeHtml,
+    operationProgressView,
+    stat,
+    routeRules,
+    routeStats,
+    routeTargetOptions,
+    visibleRoutingRuleItems,
+    routeSectionDefinitions,
+    orderedRouteList,
+    describeRouteRule,
+    routeRuleName,
+    resolveRoutingAlias,
+    dslPreviewView,
+    configAnalysisView,
+    builtinRoutePresetEntries,
+    customRoutePresetEntries,
+    ruleCountLabel,
+    routePresetConditionCount,
+    routeBalancers,
+    observatoryPanel,
+    balancerSelectorMatches,
+    balancerObserverSummary,
+    balancerStrategyLabel,
+    balancerMembersView,
+    currentSnifferSettings,
+    tcpFastOpenDraftEnabled,
+    firewallInfo,
+    firewallPolicyPreview,
+    firewallDeviceChoices,
+    firewallSelectedDevices,
+    firewallCommands,
+    geoPanel,
+  } = deps;
+
+function routingRulesPanel() {
+  const rules = routeRules();
+  const stats = routeStats();
+  const options = routeTargetOptions();
+  const visibleRules = visibleRoutingRuleItems(80);
+
+  return `
+    <section class="panel routing-simple-panel">
+      <div class="panel-title">
+        <div><h2>Правила маршрутизации</h2><span>${rules.length} правил в текущем профиле. Xray читает их сверху вниз.</span></div>
+        <div class="split-actions">
+          <button class="btn secondary" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить'}</button>
+          <button class="btn warning" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю...' : 'Применить'}</button>
+        </div>
+      </div>
+      ${operationProgressView()}
+      <div class="routing-summary">
+        ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
+          <span>${escapeHtml(item.title)}</span>
+          <strong>${item.count}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+        </article>`).join('')}
+      </div>
+      <div class="route-tools">
+        <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
+        <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, proxy, direct..." />
+        <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
+        <span class="muted">${visibleRules.length} из ${rules.length}</span>
+      </div>
+      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      <div class="route-table">
+        ${orderedRouteList(visibleRules, options, rules.length)}
+      </div>
+      ${state.disabledRouteRules.length ? `<div class="disabled-routes">
+        <div class="disabled-routes-head">
+          <strong>Отключенные правила</strong>
+          <span>${state.disabledRouteRules.length} сохранено вне активного Xray-конфига</span>
+          <button class="btn secondary" data-action="restoreAllDisabledRoutes">Вернуть все</button>
+        </div>
+        ${state.disabledRouteRules.slice(0, 20).map((item) => {
+          const info = describeRouteRule(item.rule);
+          return `<article class="disabled-route-row">
+            <div>
+              <strong>${escapeHtml(item.name || routeRuleName(item.rule, info))}</strong>
+              <span>${escapeHtml(info.value)} → ${escapeHtml(info.outbound)}</span>
+            </div>
+            <button class="btn secondary" data-route-restore="${escapeHtml(item.id)}">Вернуть</button>
+            <button class="btn danger" data-route-disabled-delete="${escapeHtml(item.id)}">Удалить</button>
+          </article>`;
+        }).join('')}
+      </div>` : ''}
+    </section>
+
+    <details class="panel route-advanced">
+      <summary>
+        <span>Дополнительно</span>
+        <small>Импорт правил списком и проверка анализа</small>
+      </summary>
+      <div class="dsl-compact">
+        <div class="panel-title">
+          <div><h2>Импорт правил списком</h2><span><code>domain(domain:discord.com) -> proxy</code>, alias proxy сейчас ведет на <code>${escapeHtml(resolveRoutingAlias('proxy'))}</code>.</span></div>
+          <div class="split-actions">
+            <button class="btn secondary" data-action="previewRouteDsl">Предпросмотр</button>
+            <button class="btn secondary" data-action="analyzeConfig">Проверить</button>
+            <button class="btn secondary" data-action="appendRouteDsl">Добавить</button>
+            <button class="btn warning" data-action="replaceRouteDsl">Заменить</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Название списка</label>
+          <input id="routeDslName" value="${escapeHtml(state.routeDslName)}" placeholder="Например: Discord, YouTube, Игровые сервисы" />
+        </div>
+        <textarea id="routeDsl" class="dsl-editor" spellcheck="false" placeholder="default: direct&#10;domain(domain:discord.com) -> proxy&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
+        ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
+        ${configAnalysisView()}
+      </div>
+    </details>
+  `;
+}
+
+function routingScenariosPanel() {
+  const presetEntries = builtinRoutePresetEntries();
+  const customEntries = customRoutePresetEntries();
+  return `
+    <section class="panel routing-scenarios-panel">
+      <div class="panel-title">
+        <div><h2>Сценарии маршрутизации</h2><span>Подборки правил можно открыть в редакторе, сохранить как свои или добавить через окно “Подборки”.</span></div>
+        <div class="split-actions">
+          <button class="btn secondary" data-action="newRoutePreset">Добавить подборку</button>
+        </div>
+      </div>
+      ${customEntries.length ? `
+        <div class="scenario-section-title">Мои подборки</div>
+        <div class="scenario-grid">
+          ${customEntries.map(([key, preset]) => `<article class="scenario-card custom">
+            <div>
+              <strong>${escapeHtml(preset.title)}</strong>
+              <span>${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
+            </div>
+            <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
+            <span class="scenario-actions">
+              <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
+              <button class="icon-btn danger" type="button" data-route-preset-delete="${escapeHtml(key)}" aria-label="Удалить подборку">×</button>
+            </span>
+          </article>`).join('')}
+        </div>
+      ` : ''}
+      <div class="scenario-section-title">Подборки</div>
+      <div class="scenario-grid">
+        ${presetEntries.map(([key, preset]) => `<article class="scenario-card">
+          <div>
+            <strong>${escapeHtml(preset.title)}</strong>
+            <span>${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>
+          </div>
+          <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
+          <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
+        </article>`).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function routingBalancersPanel() {
+  const balancers = routeBalancers();
+  return `
+    ${observatoryPanel()}
+    <section class="panel routing-balancers-panel">
+      <div class="panel-title">
+        <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для ping нужен Observatory, для нагрузки — Burst Observatory.</span></div>
+        <button class="btn warning" data-action="openRouteBalancerDialog">Добавить</button>
+      </div>
+      <div class="balancer-list wide">
+        ${balancers.length ? balancers.map((balancer, index) => {
+          const selectors = Array.isArray(balancer.selector) ? balancer.selector.join(', ') : '';
+          const strategy = balancer.strategy?.type || 'random';
+          const used = routeRules().filter((rule) => rule.balancerTag === balancer.tag).length;
+          const matched = balancerSelectorMatches(selectors);
+          const observer = balancerObserverSummary(balancer);
+          return `<article class="balancer-row">
+            <div>
+              <div class="server-meta-chips balancer-meta-chips">
+                <span class="server-chip ${used ? 'ok' : 'muted'}">${escapeHtml(ruleCountLabel(used))}</span>
+                <span class="server-chip ${matched.length ? 'info' : 'muted'}">${escapeHtml(`${matched.length} серверов`)}</span>
+                <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
+              </div>
+              <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
+              <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · резерв: ${balancer.fallbackTag}` : ''}</span>
+              ${balancerMembersView(matched)}
+            </div>
+            <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
+            <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
+          </article>`;
+        }).join('') : `<p class="muted">Групп пока нет. Создайте группу, если хотите переключать серверы случайно, по очереди или по меньшей задержке.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function interceptAdvancedSections() {
+  const sniffer = currentSnifferSettings();
+  const tfo = state.tcpFastOpen || {};
+  const tfoDraft = tcpFastOpenDraftEnabled();
+  const quicBlocked = state.firewallBlockQuic;
+  const snifferWantsQuic = sniffer.mode === 'http-tls-quic';
+  return `
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>Сниффер Xray</h2><span>Advanced-настройка для transparent proxy: Xray извлекает домен из HTTP/TLS/QUIC и использует его в правилах маршрутизации.</span></div>
+      </div>
+      <div class="advanced-grid">
+        <div class="settings-field wide">
+          <label>Режим</label>
+          <div class="segmented settings-log-levels" aria-label="Режим сниффера">
+            ${[
+              ['off', 'Выключено'],
+              ['http-tls', 'HTTP + TLS'],
+              ['http-tls-quic', 'HTTP + TLS + QUIC']
+            ].map(([value, label]) => `<button type="button" class="${sniffer.mode === value ? 'active' : ''}" data-sniffer-mode="${value}">${label}</button>`).join('')}
+          </div>
+          <small>${sniffer.targets ? `Будет применено к inbound: ${sniffer.targets}` : 'Inbound пока не найден. Подготовьте transparent proxy в разделе Перехват.'}</small>
+        </div>
+        <label class="settings-check compact ${sniffer.routeOnly ? 'active' : ''}">
+          <input id="snifferRouteOnly" type="checkbox" ${sniffer.routeOnly ? 'checked' : ''} ${sniffer.mode === 'off' ? 'disabled' : ''} />
+          <span><strong>Только для маршрутизации</strong><em>Безопасный режим: домен используется для правил, но destination не подменяется.</em></span>
+        </label>
+        <div class="settings-field wide">
+          <label>Исключенные домены</label>
+          <textarea id="snifferExcluded" rows="4" ${sniffer.mode === 'off' ? 'disabled' : ''} placeholder="bank.example.com&#10;*.local">${escapeHtml(sniffer.excluded)}</textarea>
+          <small>Добавляйте банки, локальные сервисы, captive portal и устройства, которые плохо переносят sniffing.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>QUIC и HTTP/3</h2><span>Это общий переключатель для сниффера и firewall-перехвата: либо пропускаем QUIC в Xray, либо режем UDP/443 и заставляем браузеры перейти на TCP.</span></div>
+      </div>
+      <div class="advanced-grid two">
+        <button type="button" class="advanced-card ${!quicBlocked ? 'active' : ''}" data-quic-policy="allow">
+          <strong>Разрешить QUIC</strong>
+          <span>Подходит для TPROXY и сниффера HTTP + TLS + QUIC. Xray увидит UDP/443, если transparent-схема готова.</span>
+        </button>
+        <button type="button" class="advanced-card ${quicBlocked ? 'active' : ''}" data-quic-policy="block">
+          <strong>Блокировать QUIC</strong>
+          <span>Firewall отбросит UDP/443 до Xray. Браузеры обычно откатываются на TCP, что полезно для REDIRECT и простого TCP-прокси.</span>
+        </button>
+      </div>
+      ${quicBlocked && snifferWantsQuic ? `<div class="settings-warning"><strong>Конфликт</strong><span>В сниффере выбран QUIC, но Block QUIC его отрежет на firewall-уровне. Либо разрешите QUIC, либо переключите сниффер на HTTP + TLS.</span></div>` : ''}
+      ${!quicBlocked && state.firewallRouterMode === 'redirect' ? `<div class="settings-warning"><strong>REDIRECT</strong><span>REDIRECT работает в основном с TCP. Если используете его как основной режим роутера, лучше включить блокировку QUIC.</span></div>` : ''}
+    </section>
+
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>TCP Fast Open</h2><span>Может ускорять установку TCP-соединений, если поддерживается ядром, провайдером и сервером. На слабых роутерах лучше включать осознанно.</span></div>
+      </div>
+      <div class="settings-info-grid">
+        <article><span>Система OpenWrt</span><strong>${escapeHtml(tfo.available ? (tfo.enabled ? 'включено' : 'выключено') : 'недоступно')}</strong></article>
+        <article><span>Значение sysctl</span><strong>${escapeHtml(tfo.value ?? '—')}</strong></article>
+        <article><span>Черновик Xray</span><strong>${escapeHtml(tfoDraft ? 'включен' : 'выключен')}</strong></article>
+        <article><span>Файл sysctl</span><strong>${escapeHtml(tfo.persistentPath || '/etc/sysctl.d/90-ruopenray-tcp-fastopen.conf')}</strong></article>
+      </div>
+      <div class="toolbar">
+        <button class="btn secondary" data-action="enableTcpFastOpenSystem" ${state.tcpFastOpenSaving ? 'disabled' : ''}>Включить в системе</button>
+        <button class="btn secondary" data-action="disableTcpFastOpenSystem" ${state.tcpFastOpenSaving ? 'disabled' : ''}>Выключить в системе</button>
+        <button class="btn" data-action="enableTcpFastOpenDraft">Включить в Xray</button>
+        <button class="btn secondary" data-action="disableTcpFastOpenDraft">Выключить в Xray</button>
+        <button class="btn warning" data-action="test">Проверить конфигурацию</button>
+        <button class="btn warning" data-action="apply">Применить</button>
+      </div>
+    </section>
+
+  `;
+}
+
+function interceptAdvancedAccordion() {
+  return `
+    <details class="panel intercept-details">
+      <summary>
+        <span>
+          <strong>Расширенные сетевые опции</strong>
+          <em>Сниффер Xray, QUIC/HTTP3 и TCP Fast Open. Обычно это трогают после базовой настройки перехвата.</em>
+        </span>
+        <b>Открыть</b>
+      </summary>
+      <div class="intercept-details-body">
+        ${interceptAdvancedSections()}
+      </div>
+    </details>
+  `;
+}
+
+function routingPanel() {
+  const routingTabs = [
+    ['rules', 'Правила'],
+    ['scenarios', 'Сценарии'],
+    ['intercept', 'Перехват'],
+    ['geo', 'Geo']
+  ];
+  const view = routingTabs.some(([value]) => value === state.routingView) ? state.routingView : 'rules';
+  const views = {
+    rules: routingRulesPanel,
+    scenarios: routingScenariosPanel,
+    intercept: firewallPanel,
+    geo: geoPanel
+  };
+  return `
+    <section class="routing-nav-panel">
+      <div class="routing-subnav" role="tablist" aria-label="Подменю маршрутизации">
+        ${routingTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}">${label}</button>`).join('')}
+      </div>
+    </section>
+    ${views[view]()}
+  `;
+}
+
+function statusCard(title, ok, detail) {
+  return `
+    <article class="status-card ${ok ? 'ok' : 'warn'}">
+      <span>${ok ? 'Готово' : 'Нужно проверить'}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </article>
+  `;
+}
+
+function firewallPanel() {
+  const info = firewallInfo();
+  const preview = firewallPolicyPreview();
+  const deviceChoices = firewallDeviceChoices();
+  const selectedDevices = new Set(state.firewallSelectedDevices);
+  const transparentRows = info.transparent.length
+    ? info.transparent.map((item) => `${item.tag || 'transparent'} · ${item.protocol || 'inbound'} · порт ${item.port || 'не задан'}`).join('\n')
+    : 'Transparent inbound пока не найден.';
+  const dnsRows = info.dnsOut.length
+    ? info.dnsOut.map((item) => `${item.tag || 'dns'} · ${item.protocol}`).join('\n')
+    : 'DNS outbound пока не найден.';
+  const sourceRows = info.sourceRules.length
+    ? info.sourceRules.slice(0, 8).map((rule) => `${rule.source.join(', ')} -> ${rule.outboundTag}`).join('\n')
+    : 'Отдельных правил для LAN-устройств пока нет.';
+
+  return `
+    <section class="route-hero firewall-hero intercept-hero">
+      <div>
+        <h2>Перехват трафика</h2>
+        <p>Короткая настройка transparent proxy: кого перехватываем, какие порты берем и как рано отсеиваем direct/proxy трафик.</p>
+      </div>
+      <div class="route-score">
+        <strong>${info.ready ? 'OK' : '3'}</strong>
+        <span>${info.ready ? 'схема готова' : 'пункта готовности'}</span>
+      </div>
+    </section>
+
+    <section class="panel intercept-start-panel">
+      <div class="panel-title">
+        <div><h2>Текущая схема</h2><span>Коротко: способ перехвата, политика до Xray и охват устройств.</span></div>
+      </div>
+      <div class="intercept-summary-grid">
+        <article>
+          <span>Способ</span>
+          <strong>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'REDIRECT' : 'TPROXY')}</strong>
+          <small>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'TCP-сценарий, QUIC лучше блокировать' : 'TCP+UDP, лучше для transparent proxy')}</small>
+        </article>
+        <article>
+          <span>Политика</span>
+          <strong>${escapeHtml(preview.policyName)}</strong>
+          <small>${escapeHtml(preview.policy)}</small>
+        </article>
+        <article>
+          <span>Охват</span>
+          <strong>${escapeHtml(preview.traffic)}</strong>
+          <small>${escapeHtml(`Порты: ${preview.ports}`)}</small>
+        </article>
+        <article>
+          <span>Готовность</span>
+          <strong>${escapeHtml(info.ready ? 'Можно применять' : 'Нужно проверить')}</strong>
+          <small>${escapeHtml([
+            info.transparent.length ? 'inbound найден' : 'нет transparent inbound',
+            info.dnsOut.length ? 'dns-out найден' : 'нет dns-out',
+            info.localBypass.length ? 'direct есть' : 'нет local bypass'
+          ].join(' · '))}</small>
+        </article>
+      </div>
+      ${preview.warnings.length ? `<div class="settings-warning compact"><strong>Проверить</strong><span>${escapeHtml(preview.warnings.join(' '))}</span></div>` : ''}
+    </section>
+
+    <section class="panel intercept-compact-panel">
+      <div class="panel-title">
+        <div><h2>Основной сценарий</h2><span>Выберите способ перехвата и сколько трафика отправлять в Xray.</span></div>
+      </div>
+      <div class="intercept-compact-grid">
+        <div class="intercept-setting-card">
+          <span class="intercept-label">Способ</span>
+          <div class="segmented compact intercept-segmented" role="group" aria-label="Способ перехвата">
+            <button type="button" class="${state.firewallRouterMode === 'tproxy' ? 'active' : ''}" data-firewall-router-mode="tproxy">TPROXY</button>
+            <button type="button" class="${state.firewallRouterMode === 'redirect' ? 'active' : ''}" data-firewall-router-mode="redirect">REDIRECT</button>
+          </div>
+          <small>${state.firewallRouterMode === 'redirect' ? 'Проще для TCP. Для UDP/QUIC лучше включить блокировку QUIC.' : 'Рекомендуется: TCP+UDP, сохраняет исходное назначение.'}</small>
+        </div>
+        <div class="intercept-setting-card wide">
+          <span class="intercept-label">Что отправляем в Xray</span>
+          <div class="intercept-choice-list">
+            <button type="button" class="${state.firewallBypassMode === 'off' ? 'active' : ''}" data-firewall-bypass-mode="off">
+              <strong>Все выбранное</strong>
+              <em>Xray сам решает по правилам: proxy, direct или block.</em>
+            </button>
+            <button type="button" class="${state.firewallBypassMode === 'bypass' ? 'active' : ''}" data-firewall-bypass-mode="bypass">
+              <strong>Direct мимо Xray</strong>
+              <em>Direct-адреса не нагружают Xray, остальное идет в правила.</em>
+            </button>
+            <button type="button" class="${state.firewallBypassMode === 'redirect' ? 'active' : ''}" data-firewall-bypass-mode="redirect">
+              <strong>Только proxy</strong>
+              <em>В Xray попадает только то, что заранее известно как proxy.</em>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel intercept-compact-panel">
+      <div class="panel-title">
+        <div><h2>Охват</h2><span>Клиенты, порты и QUIC. Обычно достаточно «все LAN» и порты 80/443.</span></div>
+      </div>
+      <div class="intercept-compact-grid">
+        <div class="intercept-setting-card wide">
+          <span class="intercept-label">Клиенты</span>
+          <div class="segmented compact intercept-segmented three" role="group" aria-label="Устройства">
+            <button type="button" class="${state.firewallDeviceMode === 'all' ? 'active' : ''}" data-firewall-device-mode="all">Все LAN</button>
+            <button type="button" class="${state.firewallDeviceMode === 'selected' ? 'active' : ''}" data-firewall-device-mode="selected">Только выбранные</button>
+            <button type="button" class="${state.firewallDeviceMode === 'exclude' ? 'active' : ''}" data-firewall-device-mode="exclude">Исключить</button>
+          </div>
+          <small>${escapeHtml(preview.traffic)}</small>
+        </div>
+        <div class="intercept-setting-card">
+          <span class="intercept-label">Порты</span>
+          <div class="segmented compact intercept-segmented" role="group" aria-label="Режим портов">
+            <button type="button" class="${state.firewallPortMode === 'all' ? 'active' : ''}" data-firewall-port-mode="all">Все</button>
+            <button type="button" class="${state.firewallPortMode !== 'all' ? 'active' : ''}" data-firewall-port-mode="custom">Список</button>
+          </div>
+          ${state.firewallPortMode === 'all' ? '<small>Все TCP/UDP-порты в выбранной области клиентов.</small>' : `
+            <input id="firewallPorts" value="${escapeHtml(state.firewallPorts)}" placeholder="80,443,50000-65535" />
+          `}
+        </div>
+        <label class="settings-check compact intercept-quic-toggle ${state.firewallBlockQuic ? 'active' : ''}">
+          <input id="firewallBlockQuic" type="checkbox" ${state.firewallBlockQuic ? 'checked' : ''} />
+          <span><strong>Блокировать QUIC</strong><em>UDP/443 режется до Xray, браузеры переходят на TCP.</em></span>
+        </label>
+      </div>
+      <div class="firewall-device-list">
+        ${deviceChoices.length ? deviceChoices.slice(0, 16).map((device) => `<label class="firewall-device ${selectedDevices.has(device.ip) ? 'active' : ''}">
+          <input type="checkbox" data-firewall-device="${escapeHtml(device.ip)}" ${selectedDevices.has(device.ip) ? 'checked' : ''} />
+          <span><strong>${escapeHtml(device.name || device.ip)}</strong><em>${escapeHtml([device.ip, device.mac].filter(Boolean).join(' · '))}</em></span>
+        </label>`).join('') : '<p class="muted">DHCP leases пока не найдены. Устройства можно добавить в разделе LAN-устройств, после этого они появятся здесь.</p>'}
+      </div>
+    </section>
+
+    ${interceptAdvancedAccordion()}
+
+    ${firewallApplyPanel()}
+
+    <details class="panel intercept-details">
+      <summary>
+        <span>
+          <strong>Техническая подготовка Xray</strong>
+          <em>Что найдено в конфигурации и какие части можно добавить в черновик.</em>
+        </span>
+        <b>Открыть</b>
+      </summary>
+      <div class="intercept-details-body">
+    <div class="route-layout firewall-layout">
+      <section class="panel">
+        <div class="panel-title">
+          <div><h2>Что найдено в конфигурации</h2><span>Сводка по текущему Xray JSON без терминальных команд.</span></div>
+        </div>
+        <div class="firewall-facts">
+          <div>
+            <label>Transparent inbound</label>
+            <pre class="mini-console">${escapeHtml(transparentRows)}</pre>
+          </div>
+          <div>
+            <label>DNS outbound</label>
+            <pre class="mini-console">${escapeHtml(dnsRows)}</pre>
+          </div>
+          <div>
+            <label>LAN-устройства</label>
+            <pre class="mini-console">${escapeHtml(sourceRows)}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div><h2>Подготовка Xray</h2><span>Добавляет недостающие inbound/outbound/routing в черновик.</span></div>
+        </div>
+        <div class="firewall-steps">
+          <div><strong>1</strong><span>Transparent inbound принимает TCP/UDP после перехвата firewall.</span></div>
+          <div><strong>2</strong><span>DNS-направление отдельно обрабатывает порт 53.</span></div>
+          <div><strong>3</strong><span>Локальные адреса и LAN не уходят в прокси.</span></div>
+        </div>
+        <div class="toolbar">
+          <button class="btn" data-action="prepareTransparent">Подготовить черновик</button>
+          <button class="btn secondary" data-action="test">Проверить конфигурацию</button>
+          <button class="btn warning" data-action="apply">Применить</button>
+        </div>
+        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      </section>
+    </div>
+      </div>
+    </details>
+
+    <details class="panel intercept-details">
+      <summary>
+        <span>
+          <strong>Команды для OpenWrt</strong>
+          <em>Черновик nftables/TProxy для ручной проверки и копирования.</em>
+        </span>
+        <b>Открыть</b>
+      </summary>
+      <div class="intercept-details-body">
+    <section class="panel intercept-command-panel">
+      <div class="panel-title">
+        <div><h2>Команды для OpenWrt</h2><span>Черновик nftables/TProxy. Перед применением проверьте интерфейсы, порты и правила автозапуска.</span></div>
+        <button class="btn secondary" data-action="copyFirewall">Скопировать</button>
+      </div>
+      <pre class="console">${escapeHtml(firewallCommands())}</pre>
+    </section>
+      </div>
+    </details>
+  `;
+}
+
+function firewallApplyPanel() {
+  const status = state.firewallStatus || {};
+  const active = Boolean(status.active);
+  const persistent = Boolean(status.persistent);
+  const tproxyReady = status.routerMode !== 'tproxy' || (status.ipRule && status.ipRoute && status.hotplug);
+  const available = status.available !== false;
+  const summary = active
+    ? persistent
+      ? 'активен и сохранен'
+      : 'активен до перезапуска'
+    : persistent
+      ? 'сохранен, но не активен'
+      : 'не применен';
+  return `
+    <section class="panel firewall-preview-panel intercept-apply-panel">
+      <div class="panel-title">
+        <div><h2>Применение</h2><span>Сохраняет nftables и, для TPROXY, policy routing после перезапуска firewall.</span></div>
+        <div class="split-actions">
+          <button class="btn secondary" data-action="refreshFirewallStatus" ${state.firewallSaving ? 'disabled' : ''}>Обновить</button>
+          <button class="btn warning" data-action="applyFirewall" ${state.firewallSaving || !available ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю...' : 'Применить'}</button>
+          <button class="btn secondary" data-action="disableFirewall" ${state.firewallSaving || (!active && !persistent) ? 'disabled' : ''}>Отключить</button>
+        </div>
+      </div>
+      <div class="firewall-preview-grid">
+        <article><span>Состояние</span><strong>${escapeHtml(summary)}</strong><small>${escapeHtml(status.routerMode || state.firewallRouterMode)}</small></article>
+        <article><span>nftables</span><strong>${escapeHtml(active ? 'таблица активна' : 'таблица не активна')}</strong><small>${escapeHtml(status.nftPath || '/etc/nftables.d/ruopenray.nft')}</small></article>
+        <article><span>TPROXY route</span><strong>${escapeHtml(tproxyReady ? 'готово' : 'нужно восстановить')}</strong><small>${escapeHtml(`ip rule: ${status.ipRule ? 'есть' : 'нет'} · route: ${status.ipRoute ? 'есть' : 'нет'} · hotplug: ${status.hotplug ? 'есть' : 'нет'}`)}</small></article>
+        <article><span>Модули</span><strong>${escapeHtml(status.tproxyModules?.ok === false ? 'не все установлены' : 'готово')}</strong><small>${escapeHtml(status.tproxyModules?.detail || 'проверяется на роутере')}</small></article>
+      </div>
+      ${!available ? `<div class="settings-warning"><strong>Недоступно</strong><span>nftables не найден. Постоянный перехват можно применить только на OpenWrt с firewall4/nft.</span></div>` : ''}
+      ${status.needsPolicyFix ? `<div class="settings-warning"><strong>TPROXY</strong><span>nft-таблица есть, но policy routing неполный. Нажмите «Применить перехват», чтобы восстановить ip rule, route и hotplug.</span></div>` : ''}
+    </section>
+  `;
+}
+
+  return {
+    firewallApplyPanel,
+    firewallPanel,
+    interceptAdvancedAccordion,
+    interceptAdvancedSections,
+    routingBalancersPanel,
+    routingPanel,
+    routingRulesPanel,
+    routingScenariosPanel,
+  };
+}

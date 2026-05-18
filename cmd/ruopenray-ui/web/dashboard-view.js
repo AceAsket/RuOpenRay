@@ -1,0 +1,688 @@
+export function createDashboardView(deps) {
+  const {
+    state,
+    labels,
+    escapeHtml,
+    routeStats,
+    deviceStats,
+    dnsStats,
+    coreUpdateInfo,
+    proxyOutbounds,
+    deviceRules,
+    outboundAddress,
+    logsPanel,
+    byteSize,
+    fmtUptime,
+    byteRate,
+    numberValue,
+    activeProxyTag,
+    configOutbounds,
+    releaseDate,
+    coreReleaseBadge,
+    outboundTransport,
+    proxyDirectionSummary,
+    proxyDirectionTitle,
+    proxyDirectionDetail,
+    dashboardProxyDirectionCards,
+    checkForTag,
+    checkLabel,
+    checkMethodLabel,
+  } = deps;
+
+function dashboard() {
+  const s = state.status || {};
+  const c = s.config || {};
+  const routes = routeStats();
+  const devices = deviceStats();
+  const dns = dnsStats();
+  const serviceRunning = Boolean(s.service?.running);
+  const coreReady = Boolean(s.core?.available);
+  const coreInfo = coreUpdateInfo();
+  const activeConfig = s.config?.path || 'config.json';
+  const proxyServers = proxyOutbounds();
+  return `
+    <section class="dash-hero ${serviceRunning ? 'is-ok' : 'is-warn'}">
+      <div class="dash-status">
+        <span class="eyebrow">Ресурсы роутера</span>
+        ${dashboardSystemStats(s.system)}
+        ${state.message ? `<p class="notice dash-notice">${escapeHtml(state.message)}</p>` : ''}
+      </div>
+      <div class="dash-actions">
+        <button class="btn secondary" data-action="openSetupWizard">Мастер</button>
+        <button class="btn" data-action="test">Проверить</button>
+        <button class="btn warning" data-action="apply">Сохранить и применить</button>
+      </div>
+    </section>
+
+    ${xrayCoreDashboard(s, coreReady, coreInfo)}
+
+    <section class="flow-strip">
+      ${flowStep('Устройства', deviceRules().length || state.leases.length, `${devices.proxy} через proxy`)}
+      ${flowStep('Маршруты', c.routingRules ?? 0, `proxy ${routes.proxy} / direct ${routes.direct}`)}
+      ${flowStep('Proxy', proxyServers.length, proxyServers[0] ? outboundAddress(proxyServers[0]) : 'не добавлен')}
+      ${flowStep('DNS', dns.servers, dns.doh ? `${dns.doh} DoH` : 'системный')}
+    </section>
+
+    <div class="dashboard-layout">
+      <div>
+        <section class="panel">
+          ${dashboardServerSwitch(proxyServers)}
+        </section>
+        <section class="panel config-panel ${state.configExpanded ? 'is-open' : ''}">
+          <div class="panel-title">
+            <div><h2>Активная конфигурация</h2><span>JSON-редактор остается под рукой, но больше не забирает главный экран на себя.</span></div>
+            <div class="split-actions">
+              <button class="btn secondary" data-action="toggleConfig">${state.configExpanded ? 'Свернуть' : 'Показать JSON'}</button>
+              <button class="btn secondary" data-action="saveProfile">Сохранить профиль</button>
+            </div>
+          </div>
+          ${state.configExpanded ? `<textarea id="jsonDraft" spellcheck="false">${escapeHtml(state.jsonDraft)}</textarea>` : `<p class="muted config-summary">${escapeHtml(activeConfig)} · ${c.inbounds ?? 0} входящих · ${c.outbounds ?? 0} исходящих · ${c.routingRules ?? 0} правил</p>`}
+        </section>
+      </div>
+      <aside>
+        ${logsPanel(true)}
+      </aside>
+    </div>
+  `;
+}
+
+function stat(label, value, detail) {
+  return `<article class="stat"><span>${label}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></article>`;
+}
+
+function dashboardSystemStats(system = {}) {
+  const cpu = system.cpu || {};
+  const memory = system.memory || {};
+  const tcp = system.tcp || {};
+  const conntrack = system.conntrack || {};
+  const disk = system.disk || {};
+  const traffic = system.traffic || {};
+  const uptime = system.uptime || 0;
+  const cpuValue = cpu.percent === null || cpu.percent === undefined ? (cpu.load1 || '—') : `${cpu.percent}%`;
+  const cpuDetail = `load ${cpu.load1 || '—'} / ${cpu.load5 || '—'} / ${cpu.load15 || '—'}`;
+  const memoryValue = memory.usedPercent || memory.usedPercent === 0 ? `${memory.usedPercent}%` : '—';
+  const memoryDetail = `${byteSize(memory.available)} свободно`;
+  const tcpValue = tcp.established || tcp.established === 0 ? tcp.established : '—';
+  const sessionsValue = `${tcpValue}/${conntrack.ok ? (conntrack.udp || 0) : '—'}`;
+  const sessionsDetail = `TCP активно / UDP conntrack`;
+  const diskValue = disk.ok === false ? '—' : byteSize(disk.free);
+  const diskDetail = disk.ok === false ? 'раздел не проверен' : `${disk.usedPercent || '—'} занято · ${disk.label || disk.path || '/'}`;
+  return `
+    <div class="router-health-metrics">
+      ${metricStat('chip', 'CPU', cpuValue, cpuDetail)}
+      ${metricStat('memory', 'RAM', memoryValue, memoryDetail)}
+      ${metricStat('uptime', 'Аптайм', fmtUptime(uptime), 'роутер работает')}
+      ${metricStat('storage', 'Место', diskValue, diskDetail)}
+      ${metricStat('sessions', 'TCP/UDP', sessionsValue, sessionsDetail)}
+      ${trafficMetricStat(traffic)}
+    </div>
+  `;
+}
+
+function trafficSeriesPath(samples, key, maxValue, width = 320, height = 104) {
+  if (!samples.length || maxValue <= 0) return '';
+  const step = samples.length > 1 ? width / (samples.length - 1) : width;
+  return samples.map((sample, index) => {
+    const x = Math.round(index * step * 10) / 10;
+    const y = Math.round((height - (Math.min(maxValue, sample[key] || 0) / maxValue) * height) * 10) / 10;
+    return `${index ? 'L' : 'M'}${x},${y}`;
+  }).join(' ');
+}
+
+function trafficAreaPath(samples, key, maxValue, width = 320, height = 104) {
+  const line = trafficSeriesPath(samples, key, maxValue, width, height);
+  if (!line) return '';
+  return `${line} L${width},${height} L0,${height} Z`;
+}
+
+function trafficMonitor(system = {}) {
+  const traffic = system.traffic || {};
+  const memory = system.memory || {};
+  const conntrack = system.conntrack || {};
+  const samples = state.trafficHistory.length ? state.trafficHistory : [{
+    rxRate: numberValue(traffic.rxRate),
+    txRate: numberValue(traffic.txRate)
+  }];
+  const maxRate = Math.max(1024, ...samples.map((sample) => Math.max(sample.rxRate || 0, sample.txRate || 0)));
+  const yTicks = [maxRate, maxRate * 0.75, maxRate * 0.5, maxRate * 0.25, 0];
+  const rxArea = trafficAreaPath(samples, 'rxRate', maxRate);
+  const txLine = trafficSeriesPath(samples, 'txRate', maxRate);
+  const rxLine = trafficSeriesPath(samples, 'rxRate', maxRate);
+  const totalConnections = conntrack.ok ? conntrack.total : ((system.tcp?.total || 0) + (conntrack.udp || 0));
+  return `
+    <details class="traffic-monitor" open>
+      <summary>
+        <span>Монитор трафика</span>
+        <strong>${escapeHtml(byteRate(traffic.rxRate))} прием · ${escapeHtml(byteRate(traffic.txRate))} отдача</strong>
+      </summary>
+      <div class="traffic-chart">
+        <div class="traffic-y-axis">
+          ${yTicks.map((tick) => `<span>${escapeHtml(byteRate(tick))}</span>`).join('')}
+        </div>
+        <svg viewBox="0 0 320 104" preserveAspectRatio="none" aria-label="График скорости трафика">
+          <g class="traffic-grid">
+            <path d="M0 0H320M0 26H320M0 52H320M0 78H320M0 104H320"></path>
+          </g>
+          ${rxArea ? `<path class="traffic-area-down" d="${rxArea}"></path>` : ''}
+          ${rxLine ? `<path class="traffic-line-down" d="${rxLine}"></path>` : ''}
+          ${txLine ? `<path class="traffic-line-up" d="${txLine}"></path>` : ''}
+        </svg>
+      </div>
+      <div class="traffic-legend">
+        <span><b class="down"></b>Скачивание</span>
+        <span><b class="up"></b>Отдача</span>
+      </div>
+      <div class="traffic-details-grid">
+        <article><span>Соединения</span><strong>${escapeHtml(totalConnections || '—')}</strong></article>
+        <article><span>Память</span><strong>${escapeHtml(byteSize(memory.used))}</strong></article>
+        <article><span>Скачано</span><strong>${escapeHtml(byteSize(traffic.rxBytes))}</strong></article>
+        <article><span>Скачивание сейчас</span><strong>${escapeHtml(byteRate(traffic.rxRate))}</strong></article>
+        <article><span>Отдано</span><strong>${escapeHtml(byteSize(traffic.txBytes))}</strong></article>
+        <article><span>Отдача сейчас</span><strong>${escapeHtml(byteRate(traffic.txRate))}</strong></article>
+      </div>
+    </details>
+  `;
+}
+
+function xrayStatsGroupLabel(key) {
+  const labels = {
+    proxy: 'Через proxy',
+    direct: 'Напрямую',
+    block: 'Блокировка',
+    system: 'Системные',
+    other: 'Другое'
+  };
+  return labels[key] || key;
+}
+
+function xrayStatsSeriesPath(samples, key, maxValue, width = 320, height = 92) {
+  if (!samples.length || maxValue <= 0) return '';
+  const step = samples.length > 1 ? width / (samples.length - 1) : width;
+  return samples.map((sample, index) => {
+    const x = Math.round(index * step * 10) / 10;
+    const y = Math.round((height - (Math.min(maxValue, sample[key] || 0) / maxValue) * height) * 10) / 10;
+    return `${index ? 'L' : 'M'}${x},${y}`;
+  }).join(' ');
+}
+
+function xrayActiveStats(stats = {}) {
+  const outbounds = Array.isArray(stats.outbounds) ? stats.outbounds : [];
+  const active = state.activeServerTag || activeProxyTag();
+  return outbounds.find((item) => item.tag === active) || outbounds.find((item) => item.kind === 'proxy') || null;
+}
+
+function xrayStatsOutboundConfig(tag) {
+  return configOutbounds().find((outbound) => outbound?.tag === tag) || null;
+}
+
+function xrayStatsOutbound(tag, stats = state.status?.xrayStats || {}) {
+  if (!stats.enabled || !Array.isArray(stats.outbounds)) return null;
+  return stats.outbounds.find((item) => item.tag === tag) || null;
+}
+
+function xrayStatsTotals(stats = {}) {
+  const outbounds = Array.isArray(stats.outbounds) ? stats.outbounds : [];
+  const source = outbounds.length ? outbounds : Object.values(stats.groups || {});
+  return source.reduce((total, item) => ({
+    downlink: total.downlink + numberValue(item?.downlink),
+    uplink: total.uplink + numberValue(item?.uplink),
+    downRate: total.downRate + numberValue(item?.downRate),
+    upRate: total.upRate + numberValue(item?.upRate)
+  }), { downlink: 0, uplink: 0, downRate: 0, upRate: 0 });
+}
+
+function xrayStatsPeriodLabel() {
+  if (state.xrayStatsResetAt) {
+    return `с последнего сброса ${new Date(state.xrayStatsResetAt).toLocaleString('ru-RU')}`;
+  }
+  return 'с начала запуска Xray';
+}
+
+function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
+  if (stats.enabled !== true) return '';
+  const totals = xrayStatsTotals(stats);
+  const groups = stats.groups || {};
+  const active = xrayActiveStats(stats);
+  return `
+    <section class="xray-dashboard-strip">
+      <article>
+        <span>Активный сервер</span>
+        <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
+        <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
+      </article>
+      <article>
+        <span>Через proxy</span>
+        <strong>${escapeHtml(byteSize(groups.proxy?.downlink))} принято</strong>
+        <small>${escapeHtml(`прием ${byteRate(groups.proxy?.downRate)} · отдача ${byteRate(groups.proxy?.upRate)}`)}</small>
+      </article>
+      <article>
+        <span>Напрямую / блокировка</span>
+        <strong>${escapeHtml(byteSize(groups.direct?.downlink))} · ${escapeHtml(byteSize(groups.block?.downlink))}</strong>
+        <small>${escapeHtml(`всего сейчас: прием ${byteRate(totals.downRate)} · отдача ${byteRate(totals.upRate)}`)}</small>
+      </article>
+      <article>
+        <span>Период</span>
+        <strong>${escapeHtml(byteSize(totals.downlink))} принято</strong>
+        <small>${escapeHtml(xrayStatsPeriodLabel())}</small>
+      </article>
+    </section>
+  `;
+}
+
+function xrayCoreDashboard(status = state.status || {}, available, info) {
+  const detail = status.core?.version || 'xray не проверен';
+  const latestText = info.target
+    ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}`
+    : 'Список релизов не загружен';
+  const coreStatus = !available ? 'Нужно установить' : info.hasUpdate ? 'Есть обновление' : 'Stable актуален';
+  const stats = status.xrayStats || {};
+  const statsEnabled = stats.enabled === true;
+  const totals = xrayStatsTotals(stats);
+  const groups = stats.groups || {};
+  const active = xrayActiveStats(stats);
+  const activeAddress = active?.tag ? outboundAddress(xrayStatsOutboundConfig(active.tag)) : '';
+  const directBlockText = `${byteSize(groups.direct?.downlink)} напрямую · ${byteSize(groups.block?.downlink)} блокировка`;
+  return `
+    <section class="panel xray-core-card ${info.hasUpdate ? 'has-update' : ''}">
+      <div class="xray-core-head">
+        <div>
+          <span class="eyebrow">Xray</span>
+          <h2>${available ? labels.available : labels.missing}</h2>
+          <p>${escapeHtml(detail)}</p>
+        </div>
+        <div class="core-stat-tools">
+          ${info.target ? coreReleaseBadge(info.target) : ''}
+          <button class="core-icon-action" type="button" data-action="${available ? 'openCoreDialog' : 'openInstallWizard'}" ${state.coreUpdating ? 'disabled' : ''} title="${available ? 'Выбрать версию Xray' : 'Установить Xray'}" aria-label="${available ? 'Выбрать версию Xray' : 'Установить Xray'}">⚙</button>
+        </div>
+      </div>
+      <div class="xray-core-status">
+        <strong>${escapeHtml(coreStatus)}</strong>
+        <span>${latestText}</span>
+      </div>
+      ${state.coreUpdate ? `<small class="core-stat-result">${state.coreUpdate.ok ? 'Готово' : 'Ошибка'} · ${escapeHtml(state.coreUpdate.after || state.coreUpdate.stderr || '')}</small>` : ''}
+      <div class="xray-core-metrics">
+        <article>
+          <span>Активный сервер</span>
+          <strong>${escapeHtml(active?.tag || activeProxyTag() || 'не выбран')}</strong>
+          <small>${escapeHtml(statsEnabled && active ? `${activeAddress || 'outbound'} · ${byteRate(active.downRate)} прием · ${byteRate(active.upRate)} отдача` : 'статистика Xray выключена')}</small>
+        </article>
+        <article>
+          <span>Proxy-трафик</span>
+          <strong>${escapeHtml(statsEnabled ? `${byteSize(groups.proxy?.downlink)} принято` : 'нет данных')}</strong>
+          <small>${escapeHtml(statsEnabled ? `${byteRate(groups.proxy?.downRate)} прием · ${byteRate(groups.proxy?.upRate)} отдача` : 'включается в диагностике или кнопкой ниже')}</small>
+        </article>
+        <article>
+          <span>Напрямую / блокировка</span>
+          <strong>${escapeHtml(statsEnabled ? directBlockText : 'нет данных')}</strong>
+          <small>${escapeHtml(statsEnabled ? `${byteRate(totals.downRate)} прием всего · ${byteRate(totals.upRate)} отдача всего` : 'без учета трафика по outbound')}</small>
+        </article>
+        <article>
+          <span>Период</span>
+          <strong>${escapeHtml(statsEnabled ? `${byteSize(totals.downlink)} принято` : 'учет выключен')}</strong>
+          <small>${escapeHtml(statsEnabled ? xrayStatsPeriodLabel() : 'добавляет небольшую нагрузку на Xray')}</small>
+        </article>
+      </div>
+      ${statsEnabled ? '' : `<div class="xray-core-foot"><button class="btn secondary" type="button" data-action="enableXrayStats">Включить статистику Xray</button></div>`}
+    </section>
+  `;
+}
+
+function serverTrafficView(tag, className = '') {
+  const stats = state.status?.xrayStats || {};
+  const traffic = xrayStatsOutbound(tag, stats);
+  const share = traffic && Array.isArray(stats.outbounds)
+    ? xrayStatsShare(traffic, stats.outbounds, 'downlink')
+    : 0;
+  return `<div class="server-traffic ${className} ${traffic ? '' : 'muted'}">
+    ${traffic ? `
+      <span>Статистика Xray</span>
+      <strong>${escapeHtml(byteRate(traffic.downRate))} прием · ${escapeHtml(byteRate(traffic.upRate))} отдача</strong>
+      <small>${escapeHtml(byteSize(traffic.downlink))} принято · ${escapeHtml(byteSize(traffic.uplink))} отправлено</small>
+      <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>
+    ` : `
+      <span>Статистика Xray</span>
+      <strong>${stats.enabled === false ? 'учет выключен' : 'нет счетчика'}</strong>
+      <small>${stats.enabled === false ? 'включается в диагностике' : 'ждем данные направления'}</small>
+    `}
+  </div>`;
+}
+
+function xrayStatsShare(item, outbounds, field) {
+  const total = outbounds.reduce((sum, outbound) => sum + numberValue(outbound?.[field]), 0);
+  if (!total) return 0;
+  return Math.max(0, Math.min(100, Math.round((numberValue(item?.[field]) / total) * 100)));
+}
+
+function xrayActiveGraph(active) {
+  if (!active) return '';
+  const outbound = xrayStatsOutboundConfig(active.tag);
+  const samples = state.xrayTrafficHistory.filter((item) => item.tag === active.tag);
+  const fallback = [{ downRate: numberValue(active.downRate), upRate: numberValue(active.upRate) }];
+  const series = samples.length ? samples : fallback;
+  const maxRate = Math.max(1024, ...series.map((sample) => Math.max(sample.downRate || 0, sample.upRate || 0)));
+  const downLine = xrayStatsSeriesPath(series, 'downRate', maxRate);
+  const upLine = xrayStatsSeriesPath(series, 'upRate', maxRate);
+  return `
+    <article class="xray-active-graph">
+      <div>
+        <span>Активный сервер</span>
+        <strong>${escapeHtml(active.tag)}</strong>
+        <small>${escapeHtml(outboundAddress(outbound))}</small>
+        <small>${escapeHtml(byteRate(active.downRate))} прием · ${escapeHtml(byteRate(active.upRate))} отдача</small>
+      </div>
+      <svg viewBox="0 0 320 92" preserveAspectRatio="none" aria-label="График активного сервера">
+        <path class="traffic-grid" d="M0 0H320M0 23H320M0 46H320M0 69H320M0 92H320"></path>
+        ${downLine ? `<path class="traffic-line-down" d="${downLine}"></path>` : ''}
+        ${upLine ? `<path class="traffic-line-up" d="${upLine}"></path>` : ''}
+      </svg>
+    </article>
+  `;
+}
+
+function xrayStatsPanel(stats = {}) {
+  const enabled = stats.enabled === true;
+  const settings = stats.settings || {};
+  const groups = stats.groups || {};
+  const outbounds = Array.isArray(stats.outbounds) ? stats.outbounds : [];
+  const active = xrayActiveStats(stats);
+  const totals = xrayStatsTotals(stats);
+  const warning = stats.ok === false ? `<p class="settings-warning compact"><strong>Xray API</strong><span>${escapeHtml(stats.stderr || 'Не удалось прочитать статистику Xray')}</span></p>` : '';
+  if (!enabled) {
+    return `
+      <section class="panel xray-stats-panel">
+        <div class="panel-title">
+          <div>
+            <h2>Статистика Xray</h2>
+            <span>Счетчики направлений выключены, чтобы не добавлять лишнюю нагрузку на слабые роутеры.</span>
+          </div>
+          <button class="btn warning" data-action="enableXrayStats">Включить статистику</button>
+        </div>
+        <p class="settings-warning compact"><strong>Нужен перезапуск Xray</strong><span>RuOpenRay добавит счетчики, policy и локальный StatsService API в активную конфигурацию.</span></p>
+      </section>
+    `;
+  }
+  return `
+    <section class="panel xray-stats-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Статистика Xray</h2>
+          <span>Трафик считается по направлениям с начала запуска Xray или последнего сброса.</span>
+        </div>
+        <div class="split-actions">
+          <button class="btn secondary" data-action="resetXrayStats">Сбросить счетчики</button>
+          <button class="btn secondary" data-action="disableXrayStats">Выключить</button>
+        </div>
+      </div>
+      <div class="xray-stats-meta">
+        <span>API: ${escapeHtml(settings.server || stats.server || '127.0.0.1:10085')}</span>
+        <span>Период: ${escapeHtml(xrayStatsPeriodLabel())}</span>
+        <span>${escapeHtml(stats.updatedAt ? new Date(stats.updatedAt).toLocaleTimeString('ru-RU') : 'ожидаем данные')}</span>
+      </div>
+      <p class="settings-warning compact"><strong>Дополнительная нагрузка</strong><span>Xray хранит счетчики направлений в памяти и обновляет их во время работы. На слабом роутере выключайте статистику, если она не нужна постоянно.</span></p>
+      ${warning}
+      <div class="xray-total-grid">
+        <article>
+          <span>Всего с запуска</span>
+          <strong>${escapeHtml(byteSize(totals.downlink))} принято</strong>
+          <small>${escapeHtml(byteSize(totals.uplink))} отправлено</small>
+        </article>
+        <article>
+          <span>Скорость сейчас</span>
+          <strong>${escapeHtml(byteRate(totals.downRate))} прием</strong>
+          <small>${escapeHtml(byteRate(totals.upRate))} отдача</small>
+        </article>
+        <article>
+          <span>Активный сервер</span>
+          <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
+          <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
+        </article>
+      </div>
+      <div class="xray-group-grid">
+        ${['proxy', 'direct', 'block'].map((key) => {
+          const group = groups[key] || {};
+          return `<article>
+            <span>${escapeHtml(xrayStatsGroupLabel(key))}</span>
+            <strong>${escapeHtml(byteSize(group.downlink))} принято</strong>
+            <small>${escapeHtml(`прием ${byteRate(group.downRate)} · отдача ${byteRate(group.upRate)}`)}</small>
+          </article>`;
+        }).join('')}
+      </div>
+      ${xrayActiveGraph(active)}
+      <div class="xray-outbound-list">
+        ${outbounds.length ? outbounds.map((item) => {
+          const outbound = xrayStatsOutboundConfig(item.tag);
+          const share = xrayStatsShare(item, outbounds, 'downlink');
+          return `<article class="${active?.tag === item.tag ? 'active' : ''}">
+          <div>
+            <strong>${escapeHtml(item.tag || 'outbound')}</strong>
+            <span>${escapeHtml(outboundAddress(outbound))}</span>
+            <small>${escapeHtml(item.protocol || item.kind || 'xray')} · ${escapeHtml(item.kind || 'proxy')}</small>
+            <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>
+          </div>
+          <div>
+            <b>${escapeHtml(byteRate(item.downRate))}</b>
+            <small>прием · ${escapeHtml(byteSize(item.downlink))}</small>
+          </div>
+          <div>
+            <b>${escapeHtml(byteRate(item.upRate))}</b>
+            <small>отдача · ${escapeHtml(byteSize(item.uplink))}</small>
+          </div>
+        </article>`;
+        }).join('') : '<p class="muted">Счетчики пока пустые. Дайте Xray немного трафика или проверьте, что в конфигурации включена статистика направлений.</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function metricIcon(kind) {
+  const icons = {
+    chip: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"></rect><path d="M4 9h3M4 15h3M17 9h3M17 15h3M9 4v3M15 4v3M9 17v3M15 17v3"></path></svg>',
+    memory: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12v10H6z"></path><path d="M8 3v4M12 3v4M16 3v4M8 17v4M12 17v4M16 17v4M3 9h3M3 15h3M18 9h3M18 15h3"></path></svg>',
+    sessions: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8a4 4 0 0 1 0 8h-2"></path><path d="M16 17H8a4 4 0 0 1 0-8h2"></path></svg>',
+    uptime: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"></circle><path d="M12 8v4l3 2"></path></svg>',
+    storage: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7c0-1.1 3.1-2 7-2s7 .9 7 2-3.1 2-7 2-7-.9-7-2z"></path><path d="M5 7v5c0 1.1 3.1 2 7 2s7-.9 7-2V7"></path><path d="M5 12v5c0 1.1 3.1 2 7 2s7-.9 7-2v-5"></path></svg>',
+    traffic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17V5"></path><path d="M4 8l3-3 3 3"></path><path d="M17 7v12"></path><path d="M14 16l3 3 3-3"></path></svg>'
+  };
+  return icons[kind] || icons.chip;
+}
+
+function metricStat(kind, label, value, detail) {
+  return `<span class="metric-stat">
+    <span class="metric-icon">${metricIcon(kind)}</span>
+    <div>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+  </span>`;
+}
+
+function trafficMetricStat(traffic = {}) {
+  const iface = traffic.interface || 'WAN';
+  return `<span class="metric-stat traffic-metric">
+    <span class="metric-icon">${metricIcon('traffic')}</span>
+    <div>
+      <span>Трафик · ${escapeHtml(iface)}</span>
+      <strong>${escapeHtml(byteSize(traffic.rxBytes))} принято</strong>
+      <small>${escapeHtml(byteRate(traffic.rxRate))} прием</small>
+      <strong>${escapeHtml(byteSize(traffic.txBytes))} отправлено</strong>
+      <small>${escapeHtml(byteRate(traffic.txRate))} отдача</small>
+    </div>
+  </span>`;
+}
+
+function coreStat(available, detail, info) {
+  const latestText = info.target
+    ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}`
+    : 'Список релизов не загружен';
+  const status = !available ? 'Нужно установить' : info.hasUpdate ? 'Есть обновление' : 'Stable актуален';
+  return `
+    <article class="stat core-stat ${info.hasUpdate ? 'has-update' : ''}">
+      <div class="core-stat-head">
+        <span>Ядро</span>
+        <div class="core-stat-tools">
+          ${info.target ? coreReleaseBadge(info.target) : ''}
+          <button class="core-icon-action" type="button" data-action="${available ? 'openCoreDialog' : 'openInstallWizard'}" ${state.coreUpdating ? 'disabled' : ''} title="${available ? 'Выбрать версию Xray' : 'Установить Xray'}" aria-label="${available ? 'Выбрать версию Xray' : 'Установить Xray'}">⚙</button>
+        </div>
+      </div>
+      <strong>${available ? labels.available : labels.missing}</strong>
+      <small>${escapeHtml(detail)}</small>
+      <div class="core-stat-meta">
+        <b>${status}</b>
+        <em>${latestText}</em>
+      </div>
+      ${state.coreUpdate ? `<small class="core-stat-result">${state.coreUpdate.ok ? 'Готово' : 'Ошибка'} · ${escapeHtml(state.coreUpdate.after || state.coreUpdate.stderr || '')}</small>` : ''}
+    </article>
+  `;
+}
+
+function flowStep(label, value, detail) {
+  return `<article class="flow-step"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></article>`;
+}
+
+function quickAction(title, detail, tab) {
+  return `
+    <button class="quick-action" data-tab-jump="${tab}">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(detail)}</span>
+    </button>
+  `;
+}
+
+function isCheckingServer(tag) {
+  return state.serverChecking && (!state.serverCheckingTags.length || state.serverCheckingTags.includes(tag));
+}
+
+function serverCheckButton(tag, extraClass = '') {
+  const busy = isCheckingServer(tag);
+  return `<button class="btn secondary ${extraClass}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>${busy ? 'Проверяю...' : 'Проверить'}</button>`;
+}
+
+function checkModeLabel(mode) {
+  return mode === 'endpoint' ? 'TCP-порт' : 'HTTP через прокси';
+}
+
+function operationProgressView() {
+  if (state.configApplying) {
+    return `
+      <div class="operation-progress apply-progress" role="status">
+        <span>Применяю конфигурацию</span>
+        <strong>Проверка, запись и перезапуск Xray</strong>
+        <i></i>
+      </div>
+    `;
+  }
+  if (state.configTesting) {
+    return `
+      <div class="operation-progress check-progress" role="status">
+        <span>Проверяю конфигурацию</span>
+        <strong>Xray читает временный config без применения</strong>
+        <i></i>
+      </div>
+    `;
+  }
+  if (state.serverChecking) {
+    const count = state.serverCheckingTags.length || proxyOutbounds().length;
+    return `
+      <div class="operation-progress server-progress" role="status">
+        <span>Проверяю прокси</span>
+        <strong>${escapeHtml(`${count} ${count === 1 ? 'сервер' : 'серверов'} через ${checkModeLabel(state.serverCheckMode)}`)}</strong>
+        <i></i>
+      </div>
+    `;
+  }
+  return '';
+}
+
+function dashboardServerSwitch(servers) {
+  const active = activeProxyTag();
+  const summary = proxyDirectionSummary();
+  if (!servers.length) {
+    return `
+      <div class="dashboard-action-block">
+        <div class="dashboard-action-head">
+          <div>
+            <strong>Proxy-направления</strong>
+            <span>Серверы пока не добавлены.</span>
+          </div>
+          <button class="btn secondary" data-import-dialog="choose">Добавить</button>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="dashboard-action-block">
+      <div class="dashboard-action-head">
+        <div>
+          <strong>${escapeHtml(proxyDirectionTitle(summary))}</strong>
+          <span>${escapeHtml(proxyDirectionDetail(summary))}</span>
+        </div>
+        <button class="btn secondary" data-import-dialog="choose">Добавить</button>
+      </div>
+      ${dashboardProxyDirectionCards(summary)}
+      <div class="dashboard-server-switch">
+        ${servers.slice(0, 5).map((outbound) => {
+          const tag = outbound?.tag || '';
+          const direction = summary.outbounds.get(tag);
+          const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
+          const check = checkForTag(tag);
+          const ping = check?.ok ? checkLabel(check) : '';
+          const stateLabel = activeServer ? (direction?.rules ? `${direction.rules} правил` : 'Текущий') : 'Сервер';
+          const action = activeServer
+            ? `<span class="server-state-pill active">${summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный'}</span>`
+            : `<button class="btn warning compact-action" data-dashboard-connect="${escapeHtml(tag)}">Подключиться</button>`;
+          return `<article class="dashboard-server-option ${activeServer ? 'active' : ''}">
+            <button type="button" class="server-option-pick" ${activeServer ? '' : `data-dashboard-connect="${escapeHtml(tag)}"`}>
+              <span class="server-option-state ${activeServer ? 'active' : ''}">${stateLabel}</span>
+              <span class="server-option-main">
+                <strong>${escapeHtml(tag || 'server')}</strong>
+                <small>${escapeHtml(outboundAddress(outbound))}</small>
+              </span>
+              ${serverTrafficView(tag, 'dashboard-server-traffic')}
+              <span class="server-option-side">
+                ${ping ? `<span class="server-ping ok">${escapeHtml(ping)}</span>` : `<span class="server-ping ${check ? 'bad' : ''}">${escapeHtml(check ? checkLabel(check) : 'не проверен')}</span>`}
+                <small>${escapeHtml([outboundTransport(outbound), check ? checkMethodLabel(check) : ''].filter(Boolean).join(' · '))}</small>
+              </span>
+            </button>
+            <span class="server-option-actions">
+              ${serverCheckButton(tag, 'compact-action')}
+              ${action}
+            </span>
+          </article>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+  return {
+    checkModeLabel,
+    coreStat,
+    dashboard,
+    dashboardServerSwitch,
+    dashboardSystemStats,
+    flowStep,
+    isCheckingServer,
+    metricIcon,
+    metricStat,
+    operationProgressView,
+    quickAction,
+    serverCheckButton,
+    serverTrafficView,
+    stat,
+    trafficMetricStat,
+    trafficMonitor,
+    xrayActiveGraph,
+    xrayActiveStats,
+    xrayCoreDashboard,
+    xrayDashboardStats,
+    xrayStatsGroupLabel,
+    xrayStatsOutbound,
+    xrayStatsOutboundConfig,
+    xrayStatsPanel,
+    xrayStatsPeriodLabel,
+    xrayStatsSeriesPath,
+    xrayStatsShare,
+    xrayStatsTotals,
+  };
+}

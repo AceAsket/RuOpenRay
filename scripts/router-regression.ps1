@@ -7,7 +7,7 @@
   [string]$HttpsUrl = $(if ($env:RUOPENRAY_TEST_HTTPS_URL) { $env:RUOPENRAY_TEST_HTTPS_URL } else { 'https://www.gstatic.com/generate_204' }),
   [string]$DnsServer = $(if ($env:RUOPENRAY_TEST_DNS_SERVER) { $env:RUOPENRAY_TEST_DNS_SERVER } else { '192.168.50.1:53' }),
   [int]$BasePort = 18081,
-  [int]$CurlTimeoutSeconds = 12,
+  [int]$CurlTimeoutSeconds = 25,
   [switch]$Quick,
   [switch]$SkipTransparent,
   [switch]$SkipFirewallModes,
@@ -119,7 +119,7 @@ function Invoke-CurlHead {
     if ($Value -notmatch '[\s"]') { return $Value }
     '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
   }
-  $connectTimeout = [Math]::Min(5, [Math]::Max(2, $TimeoutSeconds - 2))
+  $connectTimeout = [Math]::Min(12, [Math]::Max(3, $TimeoutSeconds - 3))
   $allArgs = @('-sS') + $CurlArgs + @('--connect-timeout', "$connectTimeout", '--max-time', "$TimeoutSeconds", '-w', "HTTP_CODE=%{http_code}`n")
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = 'curl.exe'
