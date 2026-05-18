@@ -197,6 +197,7 @@ cmd/ruopenray-ui/               backend на Go и embedded frontend
 cmd/ruopenray-ui/web/app.js      основное состояние и отрисовка фронтенда
 cmd/ruopenray-ui/web/api-client.js общий клиент API и обработка авторизации
 cmd/ruopenray-ui/web/diagnostics-view.js отрисовка диагностики, доменов, трафика и observatory
+cmd/ruopenray-ui/web/dns-view.js отрисовка DNS, hosts, LAN DNS и защиты от утечек
 cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status polling
 cmd/ruopenray-ui/web/servers-view.js отрисовка вкладки прокси, подписок и групп
 cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настроек
