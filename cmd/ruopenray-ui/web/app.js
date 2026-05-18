@@ -72,6 +72,8 @@ const state = createInitialState();
 function clearAuth() {
   state.token = '';
   localStorage.removeItem('openray_token');
+  state.message = 'Сессия устарела. Войдите заново.';
+  render();
 }
 
 const api = createApiClient({
