@@ -201,7 +201,8 @@ cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status pollin
 cmd/ruopenray-ui/web/servers-view.js отрисовка вкладки прокси, подписок и групп
 cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настроек
 cmd/ruopenray-ui/web/presets.js  пресеты маршрутизации и подписи UI
-cmd/ruopenray-ui/web/styles.css  стили панели
+cmd/ruopenray-ui/web/styles.css  точка входа CSS через imports
+cmd/ruopenray-ui/web/styles/     CSS по разделам интерфейса
 internal/                       внутренние Go-пакеты
 tools/dev-server/index.js       локальный Node-стенд
 scripts/install-openwrt.sh      установка с GitHub Releases
