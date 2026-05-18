@@ -2,6 +2,7 @@ import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundl
 import { bindActionControls } from './action-bindings.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
+import { createConfigActions } from './config-actions.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
 import { bindCoreControls } from './core-bindings.js';
@@ -37,9 +38,11 @@ import { createRoutingModel } from './routing-model.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
+import { createSettingsActions } from './settings-actions.js';
 import { createSetupView } from './setup-view.js';
 import { createUpdatesActions } from './updates-actions.js';
 import { createSetupModel } from './setup-model.js';
+import { createSniActions } from './sni-actions.js';
 import { createSniView } from './sni-view.js';
 import { createInitialState } from './state.js';
 import { createXrayConfigModel } from './xray-config-model.js';
@@ -748,172 +751,28 @@ async function rollbackSetupWizard() {
   }
 }
 
-async function login(event) {
-  event.preventDefault();
-  const passwordInput = document.querySelector('#password');
-  const rememberInput = document.querySelector('#rememberPassword');
-  state.password = passwordInput?.value || state.password;
-  state.rememberPassword = Boolean(rememberInput?.checked);
-  try {
-    const result = await request('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ password: state.password })
-    });
-    state.token = result.token;
-    localStorage.setItem('openray_token', result.token);
-    if (state.rememberPassword) localStorage.setItem(savedPasswordStorageKey, state.password);
-    else localStorage.removeItem(savedPasswordStorageKey);
-    state.message = '';
-    configureLogTimer();
-    configureStatusTimer();
-    await refresh();
-  } catch (error) {
-    state.message = error.message;
-    render();
-  }
-}
-
-async function changePanelPassword() {
-  if (!state.settingsNewPassword || state.settingsNewPassword.length < 8) {
-    state.message = 'Новый пароль должен быть не короче 8 символов';
-    render();
-    return;
-  }
-  if (state.settingsNewPassword !== state.settingsConfirmPassword) {
-    state.message = 'Пароли не совпадают';
-    render();
-    return;
-  }
-  state.settingsPasswordSaving = true;
-  state.message = 'Сохраняю пароль панели...';
-  render();
-  try {
-    const result = await request('/api/settings/password', {
-      method: 'POST',
-      body: JSON.stringify({
-        currentPassword: state.settingsCurrentPassword,
-        newPassword: state.settingsNewPassword,
-        confirmPassword: state.settingsConfirmPassword
-      })
-    });
-    if (!result.ok) {
-      state.message = result.stderr || 'Не удалось изменить пароль';
-    } else {
-      state.token = '';
-      localStorage.removeItem('openray_token');
-      state.password = '';
-      state.settingsCurrentPassword = '';
-      state.settingsNewPassword = '';
-      state.settingsConfirmPassword = '';
-      state.message = 'Пароль изменён. Войдите заново.';
-    }
-  } finally {
-    state.settingsPasswordSaving = false;
-  }
-  render();
-}
-
-async function saveLoggingSettings() {
-  state.loggingSaving = true;
-  state.message = 'Сохраняю настройки логирования...';
-  render();
-  try {
-    const result = await request('/api/settings/logging', {
-      method: 'POST',
-      body: JSON.stringify({
-        level: state.loggingLevel,
-        accessLog: state.loggingAccessLog,
-        accessPath: state.loggingAccessPath,
-        errorLog: state.loggingErrorLog,
-        errorPath: state.loggingErrorPath,
-        dnsLog: state.loggingDnsLog,
-        maxSizeMb: Number(state.loggingMaxSizeMb) || 2,
-        rotateCopies: Number(state.loggingRotateCopies) || 0,
-        clearOnRestart: state.loggingClearOnRestart,
-        restart: state.loggingRestart
-      })
-    });
-    syncLoggingSettings(result.settings);
-    state.message = result.stdout || result.restart?.stdout || 'Настройки логирования сохранены';
-    await refreshLogs(true, true).catch(() => {});
-  } finally {
-    state.loggingSaving = false;
-  }
-  render();
-}
-
-async function clearLoggingFiles() {
-  state.loggingSaving = true;
-  state.message = 'Очищаю файлы логов...';
-  render();
-  try {
-    const result = await request('/api/settings/logging/clear', { method: 'POST', body: '{}' });
-    syncLoggingSettings(result.settings);
-    state.logs = '';
-    state.message = result.stdout || 'Логи очищены';
-  } finally {
-    state.loggingSaving = false;
-  }
-  render();
-}
-
-async function refreshDhcpLeases() {
-  const result = await request('/api/dhcp/leases');
-  state.leases = result.leases || [];
-  state.leasesSource = result.source || '';
-  state.message = state.leases.length
-    ? `DHCP leases обновлены: ${state.leases.length}`
-    : 'DHCP leases пока не найдены';
-  render();
-}
-
-async function saveServiceSettings() {
-  state.serviceSettingsSaving = true;
-  state.message = 'Сохраняю настройки сервиса...';
-  render();
-  try {
-    const result = await request('/api/settings/service', {
-      method: 'POST',
-      body: JSON.stringify({
-        startupDelaySec: Number(state.serviceStartupDelaySec) || 0,
-        applyDelaySec: Number(state.serviceApplyDelaySec) || 0,
-        goMemLimit: state.serviceGoMemLimit,
-        goGC: Number(state.serviceGoGC) || 60,
-        downloadMirror: state.serviceDownloadMirror,
-        mirrorPrefix: state.serviceMirrorPrefix
-      })
-    });
-    syncServiceSettings(result.settings);
-    state.message = result.stdout || 'Настройки сервиса сохранены';
-  } finally {
-    state.serviceSettingsSaving = false;
-  }
-  render();
-}
-
-async function setSystemTcpFastOpen(enabled) {
-  state.tcpFastOpenSaving = true;
-  state.message = enabled ? 'Включаю TCP Fast Open в системе...' : 'Выключаю TCP Fast Open в системе...';
-  render();
-  try {
-    const result = await request('/api/network/tcp-fast-open', {
-      method: 'POST',
-      body: JSON.stringify({ enabled })
-    });
-    state.tcpFastOpen = result.status || result;
-    state.message = result.stdout || (enabled ? 'TCP Fast Open включен в системе' : 'TCP Fast Open выключен в системе');
-  } finally {
-    state.tcpFastOpenSaving = false;
-  }
-  render();
-}
-
-async function service(action) {
-  const result = await request('/api/service', { method: 'POST', body: JSON.stringify({ action }) });
-  const actionLabels = { start: 'запущен', stop: 'остановлен', restart: 'перезапущен' };
-  state.message = result.stdout || result.stderr || `Сервис ${actionLabels[action] || action}`;
-  await refresh();
-}
+const settingsActions = createSettingsActions({
+  state,
+  request,
+  render,
+  refresh,
+  refreshLogs,
+  configureLogTimer,
+  configureStatusTimer,
+  syncLoggingSettings,
+  syncServiceSettings,
+  savedPasswordStorageKey
+});
+const {
+  login,
+  changePanelPassword,
+  saveLoggingSettings,
+  clearLoggingFiles,
+  refreshDhcpLeases,
+  saveServiceSettings,
+  setSystemTcpFastOpen,
+  service
+} = settingsActions;
 
 const updatesActions = createUpdatesActions({
   state,
@@ -940,83 +799,23 @@ const {
   toggleGeoSourceEnabled
 } = updatesActions;
 
-async function testConfig() {
-  const startedAt = Date.now();
-  state.configTesting = true;
-  state.message = 'Проверяю конфигурацию Xray...';
-  render();
-  const config = JSON.parse(state.jsonDraft);
-  const [result, analysis] = await Promise.all([
-    request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) }),
-    request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
-  ]);
-  state.configAnalysis = analysis;
-  await keepOperationVisible(startedAt);
-  state.configTesting = false;
-  state.message = result.stdout || result.stderr || (result.ok ? 'Конфигурация корректна' : 'Проверка конфигурации не прошла');
-  render();
-}
-
-async function applyConfig(options = {}) {
-  const startedAt = Date.now();
-  state.configApplying = true;
-  state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
-  render();
-  try {
-    const parsed = JSON.parse(state.jsonDraft);
-    const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
-    state.configAnalysis = result.analysis || null;
-    state.lastApplyBackup = result.backup || state.lastApplyBackup;
-    state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
-    await refresh({ renderAfter: false });
-    await keepOperationVisible(startedAt, 900);
-  } finally {
-    state.configApplying = false;
-    render();
-  }
-}
-
-async function setXrayStats(enabled) {
-  const result = await request('/api/xray/stats/settings', {
-    method: 'POST',
-    body: JSON.stringify({ enabled })
-  });
-  state.lastApplyBackup = result.backup || state.lastApplyBackup;
-  state.configAnalysis = result.analysis || state.configAnalysis;
-  state.xrayTrafficHistory = [];
-  state.message = enabled
-    ? 'Статистика Xray включена, сервис перезапущен'
-    : 'Статистика Xray выключена, сервис перезапущен';
-  await refresh();
-}
-
-async function resetXrayStats() {
-  if (!confirm('Сбросить счетчики Xray? Это обнулит только статистику трафика в панели и не перезапустит Xray.')) return;
-  const result = await request('/api/xray/stats/reset', { method: 'POST', body: JSON.stringify({}) });
-  state.xrayTrafficHistory = [];
-  state.xrayStatsResetAt = new Date().toISOString();
-  localStorage.setItem(xrayStatsResetAtStorageKey, state.xrayStatsResetAt);
-  state.status = { ...(state.status || {}), xrayStats: result };
-  recordXrayStatsSample(state.status);
-  state.message = result.ok ? 'Счетчики Xray сброшены' : (result.stderr || 'Не удалось сбросить счетчики Xray');
-  render();
-}
-
-async function analyzeConfig() {
-  const parsed = JSON.parse(state.jsonDraft);
-  state.configAnalysis = await request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config: parsed }) });
-  const errors = state.configAnalysis.errors?.length || 0;
-  const warnings = state.configAnalysis.warnings?.length || 0;
-  state.message = `Проверка правил: ошибок ${errors}, предупреждений ${warnings}`;
-  render();
-}
-
-async function restoreLatestBackup() {
-  const result = await request('/api/backup/restore', { method: 'POST', body: JSON.stringify({ path: state.lastApplyBackup || '' }) });
-  state.configAnalysis = result.analysis || null;
-  state.message = result.ok ? `Откат выполнен: ${result.path}` : result.stderr || 'Откат не удался';
-  await refresh();
-}
+const configActions = createConfigActions({
+  state,
+  request,
+  render,
+  refresh,
+  keepOperationVisible,
+  recordXrayStatsSample,
+  xrayStatsResetAtStorageKey
+});
+const {
+  testConfig,
+  applyConfig,
+  setXrayStats,
+  resetXrayStats,
+  analyzeConfig,
+  restoreLatestBackup
+} = configActions;
 
 async function importLink() {
   const result = await request('/api/import', {
@@ -2249,45 +2048,17 @@ async function fallbackSubscriptionPool(tag) {
   await refresh();
 }
 
-async function scanSni() {
-  const target = state.sniTarget.trim() || outboundAddress(activeProxyOutbound() || {}).split(':')[0] || '';
-  if (!target) {
-    state.message = 'Укажите IP или домен для SNI-поиска';
-    render();
-    return;
-  }
-  state.sniTarget = target;
-  state.sniScanning = true;
-  state.message = `Ищу TLS/SNI точки рядом с ${target}...`;
-  render();
-  try {
-    state.sniScan = await request('/api/sni/scan', {
-      method: 'POST',
-      body: JSON.stringify({
-        target,
-        cidr: Number(state.sniCidr) || 24,
-        timeoutMs: Number(state.sniTimeout) || 1500,
-        threads: Number(state.sniThreads) || 64,
-        limit: Number(state.sniLimit) || 256
-      })
-    });
-    state.message = `SNI-поиск завершен: найдено ${state.sniScan.results?.length || 0} из ${state.sniScan.scanned || 0} адресов`;
-  } finally {
-    state.sniScanning = false;
-    render();
-  }
-}
-
-function focusSniResult(index) {
-  const normalized = Number(index);
-  if (!Number.isFinite(normalized)) return;
-  state.sniFocusedIndex = normalized;
-  document.querySelectorAll('.sni-row.focused').forEach((row) => row.classList.remove('focused'));
-  const row = document.querySelector(`[data-sni-result="${normalized}"]`);
-  if (!row) return;
-  row.classList.add('focused');
-  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
+const sniActions = createSniActions({
+  state,
+  request,
+  render,
+  outboundAddress,
+  activeProxyOutbound
+});
+const {
+  scanSni,
+  focusSniResult
+} = sniActions;
 
 const devicesActions = createDevicesActions({
   state,

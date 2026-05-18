@@ -1,5 +1,6 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
+import { createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
 import { createDevicesModel } from '../cmd/ruopenray-ui/web/devices-model.js';
 import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
@@ -24,9 +25,11 @@ import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
+import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
+import { createSniActions } from '../cmd/ruopenray-ui/web/sni-actions.js';
 import { createUpdatesActions } from '../cmd/ruopenray-ui/web/updates-actions.js';
 import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
 
@@ -201,6 +204,72 @@ const setupModel = createSetupModel({
     if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
   },
 });
+const settingsActionState = {
+  serviceStartupDelaySec: '1',
+  serviceApplyDelaySec: '2',
+  serviceGoMemLimit: '32MiB',
+  serviceGoGC: '80',
+  downloadMirror: 'github',
+  mirrorPrefix: '',
+};
+const settingsActions = createSettingsActions({
+  state: settingsActionState,
+  request: async (path) => {
+    if (path === '/api/settings/service') return { ok: true, stdout: 'saved', settings: { goGC: 80 } };
+    if (path === '/api/service') return { ok: true, stdout: 'service ok' };
+    return { ok: true, settings: {} };
+  },
+  render,
+  refresh: async () => { settingsActionState.refreshed = true; },
+  refreshLogs: async () => {},
+  configureLogTimer: () => {},
+  configureStatusTimer: () => {},
+  syncLoggingSettings: (settings) => { settingsActionState.logging = settings; },
+  syncServiceSettings: (settings) => { settingsActionState.service = settings; },
+  savedPasswordStorageKey: 'ruopenray:test:password',
+});
+await settingsActions.saveServiceSettings();
+await settingsActions.service('restart');
+
+const configActionState = {
+  jsonDraft: JSON.stringify({ outbounds: [] }),
+  status: {},
+  xrayTrafficHistory: [],
+};
+const configActions = createConfigActions({
+  state: configActionState,
+  request: async (path) => {
+    if (path === '/api/config/analyze') return { errors: [], warnings: [] };
+    if (path === '/api/config/test') return { ok: true, stdout: 'ok' };
+    if (path === '/api/config/apply') return { ok: true, test: { stdout: 'applied' }, analysis: { errors: [] }, backup: '/tmp/backup.json' };
+    if (path === '/api/xray/stats/reset') return { ok: true };
+    return { ok: true };
+  },
+  render,
+  refresh: async () => { configActionState.refreshed = true; },
+  keepOperationVisible: async () => {},
+  recordXrayStatsSample: () => { configActionState.sampled = true; },
+  xrayStatsResetAtStorageKey: 'ruopenray:test:xray-reset',
+});
+await configActions.analyzeConfig();
+await configActions.applyConfig();
+
+const sniActionState = {
+  sniTarget: '',
+  sniCidr: '24',
+  sniTimeout: '1500',
+  sniThreads: '16',
+  sniLimit: '64',
+};
+const sniActions = createSniActions({
+  state: sniActionState,
+  request: async () => ({ results: [{ ip: '1.1.1.1' }], scanned: 1 }),
+  render,
+  outboundAddress: () => 'cloudone.example:443',
+  activeProxyOutbound: () => ({}),
+});
+await sniActions.scanSni();
+
 const updatesState = {
   geoCustomSources: [],
   geoSourceName: '  Custom Geo  ',
@@ -530,8 +599,11 @@ const checks = [
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
+  ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
+  ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],
+  ['sni actions scan', sniActionState.sniScan?.results?.length === 1 && sniActionState.sniTarget === 'cloudone.example'],
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
