@@ -7,6 +7,7 @@ import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-ac
 import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-model.js';
 import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js';
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
+import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
@@ -15,13 +16,6 @@ import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
-
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"]/g, (char) => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-}[char]));
 
 const state = {
   clientTrafficUrl: 'https://www.gstatic.com/generate_204',
@@ -119,6 +113,23 @@ globalThis.document = {
   querySelector: () => null,
   querySelectorAll: () => [],
 };
+globalThis.localStorage = globalThis.localStorage || {
+  data: new Map(),
+  getItem(key) { return this.data.get(key) || null; },
+  setItem(key, value) { this.data.set(key, String(value)); },
+  removeItem(key) { this.data.delete(key); },
+};
+globalThis.window = globalThis.window || {
+  crypto: {
+    getRandomValues(bytes) {
+      for (let index = 0; index < bytes.length; index += 1) bytes[index] = index + 1;
+      return bytes;
+    },
+  },
+};
+
+const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
+const initialState = createInitialState();
 
 bindDiagnosticsControls({
   state,
@@ -241,6 +252,9 @@ const checks = [
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['sni panel', sni.sniPanel().includes('SNI')],
+  ['formatters bytes', formatByteSize(1536) === '2 KB'],
+  ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
+  ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

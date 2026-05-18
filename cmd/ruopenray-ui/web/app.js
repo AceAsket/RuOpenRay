@@ -3,12 +3,14 @@ import { bindActionControls } from './action-bindings.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
 import { bindConfigControls } from './config-bindings.js';
+import { createConfigStateHelpers } from './config-state.js';
 import { createDashboardView } from './dashboard-view.js';
 import { createDiagnosticsActions } from './diagnostics-actions.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
 import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
+import { byteRate, byteSize, escapeHtml, fmtUptime, formatDuration, formatDurationCompact, numberValue } from './formatters.js';
 import { createImportDialogView } from './import-dialog-view.js';
 import { bindImportControls } from './import-bindings.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
@@ -21,6 +23,7 @@ import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
 import { createSniView } from './sni-view.js';
+import { createInitialState } from './state.js';
 import {
   customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
@@ -32,12 +35,8 @@ import {
   firewallPortsStorageKey,
   firewallRouterModeStorageKey,
   firewallSelectedDevicesStorageKey,
-  initialInstallPassword,
   installPasswordStorageKey,
-  loadCustomRoutePresets,
   loadDisabledRouteRules,
-  loadRouteNames,
-  loadStringListStorage,
   routeNamesStorageKey,
   savedPasswordStorageKey,
   setupSnapshotStorageKey,
@@ -47,220 +46,7 @@ import {
 
 const app = document.querySelector('#app');
 
-const state = {
-  token: localStorage.getItem('openray_token') || '',
-  tab: 'dashboard',
-  status: null,
-  profiles: [],
-  config: {},
-  configAnalysis: null,
-  lastApplyBackup: '',
-  logs: '',
-  message: '',
-  coreUpdate: null,
-  coreUpdating: false,
-  coreReleases: [],
-  coreAsset: '',
-  coreArch: null,
-  selectedCoreVersion: '',
-  coreDialogOpen: false,
-  installWizardOpen: false,
-  installPlan: null,
-  installStep: 'plan',
-  installPassword: initialInstallPassword(),
-  setupWizardOpen: false,
-  setupApplying: false,
-  setupResult: null,
-  setupSnapshot: null,
-  setupRollbacking: false,
-  setupRollbackResult: null,
-  setupLanDnsMode: 'xray',
-  setupLanDnsUpstream: '',
-  setupRestartDnsmasq: true,
-  coreReleaseFilter: 'stable',
-  coreBackup: false,
-  appRelease: null,
-  appUpdate: null,
-  appUpdating: false,
-  appReleaseChecking: false,
-  appBackup: false,
-  geoStatus: null,
-  geoPreset: 'nidelon',
-  geoBasePreset: 'nidelon',
-  geoExtraPresets: [],
-  geoBackup: false,
-  geoScheduleLoaded: false,
-  geoScheduleEnabled: false,
-  geoScheduleInterval: 'weekly',
-  geoScheduleWeekday: '0',
-  geoScheduleTime: '04:20',
-  geoipUrl: '',
-  geositeUrl: '',
-  geoCustomSources: [],
-  geoCustomSourceIds: [],
-  geoSourceName: '',
-  geoSourceKind: 'base',
-  geoSourceGeoipUrl: '',
-  geoSourceGeositeUrl: '',
-  geoSourceUrl: '',
-  geoSourceTarget: '',
-  geoUpdating: false,
-  geoUpdate: null,
-  serverChecks: {},
-  serverCheckHistory: [],
-  serverChecking: false,
-  serverCheckingTags: [],
-  configTesting: false,
-  configApplying: false,
-  activeServerTag: localStorage.getItem('ruopenray_active_server') || '',
-  pendingServerTag: '',
-  serverCheckTimeout: '2500',
-  serverCheckAttempts: '1',
-  serverCheckMode: 'http',
-  serverCheckUrl: 'https://www.gstatic.com/generate_204',
-  observatoryInterval: '',
-  serversView: 'list',
-  subscriptionPools: [],
-  sniTarget: '',
-  sniCidr: '24',
-  sniTimeout: '1500',
-  sniThreads: '64',
-  sniLimit: '256',
-  sniScan: null,
-  sniScanning: false,
-  sniFocusedIndex: null,
-  diagnosticsView: 'live',
-  diagnosticsChainRunning: false,
-  diagnosticsChainResult: null,
-  diagnosticsTestUrl: 'https://www.gstatic.com/generate_204',
-  clientTrafficBaseline: null,
-  clientTrafficResult: null,
-  clientTrafficUrl: 'https://www.gstatic.com/generate_204',
-  importLink: '',
-  importOutboundTag: '',
-  importPreview: null,
-  subscriptionUrl: '',
-  subscriptionPreview: null,
-  subscriptionAutoBalancer: true,
-  subscriptionBalancerTag: '',
-  subscriptionBalancerStrategy: 'random',
-  importDialog: '',
-  logKind: 'all',
-  logLevel: 'all',
-  logQuery: '',
-  logLines: '240',
-  logSort: 'asc',
-  logLive: true,
-  logFollow: true,
-  logIntervalSec: '2',
-  dashboardLogsOpen: false,
-  trafficHistory: [],
-  xrayTrafficHistory: [],
-  xrayStatsResetAt: localStorage.getItem(xrayStatsResetAtStorageKey) || '',
-  logTimer: null,
-  statusTimer: null,
-  domainMonitor: null,
-  domainMonitorQuery: '',
-  domainMonitorSort: 'hits',
-  domainMonitorMode: 'domains',
-  domainMonitorFilter: localStorage.getItem(domainMonitorFilterStorageKey) || 'domains',
-  domainProbeResults: {},
-  domainProbeChecking: '',
-  profileName: '',
-  routeKind: 'domain',
-  routeValue: '',
-  routeName: '',
-  routeOutbound: 'proxy',
-  routeTargetType: 'outbound',
-  routeBalancer: '',
-  routeBalancerDialog: false,
-  routeBalancerEditingIndex: -1,
-  routeBalancerTag: '',
-  routeBalancerStrategy: 'random',
-  routeBalancerSelectors: '',
-  routeBalancerFallback: '',
-  routingView: 'rules',
-  dnsView: 'servers',
-  routeSearch: '',
-  routeDslName: '',
-  routeDsl: '',
-  routeDslPreview: null,
-  routeRuleDialog: false,
-  routeRuleMode: 'single',
-  routeRuleEditingIndex: -1,
-  routePresetDialog: false,
-  selectedRoutePresets: [],
-  routePresetEditor: '',
-  routePresetEditTitle: '',
-  routePresetEditDetail: '',
-  routePresetEditDsl: '',
-  routePresetEditPreview: null,
-  routePresetEditChecked: false,
-  customRoutePresets: loadCustomRoutePresets(),
-  routeNames: loadRouteNames(),
-  disabledRouteRules: loadDisabledRouteRules(),
-  deviceName: '',
-  deviceIp: '',
-  deviceMode: 'proxy',
-  leaseSearch: '',
-  dnsAddress: 'https://dns.google:443/dns-query',
-  dnsDomains: '',
-  dnsHostName: '',
-  dnsHostValue: '',
-  dnsCheckHost: 'example.com',
-  dnsCheckResult: null,
-  lanDnsStatus: null,
-  lanDnsMode: 'xray',
-  lanDnsUpstream: '',
-  lanDnsRestart: true,
-  lanDnsSaving: false,
-  lanDnsPreview: null,
-  leases: [],
-  leasesSource: '',
-  password: localStorage.getItem(savedPasswordStorageKey) || '',
-  passwordVisible: false,
-  rememberPassword: Boolean(localStorage.getItem(savedPasswordStorageKey)),
-  settingsCurrentPassword: '',
-  settingsNewPassword: '',
-  settingsConfirmPassword: '',
-  settingsPasswordSaving: false,
-  settingsView: 'logging',
-  loggingSettings: null,
-  loggingLevel: 'warning',
-  loggingAccessLog: false,
-  loggingAccessPath: '/var/log/xray/access.log',
-  loggingErrorLog: false,
-  loggingErrorPath: '/var/log/xray/error.log',
-  loggingDnsLog: false,
-  loggingMaxSizeMb: '2',
-  loggingRotateCopies: '1',
-  loggingClearOnRestart: false,
-  loggingRestart: true,
-  loggingSaving: false,
-  serviceSettings: null,
-  serviceStartupDelaySec: '0',
-  serviceApplyDelaySec: '0',
-  serviceGoMemLimit: '48MiB',
-  serviceGoGC: '60',
-  serviceDownloadMirror: 'direct',
-  serviceMirrorPrefix: '',
-  serviceSettingsSaving: false,
-  tcpFastOpen: null,
-  tcpFastOpenSaving: false,
-  firewallBypassMode: localStorage.getItem(firewallBypassModeStorageKey) || 'off',
-  firewallRouterMode: localStorage.getItem(firewallRouterModeStorageKey) || 'tproxy',
-  firewallDeviceMode: localStorage.getItem(firewallDeviceModeStorageKey) || 'all',
-  firewallSelectedDevices: loadStringListStorage(firewallSelectedDevicesStorageKey),
-  firewallPortMode: localStorage.getItem(firewallPortModeStorageKey) || 'custom',
-  firewallPorts: localStorage.getItem(firewallPortsStorageKey) || '80,443',
-  firewallBlockQuic: localStorage.getItem(firewallBlockQuicStorageKey) !== '0',
-  firewallStatus: null,
-  firewallSaving: false,
-  configExpanded: false,
-  configScrollTop: 0,
-  jsonDraft: '',
-  pendingBackgroundRender: false
-};
+const state = createInitialState();
 
 function clearAuth() {
   state.token = '';
@@ -281,111 +67,15 @@ async function request(path, options = {}) {
   return api.request(path, options);
 }
 
-function formatDurationCompact(seconds = 0, { showSeconds = false, emptyText = 'меньше минуты' } = {}) {
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  const tailHours = hours % 24;
-  const tailMinutes = minutes % 60;
-  if (days) {
-    return [
-      `${days} д`,
-      tailHours ? `${tailHours} ч` : '',
-      tailMinutes ? `${tailMinutes} мин` : ''
-    ].filter(Boolean).join(' ');
-  }
-  if (hours) return [`${hours} ч`, tailMinutes ? `${tailMinutes} мин` : ''].filter(Boolean).join(' ');
-  if (minutes) return `${minutes} мин`;
-  return showSeconds ? `${Math.floor(seconds)} с` : emptyText;
-}
 
-function fmtUptime(seconds = 0) {
-  return formatDurationCompact(Math.max(0, Number(seconds || 0)));
-}
 
-function formatDuration(seconds = 0) {
-  const total = Math.max(0, Number(seconds || 0));
-  return formatDurationCompact(total, { showSeconds: true, emptyText: '0 с' });
-}
-
-function byteSize(size) {
-  const n = Number(size || 0);
-  if (n >= 1024 * 1024 * 1024) return `${Math.round((n / 1024 / 1024 / 1024) * 10) / 10} GB`;
-  if (n >= 1024 * 1024) return `${Math.round((n / 1024 / 1024) * 10) / 10} MB`;
-  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
-  return `${Math.max(0, Math.round(n))} B`;
-}
-
-function byteRate(size) {
-  return `${byteSize(size)}/s`;
-}
-
-function numberValue(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function syncConfig(config) {
-  state.config = config;
-  state.jsonDraft = JSON.stringify(config, null, 2);
-}
-
-function syncLoggingSettings(settings) {
-  if (!settings?.ok) return;
-  state.loggingSettings = settings;
-  state.loggingLevel = settings.level || 'warning';
-  state.loggingAccessLog = Boolean(settings.accessLog);
-  state.loggingAccessPath = settings.accessPath || '/var/log/xray/access.log';
-  state.loggingErrorLog = Boolean(settings.errorLog);
-  state.loggingErrorPath = settings.errorPath || '/var/log/xray/error.log';
-  state.loggingDnsLog = Boolean(settings.dnsLog);
-  state.loggingMaxSizeMb = String(settings.maxSizeMb ?? 2);
-  state.loggingRotateCopies = String(settings.rotateCopies ?? 1);
-  state.loggingClearOnRestart = Boolean(settings.clearOnRestart);
-}
-
-function syncServiceSettings(settings) {
-  if (!settings?.ok) return;
-  state.serviceSettings = settings;
-  state.serviceStartupDelaySec = String(settings.startupDelaySec ?? 0);
-  state.serviceApplyDelaySec = String(settings.applyDelaySec ?? 0);
-  state.serviceGoMemLimit = settings.goMemLimit || '48MiB';
-  state.serviceGoGC = String(settings.goGC ?? 60);
-  state.serviceDownloadMirror = settings.downloadMirror || 'direct';
-  state.serviceMirrorPrefix = settings.mirrorPrefix || '';
-}
-
-function syncLanDnsStatus(status) {
-  if (!status) return;
-  state.lanDnsStatus = status;
-  const plannedMode = status.plan?.mode;
-  if (plannedMode) state.lanDnsMode = plannedMode;
-  else if (status.mode && status.mode !== 'manual' && status.mode !== 'unknown') state.lanDnsMode = status.mode;
-  if (Array.isArray(status.servers) && status.servers.length && status.mode === 'upstream') {
-    state.lanDnsUpstream = status.servers[0];
-  }
-  if (status.plan) {
-    state.lanDnsPreview = status.plan;
-  }
-}
-
-function lanDnsModeLabel(mode) {
-  return ({
-    xray: 'DNS через Xray',
-    upstream: 'Внешний DNS / Pi-hole',
-    system: 'Как в OpenWrt',
-    manual: 'Ручная настройка',
-    unknown: 'Неизвестно'
-  })[mode] || 'Неизвестно';
-}
+const {
+  syncConfig,
+  syncLoggingSettings,
+  syncServiceSettings,
+  syncLanDnsStatus,
+  lanDnsModeLabel
+} = createConfigStateHelpers(state);
 
 function routeRules() {
   if (!state.config.routing || typeof state.config.routing !== 'object') state.config.routing = {};
