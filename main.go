@@ -1554,7 +1554,7 @@ func firewallNativeNft(payload map[string]any) (string, map[string]any) {
 		}
 		chainLines = append(chainLines, targetPrefix+redirectMatch+" redirect to :"+strconv.Itoa(transparentPort))
 	} else {
-		chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+firewallDportExpression(ports, "meta")+" counter tproxy to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
+		chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+firewallDportExpression(ports, "meta")+" counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
 	}
 	chainLines = append(chainLines, "  }")
 	lines := []string{"table inet ruopenray {"}
@@ -3220,6 +3220,45 @@ func parseAppRelease(raw map[string]any) map[string]any {
 	}
 }
 
+func replaceExecutableAcrossFilesystems(src string, dst string) error {
+	if err := os.Chmod(src, 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	sameDirTmp := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+"-"+time.Now().Format("20060102150405")+".new")
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(sameDirTmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(sameDirTmp)
+		return copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(sameDirTmp)
+		return closeErr
+	}
+	if err := os.Chmod(sameDirTmp, 0o755); err != nil {
+		_ = os.Remove(sameDirTmp)
+		return err
+	}
+	if err := os.Rename(sameDirTmp, dst); err != nil {
+		_ = os.Remove(sameDirTmp)
+		return err
+	}
+	_ = os.Remove(src)
+	return nil
+}
+
 func (s *serverState) updateApp(version string, keepBackup bool) map[string]any {
 	release, err := appRelease(version)
 	if err != nil {
@@ -3270,11 +3309,7 @@ func (s *serverState) updateApp(version string, keepBackup bool) map[string]any 
 			_ = os.WriteFile(backup, body, 0o755)
 		}
 	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
-		_ = os.Remove(tmp)
-		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
-	}
-	if err := os.Rename(tmp, exe); err != nil {
+	if err := replaceExecutableAcrossFilesystems(tmp, exe); err != nil {
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": err.Error(), "release": release, "target": exe}
 	}
@@ -3673,6 +3708,13 @@ func geoPresets() []map[string]any {
 			"ruleHint":   "ext:geosite_RU.dat:ru-block / ext:geoip_RU.dat:ru-block",
 			"geoipUrl":   "https://raw.githubusercontent.com/Nidelon/ru-block-v2ray-rules/release/geoip.dat",
 			"geositeUrl": "https://raw.githubusercontent.com/Nidelon/ru-block-v2ray-rules/release/geosite.dat",
+		},
+		{
+			"id": "b4geoip", "name": "b4geoip", "purpose": "расширенный GeoIP", "mode": "geoip-only", "compat": "Xray geoip.dat", "installable": true,
+			"estimatedBytes": 21 * 1024 * 1024, "detail": "GeoIP от DanielLavrushin/b4geoip: обновляет только geoip.dat и оставляет текущий geosite.dat без изменений.",
+			"ruleHint":  "ip(geoip:...) -> proxy/direct",
+			"geoipUrl":  "https://github.com/DanielLavrushin/b4geoip/releases/latest/download/geoip.dat",
+			"sourceUrl": "https://github.com/DanielLavrushin/b4geoip",
 		},
 		{
 			"id": "dustinwin", "name": "DustinWin", "purpose": "Китай и CDN", "mode": "replace", "compat": "mihomo/Xray DAT", "installable": true,
@@ -4136,6 +4178,14 @@ func (s *serverState) updateGeo(payload map[string]any) map[string]any {
 			if baseCount > 1 {
 				return map[string]any{"ok": false, "stderr": "Выберите только один базовый источник geoip.dat/geosite.dat. Дополнительные DAT можно ставить вместе с ним."}
 			}
+			if mode == "geoip-only" {
+				url := strings.TrimSpace(fmt.Sprint(preset["geoipUrl"]))
+				if url == "" || url == "<nil>" {
+					return map[string]any{"ok": false, "stderr": "Для источника geoip.dat не задана ссылка"}
+				}
+				updates = append(updates, s.downloadGeoFile("geoip.dat", url, backup))
+				continue
+			}
 			updates = append(updates, s.downloadGeoFile("geoip.dat", fmt.Sprint(preset["geoipUrl"]), backup))
 			updates = append(updates, s.downloadGeoFile("geosite.dat", fmt.Sprint(preset["geositeUrl"]), backup))
 		}
@@ -4239,6 +4289,22 @@ func (s *serverState) updateGeoLegacy(payload map[string]any) map[string]any {
 			ok = restart["ok"].(bool)
 		}
 		return map[string]any{"ok": ok, "geosite": geosite, "restart": restart, "status": s.geoStatus(), "stdout": concatCommandOutput(geosite, restart)}
+	}
+	if mode == "geoip-only" {
+		if geoipURL == "" || geoipURL == "<nil>" {
+			return map[string]any{"ok": false, "stderr": "Для источника geoip.dat не задана ссылка"}
+		}
+		if err := os.MkdirAll(s.cfg.GeoDir, 0o755); err != nil {
+			return map[string]any{"ok": false, "stderr": err.Error()}
+		}
+		geoip := s.downloadGeoFile("geoip.dat", geoipURL)
+		ok := geoip["ok"].(bool)
+		restart := map[string]any{"ok": true, "stdout": ""}
+		if ok {
+			restart = s.serviceAction("restart")
+			ok = restart["ok"].(bool)
+		}
+		return map[string]any{"ok": ok, "geoip": geoip, "restart": restart, "status": s.geoStatus(), "stdout": concatCommandOutput(geoip, restart)}
 	}
 	if geoipURL == "" || geositeURL == "" || geoipURL == "<nil>" || geositeURL == "<nil>" {
 		return map[string]any{"ok": false, "stderr": "Укажите ссылки на geoip.dat и geosite.dat"}

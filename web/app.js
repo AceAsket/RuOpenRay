@@ -91,6 +91,7 @@ const state = {
   appRelease: null,
   appUpdate: null,
   appUpdating: false,
+  appReleaseChecking: false,
   appBackup: false,
   geoStatus: null,
   geoPreset: 'nidelon',
@@ -263,6 +264,7 @@ const state = {
   firewallStatus: null,
   firewallSaving: false,
   configExpanded: false,
+  configScrollTop: 0,
   jsonDraft: '',
   pendingBackgroundRender: false
 };
@@ -418,6 +420,86 @@ const telegramCallIps = [
   '149.154.0.0/16'
 ];
 
+const instagramDomains = [
+  'geosite:instagram',
+  'domain:instagram.com',
+  'domain:www.instagram.com',
+  'domain:i.instagram.com',
+  'domain:graph.instagram.com',
+  'domain:cdninstagram.com',
+  'domain:threads.net',
+  'regexp:.*\\.instagram\\.com',
+  'regexp:.*\\.cdninstagram\\.com'
+];
+
+const whatsappDomains = [
+  'geosite:whatsapp',
+  'domain:whatsapp.com',
+  'domain:web.whatsapp.com',
+  'domain:whatsapp.net',
+  'domain:wa.me',
+  'domain:mmg.whatsapp.net',
+  'domain:static.whatsapp.net',
+  'regexp:.*\\.whatsapp\\.com',
+  'regexp:.*\\.whatsapp\\.net'
+];
+
+const facebookDomains = [
+  'geosite:facebook',
+  'geosite:facebook-dev',
+  'domain:facebook.com',
+  'domain:fb.com',
+  'domain:fb.me',
+  'domain:fbcdn.net',
+  'domain:fbsbx.com',
+  'domain:messenger.com',
+  'domain:m.me',
+  'domain:connect.facebook.net',
+  'domain:graph.facebook.com',
+  'regexp:.*\\.facebook\\.com',
+  'regexp:.*\\.fbcdn\\.net',
+  'regexp:.*\\.messenger\\.com'
+];
+
+const metaDomains = [
+  'geosite:meta',
+  'domain:meta.com',
+  'domain:metacareers.com',
+  ...facebookDomains,
+  ...instagramDomains,
+  ...whatsappDomains
+];
+
+const linkedinDomains = [
+  'geosite:linkedin',
+  'domain:linkedin.com',
+  'domain:www.linkedin.com',
+  'domain:lnkd.in',
+  'domain:licdn.com',
+  'domain:linkedinstatic.com',
+  'regexp:.*\\.linkedin\\.com',
+  'regexp:.*\\.licdn\\.com',
+  'regexp:.*\\.linkedinstatic\\.com'
+];
+
+const xrayuiBasicDomains = [
+  'geosite:google',
+  'geosite:meta',
+  'geosite:telegram',
+  'geosite:x',
+  'geosite:discord',
+  'geosite:rutracker',
+  'geosite:tiktok',
+  'geosite:netflix',
+  'geosite:github',
+  'geosite:cloudflare',
+  'geosite:category-media-ru',
+  'geosite:kinopub',
+  'geosite:akamai',
+  'domain:themoviedb.org',
+  'domain:ntc.party'
+];
+
 const nintendoEshopDomains = [
   'domain:bugyo.hac.lp1.eshop.nintendo.net',
   'domain:nemof.hac.lp1.nemo.srv.nintendo.net',
@@ -547,6 +629,51 @@ const youtubeDomains = [
   'regexp:.*\\.ytimg\\.com'
 ];
 
+const antifilterRules = [
+  { type: 'field', outboundTag: 'proxy', ip: ['geoip:antifilter', 'geoip:antifilter-community'] },
+  { type: 'field', outboundTag: 'proxy', domain: ['ext:"LoyalsoldierSite.dat:antifilter-community"'] }
+];
+
+const microsoftDomains = [
+  'regexp:.*\\.microsoft\\.com',
+  'regexp:.*\\.windows\\.com',
+  'regexp:.*\\.live\\.com',
+  'regexp:.*\\.office\\.com',
+  'regexp:.*\\.office365\\.com',
+  'regexp:.*\\.microsoftstore\\.com',
+  'regexp:.*\\.xboxlive\\.com',
+  'regexp:.*\\.xboxservices\\.com',
+  'regexp:.*\\.azureedge\\.net',
+  'regexp:.*\\.msedge\\.net',
+  'regexp:.*\\.visualstudio\\.com',
+  'regexp:.*\\.trafficmanager\\.net',
+  'regexp:.*\\.mp\\.microsoft\\.com',
+  'regexp:.*\\.delivery\\.mp\\.microsoft\\.com',
+  'regexp:.*\\.windowsupdate\\.com',
+  'regexp:.*\\.update\\.microsoft\\.com',
+  'regexp:.*\\.download\\.windowsupdate\\.com',
+  'regexp:.*\\.do\\.dl\\.delivery\\.mp\\.microsoft\\.com',
+  'regexp:.*\\.dl\\.delivery\\.mp\\.microsoft\\.com',
+  'regexp:.*\\.storeedgefd\\.dsx\\.mp\\.microsoft\\.com',
+  'regexp:.*\\.login\\.live\\.com',
+  'regexp:.*\\.login\\.microsoftonline\\.com',
+  'regexp:.*\\.officecdn\\.microsoft\\.com',
+  'regexp:.*\\.sharepoint\\.com',
+  'regexp:.*\\.onedrive\\.live\\.com',
+  'regexp:.*\\.1drv\\.com'
+];
+
+const microsoftIps = [
+  '13.64.0.0/11',
+  '20.0.0.0/8',
+  '40.64.0.0/10',
+  '51.0.0.0/8',
+  '52.0.0.0/8',
+  '104.40.0.0/13',
+  '150.171.0.0/16',
+  '204.79.197.0/24'
+];
+
 const routePresets = {
   youtube: {
     title: 'YouTube через proxy',
@@ -557,6 +684,56 @@ const routePresets = {
     title: 'Discord через proxy',
     detail: '17 доменов Discord: CDN, gateway, voice, status, media и Vencord.',
     rule: { type: 'field', outboundTag: 'proxy', domain: discordDomains }
+  },
+  discordRtc: {
+    title: 'Discord RTC / Cloudflare',
+    detail: 'UDP диапазоны Cloudflare для Discord RTC и WebRTC fallback.',
+    rule: { type: 'field', outboundTag: 'proxy', network: 'udp', ip: discordCloudflareRtcIps }
+  },
+  discordVoice: {
+    title: 'Discord voice / media',
+    detail: 'UDP диапазоны Discord voice/media и дополнительные media-сети.',
+    rule: { type: 'field', outboundTag: 'proxy', network: 'udp', ip: discordVoiceIps }
+  },
+  telegram: {
+    title: 'Telegram домены через proxy',
+    detail: 'Домены Telegram, t.me, telegra.ph и regexp для поддоменов.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: telegramDomains }
+  },
+  telegramMtproto: {
+    title: 'Telegram MTProto через proxy',
+    detail: 'IP/subnet диапазоны Telegram MTProto, включая новые media-инфраструктуры.',
+    rule: { type: 'field', outboundTag: 'proxy', ip: telegramMtprotoIps }
+  },
+  telegramCalls: {
+    title: 'Telegram звонки через proxy',
+    detail: 'UDP диапазоны Telegram для звонков и peer/media трафика.',
+    rule: { type: 'field', outboundTag: 'proxy', network: 'udp', ip: telegramCallIps }
+  },
+  instagram: {
+    title: 'Instagram через proxy',
+    detail: 'Instagram, CDN, Graph API и Threads через активный сервер.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: instagramDomains }
+  },
+  whatsapp: {
+    title: 'WhatsApp через proxy',
+    detail: 'Web WhatsApp, wa.me, whatsapp.net и медиа-домены.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: whatsappDomains }
+  },
+  facebook: {
+    title: 'Facebook через proxy',
+    detail: 'Facebook, Messenger, Graph API, CDN и facebook-dev geosite.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: facebookDomains }
+  },
+  linkedin: {
+    title: 'LinkedIn через proxy',
+    detail: 'LinkedIn, short links, CDN и статические ресурсы.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: linkedinDomains }
+  },
+  meta: {
+    title: 'Meta через proxy',
+    detail: 'Meta, Facebook, Instagram, WhatsApp, Messenger и общие CDN.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: metaDomains }
   },
   chatgpt: {
     title: 'ChatGPT через proxy',
@@ -576,6 +753,16 @@ const routePresets = {
     title: 'Google Gemini / AI через proxy',
     detail: 'Gemini, AI Studio, Generative Language API, OAuth и нужные gstatic/googleusercontent.',
     rule: { type: 'field', outboundTag: 'proxy', domain: geminiAiDomains }
+  },
+  googleWebRtcFallback: {
+    title: 'Google WebRTC fallback',
+    detail: 'UDP диапазоны Google, которые часто используются как WebRTC fallback.',
+    rule: { type: 'field', outboundTag: 'proxy', network: 'udp', ip: googleWebRtcFallbackIps }
+  },
+  googleNetwork: {
+    title: 'Google TCP/CDN ranges',
+    detail: 'Основные Google TCP/CDN IP ranges для Googlevideo, QUIC и CDN-сценариев.',
+    rule: { type: 'field', outboundTag: 'proxy', ip: googleNetworkIps }
   },
   nintendoEshop: {
     title: 'Nintendo eShop через proxy',
@@ -600,7 +787,7 @@ const routeBundles = {
   },
   discordFull: {
     title: 'Discord полный',
-    detail: 'Домены, CDN, RTC через Cloudflare, voice/media и Google WebRTC fallback.',
+    detail: 'Домены, CDN, RTC через Cloudflare, voice/media и резервные Google WebRTC диапазоны.',
     rules: [
       { type: 'field', outboundTag: 'proxy', domain: discordDomains },
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: discordCloudflareRtcIps },
@@ -617,6 +804,22 @@ const routeBundles = {
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: telegramCallIps }
     ]
   },
+  metaFull: {
+    title: 'Meta полный',
+    detail: 'Meta, Facebook, Instagram, WhatsApp, Messenger и CDN одной подборкой.',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: metaDomains }
+    ]
+  },
+  xrayuiBasic: {
+    title: 'Базовый набор xrayui',
+    detail: 'Google, Meta, Telegram, X, Discord, RuTracker, TikTok, Netflix, GitHub, Cloudflare, media-ru, KinoPub и Akamai.',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: xrayuiBasicDomains },
+      { type: 'field', outboundTag: 'proxy', ip: ['geoip:telegram', 'geoip:cloudflare', '130.255.77.28'] },
+      { type: 'field', outboundTag: 'proxy', network: 'udp', port: '50000-51000,1400,3478-3481,5349,19294-19344' }
+    ]
+  },
   googleFull: {
     title: 'Google / CDN / QUIC',
     detail: 'Google domains, Gemini geosite, QUIC/HTTP3 UDP ranges и TCP/CDN ranges.',
@@ -625,6 +828,20 @@ const routeBundles = {
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: googleNetworkIps },
       { type: 'field', outboundTag: 'proxy', ip: googleNetworkIps }
     ]
+  },
+  microsoftFull: {
+    title: 'Microsoft / Windows / Store',
+    detail: 'Microsoft, Windows Update, Store, Xbox, Office, Azure CDN и UDP/QUIC диапазоны.',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: microsoftDomains },
+      { type: 'field', outboundTag: 'proxy', ip: microsoftIps },
+      { type: 'field', outboundTag: 'proxy', network: 'udp', ip: microsoftIps }
+    ]
+  },
+  antifilterFull: {
+    title: 'Antifilter geo/ext',
+    detail: 'geoip:antifilter, geoip:antifilter-community и ext LoyalsoldierSite.dat.',
+    rules: antifilterRules
   },
   mediaComms: {
     title: 'YouTube / Discord / Telegram',
@@ -658,6 +875,23 @@ const routeBundles = {
     ]
   }
 };
+
+const hiddenBuiltinRoutePresetKeys = new Set([
+  'discord',
+  'discordRtc',
+  'discordVoice',
+  'telegram',
+  'telegramMtproto',
+  'telegramCalls',
+  'googleWebRtcFallback',
+  'googleNetwork',
+  'meta',
+  'xrayuiBasic',
+  'directLan',
+  'mediaComms',
+  'aiDev',
+  'familyDirect'
+]);
 
 async function keepOperationVisible(startedAt, minMs = 700) {
   const elapsed = Date.now() - startedAt;
@@ -1308,6 +1542,79 @@ function proxyRuleStrategyStats(activeTag = activeProxyTag()) {
   return { primary, pinned, alias };
 }
 
+function proxyRuleSampleLabel(rule) {
+  const target = routeTarget(rule || {});
+  const value = Array.isArray(target.values) ? target.values[0] : '';
+  return value || target.kind || 'правило';
+}
+
+function proxyDirectionSummary() {
+  const proxyTags = new Set(proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean));
+  const outbounds = new Map();
+  const balancers = new Map();
+  const add = (map, tag, rule) => {
+    if (!tag) return;
+    const current = map.get(tag) || { tag, rules: 0, samples: [] };
+    current.rules += 1;
+    if (current.samples.length < 3) current.samples.push(proxyRuleSampleLabel(rule));
+    map.set(tag, current);
+  };
+  for (const rule of routeRules()) {
+    if (rule?.balancerTag) {
+      add(balancers, rule.balancerTag, rule);
+      continue;
+    }
+    const rawTag = rule?.outboundTag || '';
+    const tag = rawTag === 'proxy' ? activeProxyTag() : rawTag;
+    if (proxyTags.has(tag)) add(outbounds, tag, rule);
+  }
+  const implicit = !outbounds.size && !balancers.size ? activeProxyTag() : '';
+  if (implicit) outbounds.set(implicit, { tag: implicit, rules: 0, samples: [], implicit: true });
+  const total = [...outbounds.values(), ...balancers.values()].reduce((sum, item) => sum + Number(item.rules || 0), 0);
+  return { outbounds, balancers, total };
+}
+
+function proxyDirectionTitle(summary) {
+  const count = summary.outbounds.size + summary.balancers.size;
+  if (count === 1 && summary.balancers.size === 1) return 'Активная группа серверов';
+  if (count === 1) return 'Активный сервер';
+  return 'Proxy-направления';
+}
+
+function proxyDirectionDetail(summary) {
+  const count = summary.outbounds.size + summary.balancers.size;
+  if (!count) return 'Proxy-направления пока не настроены.';
+  if (count === 1 && summary.balancers.size === 1) {
+    const item = [...summary.balancers.values()][0];
+    return `${item.tag} · ${item.rules || 0} правил ведут в балансировщик`;
+  }
+  if (count === 1) {
+    const item = [...summary.outbounds.values()][0];
+    return item.implicit ? 'Основное направление будет использовано для новых proxy-правил.' : `${item.rules || 0} proxy-правил ведут в этот сервер`;
+  }
+  return `${count} активных направлений · ${summary.total || 0} proxy-правил распределены по серверам и группам`;
+}
+
+function dashboardProxyDirectionCards(summary) {
+  const cards = [
+    ...[...summary.outbounds.values()].map((item) => ({ ...item, kind: 'server' })),
+    ...[...summary.balancers.values()].map((item) => ({ ...item, kind: 'balancer' }))
+  ];
+  if (cards.length <= 1) return '';
+  return `<div class="dashboard-proxy-directions">
+    ${cards.map((item) => {
+      const detail = item.kind === 'balancer'
+        ? 'Балансировщик'
+        : outboundAddress(proxyOutbounds().find((outbound) => outbound?.tag === item.tag)) || 'сервер';
+      return `<article>
+        <span>${item.kind === 'balancer' ? 'Группа' : 'Сервер'}</span>
+        <strong>${escapeHtml(item.tag)}</strong>
+        <small>${escapeHtml(`${item.rules || 0} правил · ${detail}`)}</small>
+      </article>`;
+    }).join('')}
+  </div>`;
+}
+
 function resolveRoutingAlias(tag) {
   const value = String(tag || '').trim();
   if (value === 'proxy') return activeProxyTag() || 'proxy';
@@ -1514,7 +1821,7 @@ function checkForTag(tag) {
 
 function checkLabel(result) {
   if (!result) return 'не проверялся';
-  if (result.skipped) return 'нет endpoint';
+  if (result.skipped) return 'нет TCP-цели';
   if (result.ok) return `${result.latencyMs || 0} мс`;
   return 'нет ответа';
 }
@@ -1522,7 +1829,7 @@ function checkLabel(result) {
 function checkMethodLabel(result) {
   if (!result) return 'не проверен';
   if (result.method === 'http') return 'HTTP';
-  return 'TCP endpoint';
+  return 'TCP-порт';
 }
 
 function firewallInfo() {
@@ -1623,7 +1930,7 @@ function firewallPolicyPreview() {
       ? 'Адреса из direct-списка сразу идут напрямую, остальное передается в Xray.'
       : 'В Xray отправляются только адреса из proxy-списка, остальное сразу идет напрямую.';
   const warnings = [];
-  if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить Block QUIC или выбрать TPROXY.');
+  if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
   if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
   if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
   return { router, traffic, policyName, policy, ports: state.firewallPortMode === 'all' ? 'все порты' : ports.join(', ') || 'не заданы', quic: state.firewallBlockQuic ? 'UDP/443 будет заблокирован до Xray' : 'UDP/443 не блокируется', warnings };
@@ -1943,6 +2250,7 @@ function scrollLogsToBottom() {
 function shouldDeferBackgroundRender() {
   if (document.querySelector('[data-modal], .modal-backdrop')) return true;
   if (document.querySelector('details[open]:not(.dashboard-log-details)')) return true;
+  if (state.tab === 'dashboard' && state.configExpanded) return true;
   const active = document.activeElement;
   if (!active || active === document.body) return false;
   const tag = active.tagName;
@@ -2807,6 +3115,48 @@ async function updateApp() {
   }
 }
 
+async function checkAppUpdate() {
+  state.appReleaseChecking = true;
+  state.message = 'Проверяю обновления RuOpenRay UI...';
+  render();
+  try {
+    const result = await request('/api/app/releases');
+    state.appRelease = result?.release || null;
+    if (result?.version && state.status?.app) {
+      state.status = {
+        ...(state.status || {}),
+        app: { ...(state.status.app || {}), version: result.version, asset: result.asset || state.status.app.asset }
+      };
+    }
+    const release = state.appRelease || {};
+    state.message = release.update && release.assetUrl
+      ? `Доступно обновление RuOpenRay UI: ${release.current || result.version || 'текущая'} → ${release.tag}`
+      : `RuOpenRay UI актуален: ${result?.version || state.status?.app?.version || 'dev'}`;
+  } catch (error) {
+    state.message = error.message || 'Не удалось проверить обновления RuOpenRay UI';
+  } finally {
+    state.appReleaseChecking = false;
+    render();
+  }
+}
+
+async function appVersionClick() {
+  const release = state.appRelease || {};
+  if (release.update && release.assetUrl) {
+    state.tab = 'settings';
+    state.settingsView = 'updates';
+    state.message = `Доступно обновление RuOpenRay UI: ${release.current || state.status?.app?.version || 'текущая'} → ${release.tag}`;
+    render();
+    return;
+  }
+  await checkAppUpdate();
+  if (state.appRelease?.update && state.appRelease?.assetUrl) {
+    state.tab = 'settings';
+    state.settingsView = 'updates';
+    render();
+  }
+}
+
 async function updateGeo() {
   state.geoUpdating = true;
   state.message = 'Обновляю geoip.dat и geosite.dat...';
@@ -3003,20 +3353,23 @@ async function testConfig() {
   render();
 }
 
-async function applyConfig() {
+async function applyConfig(options = {}) {
   const startedAt = Date.now();
   state.configApplying = true;
-  state.message = 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
+  state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
   render();
-  const parsed = JSON.parse(state.jsonDraft);
-  const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
-  state.configAnalysis = result.analysis || null;
-  state.lastApplyBackup = result.backup || state.lastApplyBackup;
-  state.message = result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
-  await refresh({ renderAfter: false });
-  await keepOperationVisible(startedAt, 900);
-  state.configApplying = false;
-  render();
+  try {
+    const parsed = JSON.parse(state.jsonDraft);
+    const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
+    state.configAnalysis = result.analysis || null;
+    state.lastApplyBackup = result.backup || state.lastApplyBackup;
+    state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
+    await refresh({ renderAfter: false });
+    await keepOperationVisible(startedAt, 900);
+  } finally {
+    state.configApplying = false;
+    render();
+  }
 }
 
 async function setXrayStats(enabled) {
@@ -3605,7 +3958,7 @@ function normalizePresetRule(rule) {
 }
 
 function applySelectedRoutingPresets() {
-  const selectedPresets = state.selectedRoutePresets.filter((key) => routePresets[key]);
+  const selectedPresets = state.selectedRoutePresets.filter((key) => routePresets[key] || routeBundles[key]);
   const selectedCustom = state.selectedRoutePresets.filter((key) => customRoutePreset(key));
   const selected = [...selectedPresets, ...selectedCustom];
   if (!selected.length) {
@@ -3614,7 +3967,7 @@ function applySelectedRoutingPresets() {
     return;
   }
   const rules = [
-    ...selectedPresets.map((key) => normalizePresetRule(routePresets[key].rule)),
+    ...selectedPresets.flatMap((key) => routePresetRules(key).map(normalizePresetRule)),
     ...selectedCustom.flatMap((key) => routePresetRules(key).map(normalizePresetRule))
   ];
   setRoutingDraft([...rules, ...routeRules()]);
@@ -3642,12 +3995,35 @@ function routePresetTitle(key) {
 
 function routePresetDetail(key) {
   const custom = customRoutePreset(key);
-  if (custom) return custom.detail || `${custom.rules?.length || 0} правил`;
+  if (custom) return custom.detail || ruleCountLabel((custom.rules || []).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0));
   const preset = routeBundles[key] || routePresets[key];
   if (!preset) return '';
   if (preset.detail) return preset.detail;
   if (preset.rule) return describeRouteRule(preset.rule).fullValue;
   return '';
+}
+
+function routeRuleConditionCount(rule) {
+  if (!rule) return 0;
+  let count = 0;
+  for (const key of ['domain', 'ip', 'source', 'inboundTag']) {
+    if (Array.isArray(rule[key])) count += rule[key].length;
+    else if (rule[key]) count += 1;
+  }
+  if (rule.port) count += 1;
+  if (!count && rule.network) count += 1;
+  return Math.max(1, count);
+}
+
+function routePresetConditionCount(key) {
+  return routePresetRules(key).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0);
+}
+
+function builtinRoutePresetEntries({ includeHidden = false } = {}) {
+  return [
+    ...Object.entries(routeBundles),
+    ...Object.entries(routePresets)
+  ].filter(([key]) => includeHidden || !hiddenBuiltinRoutePresetKeys.has(key));
 }
 
 function ruleCountLabel(count) {
@@ -4121,13 +4497,24 @@ function removeOutbound(index) {
   render();
 }
 
-function routeAllToOutbound(tag) {
+async function routeAllToOutbound(tag, { apply = true } = {}) {
+  if (state.configApplying) return;
   const before = proxyRuleStrategyStats();
   setActiveProxyDraft(tag);
   const after = proxyRuleStrategyStats(tag);
   state.pendingServerTag = '';
-  state.message = `Основное proxy-направление теперь ведет в ${tag}. Переключено правил: ${Math.max(before.primary, after.primary)}${after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : ''}`;
+  const switched = Math.max(before.primary, after.primary);
+  const pinned = after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : '';
+  if (!apply) {
+    state.message = `Основное proxy-направление теперь ведет в ${tag}. Переключено правил: ${switched}${pinned}`;
+    render();
+    return;
+  }
+  state.message = `Подключаю ${tag}: меняю proxy-направление, записываю config.json и перезапускаю Xray...`;
   render();
+  await applyConfig({
+    successMessage: `Подключен ${tag}. Переключено правил: ${switched}${pinned}`
+  });
 }
 
 function resetRouteBalancerForm() {
@@ -4183,7 +4570,7 @@ function balancerTargetOptions() {
       kind: pool ? 'subscription' : 'server',
       title: tag,
       detail: pool
-        ? `${pool.count || 0} кандидатов · активен ${pool.activeCandidate?.tag || 'endpoint не выбран'}`
+        ? `${pool.count || 0} кандидатов · активен ${pool.activeCandidate?.tag || 'сервер не выбран'}`
         : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
     });
   });
@@ -4390,8 +4777,8 @@ async function fallbackSubscriptionPool(tag) {
     })
   });
   state.message = result.ok
-    ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый endpoint'}`
-    : `Подписка ${tag}: ${result.error || 'живой endpoint не найден'}`;
+    ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый сервер'}`
+    : `Подписка ${tag}: ${result.error || 'доступный сервер не найден'}`;
   await refresh();
 }
 
@@ -4579,8 +4966,8 @@ function applyDnsGuardPreset(mode) {
   }
   syncConfig(next);
   state.message = mode === 'strict'
-    ? 'DNS leak guard добавил DoH и UDP/443 правило в черновик'
-    : 'DNS leak guard добавил защищенные DNS-серверы в черновик';
+    ? 'Защита DNS добавила DoH и правило UDP/443 в черновик'
+    : 'Защита DNS добавила защищенные DNS-серверы в черновик';
   render();
 }
 
@@ -4665,8 +5052,6 @@ function loginView() {
           <img class="brand-mark" src="/assets/ruopenray-icon.png" alt="" />
           <div><strong>RuOpenRay UI</strong><span>Панель управления Xray</span></div>
         </div>
-        <h1>Доступ к панели</h1>
-        <p>Введите пароль администратора RuOpenRay UI.</p>
         <div class="form-row">
           <label>Пароль</label>
           <div class="password-field">
@@ -4756,6 +5141,23 @@ function coreReleaseBadge(release) {
   return '<span class="release-badge stable">Stable</span>';
 }
 
+function appVersionPill() {
+  const app = state.status?.app || {};
+  const version = app.version || 'dev';
+  const release = state.appRelease || {};
+  const hasUpdate = Boolean(release.update && release.assetUrl);
+  const target = release.tag || '';
+  const title = state.appReleaseChecking
+    ? 'Проверяю обновления RuOpenRay UI'
+    : hasUpdate
+      ? `Доступно обновление RuOpenRay UI: ${version} → ${target}`
+      : `RuOpenRay UI ${version}. Нажмите, чтобы проверить обновления`;
+  const label = hasUpdate ? `RuOpenRay ${version} → ${target}` : `RuOpenRay ${version}`;
+  return `<button class="pill app-version-pill ${hasUpdate ? 'has-update' : ''} ${state.appReleaseChecking ? 'checking' : ''}" type="button" data-action="appVersionClick" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    <i class="dot ${hasUpdate ? 'warn' : 'ok'}"></i>${escapeHtml(state.appReleaseChecking ? 'Проверяю...' : label)}
+  </button>`;
+}
+
 function coreArchitectureText() {
   const arch = state.coreArch || {};
   const runtimeArch = [arch.goos || arch.platform, arch.goarch || arch.arch].filter(Boolean).join('/');
@@ -4798,10 +5200,10 @@ function setupFlowGuide(readiness) {
         <p>Этот мастер собирает самостоятельный режим RuOpenRay: ядро, DNS, перехват и проверку трафика. Если что-то пойдет не так, ниже есть откат снимка.</p>
       </div>
       <div class="setup-flow-grid">
-        ${setupFlowStep('1', 'Установить основу', xrayReady ? 'Xray найден, можно переходить к настройке.' : 'Поставьте Xray и зависимости OpenWrt 24/25.', xrayReady, 'Открыть установку', 'data-action="openInstallWizard"')}
-        ${setupFlowStep('2', 'Настроить DNS', dnsReady ? 'dnsmasq направлен в Xray DNS.' : 'Подготовьте DNS inbound и направьте LAN DNS в 127.0.0.1#5353 или внешний Pi-hole.', dnsReady, 'DNS', 'data-tab-jump="dns"')}
+        ${setupFlowStep('1', 'Установить основу', xrayReady ? 'Xray найден. Можно продолжать.' : 'Поставьте Xray и зависимости OpenWrt 24/25.', xrayReady, 'Открыть установку', 'data-action="openInstallWizard"')}
+        ${setupFlowStep('2', 'Настроить DNS', dnsReady ? 'dnsmasq → Xray DNS.' : 'Подготовьте DNS inbound и направьте LAN DNS в 127.0.0.1#5353 или внешний Pi-hole.', dnsReady, 'DNS', 'data-tab-jump="dns"')}
         ${setupFlowStep('3', 'Включить перехват', fwReady ? 'nftables и policy routing активны.' : 'Выберите TPROXY/REDIRECT, устройства и порты, затем примените firewall.', fwReady, 'Перехват', 'data-tab-jump="routing" data-routing-view-jump="intercept"')}
-        ${setupFlowStep('4', 'Проверить трафик', statsReady ? 'Статистика Xray включена, можно проверять клиентский трафик.' : 'Включите статистику Xray и проверьте рост счетчиков с LAN-устройства.', statsReady, 'Диагностика', 'data-tab-jump="diagnostics" data-diagnostics-jump="chain"')}
+        ${setupFlowStep('4', 'Проверить трафик', statsReady ? 'Статистика Xray включена.' : 'Включите статистику Xray и проверьте рост счетчиков с LAN-устройства.', statsReady, 'Диагностика', 'data-tab-jump="diagnostics" data-diagnostics-jump="chain"')}
       </div>
       ${!readiness.canApply ? '<p class="settings-warning compact"><strong>Перед включением</strong><span>Закройте красные пункты готовности выше: мастер не применяет рискованную схему вслепую.</span></p>' : ''}
     </section>
@@ -5078,7 +5480,6 @@ function dashboard() {
   const s = state.status || {};
   const c = s.config || {};
   const routes = routeStats();
-  const servers = serverStats();
   const devices = deviceStats();
   const dns = dnsStats();
   const serviceRunning = Boolean(s.service?.running);
@@ -5100,13 +5501,7 @@ function dashboard() {
       </div>
     </section>
 
-    <section class="stats stats-dashboard">
-      ${coreStat(coreReady, s.core?.version || 'xray не проверен', coreInfo)}
-      ${stat('Серверы', servers.proxy, `${servers.used} в маршрутах · ${servers.system} служебных скрыто`)}
-      ${stat('Правила', c.routingRules ?? 0, `${c.inbounds ?? 0} входящих, ${c.outbounds ?? 0} исходящих`)}
-    </section>
-
-    ${xrayDashboardStats(s.xrayStats)}
+    ${xrayCoreDashboard(s, coreReady, coreInfo)}
 
     <section class="flow-strip">
       ${flowStep('Устройства', deviceRules().length || state.leases.length, `${devices.proxy} через proxy`)}
@@ -5205,7 +5600,7 @@ function trafficMonitor(system = {}) {
     <details class="traffic-monitor" open>
       <summary>
         <span>Монитор трафика</span>
-        <strong>${escapeHtml(byteRate(traffic.rxRate))} ↓ · ${escapeHtml(byteRate(traffic.txRate))} ↑</strong>
+        <strong>${escapeHtml(byteRate(traffic.rxRate))} прием · ${escapeHtml(byteRate(traffic.txRate))} отдача</strong>
       </summary>
       <div class="traffic-chart">
         <div class="traffic-y-axis">
@@ -5238,9 +5633,9 @@ function trafficMonitor(system = {}) {
 
 function xrayStatsGroupLabel(key) {
   const labels = {
-    proxy: 'Proxy',
-    direct: 'Direct',
-    block: 'Block',
+    proxy: 'Через proxy',
+    direct: 'Напрямую',
+    block: 'Блокировка',
     system: 'Системные',
     other: 'Другое'
   };
@@ -5298,25 +5693,83 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
   return `
     <section class="xray-dashboard-strip">
       <article>
-        <span>Активный outbound</span>
+        <span>Активный сервер</span>
         <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
-        <small>${escapeHtml(active ? `${byteRate(active.downRate)} ↓ · ${byteRate(active.upRate)} ↑` : 'нет данных')}</small>
+        <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
       </article>
       <article>
-        <span>Proxy</span>
-        <strong>${escapeHtml(byteSize(groups.proxy?.downlink))} ↓</strong>
-        <small>${escapeHtml(byteRate(groups.proxy?.downRate))} ↓ · ${escapeHtml(byteRate(groups.proxy?.upRate))} ↑</small>
+        <span>Через proxy</span>
+        <strong>${escapeHtml(byteSize(groups.proxy?.downlink))} принято</strong>
+        <small>${escapeHtml(`прием ${byteRate(groups.proxy?.downRate)} · отдача ${byteRate(groups.proxy?.upRate)}`)}</small>
       </article>
       <article>
-        <span>Direct / Block</span>
-        <strong>${escapeHtml(byteSize(groups.direct?.downlink))} ↓ / ${escapeHtml(byteSize(groups.block?.downlink))} ↓</strong>
-        <small>${escapeHtml(byteRate(totals.downRate))} ↓ · ${escapeHtml(byteRate(totals.upRate))} ↑ всего</small>
+        <span>Напрямую / блокировка</span>
+        <strong>${escapeHtml(byteSize(groups.direct?.downlink))} · ${escapeHtml(byteSize(groups.block?.downlink))}</strong>
+        <small>${escapeHtml(`всего сейчас: прием ${byteRate(totals.downRate)} · отдача ${byteRate(totals.upRate)}`)}</small>
       </article>
       <article>
         <span>Период</span>
-        <strong>${escapeHtml(byteSize(totals.downlink))} ↓</strong>
+        <strong>${escapeHtml(byteSize(totals.downlink))} принято</strong>
         <small>${escapeHtml(xrayStatsPeriodLabel())}</small>
       </article>
+    </section>
+  `;
+}
+
+function xrayCoreDashboard(status = state.status || {}, available, info) {
+  const detail = status.core?.version || 'xray не проверен';
+  const latestText = info.target
+    ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}`
+    : 'Список релизов не загружен';
+  const coreStatus = !available ? 'Нужно установить' : info.hasUpdate ? 'Есть обновление' : 'Stable актуален';
+  const stats = status.xrayStats || {};
+  const statsEnabled = stats.enabled === true;
+  const totals = xrayStatsTotals(stats);
+  const groups = stats.groups || {};
+  const active = xrayActiveStats(stats);
+  const activeAddress = active?.tag ? outboundAddress(xrayStatsOutboundConfig(active.tag)) : '';
+  const directBlockText = `${byteSize(groups.direct?.downlink)} напрямую · ${byteSize(groups.block?.downlink)} блокировка`;
+  return `
+    <section class="panel xray-core-card ${info.hasUpdate ? 'has-update' : ''}">
+      <div class="xray-core-head">
+        <div>
+          <span class="eyebrow">Xray</span>
+          <h2>${available ? labels.available : labels.missing}</h2>
+          <p>${escapeHtml(detail)}</p>
+        </div>
+        <div class="core-stat-tools">
+          ${info.target ? coreReleaseBadge(info.target) : ''}
+          <button class="core-icon-action" type="button" data-action="${available ? 'openCoreDialog' : 'openInstallWizard'}" ${state.coreUpdating ? 'disabled' : ''} title="${available ? 'Выбрать версию Xray' : 'Установить Xray'}" aria-label="${available ? 'Выбрать версию Xray' : 'Установить Xray'}">⚙</button>
+        </div>
+      </div>
+      <div class="xray-core-status">
+        <strong>${escapeHtml(coreStatus)}</strong>
+        <span>${latestText}</span>
+      </div>
+      ${state.coreUpdate ? `<small class="core-stat-result">${state.coreUpdate.ok ? 'Готово' : 'Ошибка'} · ${escapeHtml(state.coreUpdate.after || state.coreUpdate.stderr || '')}</small>` : ''}
+      <div class="xray-core-metrics">
+        <article>
+          <span>Активный сервер</span>
+          <strong>${escapeHtml(active?.tag || activeProxyTag() || 'не выбран')}</strong>
+          <small>${escapeHtml(statsEnabled && active ? `${activeAddress || 'outbound'} · ${byteRate(active.downRate)} прием · ${byteRate(active.upRate)} отдача` : 'статистика Xray выключена')}</small>
+        </article>
+        <article>
+          <span>Proxy-трафик</span>
+          <strong>${escapeHtml(statsEnabled ? `${byteSize(groups.proxy?.downlink)} принято` : 'нет данных')}</strong>
+          <small>${escapeHtml(statsEnabled ? `${byteRate(groups.proxy?.downRate)} прием · ${byteRate(groups.proxy?.upRate)} отдача` : 'включается в диагностике или кнопкой ниже')}</small>
+        </article>
+        <article>
+          <span>Напрямую / блокировка</span>
+          <strong>${escapeHtml(statsEnabled ? directBlockText : 'нет данных')}</strong>
+          <small>${escapeHtml(statsEnabled ? `${byteRate(totals.downRate)} прием всего · ${byteRate(totals.upRate)} отдача всего` : 'без учета трафика по outbound')}</small>
+        </article>
+        <article>
+          <span>Период</span>
+          <strong>${escapeHtml(statsEnabled ? `${byteSize(totals.downlink)} принято` : 'учет выключен')}</strong>
+          <small>${escapeHtml(statsEnabled ? xrayStatsPeriodLabel() : 'добавляет небольшую нагрузку на Xray')}</small>
+        </article>
+      </div>
+      ${statsEnabled ? '' : `<div class="xray-core-foot"><button class="btn secondary" type="button" data-action="enableXrayStats">Включить статистику Xray</button></div>`}
     </section>
   `;
 }
@@ -5330,13 +5783,13 @@ function serverTrafficView(tag, className = '') {
   return `<div class="server-traffic ${className} ${traffic ? '' : 'muted'}">
     ${traffic ? `
       <span>Статистика Xray</span>
-      <strong>${escapeHtml(byteRate(traffic.downRate))} ↓ · ${escapeHtml(byteRate(traffic.upRate))} ↑</strong>
-      <small>${escapeHtml(byteSize(traffic.downlink))} ↓ · ${escapeHtml(byteSize(traffic.uplink))} ↑</small>
+      <strong>${escapeHtml(byteRate(traffic.downRate))} прием · ${escapeHtml(byteRate(traffic.upRate))} отдача</strong>
+      <small>${escapeHtml(byteSize(traffic.downlink))} принято · ${escapeHtml(byteSize(traffic.uplink))} отправлено</small>
       <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>
     ` : `
       <span>Статистика Xray</span>
       <strong>${stats.enabled === false ? 'учет выключен' : 'нет счетчика'}</strong>
-      <small>${stats.enabled === false ? 'включается в диагностике' : 'ждем данные outbound'}</small>
+      <small>${stats.enabled === false ? 'включается в диагностике' : 'ждем данные направления'}</small>
     `}
   </div>`;
 }
@@ -5362,9 +5815,9 @@ function xrayActiveGraph(active) {
         <span>Активный сервер</span>
         <strong>${escapeHtml(active.tag)}</strong>
         <small>${escapeHtml(outboundAddress(outbound))}</small>
-        <small>${escapeHtml(byteRate(active.downRate))} ↓ · ${escapeHtml(byteRate(active.upRate))} ↑</small>
+        <small>${escapeHtml(byteRate(active.downRate))} прием · ${escapeHtml(byteRate(active.upRate))} отдача</small>
       </div>
-      <svg viewBox="0 0 320 92" preserveAspectRatio="none" aria-label="График активного outbound">
+      <svg viewBox="0 0 320 92" preserveAspectRatio="none" aria-label="График активного сервера">
         <path class="traffic-grid" d="M0 0H320M0 23H320M0 46H320M0 69H320M0 92H320"></path>
         ${downLine ? `<path class="traffic-line-down" d="${downLine}"></path>` : ''}
         ${upLine ? `<path class="traffic-line-up" d="${upLine}"></path>` : ''}
@@ -5387,11 +5840,11 @@ function xrayStatsPanel(stats = {}) {
         <div class="panel-title">
           <div>
             <h2>Статистика Xray</h2>
-            <span>Счетчики outbound-ов выключены, чтобы не добавлять лишнюю нагрузку на слабые роутеры.</span>
+            <span>Счетчики направлений выключены, чтобы не добавлять лишнюю нагрузку на слабые роутеры.</span>
           </div>
           <button class="btn warning" data-action="enableXrayStats">Включить статистику</button>
         </div>
-        <p class="settings-warning compact"><strong>Нужен перезапуск Xray</strong><span>RuOpenRay добавит stats, policy и локальный StatsService API в активную конфигурацию.</span></p>
+        <p class="settings-warning compact"><strong>Нужен перезапуск Xray</strong><span>RuOpenRay добавит счетчики, policy и локальный StatsService API в активную конфигурацию.</span></p>
       </section>
     `;
   }
@@ -5400,7 +5853,7 @@ function xrayStatsPanel(stats = {}) {
       <div class="panel-title">
         <div>
           <h2>Статистика Xray</h2>
-          <span>Трафик считается по outbound-ам с начала запуска Xray или последнего сброса.</span>
+          <span>Трафик считается по направлениям с начала запуска Xray или последнего сброса.</span>
         </div>
         <div class="split-actions">
           <button class="btn secondary" data-action="resetXrayStats">Сбросить счетчики</button>
@@ -5412,23 +5865,23 @@ function xrayStatsPanel(stats = {}) {
         <span>Период: ${escapeHtml(xrayStatsPeriodLabel())}</span>
         <span>${escapeHtml(stats.updatedAt ? new Date(stats.updatedAt).toLocaleTimeString('ru-RU') : 'ожидаем данные')}</span>
       </div>
-      <p class="settings-warning compact"><strong>Небольшой overhead</strong><span>Xray ведет счетчики outbound-ов в памяти. На слабом роутере выключайте статистику, если она не нужна постоянно.</span></p>
+      <p class="settings-warning compact"><strong>Дополнительная нагрузка</strong><span>Xray хранит счетчики направлений в памяти и обновляет их во время работы. На слабом роутере выключайте статистику, если она не нужна постоянно.</span></p>
       ${warning}
       <div class="xray-total-grid">
         <article>
           <span>Всего с запуска</span>
-          <strong>${escapeHtml(byteSize(totals.downlink))} ↓</strong>
-          <small>${escapeHtml(byteSize(totals.uplink))} ↑</small>
+          <strong>${escapeHtml(byteSize(totals.downlink))} принято</strong>
+          <small>${escapeHtml(byteSize(totals.uplink))} отправлено</small>
         </article>
         <article>
           <span>Скорость сейчас</span>
-          <strong>${escapeHtml(byteRate(totals.downRate))} ↓</strong>
-          <small>${escapeHtml(byteRate(totals.upRate))} ↑</small>
+          <strong>${escapeHtml(byteRate(totals.downRate))} прием</strong>
+          <small>${escapeHtml(byteRate(totals.upRate))} отдача</small>
         </article>
         <article>
-          <span>Активный outbound</span>
+          <span>Активный сервер</span>
           <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
-          <small>${escapeHtml(active ? `${byteRate(active.downRate)} ↓ · ${byteRate(active.upRate)} ↑` : 'нет данных')}</small>
+          <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
         </article>
       </div>
       <div class="xray-group-grid">
@@ -5436,8 +5889,8 @@ function xrayStatsPanel(stats = {}) {
           const group = groups[key] || {};
           return `<article>
             <span>${escapeHtml(xrayStatsGroupLabel(key))}</span>
-            <strong>${escapeHtml(byteSize(group.downlink))} ↓</strong>
-            <small>${escapeHtml(byteRate(group.downRate))} ↓ · ${escapeHtml(byteRate(group.upRate))} ↑</small>
+            <strong>${escapeHtml(byteSize(group.downlink))} принято</strong>
+            <small>${escapeHtml(`прием ${byteRate(group.downRate)} · отдача ${byteRate(group.upRate)}`)}</small>
           </article>`;
         }).join('')}
       </div>
@@ -5454,15 +5907,15 @@ function xrayStatsPanel(stats = {}) {
             <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>
           </div>
           <div>
-            <b>${escapeHtml(byteRate(item.downRate))} ↓</b>
-            <small>${escapeHtml(byteSize(item.downlink))}</small>
+            <b>${escapeHtml(byteRate(item.downRate))}</b>
+            <small>прием · ${escapeHtml(byteSize(item.downlink))}</small>
           </div>
           <div>
-            <b>${escapeHtml(byteRate(item.upRate))} ↑</b>
-            <small>${escapeHtml(byteSize(item.uplink))}</small>
+            <b>${escapeHtml(byteRate(item.upRate))}</b>
+            <small>отдача · ${escapeHtml(byteSize(item.uplink))}</small>
           </div>
         </article>`;
-        }).join('') : '<p class="muted">Счетчики пока пустые. Дайте Xray немного трафика или проверьте, что в конфиге есть outbound stats.</p>'}
+        }).join('') : '<p class="muted">Счетчики пока пустые. Дайте Xray немного трафика или проверьте, что в конфигурации включена статистика направлений.</p>'}
       </div>
     </section>
   `;
@@ -5497,10 +5950,10 @@ function trafficMetricStat(traffic = {}) {
     <span class="metric-icon">${metricIcon('traffic')}</span>
     <div>
       <span>Трафик · ${escapeHtml(iface)}</span>
-      <strong>${escapeHtml(byteSize(traffic.rxBytes))} ↓</strong>
-      <small>${escapeHtml(byteRate(traffic.rxRate))} ↓</small>
-      <strong>${escapeHtml(byteSize(traffic.txBytes))} ↑</strong>
-      <small>${escapeHtml(byteRate(traffic.txRate))} ↑</small>
+      <strong>${escapeHtml(byteSize(traffic.rxBytes))} принято</strong>
+      <small>${escapeHtml(byteRate(traffic.rxRate))} прием</small>
+      <strong>${escapeHtml(byteSize(traffic.txBytes))} отправлено</strong>
+      <small>${escapeHtml(byteRate(traffic.txRate))} отдача</small>
     </div>
   </span>`;
 }
@@ -5553,7 +6006,7 @@ function serverCheckButton(tag, extraClass = '') {
 }
 
 function checkModeLabel(mode) {
-  return mode === 'endpoint' ? 'TCP endpoint' : 'HTTP через прокси';
+  return mode === 'endpoint' ? 'TCP-порт' : 'HTTP через прокси';
 }
 
 function operationProgressView() {
@@ -5590,14 +6043,13 @@ function operationProgressView() {
 
 function dashboardServerSwitch(servers) {
   const active = activeProxyTag();
-  const pendingExists = state.pendingServerTag && servers.some((outbound) => outbound?.tag === state.pendingServerTag);
-  const selectedTag = pendingExists ? state.pendingServerTag : active;
+  const summary = proxyDirectionSummary();
   if (!servers.length) {
     return `
       <div class="dashboard-action-block">
         <div class="dashboard-action-head">
           <div>
-            <strong>Активный сервер</strong>
+            <strong>Proxy-направления</strong>
             <span>Серверы пока не добавлены.</span>
           </div>
           <button class="btn secondary" data-import-dialog="choose">Добавить</button>
@@ -5609,26 +6061,26 @@ function dashboardServerSwitch(servers) {
     <div class="dashboard-action-block">
       <div class="dashboard-action-head">
         <div>
-          <strong>Активный сервер</strong>
+          <strong>${escapeHtml(proxyDirectionTitle(summary))}</strong>
+          <span>${escapeHtml(proxyDirectionDetail(summary))}</span>
         </div>
         <button class="btn secondary" data-import-dialog="choose">Добавить</button>
       </div>
+      ${dashboardProxyDirectionCards(summary)}
       <div class="dashboard-server-switch">
         ${servers.slice(0, 5).map((outbound) => {
           const tag = outbound?.tag || '';
-          const activeServer = tag === active;
-          const selected = tag === selectedTag;
+          const direction = summary.outbounds.get(tag);
+          const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
           const check = checkForTag(tag);
           const ping = check?.ok ? checkLabel(check) : '';
-          const stateLabel = activeServer ? 'Текущий' : selected ? 'Выбран' : 'Сервер';
+          const stateLabel = activeServer ? (direction?.rules ? `${direction.rules} правил` : 'Текущий') : 'Сервер';
           const action = activeServer
-            ? '<span class="server-state-pill active">Активный</span>'
-            : selected
-              ? `<button class="btn warning compact-action" data-dashboard-connect="${escapeHtml(tag)}">Подключиться</button>`
-              : `<button class="btn secondary compact-action" data-dashboard-server-select="${escapeHtml(tag)}">Выбрать</button>`;
-          return `<article class="dashboard-server-option ${activeServer ? 'active' : ''} ${selected ? 'selected' : ''}">
-            <button type="button" class="server-option-pick" data-dashboard-server-select="${escapeHtml(tag)}">
-              <span class="server-option-state ${activeServer ? 'active' : selected ? 'selected' : ''}">${stateLabel}</span>
+            ? `<span class="server-state-pill active">${summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный'}</span>`
+            : `<button class="btn warning compact-action" data-dashboard-connect="${escapeHtml(tag)}">Подключиться</button>`;
+          return `<article class="dashboard-server-option ${activeServer ? 'active' : ''}">
+            <button type="button" class="server-option-pick" ${activeServer ? '' : `data-dashboard-connect="${escapeHtml(tag)}"`}>
+              <span class="server-option-state ${activeServer ? 'active' : ''}">${stateLabel}</span>
               <span class="server-option-main">
                 <strong>${escapeHtml(tag || 'server')}</strong>
                 <small>${escapeHtml(outboundAddress(outbound))}</small>
@@ -5738,7 +6190,7 @@ function importDialog(kind) {
             </div>
             <label class="settings-check compact ${state.subscriptionAutoBalancer ? 'active' : ''}">
               <input id="subscriptionAutoBalancer" type="checkbox" ${state.subscriptionAutoBalancer ? 'checked' : ''} />
-              <span><strong>Создать стабильную цель подписки</strong><em>В правилах останется один outbound tag, а RuOpenRay сможет менять endpoint внутри него при fallback.</em></span>
+              <span><strong>Создать стабильную цель подписки</strong><em>В правилах останется один тег направления, а RuOpenRay сможет менять сервер внутри него при резервном переключении.</em></span>
             </label>
             ${state.subscriptionAutoBalancer ? `
               <div class="route-form subscription-balancer-options">
@@ -5826,10 +6278,10 @@ function subscriptionPoolCard(pool) {
     </div>
     <div class="server-health">
       <span class="check-badge ok">${escapeHtml(`${pool?.count || 0} кандидатов`)}</span>
-      <small>${escapeHtml(active?.tag ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}` : 'активный endpoint не выбран')}</small>
+      <small>${escapeHtml(active?.tag ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}` : 'активный сервер не выбран')}</small>
     </div>
     <div class="server-actions">
-      <button class="btn secondary" data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}">Найти живой</button>
+      <button class="btn secondary" data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}">Найти доступный</button>
       <button class="btn warning" data-route-all="${escapeHtml(tag)}">Подключиться</button>
     </div>
   </article>`;
@@ -5857,7 +6309,7 @@ function serverAvailabilityPanel() {
           <label>Метод</label>
           <select id="serverCheckMode">
             <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP endpoint</option>
+            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP-порт</option>
           </select>
         </div>
         <div class="form-row check-url-row">
@@ -5912,7 +6364,7 @@ function serversPanel() {
       ${stat('Прокси', stats.proxy, 'Пользовательские подключения')}
       ${stat('Служебные', stats.system, 'direct, block, DNS')}
       ${stat('В правилах', stats.used, 'Используются маршрутизацией')}
-      ${stat('Доступны', alive, `По последней ${state.serverCheckMode === 'http' ? 'HTTP через proxy' : 'TCP endpoint'}-проверке`)}
+      ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'TCP-порт'}`)}
     </section>
 
     <section class="servers-nav-panel">
@@ -5944,7 +6396,7 @@ function serversPanel() {
 
     ${view === 'subscriptions' ? `<section class="panel subscription-pools-panel">
       <div class="panel-title">
-        <div><h2>Подписки и auto-fallback</h2><span>Стабильный outbound tag остается в правилах, а RuOpenRay переключает endpoint внутри него.</span></div>
+        <div><h2>Подписки и резерв</h2><span>Стабильный тег направления остается в правилах, а RuOpenRay переключает сервер внутри него.</span></div>
         <button class="btn secondary" data-import-dialog="subscription">Добавить подписку</button>
       </div>
       <div class="server-list">
@@ -6140,6 +6592,8 @@ function geoRequiredSpace(selectedPresets, geo, withBackup = true) {
     if (!withBackup) return;
     if (preset.mode === 'extra-geosite') {
       required += Number((geo.extras || []).find((item) => item.id === preset.id)?.file?.size || 0);
+    } else if (preset.mode === 'geoip-only') {
+      required += Number(geo.geoip?.size || 0);
     } else {
       required += Number(geo.geoip?.size || 0) + Number(geo.geosite?.size || 0);
     }
@@ -6172,6 +6626,7 @@ function geoActionLabel(preset) {
   if (!preset || state.geoBasePreset === 'custom') return 'Обновить geo';
   if (!preset.installable) return 'Справочный источник';
   if (preset.mode === 'extra-geosite') return 'Поставить dat-файл';
+  if (preset.mode === 'geoip-only') return 'Обновить geoip.dat';
   return 'Обновить geo';
 }
 
@@ -6212,7 +6667,9 @@ function geoPurposeLabel(preset) {
     'РФ блоки': 'российские блокировки',
     'CN rules': 'Китай и CDN',
     'Iran rules': 'Иран',
-    'официальный fallback': 'официальный набор'
+    'расширенный GeoIP': 'расширенный GeoIP',
+    'официальный fallback': 'официальный набор',
+    'официальный резерв': 'официальный набор'
   };
   return labels[purpose] || purpose;
 }
@@ -6252,7 +6709,7 @@ function geoPanel() {
 
     <section class="panel">
       <div class="panel-title">
-        <div><h2>Установленные dat-файлы</h2><span>Базовые <code>geoip.dat</code>/<code>geosite.dat</code> заменяются как пара. Дополнительные файлы могут лежать рядом и использоваться правилами <code>ext:"file.dat:list"</code>.</span></div>
+        <div><h2>Установленные dat-файлы</h2><span>Обычные источники заменяют пару <code>geoip.dat</code>/<code>geosite.dat</code>. Источники geoip-only обновляют только <code>geoip.dat</code>. Дополнительные файлы могут лежать рядом и использоваться правилами <code>ext:"file.dat:list"</code>.</span></div>
       </div>
       <div class="geo-file-list">
         ${installedFiles.map((file) => `<article>
@@ -6268,7 +6725,7 @@ function geoPanel() {
 
     <section class="panel">
       <div class="panel-title">
-        <div><h2>Источники geodata</h2><span>Выберите один базовый источник и при необходимости дополнительные dat-файлы для ext-правил. Свои URL доступны отдельной карточкой.</span></div>
+        <div><h2>Источники geodata</h2><span>Выберите один основной источник: пару geoip/geosite или отдельный geoip.dat. Дополнительные dat-файлы для ext-правил можно ставить вместе с ним.</span></div>
         <div class="split-actions">
           <button class="btn secondary" data-action="cleanupGeoBackups">Очистить geo-бэкапы</button>
           <button class="btn warning" data-action="updateGeo" ${state.geoUpdating || !canUpdate ? 'disabled' : ''}>${geoActionLabel(selected)}</button>
@@ -6548,7 +7005,7 @@ function dnsLeakChecklist(dns, stats) {
       ok: !hasPlain,
       warn: hasPlain,
       title: 'Обычный DNS без шифрования',
-      detail: hasPlain ? 'Найден DNS по UDP/53. Такие запросы может видеть провайдер: оставляйте его только для локального DNS или запасного fallback.' : 'Обычный UDP DNS не найден: запросы идут через защищенный DNS или специальные маршруты.'
+      detail: hasPlain ? 'Найден DNS по UDP/53. Такие запросы может видеть провайдер: оставляйте его только для локального DNS, Pi-hole или аварийного резерва.' : 'Обычный UDP DNS не найден: запросы идут через защищенный DNS или специальные маршруты.'
     },
     {
       ok: checked,
@@ -6576,10 +7033,10 @@ function dnsLeakChecklist(dns, stats) {
     }
   ];
   if (items[2]) {
-    items[2].title = hasPlain ? 'Есть обычный DNS fallback' : 'Обычного UDP DNS нет';
+    items[2].title = hasPlain ? 'Обычный UDP DNS как запасной вариант' : 'Обычный UDP DNS не используется';
     items[2].detail = hasPlain
-      ? 'В списке есть DNS без шифрования. Это нормально только как осознанный запасной вариант для локального DNS, Pi-hole или аварийного fallback.'
-      : 'Xray не использует обычный UDP DNS как основной сервер.';
+      ? 'В списке есть DNS без шифрования. Оставляйте его для локального DNS, Pi-hole или аварийного резерва; основным лучше держать DoH/TCP.'
+      : 'В основном DNS-пути нет обычного UDP/53, который легко увидеть провайдеру.';
   }
   if (items[4] && dnsInbound && dnsRouting) {
     items[4].detail = 'Xray готов принимать DNS на 127.0.0.1:5353. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.';
@@ -6587,7 +7044,7 @@ function dnsLeakChecklist(dns, stats) {
   return `
     <section class="panel dns-guard-panel">
       <div class="panel-title">
-        <div><h2>DNS leak guard</h2><span>Чеклист перед применением DNS: видим, где может появиться утечка.</span></div>
+        <div><h2>Защита от утечек DNS</h2><span>Проверяем, куда пойдут DNS-запросы LAN-устройств и где может появиться открытый UDP/53.</span></div>
         <button class="btn secondary" data-action="checkDns">Проверить DNS</button>
       </div>
       <div class="dns-wizard">
@@ -6619,6 +7076,18 @@ function dnsLeakChecklist(dns, stats) {
 }
 
 function dnsServersSection(dns) {
+  const presets = [
+    ['Cloudflare DoH', 'https://cloudflare-dns.com/dns-query'],
+    ['Google DoH', 'https://dns.google:443/dns-query'],
+    ['Quad9 DoH', 'https://dns.quad9.net/dns-query'],
+    ['AdGuard DoH', 'https://dns.adguard-dns.com/dns-query'],
+    ['Yandex DoH', 'https://common.dot.dns.yandex.net/dns-query'],
+    ['OpenDNS DoH', 'https://doh.opendns.com/dns-query'],
+    ['Cloudflare TCP', 'tcp://1.1.1.1:53'],
+    ['Quad9 TCP', 'tcp://9.9.9.9:53'],
+    ['Cloudflare UDP', '1.1.1.1'],
+    ['Google UDP', '8.8.8.8']
+  ];
   return `
     <section class="panel">
       <div class="panel-title">
@@ -6636,12 +7105,7 @@ function dnsServersSection(dns) {
         <button class="btn" data-action="addDns">Добавить DNS</button>
       </div>
       <div class="preset-grid dns-presets">
-        <button class="preset" data-dns-preset="https://dns.google:443/dns-query"><strong>Google DoH</strong><span>https://dns.google:443/dns-query</span></button>
-        <button class="preset" data-dns-preset="tcp://1.1.1.1:53"><strong>Cloudflare TCP</strong><span>tcp://1.1.1.1:53</span></button>
-        <button class="preset" data-dns-preset="8.8.8.8"><strong>Google UDP</strong><span>8.8.8.8</span></button>
-        <button class="preset" data-dns-preset="119.29.29.29"><strong>CN fallback</strong><span>119.29.29.29</span></button>
-        <button class="preset" data-dns-preset="https://dns.adguard-dns.com/dns-query"><strong>AdGuard DoH</strong><span>https://dns.adguard-dns.com/dns-query</span></button>
-        <button class="preset" data-dns-preset="https://common.dot.dns.yandex.net/dns-query"><strong>Yandex DoH</strong><span>https://common.dot.dns.yandex.net/dns-query</span></button>
+        ${presets.map(([name, address]) => `<button class="preset" type="button" data-dns-preset="${escapeHtml(address)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(address)}</span></button>`).join('')}
       </div>
       <div class="dns-inline-check">
         <div>
@@ -7346,54 +7810,6 @@ function domainMonitorStatusPanel() {
   `;
 }
 
-function compactDeviceList(devices = []) {
-  return devices
-    .slice(0, 4)
-    .map((device) => device.name || device.ip || 'router')
-    .join(', ');
-}
-
-function diagnosticsDeviceView() {
-  const monitorDevices = Array.isArray(state.domainMonitor?.devices) ? state.domainMonitor.devices : [];
-  const devices = monitorDevices.length
-    ? monitorDevices.map((item) => ({
-      ip: item.ip,
-      hits: item.hits,
-      protocols: new Set(item.protocols || []),
-      topDomains: (item.topDomains || []).map((domain) => [domain.host, domain.hits])
-    }))
-    : aggregateLogDevices();
-  const fallback = deviceRules();
-  return `
-    <section class="panel">
-      <div class="panel-title">
-        <div><h2>По устройствам</h2><span>LAN-клиенты из логов: активность, протоколы и частые домены.</span></div>
-        <button class="btn secondary" data-tab-jump="devices">Открыть устройства</button>
-      </div>
-      <div class="diagnostic-grid">
-        ${devices.length ? devices.map((item) => {
-          const lease = leaseByIp(item.ip);
-          const domains = item.topDomains.map(([domain, count]) => `${domain} (${count})`).join(' · ');
-          return `<article class="diagnostic-card">
-            <span>${item.hits} событий</span>
-            <strong>${escapeHtml(lease?.name || item.ip || 'роутер')}</strong>
-            <small>${escapeHtml([item.ip, [...item.protocols].join('/')].filter(Boolean).join(' · ') || 'live log')}</small>
-            <small>${escapeHtml(domains || 'домены пока не распознаны')}</small>
-          </article>`;
-        }).join('') : fallback.map(({ rule }) => {
-          const ip = rule.source?.[0] || '';
-          const lease = leaseByIp(ip);
-          return `<article class="diagnostic-card">
-            <span>${escapeHtml(rule.outboundTag || 'не задано')}</span>
-            <strong>${escapeHtml(lease?.name || ip || 'устройство')}</strong>
-            <small>${escapeHtml([ip, lease?.mac].filter(Boolean).join(' · ') || 'source-правило')}</small>
-          </article>`;
-        }).join('') || '<p class="muted">В логах и правилах пока нет LAN-устройств. Включите access-логи или добавьте source-правило.</p>'}
-      </div>
-    </section>
-  `;
-}
-
 function diagnosticsDomainView() {
   const logRows = aggregateLogDomains();
   const accessRows = accessLogRows(state.logs).slice(0, 30);
@@ -7606,15 +8022,43 @@ function diagnosticsTrafficView() {
   const traffic = system.traffic || {};
   const conntrack = system.conntrack || {};
   const xrayStats = state.status?.xrayStats || {};
+  const totals = xrayStatsTotals(xrayStats);
+  const active = xrayActiveStats(xrayStats);
+  const totalConnections = conntrack.ok ? conntrack.total : ((system.tcp?.total || 0) + (conntrack.udp || 0));
   return `
-    <section class="stats route-stats">
-      ${stat('Интерфейс', traffic.interface || '—', traffic.interface ? 'маршрут по умолчанию' : 'данных пока нет')}
-      ${stat('Скачивание', byteRate(traffic.rxRate), byteSize(traffic.rxBytes))}
-      ${stat('Отдача', byteRate(traffic.txRate), byteSize(traffic.txBytes))}
-      ${stat('Соединения', conntrack.ok ? conntrack.total : '—', conntrack.ok ? `${conntrack.tcp || 0} TCP · ${conntrack.udp || 0} UDP` : 'conntrack недоступен')}
+    <section class="traffic-overview-panel">
+      <article class="traffic-overview-main">
+        <span>Активный сервер Xray</span>
+        <strong>${escapeHtml(active?.tag || 'статистика выключена')}</strong>
+        <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'включите статистику Xray, чтобы видеть трафик по серверам')}</small>
+      </article>
+      <article>
+        <span>Через proxy</span>
+        <strong>${escapeHtml(byteRate(xrayStats.groups?.proxy?.downRate))} прием</strong>
+        <small>${escapeHtml(`${byteSize(xrayStats.groups?.proxy?.downlink)} принято · ${byteSize(xrayStats.groups?.proxy?.uplink)} отправлено`)}</small>
+      </article>
+      <article>
+        <span>WAN-интерфейс</span>
+        <strong>${escapeHtml(traffic.interface || '—')}</strong>
+        <small>${escapeHtml(traffic.interface ? `прием ${byteRate(traffic.rxRate)} · отдача ${byteRate(traffic.txRate)}` : 'системный счетчик пока пустой')}</small>
+      </article>
+      <article>
+        <span>Соединения</span>
+        <strong>${escapeHtml(totalConnections || totalConnections === 0 ? totalConnections : '—')}</strong>
+        <small>${escapeHtml(conntrack.ok ? `${conntrack.tcp || 0} TCP · ${conntrack.udp || 0} UDP` : 'conntrack недоступен')}</small>
+      </article>
     </section>
     ${xrayStatsPanel(xrayStats)}
-    ${trafficMonitor(system)}
+    <section class="panel traffic-system-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Системный трафик интерфейса</h2>
+          <span>WAN-график показывает общий трафик выбранного интерфейса. Для VPN смотрите статистику Xray выше.</span>
+        </div>
+        <span class="traffic-period-pill">Через Xray: ${escapeHtml(byteSize(totals.downlink))} принято · ${escapeHtml(byteSize(totals.uplink))} отправлено</span>
+      </div>
+      ${trafficMonitor(system)}
+    </section>
   `;
 }
 
@@ -7683,7 +8127,7 @@ async function runConnectivityDiagnostics() {
     pushStep(Boolean(browserTraffic.ok || nftDelta > 0 || statsDelta > 0), 'Проверка выхода с роутера', trafficDetail, browserTraffic.ok ? 'warn' : '');
 
     const active = xrayActiveStats(statsAfter || state.status?.xrayStats || {});
-    pushStep(Boolean(statsAfter?.enabled), 'Статистика Xray', statsAfter?.enabled ? `активный: ${active?.tag || 'не выбран'} · proxy ${byteSize(statsAfter.groups?.proxy?.downlink || 0)}↓ / ${byteSize(statsAfter.groups?.proxy?.uplink || 0)}↑` : 'учет трафика выключен', statsAfter?.enabled ? '' : 'warn');
+    pushStep(Boolean(statsAfter?.enabled), 'Статистика Xray', statsAfter?.enabled ? `активный: ${active?.tag || 'не выбран'} · proxy принято ${byteSize(statsAfter.groups?.proxy?.downlink || 0)} · отправлено ${byteSize(statsAfter.groups?.proxy?.uplink || 0)}` : 'учет трафика выключен', statsAfter?.enabled ? '' : 'warn');
   } catch (error) {
     pushStep(false, 'Диагностика остановлена', error.message);
   } finally {
@@ -7813,7 +8257,6 @@ function diagnosticsPanel() {
     chain: diagnosticsChainView,
     traffic: diagnosticsTrafficView,
     sni: sniPanel,
-    devices: diagnosticsDeviceView,
     domains: diagnosticsDomainMonitorView
   };
   const activeView = views[state.diagnosticsView] ? state.diagnosticsView : 'live';
@@ -7821,7 +8264,7 @@ function diagnosticsPanel() {
     <section class="route-hero diagnostics-hero">
       <div>
         <h2>Диагностика</h2>
-        <p>SNI-поиск, логи в реальном времени, разбор по устройствам и доменам.</p>
+        <p>SNI-поиск, логи в реальном времени, проверка цепочки и мониторинг доменов.</p>
       </div>
       <div class="route-score">
         <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
@@ -7836,7 +8279,6 @@ function diagnosticsPanel() {
           ['chain', 'Цепочка'],
           ['traffic', 'Трафик'],
           ['sni', 'SNI'],
-          ['devices', 'Устройства'],
           ['domains', 'Домены']
         ].map(([value, label]) => `<button type="button" class="${activeView === value ? 'active' : ''}" data-diagnostics-view="${value}">${label}</button>`).join('')}
       </div>
@@ -7892,7 +8334,7 @@ function observatoryPanel() {
             <label>Метод</label>
             <select id="serverCheckMode">
               <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-              <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP endpoint</option>
+              <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP-порт</option>
             </select>
           </div>
           <div class="form-row">
@@ -8031,7 +8473,7 @@ function routingRulesPanel() {
 }
 
 function routingScenariosPanel() {
-  const presetEntries = Object.entries(routePresets);
+  const presetEntries = builtinRoutePresetEntries();
   const customEntries = customRoutePresetEntries();
   return `
     <section class="panel routing-scenarios-panel">
@@ -8049,7 +8491,7 @@ function routingScenariosPanel() {
               <strong>${escapeHtml(preset.title)}</strong>
               <span>${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
             </div>
-            <small>${ruleCountLabel(preset.rules?.length || 0)}</small>
+            <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
             <span class="scenario-actions">
               <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
               <button class="icon-btn danger" type="button" data-route-preset-delete="${escapeHtml(key)}" aria-label="Удалить подборку">×</button>
@@ -8064,7 +8506,7 @@ function routingScenariosPanel() {
             <strong>${escapeHtml(preset.title)}</strong>
             <span>${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>
           </div>
-          <small>${ruleCountLabel(1)}</small>
+          <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
           <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
         </article>`).join('')}
       </div>
@@ -8096,7 +8538,7 @@ function routingBalancersPanel() {
                 <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
               </div>
               <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-              <span>${escapeHtml(balancerStrategyLabel(strategy))} · selector: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · fallback: ${balancer.fallbackTag}` : ''}</span>
+              <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · резерв: ${balancer.fallbackTag}` : ''}</span>
               ${balancerMembersView(matched)}
             </div>
             <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
@@ -8275,7 +8717,7 @@ function firewallPanel() {
     <section class="route-hero firewall-hero intercept-hero">
       <div>
         <h2>Перехват трафика</h2>
-        <p>Настройте, какой LAN-трафик отправлять в Xray, а что оставить напрямую. Базовые ручки сверху, опасные и редкие настройки свернуты ниже.</p>
+        <p>Короткая настройка transparent proxy: кого перехватываем, какие порты берем и как рано отсеиваем direct/proxy трафик.</p>
       </div>
       <div class="route-score">
         <strong>${info.ready ? 'OK' : '3'}</strong>
@@ -8316,76 +8758,67 @@ function firewallPanel() {
       ${preview.warnings.length ? `<div class="settings-warning compact"><strong>Проверить</strong><span>${escapeHtml(preview.warnings.join(' '))}</span></div>` : ''}
     </section>
 
-    <section class="panel firewall-mode-panel">
+    <section class="panel intercept-compact-panel">
       <div class="panel-title">
-        <div><h2>Режим роутера</h2><span>TPROXY лучше для TCP+UDP и QUIC. REDIRECT проще, но подходит в основном для TCP-сценариев.</span></div>
+        <div><h2>Основной сценарий</h2><span>Выберите способ перехвата и сколько трафика отправлять в Xray.</span></div>
       </div>
-      <div class="advanced-grid two">
-        <button type="button" class="advanced-card ${state.firewallRouterMode === 'tproxy' ? 'active' : ''}" data-firewall-router-mode="tproxy">
-          <strong>TPROXY</strong>
-          <span>Рекомендуемый режим: сохраняет исходное назначение и надежнее работает с UDP/QUIC.</span>
-        </button>
-        <button type="button" class="advanced-card ${state.firewallRouterMode === 'redirect' ? 'active' : ''}" data-firewall-router-mode="redirect">
-          <strong>REDIRECT</strong>
-          <span>Проще для TCP, но не дает такого же контроля над UDP. Для него лучше включить Block QUIC.</span>
-        </button>
-      </div>
-    </section>
-
-    <section class="panel firewall-mode-panel">
-      <div class="panel-title">
-        <div><h2>Режим перехвата</h2><span>Для слабых роутеров можно отсечь часть трафика до Xray через nft sets. Команды ниже меняются от выбранного режима.</span></div>
-      </div>
-      <div class="advanced-grid three">
-        <button type="button" class="advanced-card ${state.firewallBypassMode === 'off' ? 'active' : ''}" data-firewall-bypass-mode="off">
-          <strong>Все через правила Xray</strong>
-          <span>Самый понятный режим: выбранный трафик попадает в Xray, а дальше работают ваши правила direct/proxy/block.</span>
-        </button>
-        <button type="button" class="advanced-card ${state.firewallBypassMode === 'bypass' ? 'active' : ''}" data-firewall-bypass-mode="bypass">
-          <strong>Direct мимо Xray</strong>
-          <span>То, что уже известно как direct, не нагружает Xray. Остальной выбранный трафик идет в transparent inbound.</span>
-        </button>
-        <button type="button" class="advanced-card ${state.firewallBypassMode === 'redirect' ? 'active' : ''}" data-firewall-bypass-mode="redirect">
-          <strong>Только proxy в Xray</strong>
-          <span>Самый экономный режим: в Xray идут только proxy-адреса, а все остальное сразу остается напрямую.</span>
-        </button>
-      </div>
-    </section>
-
-    <section class="panel firewall-policy-panel">
-      <div class="panel-title">
-        <div><h2>Устройства и порты</h2><span>Определяет, чей трафик и какие порты попадут в правило перехвата.</span></div>
-      </div>
-      <div class="advanced-grid three">
-        <button type="button" class="advanced-card ${state.firewallDeviceMode === 'all' ? 'active' : ''}" data-firewall-device-mode="all">
-          <strong>Все LAN</strong>
-          <span>Перехватывать трафик всех клиентов после локальных исключений.</span>
-        </button>
-        <button type="button" class="advanced-card ${state.firewallDeviceMode === 'selected' ? 'active' : ''}" data-firewall-device-mode="selected">
-          <strong>Только выбранные</strong>
-          <span>В Xray попадут только отмеченные DHCP-клиенты или source IP.</span>
-        </button>
-        <button type="button" class="advanced-card ${state.firewallDeviceMode === 'exclude' ? 'active' : ''}" data-firewall-device-mode="exclude">
-          <strong>Исключить выбранные</strong>
-          <span>Все LAN кроме отмеченных устройств. Полезно для ТВ, банков и умного дома.</span>
-        </button>
-      </div>
-      <div class="firewall-policy-grid">
-        <div class="settings-field firewall-port-field">
-          <label>Порты</label>
-          <div class="segmented compact firewall-port-mode" role="group" aria-label="Режим портов">
-            <button type="button" class="${state.firewallPortMode === 'all' ? 'active' : ''}" data-firewall-port-mode="all">Все</button>
-            <button type="button" class="${state.firewallPortMode !== 'all' ? 'active' : ''}" data-firewall-port-mode="custom">Выбранные</button>
+      <div class="intercept-compact-grid">
+        <div class="intercept-setting-card">
+          <span class="intercept-label">Способ</span>
+          <div class="segmented compact intercept-segmented" role="group" aria-label="Способ перехвата">
+            <button type="button" class="${state.firewallRouterMode === 'tproxy' ? 'active' : ''}" data-firewall-router-mode="tproxy">TPROXY</button>
+            <button type="button" class="${state.firewallRouterMode === 'redirect' ? 'active' : ''}" data-firewall-router-mode="redirect">REDIRECT</button>
           </div>
-          ${state.firewallPortMode === 'all' ? '<small>Перехватить все TCP/UDP-порты в выбранной области устройств.</small>' : `
+          <small>${state.firewallRouterMode === 'redirect' ? 'Проще для TCP. Для UDP/QUIC лучше включить блокировку QUIC.' : 'Рекомендуется: TCP+UDP, сохраняет исходное назначение.'}</small>
+        </div>
+        <div class="intercept-setting-card wide">
+          <span class="intercept-label">Что отправляем в Xray</span>
+          <div class="intercept-choice-list">
+            <button type="button" class="${state.firewallBypassMode === 'off' ? 'active' : ''}" data-firewall-bypass-mode="off">
+              <strong>Все выбранное</strong>
+              <em>Xray сам решает по правилам: proxy, direct или block.</em>
+            </button>
+            <button type="button" class="${state.firewallBypassMode === 'bypass' ? 'active' : ''}" data-firewall-bypass-mode="bypass">
+              <strong>Direct мимо Xray</strong>
+              <em>Direct-адреса не нагружают Xray, остальное идет в правила.</em>
+            </button>
+            <button type="button" class="${state.firewallBypassMode === 'redirect' ? 'active' : ''}" data-firewall-bypass-mode="redirect">
+              <strong>Только proxy</strong>
+              <em>В Xray попадает только то, что заранее известно как proxy.</em>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel intercept-compact-panel">
+      <div class="panel-title">
+        <div><h2>Охват</h2><span>Клиенты, порты и QUIC. Обычно достаточно «все LAN» и порты 80/443.</span></div>
+      </div>
+      <div class="intercept-compact-grid">
+        <div class="intercept-setting-card wide">
+          <span class="intercept-label">Клиенты</span>
+          <div class="segmented compact intercept-segmented three" role="group" aria-label="Устройства">
+            <button type="button" class="${state.firewallDeviceMode === 'all' ? 'active' : ''}" data-firewall-device-mode="all">Все LAN</button>
+            <button type="button" class="${state.firewallDeviceMode === 'selected' ? 'active' : ''}" data-firewall-device-mode="selected">Только выбранные</button>
+            <button type="button" class="${state.firewallDeviceMode === 'exclude' ? 'active' : ''}" data-firewall-device-mode="exclude">Исключить</button>
+          </div>
+          <small>${escapeHtml(preview.traffic)}</small>
+        </div>
+        <div class="intercept-setting-card">
+          <span class="intercept-label">Порты</span>
+          <div class="segmented compact intercept-segmented" role="group" aria-label="Режим портов">
+            <button type="button" class="${state.firewallPortMode === 'all' ? 'active' : ''}" data-firewall-port-mode="all">Все</button>
+            <button type="button" class="${state.firewallPortMode !== 'all' ? 'active' : ''}" data-firewall-port-mode="custom">Список</button>
+          </div>
+          ${state.firewallPortMode === 'all' ? '<small>Все TCP/UDP-порты в выбранной области клиентов.</small>' : `
             <input id="firewallPorts" value="${escapeHtml(state.firewallPorts)}" placeholder="80,443,50000-65535" />
-            <small>Через запятую. Диапазоны можно писать как 50000-65535.</small>
           `}
         </div>
-        <div class="settings-warning compact">
-          <strong>QUIC</strong>
-          <span>${state.firewallBlockQuic ? 'UDP/443 будет заблокирован. Управляется выше в блоке QUIC и HTTP/3.' : 'UDP/443 разрешен. Управляется выше в блоке QUIC и HTTP/3.'}</span>
-        </div>
+        <label class="settings-check compact intercept-quic-toggle ${state.firewallBlockQuic ? 'active' : ''}">
+          <input id="firewallBlockQuic" type="checkbox" ${state.firewallBlockQuic ? 'checked' : ''} />
+          <span><strong>Блокировать QUIC</strong><em>UDP/443 режется до Xray, браузеры переходят на TCP.</em></span>
+        </label>
       </div>
       <div class="firewall-device-list">
         ${deviceChoices.length ? deviceChoices.slice(0, 16).map((device) => `<label class="firewall-device ${selectedDevices.has(device.ip) ? 'active' : ''}">
@@ -8398,20 +8831,6 @@ function firewallPanel() {
     ${interceptAdvancedAccordion()}
 
     ${firewallApplyPanel()}
-
-    <section class="panel firewall-preview-panel">
-      <div class="panel-title">
-        <div><h2>Что получится</h2><span>Короткая проверка перед тем, как копировать команды или позже применять их автоматически.</span></div>
-      </div>
-      <div class="firewall-preview-grid">
-        <article><span>Режим</span><strong>${escapeHtml(preview.router)}</strong></article>
-        <article><span>Устройства</span><strong>${escapeHtml(preview.traffic)}</strong></article>
-        <article><span>Порты</span><strong>${escapeHtml(preview.ports)}</strong></article>
-        <article><span>Политика</span><strong>${escapeHtml(preview.policyName)}</strong><small>${escapeHtml(preview.policy)}</small></article>
-        <article><span>QUIC</span><strong>${escapeHtml(preview.quic)}</strong></article>
-      </div>
-      ${preview.warnings.length ? `<div class="settings-warning"><strong>Проверить</strong><span>${escapeHtml(preview.warnings.join(' '))}</span></div>` : ''}
-    </section>
 
     <details class="panel intercept-details">
       <summary>
@@ -8498,10 +8917,14 @@ function firewallApplyPanel() {
       ? 'сохранен, но не активен'
       : 'не применен';
   return `
-    <section class="panel firewall-preview-panel">
+    <section class="panel firewall-preview-panel intercept-apply-panel">
       <div class="panel-title">
-        <div><h2>Применение на OpenWrt</h2><span>RuOpenRay сохранит nftables в /etc/nftables.d и добавит policy routing для TPROXY, чтобы перехват переживал перезапуск firewall и сети.</span></div>
-        <button class="btn secondary" data-action="refreshFirewallStatus" ${state.firewallSaving ? 'disabled' : ''}>Обновить</button>
+        <div><h2>Применение</h2><span>Сохраняет nftables и, для TPROXY, policy routing после перезапуска firewall.</span></div>
+        <div class="split-actions">
+          <button class="btn secondary" data-action="refreshFirewallStatus" ${state.firewallSaving ? 'disabled' : ''}>Обновить</button>
+          <button class="btn warning" data-action="applyFirewall" ${state.firewallSaving || !available ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю...' : 'Применить'}</button>
+          <button class="btn secondary" data-action="disableFirewall" ${state.firewallSaving || (!active && !persistent) ? 'disabled' : ''}>Отключить</button>
+        </div>
       </div>
       <div class="firewall-preview-grid">
         <article><span>Состояние</span><strong>${escapeHtml(summary)}</strong><small>${escapeHtml(status.routerMode || state.firewallRouterMode)}</small></article>
@@ -8511,10 +8934,6 @@ function firewallApplyPanel() {
       </div>
       ${!available ? `<div class="settings-warning"><strong>Недоступно</strong><span>nftables не найден. Постоянный перехват можно применить только на OpenWrt с firewall4/nft.</span></div>` : ''}
       ${status.needsPolicyFix ? `<div class="settings-warning"><strong>TPROXY</strong><span>nft-таблица есть, но policy routing неполный. Нажмите «Применить перехват», чтобы восстановить ip rule, route и hotplug.</span></div>` : ''}
-      <div class="toolbar">
-        <button class="btn warning" data-action="applyFirewall" ${state.firewallSaving || !available ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю...' : 'Применить перехват'}</button>
-        <button class="btn secondary" data-action="disableFirewall" ${state.firewallSaving || (!active && !persistent) ? 'disabled' : ''}>Отключить</button>
-      </div>
     </section>
   `;
 }
@@ -8545,8 +8964,6 @@ function loadingDashboard() {
     <section class="stats stats-dashboard">
       ${stat('Сервис', 'Проверяем', 'Ждём ответ OpenWrt service manager')}
       ${stat('Ядро', 'Проверяем', 'Пока не показываем действия установки')}
-      ${stat('Серверы', '—', 'Загрузим после чтения конфигурации')}
-      ${stat('Правила', '—', 'Загрузим после чтения конфигурации')}
     </section>
 
     <section class="panel">
@@ -8571,7 +8988,8 @@ function settingsPanel() {
   const settingsTabs = [
     ['logging', 'Логирование'],
     ['security', 'Панель'],
-    ['service', 'Сервис']
+    ['service', 'Сервис'],
+    ['updates', 'Обновление']
   ];
   const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'logging';
   const loggingSections = `
@@ -8695,6 +9113,7 @@ function settingsPanel() {
         </label>
       </div>
       <div class="toolbar">
+        <button class="btn secondary" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
         <button class="btn warning" data-action="updateApp" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${state.appUpdating ? 'Обновляю...' : appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
@@ -8756,8 +9175,10 @@ function settingsPanel() {
   `;
   const visibleSection = settingsView === 'security'
     ? securitySection
+    : settingsView === 'updates'
+      ? appUpdateSection
     : settingsView === 'service'
-      ? serviceSection + appUpdateSection
+      ? serviceSection
       : loggingSections;
   return `
     <section class="settings-hero">
@@ -8837,7 +9258,7 @@ function routeRuleDialog() {
                 <span class="checkmark"></span>
                 <span>
                   <strong>${escapeHtml(preset.title)}</strong>
-                  <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(preset.rules?.length || 0)}` : ruleCountLabel(preset.rules?.length || 0))}</small>
+                  <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
                 </span>
                 <span class="preset-check-actions">
                   <button class="preset-edit" type="button" data-route-preset-edit="${key}">Править</button>
@@ -8847,13 +9268,13 @@ function routeRuleDialog() {
             `).join('')}
           ` : ''}
           <div class="preset-group-title">Подборки</div>
-          ${Object.entries(routePresets).map(([key, preset]) => `
+          ${builtinRoutePresetEntries().map(([key, preset]) => `
             <label class="preset-check ${selected.has(key) ? 'active' : ''}">
               <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
               <span class="checkmark"></span>
               <span>
                 <strong>${escapeHtml(preset.title)}</strong>
-                <small>${escapeHtml(preset.detail || describeRouteRule(preset.rule).fullValue)}</small>
+                <small>${escapeHtml(`${preset.detail || describeRouteRule(preset.rule || routePresetRules(key)[0]).fullValue} · ${ruleCountLabel(routePresetConditionCount(key))}`)}</small>
               </span>
               <button class="preset-edit" type="button" data-route-preset-edit="${key}">Править</button>
             </label>
@@ -8950,7 +9371,7 @@ function routeBalancerDialog() {
   });
   const fallbackTargets = [...targets];
   if (state.routeBalancerFallback && !fallbackTargets.some((target) => target.tag === state.routeBalancerFallback)) {
-    fallbackTargets.push({ tag: state.routeBalancerFallback, kind: 'custom', title: state.routeBalancerFallback, detail: 'текущий fallback из конфигурации' });
+    fallbackTargets.push({ tag: state.routeBalancerFallback, kind: 'custom', title: state.routeBalancerFallback, detail: 'текущий резерв из конфигурации' });
   }
   const matches = balancerSelectorMatches(state.routeBalancerSelectors);
   const strategies = [
@@ -9032,7 +9453,7 @@ function routeBalancerDialog() {
             <div class="form-row">
               <label>Fallback</label>
               <select id="routeBalancerFallback">
-                <option value="">Без fallback</option>
+                <option value="">Без резервного сервера</option>
                 ${fallbackTargets.map((target) => `<option value="${escapeHtml(target.tag)}" ${state.routeBalancerFallback === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}${target.kind === 'subscription' ? ' · подписка' : ''}</option>`).join('')}
               </select>
             </div>
@@ -9051,7 +9472,7 @@ function routeBalancerDialog() {
               return `<article class="balancer-row">
                 <div>
                   <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-                  <span>${escapeHtml(balancerStrategyLabel(strategy))} · selector: ${escapeHtml(selectors || 'не задан')} · правил: ${used}</span>
+                  <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}</span>
                 </div>
                 <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
                 <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
@@ -9162,6 +9583,7 @@ function render() {
             ${state.status ? '' : '<p>Загрузка статуса роутера</p>'}
           </div>
           <div class="top-actions">
+            ${appVersionPill()}
             <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
             <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
             <div class="service-controls" aria-label="Управление сервисом Xray">
@@ -9178,7 +9600,17 @@ function render() {
     ${routePresetDialog()}
   `;
   bind();
+  restoreConfigScroll();
   scrollLogsToBottom();
+}
+
+function restoreConfigScroll() {
+  const node = document.querySelector('#jsonDraft');
+  if (!node || !state.configScrollTop) return;
+  requestAnimationFrame(() => {
+    const current = document.querySelector('#jsonDraft');
+    if (current) current.scrollTop = state.configScrollTop;
+  });
 }
 
 function bind() {
@@ -9267,6 +9699,8 @@ function bind() {
         if (action === 'clearLoggingFiles') return await clearLoggingFiles();
         if (action === 'refreshDhcpLeases') return await refreshDhcpLeases();
         if (action === 'saveServiceSettings') return await saveServiceSettings();
+        if (action === 'appVersionClick') return await appVersionClick();
+        if (action === 'checkAppUpdate') return await checkAppUpdate();
         if (action === 'updateApp') return await updateApp();
         if (action === 'test') return await testConfig();
         if (action === 'apply') return await applyConfig();
@@ -9324,7 +9758,7 @@ function bind() {
           return render();
         }
         if (action === 'selectAllRoutePresets') {
-          state.selectedRoutePresets = [...customRoutePresetEntries().map(([key]) => key), ...Object.keys(routePresets)];
+          state.selectedRoutePresets = [...customRoutePresetEntries().map(([key]) => key), ...builtinRoutePresetEntries().map(([key]) => key)];
           return render();
         }
         if (action === 'clearRoutePresets') {
@@ -9577,16 +10011,26 @@ function bind() {
     button.addEventListener('click', () => removeOutbound(Number(button.dataset.outboundDelete)));
   });
   document.querySelectorAll('[data-route-all]').forEach((button) => {
-    button.addEventListener('click', () => routeAllToOutbound(button.dataset.routeAll));
-  });
-  document.querySelectorAll('[data-dashboard-server-select]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.pendingServerTag = button.dataset.dashboardServerSelect;
-      render();
+    button.addEventListener('click', async () => {
+      try {
+        await routeAllToOutbound(button.dataset.routeAll);
+      } catch (error) {
+        state.configApplying = false;
+        state.message = error.message;
+        render();
+      }
     });
   });
   document.querySelectorAll('[data-dashboard-connect]').forEach((button) => {
-    button.addEventListener('click', () => routeAllToOutbound(button.dataset.dashboardConnect));
+    button.addEventListener('click', async () => {
+      try {
+        await routeAllToOutbound(button.dataset.dashboardConnect);
+      } catch (error) {
+        state.configApplying = false;
+        state.message = error.message;
+        render();
+      }
+    });
   });
   document.querySelectorAll('[data-server-check]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -9734,14 +10178,19 @@ function bind() {
       render();
     });
   });
-  document.querySelector('#jsonDraft')?.addEventListener('input', (event) => {
+  const jsonDraftNode = document.querySelector('#jsonDraft');
+  jsonDraftNode?.addEventListener('input', (event) => {
     state.jsonDraft = event.target.value;
+    state.configScrollTop = event.target.scrollTop;
     try {
       state.config = JSON.parse(event.target.value);
     } catch {
       // Keep the draft text editable until the user fixes JSON.
     }
   });
+  jsonDraftNode?.addEventListener('scroll', (event) => {
+    state.configScrollTop = event.target.scrollTop;
+  }, { passive: true });
   document.querySelector('#importLink')?.addEventListener('input', (event) => {
     state.importLink = event.target.value;
     state.importPreview = null;
