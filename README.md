@@ -4,7 +4,7 @@
 
 RuOpenRay запускается как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель.
 
-![RuOpenRay UI icon](web/assets/ruopenray-icon-512.png)
+![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 
 ## Установка
 
@@ -13,6 +13,8 @@ RuOpenRay запускается как отдельный сервис чере
 ```sh
 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
 ```
+
+Если `RUOPENRAY_PASSWORD` не указан, установщик сгенерирует пароль и выведет его в конце установки.
 
 Если вместо `wget` есть только `curl`:
 
@@ -155,13 +157,13 @@ Node-стенд:
 
 ```sh
 npm install
-node server/index.js
+node tools/dev-server/index.js
 ```
 
 Go-сервис:
 
 ```sh
-go build -o ruopenray-ui .
+go build -o ruopenray-ui ./cmd/ruopenray-ui
 ./ruopenray-ui
 ```
 
@@ -177,7 +179,7 @@ http://127.0.0.1:9090/
 | --- | --- | --- |
 | `RUOPENRAY_HOST` | `127.0.0.1` локально, `0.0.0.0` на OpenWrt | адрес бинда |
 | `RUOPENRAY_PORT` | `9090` | порт панели |
-| `RUOPENRAY_PASSWORD` | `admin` | пароль |
+| `RUOPENRAY_PASSWORD` | генерируется установщиком, локально `admin` | пароль |
 | `RUOPENRAY_DATA_DIR` | `./data` локально, `/etc/ruopenray-ui` на OpenWrt | данные панели |
 | `RUOPENRAY_ACTIVE_CONFIG` | `./data/config.json` локально, `/etc/xray/config.json` на OpenWrt | активный config Xray |
 | `RUOPENRAY_XRAY_SERVICE` | `xray` | имя сервиса Xray |
@@ -206,9 +208,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\router-regression.ps
 ## Структура
 
 ```text
-main.go                         backend на Go
-web/                            фронтенд
-server/index.js                 локальный Node-стенд
+cmd/ruopenray-ui/               backend на Go и embedded frontend
+cmd/ruopenray-ui/web/           фронтенд
+internal/                       внутренние Go-пакеты
+tools/dev-server/index.js       локальный Node-стенд
 scripts/install-openwrt.sh      установка с GitHub Releases
 scripts/router-regression.ps1   приватные тесты роутера
 packaging/openwrt/              заготовка пакета и LuCI launcher

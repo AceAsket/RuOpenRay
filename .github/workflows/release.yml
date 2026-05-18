@@ -49,7 +49,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w -buildid= -X main.appVersion=${{ github.ref_name }}" -o "dist/${{ matrix.asset }}" .
+          go build -trimpath -ldflags="-s -w -buildid= -X main.appVersion=${{ github.ref_name }}" -o "dist/${{ matrix.asset }}" ./cmd/ruopenray-ui
           sha256sum "dist/${{ matrix.asset }}" > "dist/${{ matrix.asset }}.sha256"
       - uses: actions/upload-artifact@v4
         with:

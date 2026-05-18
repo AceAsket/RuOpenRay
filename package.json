@@ -5,8 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node server/index.js",
+    "start": "node tools/dev-server/index.js",
+    "dev": "node tools/dev-server/index.js",
     "scan:private": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-private.ps1",
     "test:router": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/router-regression.ps1",
     "test:router:quick": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/router-regression.ps1 -SkipTransparent"

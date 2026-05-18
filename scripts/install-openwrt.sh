@@ -9,7 +9,8 @@ BACKUP_DIR="${RUOPENRAY_BACKUP_DIR:-$DATA_DIR/backups}"
 GEO_DIR="${RUOPENRAY_GEO_DIR:-/usr/share/xray}"
 PORT="${RUOPENRAY_PORT:-9090}"
 HOST="${RUOPENRAY_HOST:-0.0.0.0}"
-PASSWORD="${RUOPENRAY_PASSWORD:-admin}"
+PASSWORD="${RUOPENRAY_PASSWORD:-}"
+PASSWORD_GENERATED=0
 ACTIVE_CONFIG="${RUOPENRAY_ACTIVE_CONFIG:-/etc/xray/config.json}"
 XRAY_SERVICE="${RUOPENRAY_XRAY_SERVICE:-xray}"
 RELEASE_BASE_URL="${RUOPENRAY_RELEASE_BASE_URL:-https://github.com/AceAsket/RuOpenRay/releases/latest/download}"
@@ -27,6 +28,27 @@ log() {
 die() {
 	printf 'Ошибка: %s\n' "$*" >&2
 	exit 1
+}
+
+generate_password() {
+	if [ -r /dev/urandom ] && command -v hexdump >/dev/null 2>&1; then
+		dd if=/dev/urandom bs=12 count=1 2>/dev/null | hexdump -v -e '/1 "%02x"' | cut -c1-16
+	elif [ -r /dev/urandom ] && command -v od >/dev/null 2>&1; then
+		dd if=/dev/urandom bs=12 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n' | cut -c1-16
+	else
+		printf 'ruopenray%s' "$(date +%s)"
+	fi
+}
+
+ensure_password() {
+	if [ -z "$PASSWORD" ]; then
+		PASSWORD="$(generate_password)"
+		PASSWORD_GENERATED=1
+	fi
+	[ -n "$PASSWORD" ] || die "не удалось сгенерировать пароль"
+	case "$PASSWORD" in
+		*"'"*) die "RUOPENRAY_PASSWORD не должен содержать одинарную кавычку" ;;
+	esac
 }
 
 uninstall_openwrt() {
@@ -387,6 +409,9 @@ print_summary() {
 	log "Готово."
 	log "Панель: http://${ip_addr}:${PORT}/"
 	log "Пароль: ${PASSWORD}"
+	if [ "$PASSWORD_GENERATED" = "1" ]; then
+		log "Пароль сгенерирован автоматически. Сохраните его; позже можно сменить в веб-панели: Настройки -> Пароль."
+	fi
 	if ! command -v xray >/dev/null 2>&1; then
 		log "Xray пока не найден. Его можно установить из веб-панели или повторить установку с RUOPENRAY_INSTALL_XRAY=1."
 	fi
@@ -401,6 +426,7 @@ need_root
 detect_openwrt
 detect_manager
 detect_arch
+ensure_password
 check_space
 install_dependencies
 download_binary

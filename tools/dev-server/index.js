@@ -10,8 +10,8 @@ import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 
-const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const publicDir = join(root, 'web');
+const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+const publicDir = join(root, 'cmd', 'ruopenray-ui', 'web');
 const dataDir = resolve(process.env.RUOPENRAY_DATA_DIR || process.env.OPENRAY_DATA_DIR || join(root, 'data'));
 const profilesDir = resolve(process.env.RUOPENRAY_PROFILES_DIR || process.env.OPENRAY_PROFILES_DIR || join(dataDir, 'profiles'));
 const backupDir = resolve(process.env.RUOPENRAY_BACKUP_DIR || process.env.OPENRAY_BACKUP_DIR || join(dataDir, 'backups'));

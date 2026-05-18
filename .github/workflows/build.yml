@@ -43,7 +43,7 @@ jobs:
           suffix="${GOOS}-${GOARCH}"
           if [ -n "${GOARM}" ]; then suffix="${suffix}v${GOARM}"; fi
           if [ -n "${GOMIPS}" ]; then suffix="${suffix}-${GOMIPS}"; fi
-          go build -trimpath -ldflags="-s -w -X main.appVersion=dev" -o "dist/ruopenray-ui-${suffix}" .
+          go build -trimpath -ldflags="-s -w -X main.appVersion=dev" -o "dist/ruopenray-ui-${suffix}" ./cmd/ruopenray-ui
       - uses: actions/upload-artifact@v4
         with:
           name: ruopenray-ui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}

@@ -1,0 +1,247 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string, timeoutMs int, attempts int) (int64, bool, error) {
+	port, err := freeLocalPort()
+	if err != nil {
+		return 0, false, err
+	}
+	config := map[string]any{
+		"log": map[string]any{"loglevel": "warning"},
+		"inbounds": []any{map[string]any{
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+		}},
+		"outbounds": []any{outbound},
+	}
+	dir := filepath.Join(s.cfg.DataDir, "checks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return 0, false, err
+	}
+	file, err := os.CreateTemp(dir, "outbound-*.json")
+	if err != nil {
+		return 0, false, err
+	}
+	path := file.Name()
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return 0, false, err
+	}
+	_ = file.Close()
+	defer os.Remove(path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(attempts+2))*time.Millisecond+5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
+	cmd.Env = s.xrayEnv()
+	var stderr bytes.Buffer
+	cmd.Stdout = &stderr
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return 0, false, err
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+	if err := waitTCPPort("127.0.0.1", port, 2500); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return 0, false, fmt.Errorf("%w: %s", err, lastLine(detail))
+		}
+		return 0, false, err
+	}
+
+	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+	client := &http.Client{
+		Timeout: time.Duration(timeoutMs) * time.Millisecond,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+	samples := attempts
+	if samples < 1 {
+		samples = 1
+	}
+	var best int64
+	var lastErr error
+	for attempt := 0; attempt < samples; attempt++ {
+		started := time.Now()
+		resp, err := client.Get(probeURL)
+		latency := time.Since(started).Milliseconds()
+		if err == nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+			_ = resp.Body.Close()
+			if resp.StatusCode < 500 {
+				if best == 0 || latency < best {
+					best = latency
+				}
+				lastErr = nil
+				continue
+			}
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+		}
+		lastErr = err
+	}
+	if best > 0 {
+		return best, true, nil
+	}
+	return 0, false, lastErr
+}
+
+func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, targetPort string, timeoutMs int, attempts int) (int64, bool, error) {
+	port, err := freeLocalPort()
+	if err != nil {
+		return 0, false, err
+	}
+	config := map[string]any{
+		"log": map[string]any{"loglevel": "warning"},
+		"inbounds": []any{map[string]any{
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+		}},
+		"outbounds": []any{outbound},
+	}
+	dir := filepath.Join(s.cfg.DataDir, "checks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return 0, false, err
+	}
+	file, err := os.CreateTemp(dir, "outbound-tcp-*.json")
+	if err != nil {
+		return 0, false, err
+	}
+	path := file.Name()
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return 0, false, err
+	}
+	_ = file.Close()
+	defer os.Remove(path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(attempts+2))*time.Millisecond+5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
+	cmd.Env = s.xrayEnv()
+	var stderr bytes.Buffer
+	cmd.Stdout = &stderr
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return 0, false, err
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+	if err := waitTCPPort("127.0.0.1", port, 2500); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return 0, false, fmt.Errorf("%w: %s", err, lastLine(detail))
+		}
+		return 0, false, err
+	}
+
+	samples := attempts
+	if samples < 1 {
+		samples = 1
+	}
+	target := net.JoinHostPort(host, targetPort)
+	var best int64
+	var lastErr error
+	for attempt := 0; attempt < samples; attempt++ {
+		started := time.Now()
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)), time.Duration(timeoutMs)*time.Millisecond)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		_ = conn.SetDeadline(time.Now().Add(time.Duration(timeoutMs) * time.Millisecond))
+		_, _ = fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
+		reader := bufio.NewReader(conn)
+		line, readErr := reader.ReadString('\n')
+		connectOK := readErr == nil && strings.Contains(line, " 200 ")
+		if connectOK {
+			if targetPort == "443" {
+				tlsConn := tls.Client(conn, &tls.Config{ServerName: host, InsecureSkipVerify: true, MinVersion: tls.VersionTLS12})
+				readErr = tlsConn.Handshake()
+			} else if targetPort == "80" {
+				_, _ = fmt.Fprintf(conn, "HEAD / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", host)
+				line, readErr = reader.ReadString('\n')
+				if readErr == nil && !strings.Contains(line, "HTTP/") {
+					readErr = errors.New(strings.TrimSpace(line))
+				}
+			}
+		}
+		_ = conn.Close()
+		latency := time.Since(started).Milliseconds()
+		if readErr == nil && connectOK {
+			if best == 0 || latency < best {
+				best = latency
+			}
+			lastErr = nil
+			continue
+		}
+		if readErr != nil {
+			lastErr = readErr
+		} else {
+			lastErr = errors.New(strings.TrimSpace(line))
+		}
+	}
+	if best > 0 {
+		return best, true, nil
+	}
+	return 0, false, lastErr
+}
+
+func freeLocalPort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+func waitTCPPort(host string, port int, timeoutMs int) error {
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	address := net.JoinHostPort(host, fmt.Sprint(port))
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", address, 150*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("probe HTTP inbound did not start")
+}

@@ -1,0 +1,244 @@
+package main
+
+import (
+	"bytes"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+func writeJSON(w http.ResponseWriter, code int, payload any) {
+	w.Header().Set("content-type", "application/json; charset=utf-8")
+	w.Header().Set("cache-control", "no-store")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func readJSON(r *http.Request) (map[string]any, error) {
+	if r.Body == nil {
+		return map[string]any{}, nil
+	}
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil || len(bytes.TrimSpace(body)) == 0 {
+		return map[string]any{}, err
+	}
+	var payload map[string]any
+	err = json.Unmarshal(body, &payload)
+	return payload, err
+}
+
+func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			writeJSON(w, 500, map[string]any{"ok": false, "error": fmt.Sprint(recovered)})
+		}
+	}()
+	path := strings.TrimPrefix(r.URL.Path, "/api")
+	if path == "/login" && r.Method == http.MethodPost {
+		payload, err := readJSON(r)
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(fmt.Sprint(payload["password"])), []byte(s.cfg.Password)) != 1 {
+			writeJSON(w, 401, map[string]any{"ok": false, "error": "Неверный пароль"})
+			return
+		}
+		token := randomToken()
+		s.sessions[token] = true
+		http.SetCookie(w, &http.Cookie{Name: "openray_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		writeJSON(w, 200, map[string]any{"ok": true, "token": token})
+		return
+	}
+	if !s.authed(r) {
+		writeJSON(w, 401, map[string]any{"ok": false, "error": "Требуется авторизация"})
+		return
+	}
+	switch {
+	case path == "/status" && r.Method == http.MethodGet:
+		s.status(w)
+	case path == "/config" && r.Method == http.MethodGet:
+		cfg, err := s.readActiveConfig()
+		respond(w, cfg, err)
+	case path == "/config/test" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		cfg, _ := payload["config"].(map[string]any)
+		result := s.validateConfig(cfg)
+		writeJSON(w, 200, result)
+	case path == "/config/analyze" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		cfg, _ := payload["config"].(map[string]any)
+		writeJSON(w, 200, s.analyzeConfig(cfg))
+	case path == "/config/apply" && r.Method == http.MethodPost:
+		s.applyConfig(w, r)
+	case path == "/routing/disabled" && r.Method == http.MethodGet:
+		writeJSON(w, 200, map[string]any{"ok": true, "rules": s.disabledRouteRules()})
+	case path == "/routing/disabled" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveDisabledRouteRules(payload))
+	case path == "/service" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
+	case path == "/settings/password" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.changePassword(payload))
+	case path == "/settings/logging" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.loggingSettings())
+	case path == "/settings/logging" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveLoggingSettings(payload))
+	case path == "/settings/logging/clear" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.clearLogFiles())
+	case path == "/settings/service" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.serviceSettings())
+	case path == "/settings/service" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveServiceSettings(payload))
+	case path == "/install/plan" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.installPlan())
+	case path == "/network/tcp-fast-open" && r.Method == http.MethodGet:
+		writeJSON(w, 200, tcpFastOpenStatus())
+	case path == "/network/tcp-fast-open" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, setTCPFastOpen(boolPayload(payload, "enabled", true)))
+	case path == "/firewall/status" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.firewallStatus())
+	case path == "/firewall/snapshot" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.firewallSnapshot())
+	case path == "/firewall/apply" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.applyFirewall(payload))
+	case path == "/firewall/disable" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.disableFirewall())
+	case path == "/firewall/restore" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.restoreFirewallSnapshot(payload))
+	case path == "/xray/stats" && r.Method == http.MethodGet:
+		cfg, _ := s.readActiveConfig()
+		writeJSON(w, 200, s.xrayTrafficStats(cfg, false))
+	case path == "/xray/stats/settings" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveXrayStatsSettings(boolPayload(payload, "enabled", true)))
+	case path == "/xray/stats/reset" && r.Method == http.MethodPost:
+		cfg, _ := s.readActiveConfig()
+		writeJSON(w, 200, s.xrayTrafficStats(cfg, true))
+	case path == "/core/releases" && r.Method == http.MethodGet:
+		releases, err := xrayCoreReleases()
+		respond(w, map[string]any{"ok": true, "releases": releases, "asset": xrayAssetName(), "arch": systemArchitecture("github-release")}, err)
+	case path == "/core/update" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.updateCore(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
+	case path == "/app/releases" && r.Method == http.MethodGet:
+		release, err := appLatestRelease()
+		respond(w, map[string]any{"ok": true, "version": appVersion, "asset": ruOpenRayAssetName(), "arch": systemArchitecture("github-release"), "release": release}, err)
+	case path == "/app/update" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
+	case path == "/diagnostics" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.diagnostics())
+	case path == "/diagnostics/http-probe" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, routerHTTPProbe(payload))
+	case path == "/diagnostics/domain-probe" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.domainProxyProbe(payload))
+	case path == "/geo/status" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.geoStatus())
+	case path == "/geo/sources" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveGeoCustomSources(payload))
+	case path == "/geo/update" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.updateGeo(payload))
+	case path == "/geo/delete" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.deleteGeoFiles(payload))
+	case path == "/geo/schedule" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveGeoSchedule(payload))
+	case path == "/geo/cleanup" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.cleanupGeoBackups())
+	case path == "/profiles" && r.Method == http.MethodGet:
+		profiles, err := s.listProfiles()
+		respond(w, profiles, err)
+	case path == "/profiles" && r.Method == http.MethodPost:
+		s.saveProfile(w, r)
+	case path == "/profiles/activate" && r.Method == http.MethodPost:
+		s.activateProfile(w, r)
+	case path == "/import" && r.Method == http.MethodPost:
+		s.importLink(w, r)
+	case path == "/import/preview" && r.Method == http.MethodPost:
+		s.importPreview(w, r)
+	case path == "/import/subscription" && r.Method == http.MethodPost:
+		s.importSubscription(w, r)
+	case path == "/subscriptions" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.subscriptionReport())
+	case path == "/subscriptions/pool" && r.Method == http.MethodPost:
+		s.saveSubscriptionPool(w, r)
+	case path == "/subscriptions/fallback" && r.Method == http.MethodPost:
+		s.fallbackSubscription(w, r)
+	case path == "/dhcp/leases" && r.Method == http.MethodGet:
+		writeJSON(w, 200, dhcpLeaseReport(s.cfg.DataDir))
+	case path == "/dns/check" && r.Method == http.MethodPost:
+		s.checkDNS(w, r)
+	case path == "/dns/lan-upstream" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.lanDNSUpstreamStatus(nil))
+	case path == "/dns/lan-upstream" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.applyLANDNSUpstream(payload))
+	case path == "/outbounds/check" && r.Method == http.MethodPost:
+		s.checkOutbounds(w, r)
+	case path == "/sni/scan" && r.Method == http.MethodPost:
+		s.scanSNI(w, r)
+	case path == "/domain-monitor" && r.Method == http.MethodGet:
+		s.domainMonitor(w, r)
+	case path == "/domain-monitor" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.controlDomainMonitor(strings.TrimSpace(fmt.Sprint(payload["action"]))))
+	case path == "/logs" && r.Method == http.MethodGet:
+		w.Header().Set("content-type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(s.readLogs(r.URL.Query())))
+	case path == "/backup" && r.Method == http.MethodPost:
+		backup, err := s.backupActive()
+		respond(w, map[string]any{"ok": true, "path": backup}, err)
+	case path == "/backup/full" && r.Method == http.MethodPost:
+		backup, err := s.backupBundle()
+		respond(w, map[string]any{"ok": true, "path": backup}, err)
+	case path == "/backup/latest" && r.Method == http.MethodGet:
+		backup, err := s.latestBackup()
+		respond(w, map[string]any{"ok": true, "backup": backup}, err)
+	case path == "/backup/restore" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.restoreBackup(strings.TrimSpace(fmt.Sprint(payload["path"]))))
+	default:
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Неизвестный API-маршрут"})
+	}
+}
+
+func respond(w http.ResponseWriter, payload any, err error) {
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, payload)
+}
+
+func (s *serverState) authed(r *http.Request) bool {
+	if header := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(header), "bearer ") {
+		return s.sessions[strings.TrimSpace(header[7:])]
+	}
+	cookie, err := r.Cookie("openray_session")
+	return err == nil && s.sessions[cookie.Value]
+}
+
+func randomToken() string {
+	buf := make([]byte, 24)
+	_, _ = rand.Read(buf)
+	return hex.EncodeToString(buf)
+}
