@@ -205,7 +205,7 @@ tests/                   вспомогательные тестовые дан�
 docs/                    заметки по UX, установке и дальнейшим решениям
 ```
 
-Крупные frontend-разделы лежат отдельными файлами рядом с `app.js`: `dashboard-view.js`, `servers-view.js`, `routing-view.js`, `dns-view.js`, `diagnostics-view.js`, `settings-view.js`, `setup-view.js` и диалоги. `app.js` пока остается точкой сборки состояния и обработчиков.
+Крупные frontend-разделы лежат отдельными файлами рядом с `app.js`: `dashboard-view.js`, `servers-view.js`, `routing-view.js`, `dns-view.js`, `diagnostics-view.js`, `settings-view.js`, `setup-view.js` и диалоги. Если разделу нужна отдельная подготовка данных, рядом лежит `*-model.js`. `app.js` пока остается точкой сборки состояния и обработчиков.
 
 ## Статус
 
