@@ -13,6 +13,7 @@ import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
+import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
@@ -130,6 +131,20 @@ globalThis.window = globalThis.window || {
 
 const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
 const initialState = createInitialState();
+const routingModel = createRoutingModel({
+  state: {
+    config: {
+      routing: { rules: [{ domain: ['domain:chatgpt.com'], outboundTag: 'proxy', type: 'field' }] },
+      outbounds: [{ tag: 'proxy', protocol: 'vless' }],
+    },
+    routeNames: {},
+  },
+  managedRouteTags: { proxy: 'proxy' },
+  routeBundles: {},
+  routeKinds: { domain: 'Сайт или домен' },
+  routePresets: {},
+  proxyOutbounds: () => [{ tag: 'proxy' }],
+});
 
 bindDiagnosticsControls({
   state,
@@ -255,6 +270,7 @@ const checks = [
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
+  ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
