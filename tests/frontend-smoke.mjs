@@ -2,6 +2,7 @@ import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js'
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
 import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-model.js';
+import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"]/g, (char) => ({
@@ -118,6 +119,43 @@ bindDiagnosticsControls({
   refreshLogs: async () => {},
   configureLogTimer: () => {},
   scrollLogsToBottom: () => {},
+});
+
+bindRoutingControls({
+  state,
+  render,
+  firewallPortsStorageKey: 'ruopenray:test:ports',
+  addRoutingPreset: () => {},
+  editRoutingPreset: () => {},
+  deleteCustomRoutePreset: () => {},
+  removeRoutingRule: () => {},
+  disableRoutingRule: () => {},
+  restoreDisabledRouteRule: () => {},
+  deleteDisabledRouteRule: () => {},
+  moveRoutingRule: () => {},
+  openRoutingRuleEditor: () => {},
+  openRouteBalancerDialog: () => {},
+  removeRouteBalancer: () => {},
+  setFirewallBypassMode: () => {},
+  setFirewallRouterMode: () => {},
+  setFirewallDeviceMode: () => {},
+  toggleFirewallDevice: () => {},
+  reorderRoutingRule: () => {},
+  routeRules: () => [],
+  describeRouteRule: () => null,
+  updateRoutingTarget: () => {},
+  removeOutbound: () => {},
+  routeAllToOutbound: async () => {},
+  checkServers: async () => {},
+  setSnifferDraft: () => {},
+  setQuicPolicy: () => {},
+  currentSnifferSettings: () => ({ mode: 'off' }),
+  setFirewallPortMode: () => {},
+  setFirewallBlockQuic: () => {},
+  applyLeaseSearch: () => {},
+  setRouteBalancerSelector: () => {},
+  moveRouteBalancerSelector: () => {},
+  balancerOptions: () => [],
 });
 
 const checks = [
