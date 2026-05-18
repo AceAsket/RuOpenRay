@@ -18,6 +18,7 @@ import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
 import { createImportActions } from '../cmd/ruopenray-ui/web/import-actions.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
+import { createObservatoryActions } from '../cmd/ruopenray-ui/web/observatory-actions.js';
 import { createProfileActions } from '../cmd/ruopenray-ui/web/profile-actions.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
@@ -339,6 +340,28 @@ const importActions = createImportActions({
 });
 await importActions.previewImport();
 await importActions.importToCurrent(true);
+
+const observatoryState = {
+  config: {},
+  serverCheckUrl: 'https://www.gstatic.com/generate_204',
+  observatoryInterval: '15',
+  message: '',
+};
+let observatoryConfigDraft = null;
+let observatoryCheckedTags = [];
+const observatoryActions = createObservatoryActions({
+  state: observatoryState,
+  syncConfig: (config) => {
+    observatoryState.config = config;
+    observatoryConfigDraft = config;
+  },
+  render,
+  routeBalancers: () => [{ tag: 'auto', selector: ['proxy'], strategy: { type: 'leastPing' } }],
+  proxyOutbounds: () => [{ tag: 'proxy-one' }, { tag: 'other' }],
+  checkServers: async (tags) => { observatoryCheckedTags = tags; },
+});
+observatoryActions.enableObservatoryForProxy();
+await observatoryActions.checkObservatoryTargets();
 
 const configActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
@@ -712,6 +735,7 @@ const checks = [
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
+  ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],
