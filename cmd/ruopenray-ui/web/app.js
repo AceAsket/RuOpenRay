@@ -1,6 +1,7 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
+import { bindConfigControls } from './config-bindings.js';
 import { createDashboardView } from './dashboard-view.js';
 import { createDiagnosticsActions } from './diagnostics-actions.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
@@ -8,10 +9,13 @@ import { createDiagnosticsView } from './diagnostics-view.js';
 import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
 import { createImportDialogView } from './import-dialog-view.js';
+import { bindImportControls } from './import-bindings.js';
+import { bindProfileControls } from './profile-bindings.js';
 import { createSettingsView } from './settings-view.js';
 import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
 import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
+import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
 import { createSniView } from './sni-view.js';
@@ -5651,63 +5655,10 @@ function bind() {
   document.querySelectorAll('[data-modal]').forEach((modal) => {
     modal.addEventListener('click', (event) => event.stopPropagation());
   });
-  document.querySelectorAll('[data-profile]').forEach((button) => {
-    button.addEventListener('click', () => activateProfile(button.dataset.profile));
-  });
-  const jsonDraftNode = document.querySelector('#jsonDraft');
-  jsonDraftNode?.addEventListener('input', (event) => {
-    state.jsonDraft = event.target.value;
-    state.configScrollTop = event.target.scrollTop;
-    try {
-      state.config = JSON.parse(event.target.value);
-    } catch {
-      // Keep the draft text editable until the user fixes JSON.
-    }
-  });
-  jsonDraftNode?.addEventListener('scroll', (event) => {
-    state.configScrollTop = event.target.scrollTop;
-  }, { passive: true });
-  document.querySelector('#importLink')?.addEventListener('input', (event) => {
-    state.importLink = event.target.value;
-    state.importPreview = null;
-  });
-  document.querySelector('#importOutboundTag')?.addEventListener('input', (event) => {
-    state.importOutboundTag = event.target.value;
-  });
-  document.querySelector('#subscriptionUrl')?.addEventListener('input', (event) => {
-    state.subscriptionUrl = event.target.value;
-    state.subscriptionPreview = null;
-  });
-  document.querySelector('#subscriptionAutoBalancer')?.addEventListener('change', (event) => {
-    state.subscriptionAutoBalancer = event.target.checked;
-    render();
-  });
-  document.querySelector('#subscriptionBalancerTag')?.addEventListener('input', (event) => {
-    state.subscriptionBalancerTag = event.target.value;
-  });
-  document.querySelector('#subscriptionBalancerStrategy')?.addEventListener('change', (event) => {
-    state.subscriptionBalancerStrategy = event.target.value;
-    render();
-  });
-  document.querySelector('#serverCheckTimeout')?.addEventListener('input', (event) => {
-    state.serverCheckTimeout = event.target.value;
-  });
-  document.querySelector('#serverCheckAttempts')?.addEventListener('input', (event) => {
-    state.serverCheckAttempts = event.target.value;
-  });
-  document.querySelector('#serverCheckMode')?.addEventListener('change', (event) => {
-    state.serverCheckMode = event.target.value;
-    render();
-  });
-  document.querySelector('#serverCheckUrl')?.addEventListener('input', (event) => {
-    state.serverCheckUrl = event.target.value;
-  });
-  document.querySelector('#observatoryCheckUrl')?.addEventListener('input', (event) => {
-    state.serverCheckUrl = event.target.value;
-  });
-  document.querySelector('#observatoryInterval')?.addEventListener('input', (event) => {
-    state.observatoryInterval = event.target.value;
-  });
+  bindProfileControls({ activateProfile });
+  bindConfigControls({ state });
+  bindImportControls({ state, render });
+  bindServerCheckControls({ state, render });
 
 }
 

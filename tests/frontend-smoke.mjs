@@ -1,4 +1,5 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
+import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
 import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
@@ -6,7 +7,10 @@ import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-mode
 import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js';
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
+import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
+import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
+import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 
@@ -198,6 +202,22 @@ bindRoutingControls({
   setRouteBalancerSelector: () => {},
   moveRouteBalancerSelector: () => {},
   balancerOptions: () => [],
+});
+
+bindProfileControls({
+  activateProfile: () => {},
+});
+
+bindConfigControls({ state });
+
+bindImportControls({
+  state,
+  render,
+});
+
+bindServerCheckControls({
+  state,
+  render,
 });
 
 const checks = [
