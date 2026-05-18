@@ -1,20 +1,25 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
+import { createDevicesModel } from '../cmd/ruopenray-ui/web/devices-model.js';
 import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
 import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-model.js';
 import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js';
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
+import { createDnsModel } from '../cmd/ruopenray-ui/web/dns-model.js';
 import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
+import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
+import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
+import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
@@ -89,6 +94,21 @@ const model = createDiagnosticsModel({
   describeRouteRule: (rule) => (rule.domain ? { kind: 'domain' } : { kind: 'other' }),
   isIpLiteral: (value) => /^\d{1,3}(\.\d{1,3}){3}$/.test(String(value || '')),
 });
+const devicesModel = createDevicesModel({
+  state: {
+    routeKind: 'source',
+    routeValue: '192.168.1.2',
+    leaseSearch: '',
+    leasesSource: '/tmp/dhcp.leases',
+    leases: [{ name: 'phone', ip: '192.168.1.2', mac: 'aa:bb', remaining: 3600 }],
+  },
+  routeRules: () => [{ source: ['192.168.1.2'], outboundTag: 'proxy' }],
+  routeRuleName: () => 'phone',
+  describeRouteRule: () => ({ kind: 'source' }),
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
+  escapeHtml,
+  formatDuration: () => '1 ч',
+});
 
 const actions = createDiagnosticsActions({
   state,
@@ -145,6 +165,80 @@ const routingModel = createRoutingModel({
   routeKinds: { domain: 'Сайт или домен' },
   routePresets: {},
   proxyOutbounds: () => [{ tag: 'proxy' }],
+});
+const routingDsl = createRoutingDsl({
+  state: { routeDslName: 'Discord' },
+  escapeHtml,
+  resolveRoutingAlias: (tag) => (tag === 'proxy' ? 'cloudone' : tag),
+  routeStatsFor: () => ({}),
+});
+const parsedDsl = routingDsl.parseRoutingDsl('domain(domain:discord.com) -> proxy\nnetwork(udp) && ip(104.16.0.0/12) -> proxy');
+const dnsModel = createDnsModel({
+  state: {
+    config: {
+      dns: {
+        servers: ['https://dns.google/dns-query', { address: '1.1.1.1', port: 53, network: 'tcp' }],
+        hosts: { 'example.test': '127.0.0.1' },
+      },
+    },
+  },
+});
+const firewallState = {
+  config: {
+    inbounds: [{ tag: 'transparent_ipv4', protocol: 'dokodemo-door', port: 52345, streamSettings: { sockopt: { tproxy: 'tproxy' } } }],
+    outbounds: [{ tag: 'dns-out', protocol: 'dns' }],
+    routing: { rules: [{ outboundTag: 'direct', ip: ['geoip:private'] }] },
+  },
+  firewallBlockQuic: true,
+  firewallBypassMode: 'off',
+  firewallDeviceMode: 'all',
+  firewallPortMode: 'custom',
+  firewallPorts: '80,443',
+  firewallRouterMode: 'tproxy',
+  firewallSelectedDevices: [],
+  leases: [],
+};
+const firewallModel = createFirewallModel({
+  state: firewallState,
+  configInbounds: () => firewallState.config.inbounds,
+  configOutbounds: () => firewallState.config.outbounds,
+  routeRules: () => firewallState.config.routing.rules,
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
+  deviceRules: () => [],
+  routeRuleName: () => 'rule',
+  describeRouteRule: () => ({ kind: 'ip' }),
+});
+const serverModel = createServerModel({
+  state: {
+    activeServerTag: '',
+    config: {
+      outbounds: [
+        { tag: 'cloudone', protocol: 'vless', settings: { vnext: [{ address: 'cloudone.example', port: 443 }] } },
+        { tag: 'direct', protocol: 'freedom' },
+      ],
+      routing: { rules: [{ outboundTag: 'proxy', domain: ['domain:chatgpt.com'], type: 'field' }] },
+    },
+    subscriptionPools: [],
+  },
+  configOutbounds: () => [
+    { tag: 'cloudone', protocol: 'vless', settings: { vnext: [{ address: 'cloudone.example', port: 443 }] } },
+    { tag: 'direct', protocol: 'freedom' },
+  ],
+  routeRules: () => [{ outboundTag: 'proxy', domain: ['domain:chatgpt.com'], type: 'field' }],
+  routeBalancers: () => [],
+  routeTarget: (rule) => ({ kind: 'domain', values: rule.domain || [] }),
+  outboundAddress: () => 'cloudone.example:443',
+  outboundTransport: () => 'tcp / reality',
+  outboundMatchesSelectors: () => false,
+  observatorySelectors: () => [],
+  burstObservatorySelectors: () => [],
+  strategyObserverType: () => '',
+  observerLabel: () => '',
+  checkForTag: () => null,
+  checkLabel: () => 'не проверен',
+  ruleCountLabel: (count) => `${count} правило`,
+  escapeHtml,
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
 });
 const xrayConfigModel = createXrayConfigModel({
   config: {
@@ -273,12 +367,17 @@ const checks = [
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
+  ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
+  ['routing dsl parser', parsedDsl.rules.length === 2 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2],
+  ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
+  ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPorts().join(',') === '80,443' && firewallModel.firewallPayload().routerMode === 'tproxy'],
+  ['server model active proxy', serverModel.activeProxyTag() === 'cloudone' && serverModel.proxyOutbounds().length === 1 && serverModel.outboundUsage('cloudone') === 1],
   ['xray config model', xrayConfigModel.currentSnifferSettings().mode === 'http-tls' && xrayConfigModel.outboundAddress(xrayConfigModel.configOutbounds()[0]) === 'example.com:443'],
 ];
 

@@ -5,11 +5,14 @@ import { createAuxPanelsView } from './aux-panels-view.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
 import { createDashboardView } from './dashboard-view.js';
+import { createDevicesModel } from './devices-model.js';
 import { createDiagnosticsActions } from './diagnostics-actions.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
+import { createDnsModel } from './dns-model.js';
 import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
+import { createFirewallModel } from './firewall-model.js';
 import { byteRate, byteSize, escapeHtml, fmtUptime, formatDuration, formatDurationCompact, numberValue } from './formatters.js';
 import { createImportDialogView } from './import-dialog-view.js';
 import { bindImportControls } from './import-bindings.js';
@@ -19,8 +22,10 @@ import { createSettingsView } from './settings-view.js';
 import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
 import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
+import { createRoutingDsl } from './routing-dsl.js';
 import { createRoutingModel } from './routing-model.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
+import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSetupView } from './setup-view.js';
 import { createSniView } from './sni-view.js';
@@ -173,6 +178,51 @@ const {
   outboundTransport
 } = xrayConfigModel;
 
+const serverModel = createServerModel({
+  state,
+  configOutbounds,
+  routeRules,
+  routeBalancers,
+  routeTarget,
+  outboundAddress,
+  outboundTransport,
+  outboundMatchesSelectors,
+  observatorySelectors,
+  burstObservatorySelectors,
+  strategyObserverType,
+  observerLabel,
+  checkForTag,
+  checkLabel,
+  ruleCountLabel,
+  escapeHtml,
+  splitRouteValues
+});
+const {
+  outboundUsage,
+  serverStats,
+  isSystemOutbound,
+  proxyOutbounds,
+  inferredActiveProxyTag,
+  activeProxyTag,
+  activeProxyOutbound,
+  setActiveServerTag,
+  proxyRuleStrategyStats,
+  proxyRuleSampleLabel,
+  proxyDirectionSummary,
+  proxyDirectionTitle,
+  proxyDirectionDetail,
+  dashboardProxyDirectionCards,
+  balancerSelectorMatches,
+  balancerTargetOptions,
+  balancerMatchesTag,
+  serverSubscriptionPool,
+  serverBalancerLinks,
+  serverObserverLabels,
+  serverMetaChips,
+  balancerObserverSummary,
+  balancerMembersView
+} = serverModel;
+
 function setSnifferDraft(mode, patch = {}) {
   const next = JSON.parse(JSON.stringify(state.config || {}));
   const targets = advancedInbounds().map((item) => item?.tag).filter(Boolean);
@@ -266,339 +316,30 @@ function setDnsModeDraft(mode) {
   render();
 }
 
-function outboundUsage(tag) {
-  return routeRules().filter((rule) => rule.outboundTag === tag || (rule.outboundTag === 'proxy' && resolveRoutingAlias('proxy') === tag)).length;
-}
-
-function leaseByIp(ip) {
-  return state.leases.find((lease) => lease.ip === ip);
-}
-
-function leaseSearchText(lease = {}) {
-  return [lease.name, lease.hostname, lease.ip, lease.mac]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-}
-
-function routeLeasePicker() {
-  if (state.routeKind !== 'source') return '';
-  const selected = new Set(splitRouteValues(state.routeValue));
-  const source = state.leasesSource || '/tmp/dhcp.leases';
-  return `
-    <div class="route-lease-picker">
-      <div class="route-lease-head">
-        <span>${state.leases.length ? `${state.leases.length} DHCP leases · ${escapeHtml(source)}` : 'DHCP leases пока не найдены'}</span>
-        <button class="btn secondary" type="button" data-action="refreshDhcpLeases">Обновить DHCP</button>
-      </div>
-      <input class="lease-search" data-lease-search value="${escapeHtml(state.leaseSearch)}" placeholder="Найти устройство: имя, IP или MAC" />
-      <div class="route-lease-grid">
-        ${state.leases.length ? state.leases.map((lease) => {
-          const active = selected.has(lease.ip);
-          const name = lease.name || 'Без имени';
-          const detail = [lease.ip, lease.mac, lease.remaining ? `осталось ${formatDuration(lease.remaining)}` : ''].filter(Boolean).join(' · ');
-          return `<button type="button" class="route-lease-card ${active ? 'active' : ''}" data-lease-search-item data-lease-search-text="${escapeHtml(leaseSearchText(lease))}" data-route-lease-ip="${escapeHtml(lease.ip)}" data-route-lease-name="${escapeHtml(name)}">
-            <strong>${escapeHtml(name)}</strong>
-            <span>${escapeHtml(detail)}</span>
-          </button>`;
-        }).join('') : '<p class="muted">На OpenWrt обычно читается <code>/tmp/dhcp.leases</code>. Можно ввести IP вручную.</p>'}
-        <p class="muted lease-search-empty" data-lease-search-empty hidden>По этому запросу устройств нет.</p>
-      </div>
-    </div>
-  `;
-}
-
-function serverStats() {
-  const stats = { proxy: 0, system: 0, used: 0, unused: 0 };
-  for (const outbound of configOutbounds()) {
-    const tag = outbound?.tag || '';
-    const system = ['direct', 'block', 'dns-out'].includes(tag) || ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
-    if (system) {
-      stats.system += 1;
-      continue;
-    }
-    stats.proxy += 1;
-    if (outboundUsage(tag)) stats.used += 1;
-    else stats.unused += 1;
-  }
-  return stats;
-}
-
-function isSystemOutbound(outbound) {
-  const tag = outbound?.tag || '';
-  return ['direct', 'block', 'dns-out'].includes(tag) || ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
-}
-
-function proxyOutbounds() {
-  return configOutbounds().filter((outbound) => !isSystemOutbound(outbound));
-}
-
-function inferredActiveProxyTag() {
-  const used = proxyOutbounds().find((outbound) => outboundUsage(outbound?.tag || '') > 0);
-  return used?.tag || proxyOutbounds()[0]?.tag || '';
-}
-
-function activeProxyTag() {
-  const explicit = state.activeServerTag;
-  if (explicit && proxyOutbounds().some((outbound) => outbound?.tag === explicit)) return explicit;
-  return inferredActiveProxyTag();
-}
-
-function activeProxyOutbound() {
-  const tag = activeProxyTag();
-  return proxyOutbounds().find((outbound) => outbound?.tag === tag) || proxyOutbounds()[0] || null;
-}
-
-function setActiveServerTag(tag) {
-  state.activeServerTag = tag || '';
-  if (state.activeServerTag) localStorage.setItem('ruopenray_active_server', state.activeServerTag);
-  else localStorage.removeItem('ruopenray_active_server');
-}
-
-function proxyRuleStrategyStats(activeTag = activeProxyTag()) {
-  const proxyTags = new Set(proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean));
-  let primary = 0;
-  let pinned = 0;
-  let alias = 0;
-  for (const rule of routeRules()) {
-    const tag = rule?.outboundTag || '';
-    if (tag === 'proxy') {
-      alias += 1;
-      primary += 1;
-    } else if (activeTag && tag === activeTag) {
-      primary += 1;
-    } else if (proxyTags.has(tag)) {
-      pinned += 1;
-    }
-  }
-  return { primary, pinned, alias };
-}
-
-function proxyRuleSampleLabel(rule) {
-  const target = routeTarget(rule || {});
-  const value = Array.isArray(target.values) ? target.values[0] : '';
-  return value || target.kind || 'правило';
-}
-
-function proxyDirectionSummary() {
-  const proxyTags = new Set(proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean));
-  const outbounds = new Map();
-  const balancers = new Map();
-  const add = (map, tag, rule) => {
-    if (!tag) return;
-    const current = map.get(tag) || { tag, rules: 0, samples: [] };
-    current.rules += 1;
-    if (current.samples.length < 3) current.samples.push(proxyRuleSampleLabel(rule));
-    map.set(tag, current);
-  };
-  for (const rule of routeRules()) {
-    if (rule?.balancerTag) {
-      add(balancers, rule.balancerTag, rule);
-      continue;
-    }
-    const rawTag = rule?.outboundTag || '';
-    const tag = rawTag === 'proxy' ? activeProxyTag() : rawTag;
-    if (proxyTags.has(tag)) add(outbounds, tag, rule);
-  }
-  const implicit = !outbounds.size && !balancers.size ? activeProxyTag() : '';
-  if (implicit) outbounds.set(implicit, { tag: implicit, rules: 0, samples: [], implicit: true });
-  const total = [...outbounds.values(), ...balancers.values()].reduce((sum, item) => sum + Number(item.rules || 0), 0);
-  return { outbounds, balancers, total };
-}
-
-function proxyDirectionTitle(summary) {
-  const count = summary.outbounds.size + summary.balancers.size;
-  if (count === 1 && summary.balancers.size === 1) return 'Активная группа серверов';
-  if (count === 1) return 'Активный сервер';
-  return 'Proxy-направления';
-}
-
-function proxyDirectionDetail(summary) {
-  const count = summary.outbounds.size + summary.balancers.size;
-  if (!count) return 'Proxy-направления пока не настроены.';
-  if (count === 1 && summary.balancers.size === 1) {
-    const item = [...summary.balancers.values()][0];
-    return `${item.tag} · ${item.rules || 0} правил ведут в балансировщик`;
-  }
-  if (count === 1) {
-    const item = [...summary.outbounds.values()][0];
-    return item.implicit ? 'Основное направление будет использовано для новых proxy-правил.' : `${item.rules || 0} proxy-правил ведут в этот сервер`;
-  }
-  return `${count} активных направлений · ${summary.total || 0} proxy-правил распределены по серверам и группам`;
-}
-
-function dashboardProxyDirectionCards(summary) {
-  const cards = [
-    ...[...summary.outbounds.values()].map((item) => ({ ...item, kind: 'server' })),
-    ...[...summary.balancers.values()].map((item) => ({ ...item, kind: 'balancer' }))
-  ];
-  if (cards.length <= 1) return '';
-  return `<div class="dashboard-proxy-directions">
-    ${cards.map((item) => {
-      const detail = item.kind === 'balancer'
-        ? 'Балансировщик'
-        : outboundAddress(proxyOutbounds().find((outbound) => outbound?.tag === item.tag)) || 'сервер';
-      return `<article>
-        <span>${item.kind === 'balancer' ? 'Группа' : 'Сервер'}</span>
-        <strong>${escapeHtml(item.tag)}</strong>
-        <small>${escapeHtml(`${item.rules || 0} правил · ${detail}`)}</small>
-      </article>`;
-    }).join('')}
-  </div>`;
-}
-
 function resolveRoutingAlias(tag) {
   const value = String(tag || '').trim();
   if (value === 'proxy') return activeProxyTag() || 'proxy';
   return value;
 }
 
-function stripDslComment(line) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('#')) return '';
-  return line.replace(/\s+#.*$/, '').trim();
-}
-
-function addDslTarget(rule, key, value) {
-  const target = value.trim().replace(/^([A-Za-z0-9_-]+):"(.*)"$/, '$1:$2');
-  if (!target) return false;
-  if (key === 'network') {
-    rule.network = target;
-    return true;
-  }
-  if (key === 'port') {
-    rule.port = target;
-    return true;
-  }
-  if (['domain', 'ip', 'source', 'inboundTag'].includes(key)) {
-    if (!Array.isArray(rule[key])) rule[key] = [];
-    rule[key].push(target);
-    return true;
-  }
-  return false;
-}
-
-function parseRoutingDsl(text) {
-  const rules = [];
-  const warnings = [];
-  let defaultOutbound = '';
-
-  String(text || '')
-    .split(/\r?\n/)
-    .forEach((rawLine, index) => {
-      const lineNo = index + 1;
-      const line = stripDslComment(rawLine);
-      if (!line) return;
-
-      const defaultMatch = line.match(/^default\s*:\s*([A-Za-z0-9_.:-]+)\s*$/i);
-      if (defaultMatch) {
-        defaultOutbound = resolveRoutingAlias(defaultMatch[1]);
-        return;
-      }
-
-      const match = line.match(/^(.+?)\s*->\s*([A-Za-z0-9_.:-]+)\s*$/);
-      if (!match) {
-        warnings.push(`Строка ${lineNo}: не понял формат`);
-        return;
-      }
-
-      const target = match[2].startsWith('balancer:') ? match[2].slice('balancer:'.length) : '';
-      const rule = target
-        ? { type: 'field', balancerTag: target }
-        : { type: 'field', outboundTag: resolveRoutingAlias(match[2]) };
-      let targets = 0;
-      const parts = match[1].split(/\s*&&\s*/).map((part) => part.trim()).filter(Boolean);
-      for (const part of parts) {
-        const condition = part.match(/^([A-Za-z][A-Za-z0-9_]*)\((.*)\)$/);
-        if (!condition) {
-          warnings.push(`Строка ${lineNo}: не понял условие "${part}"`);
-          continue;
-        }
-        if (addDslTarget(rule, condition[1], condition[2])) {
-          if (condition[1] !== 'network') targets += 1;
-          const normalized = condition[2].trim().replace(/^([A-Za-z0-9_-]+):"(.*)"$/, '$1:$2');
-          if (condition[1] === 'domain' && normalized.startsWith('ext:')) {
-            warnings.push(`Строка ${lineNo}: ext-списку нужен .dat файл на роутере`);
-          }
-        } else {
-          warnings.push(`Строка ${lineNo}: условие "${condition[1]}" пока не поддержано`);
-        }
-      }
-
-      if (!targets && !rule.port) {
-        warnings.push(`Строка ${lineNo}: нет домена, IP, источника или порта`);
-        return;
-      }
-      rules.push(rule);
-    });
-
-  if (defaultOutbound) {
-    rules.push(
-      defaultOutbound.startsWith('balancer:')
-        ? { type: 'field', balancerTag: defaultOutbound.slice('balancer:'.length), port: '0-65535' }
-        : { type: 'field', outboundTag: defaultOutbound, port: '0-65535' }
-    );
-  }
-
-  return {
-    rules,
-    warnings,
-    defaultOutbound,
-    proxyAlias: resolveRoutingAlias('proxy')
-  };
-}
+const routingDsl = createRoutingDsl({
+  state,
+  escapeHtml,
+  resolveRoutingAlias,
+  routeStatsFor
+});
+const {
+  parseRoutingDsl,
+  isDslDefaultRule,
+  dslPreviewStats,
+  dslPreviewView
+} = routingDsl;
 
 function previewRoutingDsl() {
   state.routeDslPreview = parseRoutingDsl(state.routeDsl);
   const parsed = state.routeDslPreview;
   state.message = `Распознано правил: ${parsed.rules.length}${parsed.warnings.length ? `, предупреждений: ${parsed.warnings.length}` : ''}`;
   render();
-}
-
-function isDslDefaultRule(rule, preview) {
-  return Boolean(
-    preview.defaultOutbound &&
-      rule.outboundTag === preview.defaultOutbound &&
-      rule.port === '0-65535' &&
-      !rule.domain &&
-      !rule.ip &&
-      !rule.source &&
-      !rule.inboundTag
-  );
-}
-
-function dslPreviewStats(preview) {
-  const explicitRules = preview.rules.filter((rule) => !isDslDefaultRule(rule, preview));
-  const count = (tag) => explicitRules.filter((rule) => rule.outboundTag === tag).length;
-  const proxy = count(preview.proxyAlias);
-  const direct = count('direct');
-  const block = count('block');
-  const known = new Set([preview.proxyAlias, 'direct', 'block']);
-  const other = explicitRules.filter((rule) => !known.has(rule.outboundTag)).length;
-  return { explicit: explicitRules.length, proxy, direct, block, other, total: preview.rules.length };
-}
-
-function dslPreviewView(preview) {
-  const stats = dslPreviewStats(preview);
-  const listName = state.routeDslName.trim();
-  return `
-    <div class="dsl-preview">
-      <div class="dsl-preview-head">
-        <strong>${stats.total} правил распознано</strong>
-        <span>proxy -> ${escapeHtml(preview.proxyAlias)}</span>
-      </div>
-      ${listName ? `<small>Название списка: ${escapeHtml(listName)}</small>` : ''}
-      <div class="dsl-preview-stats">
-        <div><strong>${stats.proxy}</strong><span>proxy</span></div>
-        <div><strong>${stats.direct}</strong><span>direct</span></div>
-        <div><strong>${stats.block}</strong><span>block</span></div>
-        <div><strong>${stats.other}</strong><span>другое</span></div>
-        <div class="default"><strong>${escapeHtml(preview.defaultOutbound || 'не задан')}</strong><span>default</span></div>
-      </div>
-      <small>${preview.defaultOutbound ? `Default добавит catch-all правило в ${escapeHtml(preview.defaultOutbound)}.` : 'Default не задан: Xray применит свое поведение после последнего правила.'}</small>
-      ${preview.warnings.length ? `<small class="warn">${escapeHtml(preview.warnings.slice(0, 4).join(' · '))}${preview.warnings.length > 4 ? ' · ...' : ''}</small>` : '<small>Ошибок формата не найдено</small>'}
-    </div>
-  `;
 }
 
 function configAnalysisView() {
@@ -664,110 +405,6 @@ function checkMethodLabel(result) {
   return 'TCP-порт';
 }
 
-function firewallInfo() {
-  const transparent = configInbounds().filter((item) => {
-    const tproxy = item?.streamSettings?.sockopt?.tproxy;
-    return item?.protocol === 'dokodemo-door' || tproxy || String(item?.tag || '').includes('transparent');
-  });
-  const dnsOut = configOutbounds().filter((item) => item?.protocol === 'dns' || String(item?.tag || '').includes('dns'));
-  const localBypass = routeRules().filter((rule) => {
-    const ips = Array.isArray(rule.ip) ? rule.ip.join(' ') : '';
-    return rule.outboundTag === 'direct' && /geoip:private|127\.0\.0\.1|192\.168|10\.0\.0|172\.16|::1/.test(ips);
-  });
-  const sourceRules = routeRules().filter((rule) => Array.isArray(rule.source) && rule.source.length);
-  const transparentPort = transparent.find((item) => item?.streamSettings?.sockopt?.tproxy)?.port || transparent[0]?.port || 52345;
-
-  return {
-    transparent,
-    dnsOut,
-    localBypass,
-    sourceRules,
-    transparentPort,
-    ready: Boolean(transparent.length && dnsOut.length && localBypass.length)
-  };
-}
-
-function firewallPorts() {
-  if (state.firewallPortMode === 'all') return [];
-  return splitRouteValues(state.firewallPorts)
-    .map((item) => item.replace(':', '-'))
-    .filter((item) => /^\d+(-\d+)?$/.test(item));
-}
-
-function firewallDeviceChoices() {
-  const map = new Map();
-  for (const lease of state.leases || []) {
-    if (!lease?.ip) continue;
-    map.set(lease.ip, { ip: lease.ip, name: lease.name || lease.hostname || lease.mac || lease.ip, mac: lease.mac || '' });
-  }
-  for (const { rule } of deviceRules()) {
-    for (const ip of rule.source || []) {
-      if (!map.has(ip)) map.set(ip, { ip, name: routeRuleName(rule, describeRouteRule(rule)), mac: '' });
-    }
-  }
-  return [...map.values()];
-}
-
-function firewallSelectedDevices() {
-  const selected = new Set(state.firewallSelectedDevices);
-  return firewallDeviceChoices().filter((device) => selected.has(device.ip));
-}
-
-function nftList(items) {
-  return `{ ${items.join(', ')} }`;
-}
-
-function firewallDeviceExpression() {
-  const selected = firewallSelectedDevices().map((device) => device.ip);
-  if (state.firewallDeviceMode === 'selected' && selected.length) return `ip saddr ${nftList(selected)} `;
-  if (state.firewallDeviceMode === 'exclude' && selected.length) return `ip saddr ${nftList(selected)} return\n`;
-  return '';
-}
-
-function firewallPortExpression() {
-  if (state.firewallPortMode === 'all') return '';
-  const ports = firewallPorts();
-  return ports.length ? ` th dport ${nftList(ports)}` : '';
-}
-
-function firewallTargetRule(port) {
-  const portExpr = firewallPortExpression();
-  const deviceExpr = state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : '';
-  const lanExpr = 'iifname "br-lan" ';
-  if (state.firewallRouterMode === 'redirect') {
-    return `nft add rule inet ruopenray prerouting ${lanExpr}${deviceExpr}meta l4proto tcp${portExpr} redirect to :${port}`;
-  }
-  return `nft add rule inet ruopenray prerouting ${lanExpr}${deviceExpr}meta l4proto { tcp, udp }${portExpr} counter tproxy to :${port} meta mark set 1`;
-}
-
-function firewallPolicyPreview() {
-  const devices = firewallSelectedDevices();
-  const ports = firewallPorts();
-  const traffic = state.firewallDeviceMode === 'selected'
-    ? `только выбранные устройства (${devices.length})`
-    : state.firewallDeviceMode === 'exclude'
-      ? `все LAN, кроме выбранных устройств (${devices.length})`
-      : 'все LAN-устройства';
-  const router = state.firewallRouterMode === 'redirect'
-    ? 'REDIRECT: проще, только TCP, без сохранения полного UDP/QUIC пути'
-    : 'TPROXY: TCP+UDP, сохраняет исходное назначение';
-  const policyName = state.firewallBypassMode === 'off'
-    ? 'Все через правила Xray'
-    : state.firewallBypassMode === 'bypass'
-      ? 'Direct мимо Xray'
-      : 'Только proxy в Xray';
-  const policy = state.firewallBypassMode === 'off'
-    ? 'RuOpenRay передает выбранный трафик в Xray, а direct/proxy/block решают правила маршрутизации.'
-    : state.firewallBypassMode === 'bypass'
-      ? 'Адреса из direct-списка сразу идут напрямую, остальное передается в Xray.'
-      : 'В Xray отправляются только адреса из proxy-списка, остальное сразу идет напрямую.';
-  const warnings = [];
-  if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
-  if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
-  if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
-  return { router, traffic, policyName, policy, ports: state.firewallPortMode === 'all' ? 'все порты' : ports.join(', ') || 'не заданы', quic: state.firewallBlockQuic ? 'UDP/443 будет заблокирован до Xray' : 'UDP/443 не блокируется', warnings };
-}
-
 function proxyInboundTags() {
   const tags = configInbounds()
     .map((item) => item?.tag)
@@ -775,184 +412,54 @@ function proxyInboundTags() {
   return tags.length ? [...new Set(tags)] : undefined;
 }
 
-function deviceRules() {
-  return routeRules()
-    .map((rule, index) => ({ rule, index }))
-    .filter(({ rule }) => Array.isArray(rule.source) && rule.source.length);
-}
+const devicesModel = createDevicesModel({
+  state,
+  routeRules,
+  routeRuleName,
+  describeRouteRule,
+  splitRouteValues,
+  escapeHtml,
+  formatDuration
+});
+const {
+  leaseByIp,
+  leaseSearchText,
+  routeLeasePicker,
+  deviceRules,
+  deviceStats,
+  normalizeDeviceIp
+} = devicesModel;
 
-function deviceStats() {
-  const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
-  for (const { rule } of deviceRules()) {
-    if (rule.outboundTag === 'proxy') stats.proxy += 1;
-    else if (rule.outboundTag === 'direct') stats.direct += 1;
-    else if (rule.outboundTag === 'block') stats.block += 1;
-    else stats.other += 1;
-  }
-  return stats;
-}
+const dnsModel = createDnsModel({ state });
+const {
+  dnsConfig,
+  describeDnsServer,
+  dnsAddressHasPort,
+  normalizeDnsAddressInput,
+  dnsStats,
+  dnsAnswerText
+} = dnsModel;
 
-function normalizeDeviceIp(value) {
-  return String(value || '').trim();
-}
-
-function dnsConfig() {
-  if (!state.config.dns || typeof state.config.dns !== 'object') state.config.dns = {};
-  if (!Array.isArray(state.config.dns.servers)) state.config.dns.servers = [];
-  if (!state.config.dns.hosts || typeof state.config.dns.hosts !== 'object' || Array.isArray(state.config.dns.hosts)) state.config.dns.hosts = {};
-  return state.config.dns;
-}
-
-function describeDnsServer(server) {
-  if (typeof server === 'string') {
-    return { address: server, domains: [], port: '', network: '', raw: server };
-  }
-  if (server && typeof server === 'object') {
-    const address = [server.address, server.port].filter(Boolean).join(':') || 'DNS';
-    return {
-      address,
-      domains: Array.isArray(server.domains) ? server.domains : [],
-      port: server.port || '',
-      network: server.network || '',
-      raw: JSON.stringify(server)
-    };
-  }
-  return { address: 'DNS', domains: [], port: '', network: '', raw: '' };
-}
-
-function dnsAddressHasPort(value) {
-  const text = String(value || '').trim();
-  if (!text) return false;
-  if (text.startsWith('[')) return /\]:\d+$/.test(text);
-  const colonCount = (text.match(/:/g) || []).length;
-  return colonCount === 1 && /:\d+$/.test(text);
-}
-
-function normalizeDnsAddressInput(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return { raw: '', config: '', check: '' };
-  const lower = raw.toLowerCase();
-  if (lower.startsWith('https://')) return { raw, config: raw, check: raw };
-  if (lower.startsWith('tcp://') || lower.startsWith('udp://')) {
-    const scheme = lower.startsWith('tcp://') ? 'tcp://' : 'udp://';
-    const target = raw.slice(scheme.length);
-    const normalized = dnsAddressHasPort(target) || target.includes(']')
-      ? raw
-      : `${scheme}${target}:53`;
-    return { raw, config: normalized, check: normalized };
-  }
-  if (dnsAddressHasPort(raw)) return { raw, config: raw, check: raw };
-  return {
-    raw,
-    config: { address: raw, port: 53 },
-    check: `${raw}:53`
-  };
-}
-
-function dnsStats() {
-  const dns = dnsConfig();
-  const doh = dns.servers.filter((server) => describeDnsServer(server).address.startsWith('https://')).length;
-  const tcp = dns.servers.filter((server) => describeDnsServer(server).address.startsWith('tcp://') || describeDnsServer(server).network === 'tcp').length;
-  return {
-    servers: dns.servers.length,
-    hosts: Object.keys(dns.hosts).length,
-    doh,
-    tcp
-  };
-}
-
-function dnsAnswerText(result = {}) {
-  if (result.error && !(result.addresses || []).length) return 'ошибка проверки';
-  const a = Array.isArray(result.a) ? result.a : [];
-  const aaaa = Array.isArray(result.aaaa) ? result.aaaa : [];
-  if (a.length || aaaa.length) {
-    return [
-      a.length ? `A: ${a.join(', ')}` : '',
-      aaaa.length ? `AAAA: ${aaaa.join(', ')}` : ''
-    ].filter(Boolean).join(' · ');
-  }
-  const addresses = result.addresses || [];
-  return addresses.length ? addresses.join(', ') : 'A/AAAA-записи не найдены';
-}
-
-function firewallCommands() {
-  const info = firewallInfo();
-  const port = info.transparentPort || 52345;
-  const excludedDeviceReturn = state.firewallDeviceMode === 'exclude' ? firewallDeviceExpression().trim() : '';
-  const packageCommand = state.firewallRouterMode === 'tproxy'
-    ? 'if command -v apk >/dev/null 2>&1; then apk update && apk add kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; else opkg update && opkg install kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; fi'
-    : '# REDIRECT-режиму kmod-nft-tproxy не нужен';
-  const blockQuicRule = state.firewallBlockQuic ? 'nft add rule inet ruopenray prerouting iifname "br-lan" udp dport 443 drop # Block QUIC/HTTP3' : '';
-  const common = [
-    '# Черновик для OpenWrt firewall4/nftables. Проверьте LAN-интерфейс и порт перед применением.',
-    packageCommand,
-    'nft delete table inet ruopenray 2>/dev/null || true',
-    state.firewallRouterMode === 'tproxy' ? 'ip rule del fwmark 1 table 100 2>/dev/null || true' : '',
-    state.firewallRouterMode === 'tproxy' ? 'ip route flush table 100 2>/dev/null || true' : '',
-    'nft add table inet ruopenray',
-    state.firewallRouterMode === 'tproxy'
-      ? 'nft add chain inet ruopenray prerouting { type filter hook prerouting priority mangle \\; policy accept \\; }'
-      : 'nft add chain inet ruopenray prerouting { type nat hook prerouting priority dstnat \\; policy accept \\; }',
-    state.firewallRouterMode === 'tproxy' ? 'nft add chain inet ruopenray output { type route hook output priority mangle \\; policy accept \\; }' : '',
-    'nft add rule inet ruopenray prerouting iifname != "br-lan" return',
-    'nft add rule inet ruopenray prerouting ip daddr { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return',
-    excludedDeviceReturn ? `nft add rule inet ruopenray prerouting ${excludedDeviceReturn}` : '',
-    blockQuicRule,
-    state.firewallRouterMode === 'tproxy' ? 'ip rule add fwmark 1 table 100' : '',
-    state.firewallRouterMode === 'tproxy' ? 'ip route add local 0.0.0.0/0 dev lo table 100' : '',
-    ''
-  ].filter(Boolean);
-  if (state.firewallBypassMode === 'bypass') {
-    return [
-      ...common,
-      '# BYPASS: direct-сети возвращаются до Xray, остальное уходит в transparent inbound.',
-      'nft add set inet ruopenray bypass4 { type ipv4_addr \\; flags interval \\; }',
-      'nft add element inet ruopenray bypass4 { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }',
-      'nft add rule inet ruopenray prerouting ip daddr @bypass4 return',
-      '# Позже сюда можно подключить dnsmasq/ipset для direct-доменов из правил.',
-      firewallTargetRule(port)
-    ].join('\n');
-  }
-  if (state.firewallBypassMode === 'redirect') {
-    return [
-      ...common,
-      '# REDIRECT: в Xray идут только адреса из proxy4. Direct-трафик не заходит в Xray.',
-      'nft add set inet ruopenray proxy4 { type ipv4_addr \\; flags interval \\; }',
-      '# Заполняйте proxy4 из доменов/geo-правил через dnsmasq/ipset или отдельный updater.',
-      state.firewallRouterMode === 'redirect'
-        ? `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto tcp${firewallPortExpression()} redirect to :${port}`
-        : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy to :${port} meta mark set 1`
-    ].join('\n');
-  }
-  return [
-    ...common,
-    '# OFF: весь TCP/UDP после локальных исключений попадает в Xray routing.',
-    firewallTargetRule(port)
-  ].join('\n');
-}
-
-function firewallPayload() {
-  const info = firewallInfo();
-  return {
-    routerMode: state.firewallRouterMode,
-    bypassMode: state.firewallBypassMode,
-    deviceMode: state.firewallDeviceMode,
-    devices: firewallSelectedDevices().map((device) => device.ip),
-    portMode: state.firewallPortMode,
-    ports: firewallPorts(),
-    blockQuic: state.firewallBlockQuic,
-    transparentPort: Number(info.transparentPort || 52345),
-    lanInterface: 'br-lan'
-  };
-}
-
-function firewallReadyStatus(status) {
-  return Boolean(
-    status?.active &&
-    status?.persistent &&
-    (state.firewallRouterMode !== 'tproxy' || (status.ipRule && status.ipRoute))
-  );
-}
+const firewallModel = createFirewallModel({
+  state,
+  configInbounds,
+  configOutbounds,
+  routeRules,
+  splitRouteValues,
+  deviceRules,
+  routeRuleName,
+  describeRouteRule
+});
+const {
+  firewallInfo,
+  firewallPorts,
+  firewallDeviceChoices,
+  firewallSelectedDevices,
+  firewallPolicyPreview,
+  firewallCommands,
+  firewallPayload,
+  firewallReadyStatus
+} = firewallModel;
 
 async function applyFirewallWithRetry(attempts = 2) {
   let lastResult = null;
@@ -3375,109 +2882,6 @@ function closeRouteBalancerDialog() {
   state.routeBalancerDialog = false;
   resetRouteBalancerForm();
   render();
-}
-
-function balancerSelectorMatches(selectors) {
-  const prefixes = splitRouteValues(selectors);
-  if (!prefixes.length) return [];
-  return proxyOutbounds()
-    .map((item) => item?.tag)
-    .filter(Boolean)
-    .filter((tag) => prefixes.some((prefix) => tag.startsWith(prefix)));
-}
-
-function balancerTargetOptions() {
-  const pools = new Map((state.subscriptionPools || []).map((pool) => [pool?.tag, pool]).filter(([tag]) => tag));
-  const targets = [];
-  const seen = new Set();
-  proxyOutbounds().forEach((outbound) => {
-    const tag = outbound?.tag || '';
-    if (!tag || seen.has(tag)) return;
-    seen.add(tag);
-    const pool = pools.get(tag);
-    targets.push({
-      tag,
-      kind: pool ? 'subscription' : 'server',
-      title: tag,
-      detail: pool
-        ? `${pool.count || 0} кандидатов · активен ${pool.activeCandidate?.tag || 'сервер не выбран'}`
-        : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
-    });
-  });
-  (state.subscriptionPools || []).forEach((pool) => {
-    const tag = pool?.tag || '';
-    if (!tag || seen.has(tag)) return;
-    seen.add(tag);
-    targets.push({
-      tag,
-      kind: 'subscription',
-      title: tag,
-      detail: `${pool.count || 0} кандидатов · stable outbound подписки`
-    });
-  });
-  return targets;
-}
-
-function balancerMatchesTag(tag, balancer = {}) {
-  const selectors = Array.isArray(balancer.selector) ? balancer.selector.filter(Boolean) : [];
-  return selectors.some((selector) => String(tag || '').startsWith(String(selector || '').trim()));
-}
-
-function serverSubscriptionPool(tag) {
-  return (state.subscriptionPools || []).find((pool) => pool?.tag === tag) || null;
-}
-
-function serverBalancerLinks(tag) {
-  return routeBalancers().filter((balancer) => balancerMatchesTag(tag, balancer) || balancer?.fallbackTag === tag);
-}
-
-function serverObserverLabels(outbound) {
-  const labels = [];
-  if (outboundMatchesSelectors(outbound, observatorySelectors())) labels.push('Observatory');
-  if (outboundMatchesSelectors(outbound, burstObservatorySelectors())) labels.push('Burst');
-  return labels;
-}
-
-function serverMetaChips(outbound, usage, check) {
-  const tag = outbound?.tag || '';
-  const pool = serverSubscriptionPool(tag);
-  const balancers = serverBalancerLinks(tag);
-  const observers = serverObserverLabels(outbound);
-  const chips = [
-    { label: ruleCountLabel(usage), tone: usage ? 'ok' : 'muted' }
-  ];
-  if (pool) chips.push({ label: `подписка · ${pool.count || 0}`, tone: 'info' });
-  if (balancers.length) chips.push({ label: `группа · ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
-  if (observers.length) chips.push({ label: observers.join(' + '), tone: 'ok' });
-  chips.push({ label: check ? `ручная · ${checkLabel(check)}` : 'ручная · не проверен', tone: check?.ok ? 'ok' : check ? 'warn' : 'muted' });
-  return `<div class="server-meta-chips">${chips.map((chip) => `<span class="server-chip ${chip.tone}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
-}
-
-function balancerObserverSummary(balancer = {}) {
-  const strategy = balancer?.strategy?.type || 'random';
-  const type = strategyObserverType(strategy);
-  if (!type) return { label: 'может работать без наблюдения', tone: 'ok' };
-  const required = Array.isArray(balancer.selector) ? balancer.selector.filter(Boolean) : [];
-  const configured = type === 'burstObservatory' ? burstObservatorySelectors() : observatorySelectors();
-  const covered = required.length && required.every((selector) => configured.includes(selector));
-  return {
-    label: covered ? `${observerLabel(type)} · может работать` : `${observerLabel(type)} · нужно включить`,
-    tone: covered ? 'ok' : 'warn'
-  };
-}
-
-function balancerMembersView(tags = []) {
-  if (!tags.length) return '<div class="balancer-members muted">серверы не выбраны</div>';
-  return `<div class="balancer-members">
-    ${tags.slice(0, 6).map((tag) => {
-      const outbound = proxyOutbounds().find((item) => item?.tag === tag);
-      const check = checkForTag(tag);
-      return `<span class="${check?.ok ? 'ok' : check ? 'warn' : ''}" title="${escapeHtml(outboundAddress(outbound))}">
-        ${escapeHtml(tag)}
-      </span>`;
-    }).join('')}
-    ${tags.length > 6 ? `<span>+${tags.length - 6}</span>` : ''}
-  </div>`;
 }
 
 function setRouteBalancerSelector(tag, enabled) {
