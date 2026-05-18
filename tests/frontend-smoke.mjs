@@ -26,6 +26,7 @@ import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bi
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
+import { createSetupActions } from '../cmd/ruopenray-ui/web/setup-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
@@ -184,11 +185,13 @@ const setupConfig = {
 };
 const setupState = {
   config: setupConfig,
+  jsonDraft: JSON.stringify(setupConfig),
   status: { core: { available: true, version: 'Xray test' } },
   geoStatus: { geoip: { exists: true, size: 1 }, geosite: { exists: true, size: 1 } },
   firewallStatus: { active: true, persistent: true, routerMode: 'tproxy' },
   lanDnsStatus: { mode: 'xray', readiness: { ready: true } },
   firewallRouterMode: 'tproxy',
+  setupLanDnsMode: 'keep',
 };
 const setupModel = createSetupModel({
   state: setupState,
@@ -196,14 +199,56 @@ const setupModel = createSetupModel({
   firewallInfo: () => ({ ready: true, transparent: [{}], transparentPort: 52345 }),
   proxyOutbounds: () => setupConfig.outbounds,
   setupSnapshotStorageKey: 'ruopenray:test:setup-snapshot',
-  request: async () => ({}),
-  syncConfig: (config) => { setupState.config = config; },
+  request: async (path) => {
+    if (path === '/api/install/plan') return { ok: true, steps: [] };
+    if (path === '/api/config') return setupState.config;
+    if (path === '/api/firewall/snapshot') return { ok: true };
+    if (path === '/api/dns/lan-upstream') return { ok: true, mode: 'xray', readiness: { ready: true } };
+    return {};
+  },
+  syncConfig: (config) => {
+    setupState.config = config;
+    setupState.jsonDraft = JSON.stringify(config);
+  },
   ensureDnsServer: (config, server) => {
     config.dns = config.dns || {};
     config.dns.servers = config.dns.servers || [];
     if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
   },
 });
+globalThis.localStorage = globalThis.localStorage || {
+  data: new Map(),
+  getItem(key) { return this.data.get(key) || null; },
+  setItem(key, value) { this.data.set(key, String(value)); },
+  removeItem(key) { this.data.delete(key); },
+};
+const setupActions = createSetupActions({
+  state: setupState,
+  request: async (path) => {
+    if (path === '/api/install/plan') return { ok: true, steps: [] };
+    if (path === '/api/config') return setupState.config;
+    if (path === '/api/firewall/snapshot') return { ok: true };
+    if (path === '/api/dns/lan-upstream') return { ok: true, mode: 'xray', readiness: { ready: true } };
+    if (path === '/api/config/test') return { ok: true, stdout: 'ok' };
+    if (path === '/api/config/apply') return { ok: true, test: { stdout: 'applied' } };
+    return { ok: true };
+  },
+  render,
+  refresh: async () => { setupState.refreshed = true; },
+  syncLanDnsStatus: (status) => { setupState.lanDnsStatus = status; },
+  lanDnsModeLabel: (mode) => mode,
+  setupReadiness: setupModel.setupReadiness,
+  loadSetupSnapshot: setupModel.loadSetupSnapshot,
+  captureSetupSnapshot: setupModel.captureSetupSnapshot,
+  clearSetupSnapshot: setupModel.clearSetupSnapshot,
+  lanDnsRestorePayload: setupModel.lanDnsRestorePayload,
+  prepareSetupDraft: setupModel.prepareSetupDraft,
+  applyFirewallWithRetry: async () => ({ ok: true, status: { active: true, persistent: true, routerMode: 'tproxy' } }),
+  firewallReadyStatus: () => true,
+  firewallRouterModeStorageKey: 'ruopenray:test:setup-fw-mode',
+});
+await setupActions.openSetupWizard();
+await setupActions.runSetupWizard();
 const settingsActionState = {
   serviceStartupDelaySec: '1',
   serviceApplyDelaySec: '2',
@@ -599,6 +644,7 @@ const checks = [
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
+  ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
