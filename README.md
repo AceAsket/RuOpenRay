@@ -190,21 +190,6 @@ http://127.0.0.1:9090/
 go test ./...
 ```
 
-Проверка, что в репозиторий не попали приватные серверы и ключи:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\scan-private.ps1
-```
-
-Приватный тест роутера:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\router-regression.ps1 `
-  -Router 192.168.1.1 `
-  -PanelPassword admin `
-  -LanClientIp 192.168.1.190
-```
-
 ## Структура
 
 ```text
@@ -218,7 +203,6 @@ cmd/ruopenray-ui/web/styles.css  стили панели
 internal/                       внутренние Go-пакеты
 tools/dev-server/index.js       локальный Node-стенд
 scripts/install-openwrt.sh      установка с GitHub Releases
-scripts/router-regression.ps1   приватные тесты роутера
 packaging/openwrt/              заготовка пакета и LuCI launcher
 docs/                           заметки по интерфейсу
 ```
