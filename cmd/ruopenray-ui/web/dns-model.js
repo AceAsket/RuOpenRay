@@ -78,12 +78,20 @@ export function createDnsModel({ state }) {
     return addresses.length ? addresses.join(', ') : 'A/AAAA-записи не найдены';
   }
 
+  function ensureDnsServer(config, server) {
+    config.dns = config.dns || {};
+    config.dns.servers = Array.isArray(config.dns.servers) ? config.dns.servers : [];
+    const exists = config.dns.servers.some((item) => JSON.stringify(item) === JSON.stringify(server));
+    if (!exists) config.dns.servers.push(server);
+  }
+
   return {
     dnsConfig,
     describeDnsServer,
     dnsAddressHasPort,
     normalizeDnsAddressInput,
     dnsStats,
-    dnsAnswerText
+    dnsAnswerText,
+    ensureDnsServer
   };
 }

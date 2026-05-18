@@ -83,6 +83,10 @@ const api = createApiClient({
   onUnauthorized: clearAuth
 });
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function keepOperationVisible(startedAt, minMs = 700) {
   const elapsed = Date.now() - startedAt;
   if (elapsed < minMs) await delay(minMs - elapsed);
@@ -456,7 +460,8 @@ const {
   dnsAddressHasPort,
   normalizeDnsAddressInput,
   dnsStats,
-  dnsAnswerText
+  dnsAnswerText,
+  ensureDnsServer
 } = dnsModel;
 
 const firewallModel = createFirewallModel({

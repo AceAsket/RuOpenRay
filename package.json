@@ -8,7 +8,7 @@
     "start": "node tools/dev-server/index.js",
     "dev": "node tools/dev-server/index.js",
     "scan:private": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scan-private.ps1",
-    "test:frontend": "node tests/frontend-smoke.mjs",
+    "test:frontend": "node tests/frontend-smoke.mjs && node tests/frontend-app-boot.mjs",
     "test:router": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/router-regression.ps1",
     "test:router:quick": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/router-regression.ps1 -SkipTransparent"
   },
