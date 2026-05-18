@@ -200,7 +200,9 @@ cmd/ruopenray-ui/web/dashboard-view.js отрисовка главной, мет
 cmd/ruopenray-ui/web/diagnostics-view.js отрисовка диагностики, доменов, трафика и observatory
 cmd/ruopenray-ui/web/dns-view.js отрисовка DNS, hosts, LAN DNS и защиты от утечек
 cmd/ruopenray-ui/web/geo-view.js отрисовка geodata manager и NAND-friendly подсказок
+cmd/ruopenray-ui/web/import-dialog-view.js отрисовка добавления сервера и подписки
 cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status polling
+cmd/ruopenray-ui/web/routing-dialogs-view.js отрисовка диалогов правил, групп серверов и подборок
 cmd/ruopenray-ui/web/routing-view.js отрисовка маршрутизации, сценариев и перехвата
 cmd/ruopenray-ui/web/servers-view.js отрисовка вкладки прокси, подписок и групп
 cmd/ruopenray-ui/web/settings-view.js отрисовка настроек панели, логирования, сервиса и обновлений
