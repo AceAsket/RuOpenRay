@@ -24,6 +24,7 @@ import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
+import { createUpdatesActions } from '../cmd/ruopenray-ui/web/updates-actions.js';
 import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
 
 const state = {
@@ -179,6 +180,29 @@ const setupModel = createSetupModel({
     if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
   },
 });
+const updatesState = {
+  geoCustomSources: [],
+  geoSourceName: '  Custom Geo  ',
+  geoSourceKind: 'base',
+  geoSourceGeoipUrl: ' https://example.test/geoip.dat ',
+  geoSourceGeositeUrl: ' https://example.test/geosite.dat ',
+  geoSourceUrl: '',
+  geoSourceTarget: '',
+};
+const updatesActions = createUpdatesActions({
+  state: updatesState,
+  request: async (path, options = {}) => {
+    if (path === '/api/geo/sources') {
+      const payload = JSON.parse(options.body || '{}');
+      return { ok: true, sources: payload.sources || [], status: {} };
+    }
+    return { ok: true, sources: [], status: {} };
+  },
+  render,
+  refresh: async () => {},
+  geoSelectedPresetIds: () => ['loyalsoldier'],
+});
+await updatesActions.addGeoSource();
 
 const sni = createSniView({
   state,
@@ -428,6 +452,8 @@ const checks = [
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
+  ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
+  ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
