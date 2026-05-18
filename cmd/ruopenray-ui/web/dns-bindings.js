@@ -1,0 +1,67 @@
+export function bindDnsControls({
+  state,
+  render,
+  removeDnsServer,
+  editDnsHost,
+  removeDnsHost,
+  setDnsModeDraft,
+}) {
+  document.querySelectorAll('[data-dns-delete]').forEach((button) => {
+    button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
+  });
+  document.querySelectorAll('[data-dns-host-edit]').forEach((button) => {
+    button.addEventListener('click', () => editDnsHost(button.dataset.dnsHostEdit || ''));
+  });
+  document.querySelectorAll('[data-dns-host-delete]').forEach((button) => {
+    button.addEventListener('click', () => removeDnsHost(button.dataset.dnsHostDelete || ''));
+  });
+  document.querySelectorAll('[data-dns-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.dnsAddress = button.dataset.dnsPreset;
+      render();
+    });
+  });
+  document.querySelectorAll('[data-lan-dns-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.lanDnsMode = button.dataset.lanDnsMode;
+      state.lanDnsPreview = null;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-dns-mode]').forEach((button) => {
+    button.addEventListener('click', () => setDnsModeDraft(button.dataset.dnsMode));
+  });
+
+  document.querySelector('#dnsAddress')?.addEventListener('input', (event) => {
+    state.dnsAddress = event.target.value;
+  });
+  document.querySelector('#dnsDomains')?.addEventListener('input', (event) => {
+    state.dnsDomains = event.target.value;
+  });
+  document.querySelector('#dnsHostName')?.addEventListener('input', (event) => {
+    state.dnsHostName = event.target.value;
+  });
+  document.querySelector('#dnsHostValue')?.addEventListener('input', (event) => {
+    state.dnsHostValue = event.target.value;
+  });
+  document.querySelector('#dnsCheckHost')?.addEventListener('input', (event) => {
+    state.dnsCheckHost = event.target.value;
+  });
+  document.querySelector('#lanDnsUpstream')?.addEventListener('input', (event) => {
+    state.lanDnsUpstream = event.target.value;
+    state.lanDnsPreview = null;
+  });
+  document.querySelector('#lanDnsRestart')?.addEventListener('change', (event) => {
+    state.lanDnsRestart = event.target.checked;
+    state.lanDnsPreview = null;
+    render();
+  });
+  document.querySelector('#setupLanDnsUpstream')?.addEventListener('input', (event) => {
+    state.setupLanDnsUpstream = event.target.value;
+  });
+  document.querySelector('#setupRestartDnsmasq')?.addEventListener('change', (event) => {
+    state.setupRestartDnsmasq = event.target.checked;
+    render();
+  });
+}

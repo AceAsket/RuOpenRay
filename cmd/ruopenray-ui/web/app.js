@@ -5569,6 +5569,20 @@ function bind() {
       }
     });
   });
+  bindDeviceControls({
+    state,
+    render,
+    updateDeviceRule,
+    removeDeviceRule,
+  });
+  bindDnsControls({
+    state,
+    render,
+    removeDnsServer,
+    editDnsHost,
+    removeDnsHost,
+    setDnsModeDraft,
+  });
   bindRoutingControls({
     state,
     render,
@@ -5621,13 +5635,6 @@ function bind() {
   });
   document.querySelectorAll('[data-profile]').forEach((button) => {
     button.addEventListener('click', () => activateProfile(button.dataset.profile));
-  });
-  document.querySelectorAll('[data-device-ip]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.deviceIp = button.dataset.deviceIp || '';
-      state.tab = 'devices';
-      render();
-    });
   });
   document.querySelectorAll('[data-core-version]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -5691,47 +5698,6 @@ function bind() {
   });
   document.querySelectorAll('[data-geo-delete]').forEach((button) => {
     button.addEventListener('click', () => deleteGeoFile(button.dataset.geoDelete));
-  });
-  document.querySelectorAll('[data-device-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.deviceMode = button.dataset.deviceMode;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-device-outbound]').forEach((select) => {
-    select.addEventListener('change', (event) => updateDeviceRule(Number(select.dataset.deviceOutbound), event.target.value));
-  });
-  document.querySelectorAll('[data-device-delete]').forEach((button) => {
-    button.addEventListener('click', () => removeDeviceRule(Number(button.dataset.deviceDelete)));
-  });
-  document.querySelectorAll('[data-lease-ip]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.deviceIp = button.dataset.leaseIp;
-      state.deviceName = button.dataset.leaseName || '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-dns-delete]').forEach((button) => {
-    button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
-  });
-  document.querySelectorAll('[data-dns-host-edit]').forEach((button) => {
-    button.addEventListener('click', () => editDnsHost(button.dataset.dnsHostEdit || ''));
-  });
-  document.querySelectorAll('[data-dns-host-delete]').forEach((button) => {
-    button.addEventListener('click', () => removeDnsHost(button.dataset.dnsHostDelete || ''));
-  });
-  document.querySelectorAll('[data-dns-preset]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.dnsAddress = button.dataset.dnsPreset;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-lan-dns-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.lanDnsMode = button.dataset.lanDnsMode;
-      state.lanDnsPreview = null;
-      render();
-    });
   });
   const jsonDraftNode = document.querySelector('#jsonDraft');
   jsonDraftNode?.addEventListener('input', (event) => {
@@ -5845,49 +5811,6 @@ function bind() {
   });
   document.querySelector('#serviceMirrorPrefix')?.addEventListener('input', (event) => {
     state.serviceMirrorPrefix = event.target.value;
-  });
-  document.querySelectorAll('[data-dns-mode]').forEach((button) => {
-    button.addEventListener('click', () => setDnsModeDraft(button.dataset.dnsMode));
-  });
-  document.querySelector('#deviceName')?.addEventListener('input', (event) => {
-    state.deviceName = event.target.value;
-  });
-  document.querySelector('#deviceIp')?.addEventListener('input', (event) => {
-    state.deviceIp = event.target.value;
-  });
-  document.querySelector('#deviceMode')?.addEventListener('change', (event) => {
-    state.deviceMode = event.target.value;
-  });
-  document.querySelector('#dnsAddress')?.addEventListener('input', (event) => {
-    state.dnsAddress = event.target.value;
-  });
-  document.querySelector('#dnsDomains')?.addEventListener('input', (event) => {
-    state.dnsDomains = event.target.value;
-  });
-  document.querySelector('#dnsHostName')?.addEventListener('input', (event) => {
-    state.dnsHostName = event.target.value;
-  });
-  document.querySelector('#dnsHostValue')?.addEventListener('input', (event) => {
-    state.dnsHostValue = event.target.value;
-  });
-  document.querySelector('#dnsCheckHost')?.addEventListener('input', (event) => {
-    state.dnsCheckHost = event.target.value;
-  });
-  document.querySelector('#lanDnsUpstream')?.addEventListener('input', (event) => {
-    state.lanDnsUpstream = event.target.value;
-    state.lanDnsPreview = null;
-  });
-  document.querySelector('#lanDnsRestart')?.addEventListener('change', (event) => {
-    state.lanDnsRestart = event.target.checked;
-    state.lanDnsPreview = null;
-    render();
-  });
-  document.querySelector('#setupLanDnsUpstream')?.addEventListener('input', (event) => {
-    state.setupLanDnsUpstream = event.target.value;
-  });
-  document.querySelector('#setupRestartDnsmasq')?.addEventListener('change', (event) => {
-    state.setupRestartDnsmasq = event.target.checked;
-    render();
   });
   document.querySelector('#serverCheckTimeout')?.addEventListener('input', (event) => {
     state.serverCheckTimeout = event.target.value;

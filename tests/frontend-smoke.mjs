@@ -2,6 +2,8 @@ import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js'
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
 import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-model.js';
+import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js';
+import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 
@@ -119,6 +121,22 @@ bindDiagnosticsControls({
   refreshLogs: async () => {},
   configureLogTimer: () => {},
   scrollLogsToBottom: () => {},
+});
+
+bindDeviceControls({
+  state,
+  render,
+  updateDeviceRule: () => {},
+  removeDeviceRule: () => {},
+});
+
+bindDnsControls({
+  state,
+  render,
+  removeDnsServer: () => {},
+  editDnsHost: () => {},
+  removeDnsHost: () => {},
+  setDnsModeDraft: () => {},
 });
 
 bindRoutingControls({
