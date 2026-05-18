@@ -1,0 +1,10 @@
+{
+	"luci-app-ruopenray": {
+		"description": "Grant access to the RuOpenRay UI LuCI launcher",
+		"read": {
+			"ubus": {
+				"session": [ "access" ]
+			}
+		}
+	}
+}

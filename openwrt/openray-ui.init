@@ -1,0 +1,23 @@
+#!/bin/sh /etc/rc.common
+
+START=92
+STOP=15
+USE_PROCD=1
+
+PROG=/usr/bin/ruopenray-ui
+
+start_service() {
+  procd_open_instance
+  procd_set_param command "$PROG"
+  procd_set_param env RUOPENRAY_HOST=0.0.0.0
+  procd_set_param env RUOPENRAY_PORT=9090
+  procd_set_param env RUOPENRAY_PASSWORD=admin
+  procd_set_param env RUOPENRAY_DATA_DIR=/etc/ruopenray-ui
+  procd_set_param env RUOPENRAY_PROFILES_DIR=/etc/ruopenray-ui/profiles
+  procd_set_param env RUOPENRAY_ACTIVE_CONFIG=/etc/xray/config.json
+  procd_set_param env RUOPENRAY_XRAY_SERVICE=xray
+  procd_set_param env GOMEMLIMIT=48MiB
+  procd_set_param env GOGC=60
+  procd_set_param respawn
+  procd_close_instance
+}
