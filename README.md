@@ -204,6 +204,7 @@ cmd/ruopenray-ui/web/refresh.js  загрузка snapshot и live/status pollin
 cmd/ruopenray-ui/web/routing-view.js отрисовка маршрутизации, сценариев и перехвата
 cmd/ruopenray-ui/web/servers-view.js отрисовка вкладки прокси, подписок и групп
 cmd/ruopenray-ui/web/settings-view.js отрисовка настроек панели, логирования, сервиса и обновлений
+cmd/ruopenray-ui/web/setup-view.js отрисовка мастера установки, setup wizard и выбора версии Xray
 cmd/ruopenray-ui/web/storage.js  localStorage helpers и ключи настроек
 cmd/ruopenray-ui/web/presets.js  пресеты маршрутизации и подписи UI
 cmd/ruopenray-ui/web/styles.css  точка входа CSS через imports
