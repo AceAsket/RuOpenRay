@@ -173,6 +173,8 @@ const state = {
   domainMonitorSort: 'hits',
   domainMonitorMode: 'domains',
   domainMonitorFilter: localStorage.getItem(domainMonitorFilterStorageKey) || 'domains',
+  domainProbeResults: {},
+  domainProbeChecking: '',
   profileName: '',
   routeKind: 'domain',
   routeValue: '',
@@ -303,6 +305,13 @@ const routeKinds = {
   source: 'Устройство LAN',
   port: 'Порт',
   inboundTag: 'Входящий поток'
+};
+
+const managedRouteTags = {
+  'ruopenray-api': 'Xray API / статистика',
+  ruopenray_dns_in: 'DNS через RuOpenRay',
+  transparent_ipv4: 'Перехват LAN-трафика',
+  'dns-out': 'DNS-выход Xray'
 };
 
 const routePlaceholders = {
@@ -1051,7 +1060,7 @@ function balancerOptions() {
 
 function routeTargetOptions() {
   return [
-    ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: tag })),
+    ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: readableRouteTag(tag) })),
     ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
   ];
 }
@@ -1105,10 +1114,52 @@ function compactRouteValue(value) {
     .trim();
 }
 
+function readableRouteTag(tag) {
+  return managedRouteTags[String(tag || '')] || String(tag || '');
+}
+
+function routeTagValue(value, kind = '') {
+  const raw = String(value || '');
+  const readable = readableRouteTag(raw);
+  if (readable === raw) return raw;
+  return kind === 'full' ? `${readable} (${raw})` : readable;
+}
+
+function routeHasInbound(rule, tag) {
+  return Array.isArray(rule?.inboundTag) && rule.inboundTag.includes(tag);
+}
+
+function isRuOpenRayManagedRoute(rule) {
+  if (!rule) return false;
+  if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return true;
+  if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return true;
+  if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return true;
+  if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return true;
+  return false;
+}
+
+function managedRouteName(rule) {
+  if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Статистика Xray';
+  if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'DNS через RuOpenRay';
+  if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'DNS-запросы на Xray';
+  if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Локальная сеть напрямую';
+  return '';
+}
+
+function managedRouteDetail(rule) {
+  if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Служебный маршрут для локального Xray StatsService API';
+  if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'Служебный маршрут: DNS с 127.0.0.1:5353 отправляется в DNS-выход Xray';
+  if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'Служебный маршрут для DNS-запросов';
+  if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Служебный direct для локальной сети и приватных адресов';
+  return '';
+}
+
 function guessRouteRuleName(rule, info) {
   const target = routeTarget(rule || {});
   const raw = target.values.join(' ').toLowerCase();
   const first = compactRouteValue(target.values[0]);
+  const managedName = managedRouteName(rule || {});
+  if (managedName) return managedName;
   if (raw.includes('geoip:private')) return 'Локальная сеть';
   if (raw.includes('antifilter')) return 'Antifilter community';
   if (raw.includes('discord')) return rule.network === 'udp' ? 'Discord UDP' : 'Discord';
@@ -1121,7 +1172,7 @@ function guessRouteRuleName(rule, info) {
   if (raw.includes('66.22.192.0/18')) return 'Discord voice';
   if (target.kind === 'source') return `Устройство ${first}`;
   if (target.kind === 'port') return `Порты ${first}`;
-  if (target.kind === 'inboundTag') return `Входящий поток ${first}`;
+  if (target.kind === 'inboundTag') return `Входящий поток ${routeTagValue(first)}`;
   if (first) return first.length > 42 ? `${first.slice(0, 42)}…` : first;
   return info?.kind || 'Правило маршрутизации';
 }
@@ -1150,15 +1201,17 @@ function copyRouteRuleName(fromRule, toRule) {
 
 function describeRouteRule(rule) {
   const target = routeTarget(rule || {});
-  const values = target.values.join(', ');
+  const values = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
+  const fullValues = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
   const network = rule.network ? ` · ${rule.network}` : '';
-  const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : (rule.outboundTag || 'не задано');
+  const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
+  const managedDetail = managedRouteDetail(rule || {});
   return {
     kind: routeKinds[target.kind] || 'Другое',
     value: values.length > 96 ? `${values.slice(0, 96)}…` : values,
-    fullValue: values,
+    fullValue: fullValues,
     outbound,
-    detail: `${rule.type || 'field'}${network}`
+    detail: managedDetail || `${rule.type || 'field'}${network}`
   };
 }
 
@@ -1242,6 +1295,7 @@ async function refreshDisabledRouteRules() {
 }
 
 function routeRuleSource(rule) {
+  if (isRuOpenRayManagedRoute(rule)) return 'Служебное правило RuOpenRay';
   const encoded = JSON.stringify(rule || {});
   for (const [key, preset] of Object.entries(routePresets)) {
     if (JSON.stringify(preset.rule) === encoded) return `Подборка: ${preset.title}`;
@@ -2236,6 +2290,35 @@ async function controlDomainMonitor(action) {
   });
   state.message = result.stdout || result.stderr || 'SNI-монитор обновлен';
   await refreshDomainMonitor(true);
+}
+
+async function probeMonitoredDomain(host) {
+  const cleanHost = String(host || '').trim();
+  if (!cleanHost) return;
+  state.domainProbeChecking = cleanHost;
+  state.message = `Проверяю ${cleanHost}: напрямую и через proxy...`;
+  render();
+  try {
+    const result = await request('/api/diagnostics/domain-probe', {
+      method: 'POST',
+      body: JSON.stringify({
+        host: cleanHost,
+        tag: activeProxyTag() || '',
+        timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
+      })
+    });
+    state.domainProbeResults = { ...state.domainProbeResults, [cleanHost]: result };
+    state.message = `${cleanHost}: ${result.verdict?.label || 'проверено'}`;
+  } catch (error) {
+    state.domainProbeResults = {
+      ...state.domainProbeResults,
+      [cleanHost]: { ok: false, stderr: error.message, host: cleanHost }
+    };
+    state.message = error.message;
+  } finally {
+    state.domainProbeChecking = '';
+    render();
+  }
 }
 
 function scrollLogsToBottom() {
@@ -3895,6 +3978,11 @@ function routeRuleFromForm(baseRule = {}) {
 function openRoutingRuleEditor(index) {
   const rule = routeRules()[index];
   if (!rule) return;
+  if (isRuOpenRayManagedRoute(rule)) {
+    state.message = 'Это служебное правило RuOpenRay. Меняйте его через раздел DNS, Перехват или Статистика Xray, чтобы не сломать системную часть конфигурации.';
+    render();
+    return;
+  }
   const target = routeTarget(rule);
   if (!routeKinds[target.kind]) {
     state.message = 'Это особое правило пока нельзя редактировать в форме. Его можно изменить в активной конфигурации.';
@@ -4269,10 +4357,14 @@ function routeRowHtml(item, options, rulesLength) {
   const { index, info, name, source } = item;
   const selectedTarget = encodedRouteTarget(item.rule);
   const category = routeCategoryForRule(item.rule);
+  const managed = isRuOpenRayManagedRoute(item.rule);
+  const targetOptions = options.some((option) => option.value === selectedTarget)
+    ? options
+    : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${item.rule.balancerTag}` : readableRouteTag(item.rule.outboundTag || 'не задано') }, ...options];
   const section = routeSectionDefinitions().find((entry) => entry.id === category) || routeSectionDefinitions().find((entry) => entry.id === 'other');
-  return `<article class="route-row route-row-${escapeHtml(category)}" draggable="true" data-route-index="${index}">
+  return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''}" draggable="${managed ? 'false' : 'true'}" data-route-index="${index}">
     <div class="route-order">
-      <button class="route-drag-handle" type="button" title="Перетащить правило" aria-label="Перетащить правило">⋮⋮</button>
+      <button class="route-drag-handle" type="button" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
       <span>${index + 1}</span>
     </div>
     <div class="route-kind-stack">
@@ -4287,15 +4379,15 @@ function routeRowHtml(item, options, rulesLength) {
       <strong title="${escapeHtml(info.fullValue)}">${escapeHtml(info.value)}</strong>
       <span>${escapeHtml(info.detail)}</span>
     </div>
-    <select class="route-outbound" data-route-target="${index}">
-      ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${selectedTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+    <select class="route-outbound" data-route-target="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через профильный раздел' : ''}">
+      ${targetOptions.map((option) => `<option value="${escapeHtml(option.value)}" ${selectedTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
     </select>
     <div class="route-actions">
-      <button class="icon-btn route-action-btn move-up" type="button" data-route-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять правило выше">↑</button>
-      <button class="icon-btn route-action-btn move-down" type="button" data-route-move="${index}" data-direction="1" ${index === rulesLength - 1 ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить правило ниже">↓</button>
-      <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" title="Править" aria-label="Править правило">✎</button>
-      <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" title="Отключить без удаления" aria-label="Отключить правило без удаления">⏸</button>
-      <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" title="Удалить" aria-label="Удалить правило">×</button>
+      <button class="icon-btn route-action-btn move-up" type="button" data-route-move="${index}" data-direction="-1" ${index === 0 || managed ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять правило выше">↑</button>
+      <button class="icon-btn route-action-btn move-down" type="button" data-route-move="${index}" data-direction="1" ${index === rulesLength - 1 || managed ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить правило ниже">↓</button>
+      <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват или Статистику Xray' : 'Править'}" aria-label="Править правило">✎</button>
+      <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
+      <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : 'Удалить'}" aria-label="Удалить правило">×</button>
     </div>
   </article>`;
 }
@@ -7889,6 +7981,47 @@ function domainMonitorDeviceLine(item = {}) {
   return [text, endpoint].filter(Boolean).join(' · ');
 }
 
+function domainProbeLine(part = {}, label) {
+  if (part.skipped) {
+    return `<span>${escapeHtml(label)}: пропущено</span>`;
+  }
+  const ok = part.ok === true;
+  const latency = Number(part.latencyMs || 0);
+  const suffix = latency ? ` · ${latency} мс` : '';
+  const status = part.status ? ` HTTP ${part.status}` : '';
+  return `<span class="${ok ? 'ok' : 'bad'}">${escapeHtml(label)}: ${ok ? 'да' : 'нет'}${escapeHtml(status + suffix)}</span>`;
+}
+
+function domainProbeStatusHtml(host) {
+  const checking = state.domainProbeChecking === host;
+  const result = state.domainProbeResults[host];
+  if (checking) {
+    return `<div class="domain-probe pending"><span>проверяю...</span></div>`;
+  }
+  if (!result) {
+    return `<button class="btn secondary compact" data-domain-probe="${escapeHtml(host)}">Проверить</button>`;
+  }
+  if (result.ok === false) {
+    return `<div class="domain-probe bad">
+      <strong>ошибка</strong>
+      <span>${escapeHtml(result.stderr || result.error || 'не удалось проверить')}</span>
+      <button class="btn secondary compact" data-domain-probe="${escapeHtml(host)}">Повторить</button>
+    </div>`;
+  }
+  const code = result.verdict?.code || '';
+  const checks = result.checks || {};
+  return `<div class="domain-probe ${escapeHtml(code)}">
+    <strong>${escapeHtml(result.verdict?.label || 'проверено')}</strong>
+    ${domainProbeLine(checks.ping, 'ping с роутера')}
+    ${domainProbeLine(checks.tcpDirect, 'tcp напрямую')}
+    ${domainProbeLine(checks.tcpProxy, `tcp через ${result.tag || 'proxy'}`)}
+    ${domainProbeLine(checks.httpDirect || result.direct, 'http напрямую')}
+    ${domainProbeLine(checks.httpProxy || result.proxy, `http через ${result.tag || 'proxy'}`)}
+    <small>${escapeHtml(result.verdict?.detail || '')}</small>
+    <button class="btn secondary compact" data-domain-probe="${escapeHtml(host)}">Повторить</button>
+  </div>`;
+}
+
 function domainMonitorItemHtml(item, { event = false } = {}) {
   const host = domainMonitorHost(item) || 'unknown';
   const kind = domainMonitorKind(host);
@@ -7905,6 +8038,7 @@ function domainMonitorItemHtml(item, { event = false } = {}) {
       <strong>${hits.toLocaleString('ru-RU')}</strong>
       <small>${escapeHtml(time || '')}</small>
     </div>
+    ${domainProbeStatusHtml(host)}
     <button class="btn secondary" data-domain-to-route="${escapeHtml(host)}">В правило</button>
   </article>`;
 }
@@ -10002,6 +10136,12 @@ function bind() {
       state.routeRuleMode = 'single';
       state.routeRuleDialog = true;
       render();
+    });
+  });
+  document.querySelectorAll('[data-domain-probe]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (state.domainProbeChecking) return;
+      await probeMonitoredDomain(button.dataset.domainProbe || '');
     });
   });
   document.querySelectorAll('[data-route-target]').forEach((select) => {

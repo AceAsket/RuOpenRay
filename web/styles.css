@@ -4315,6 +4315,22 @@ select {
   background: rgba(13, 20, 25, 0.75);
 }
 
+.route-row-managed {
+  border-style: dashed;
+  background: rgba(15, 25, 31, 0.55);
+}
+
+.route-row-managed .route-category {
+  border-color: rgba(142, 160, 155, 0.28);
+  background: rgba(142, 160, 155, 0.08);
+  color: var(--muted);
+}
+
+.route-row-managed .route-kind {
+  border-color: rgba(126, 230, 216, 0.22);
+  background: rgba(126, 230, 216, 0.07);
+}
+
 .route-row.dragging {
   opacity: 0.45;
 }
@@ -4373,6 +4389,11 @@ select {
 
 .route-drag-handle:active {
   cursor: grabbing;
+}
+
+.route-drag-handle:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .route-kind-stack {
@@ -4488,7 +4509,7 @@ select {
   background: rgba(49, 210, 189, 0.11);
 }
 
-.route-actions .edit:hover {
+.route-actions .edit:hover:not(:disabled) {
   border-color: rgba(49, 210, 189, 0.48);
   color: #f4fffd;
   background: rgba(49, 210, 189, 0.2);
@@ -4500,7 +4521,7 @@ select {
   background: rgba(242, 189, 82, 0.1);
 }
 
-.route-actions .disable:hover {
+.route-actions .disable:hover:not(:disabled) {
   border-color: rgba(242, 189, 82, 0.5);
   color: #fff5cf;
   background: rgba(242, 189, 82, 0.2);
@@ -4512,7 +4533,7 @@ select {
   background: rgba(185, 60, 71, 0.14);
 }
 
-.route-actions .icon-btn.danger:hover {
+.route-actions .icon-btn.danger:hover:not(:disabled) {
   border-color: rgba(255, 107, 107, 0.5);
   color: #fff;
   background: rgba(185, 60, 71, 0.3);
@@ -6579,7 +6600,6 @@ select {
 .domain-monitor-item,
 .domain-monitor-device {
   display: grid;
-  grid-template-columns: 96px minmax(220px, 1fr) minmax(220px, 0.8fr) 112px 112px;
   gap: 10px;
   align-items: center;
   min-height: 58px;
@@ -6587,6 +6607,14 @@ select {
   border-radius: 8px;
   padding: 10px;
   background: rgba(7, 15, 19, 0.7);
+}
+
+.domain-monitor-item {
+  grid-template-columns: 86px minmax(220px, 1fr) minmax(150px, 0.55fr) 96px minmax(260px, 0.9fr) 108px;
+}
+
+.domain-monitor-device {
+  grid-template-columns: 96px minmax(220px, 1fr) minmax(220px, 0.8fr) 112px 112px;
 }
 
 .domain-monitor-item.domain {
@@ -6689,6 +6717,66 @@ select {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.domain-probe {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  max-width: 360px;
+  padding: 7px 8px;
+  border: 1px solid rgba(126, 230, 216, 0.18);
+  border-radius: 8px;
+  background: rgba(13, 20, 25, 0.72);
+}
+
+.domain-probe strong,
+.domain-probe span,
+.domain-probe small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-probe strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.domain-probe span,
+.domain-probe small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.domain-probe span.ok {
+  color: #9ff2a8;
+}
+
+.domain-probe span.bad {
+  color: #ffb0b8;
+}
+
+.domain-probe.proxy-needed {
+  border-color: rgba(242, 189, 82, 0.42);
+  background: rgba(242, 189, 82, 0.08);
+}
+
+.domain-probe.both-ok,
+.domain-probe.direct-only {
+  border-color: rgba(103, 222, 120, 0.32);
+  background: rgba(103, 222, 120, 0.07);
+}
+
+.domain-probe.down,
+.domain-probe.bad {
+  border-color: rgba(255, 107, 107, 0.34);
+  background: rgba(185, 60, 71, 0.08);
+}
+
+.domain-probe.pending {
+  border-style: dashed;
 }
 
 .guard-list {
