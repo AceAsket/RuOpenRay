@@ -5,13 +5,16 @@ import { createAuxPanelsView } from './aux-panels-view.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
 import { createDashboardView } from './dashboard-view.js';
+import { createDevicesActions } from './devices-actions.js';
 import { createDevicesModel } from './devices-model.js';
 import { createDiagnosticsActions } from './diagnostics-actions.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
+import { createDnsActions } from './dns-actions.js';
 import { createDnsModel } from './dns-model.js';
 import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
+import { createFirewallActions } from './firewall-actions.js';
 import { createFirewallModel } from './firewall-model.js';
 import { byteRate, byteSize, escapeHtml, fmtUptime, formatDuration, formatDurationCompact, numberValue } from './formatters.js';
 import { createImportDialogView } from './import-dialog-view.js';
@@ -463,62 +466,35 @@ const {
   firewallReadyStatus
 } = firewallModel;
 
-async function applyFirewallWithRetry(attempts = 2) {
-  let lastResult = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (attempt > 0) await delay(1200);
-    lastResult = await request('/api/firewall/apply', {
-      method: 'POST',
-      body: JSON.stringify(firewallPayload())
-    });
-    state.firewallStatus = lastResult.status || lastResult;
-    if (lastResult.ok && firewallReadyStatus(state.firewallStatus)) return lastResult;
-
-    await delay(800);
-    const status = await request('/api/firewall/status').catch(() => null);
-    if (status) state.firewallStatus = status;
-    if (firewallReadyStatus(state.firewallStatus)) {
-      return { ok: true, status: state.firewallStatus, retried: attempt > 0 };
-    }
+const firewallActions = createFirewallActions({
+  state,
+  request,
+  render,
+  delay,
+  firewallPayload,
+  firewallReadyStatus,
+  storageKeys: {
+    firewallBypassModeStorageKey,
+    firewallRouterModeStorageKey,
+    firewallDeviceModeStorageKey,
+    firewallPortModeStorageKey,
+    firewallSelectedDevicesStorageKey,
+    firewallBlockQuicStorageKey
   }
-  return lastResult || { ok: false, status: state.firewallStatus };
-}
-
-async function applyFirewall() {
-  state.firewallSaving = true;
-  render();
-  try {
-    const result = await request('/api/firewall/apply', {
-      method: 'POST',
-      body: JSON.stringify(firewallPayload())
-    });
-    state.firewallStatus = result.status || result;
-    state.message = result.ok
-      ? 'Перехват применен и сохранен для перезапуска firewall'
-      : (result.error || 'Не удалось применить перехват');
-  } finally {
-    state.firewallSaving = false;
-    render();
-  }
-}
-
-async function disableFirewall() {
-  state.firewallSaving = true;
-  render();
-  try {
-    const result = await request('/api/firewall/disable', { method: 'POST' });
-    state.firewallStatus = result.status || result;
-    state.message = result.ok ? 'Перехват отключен' : 'Не удалось полностью отключить перехват';
-  } finally {
-    state.firewallSaving = false;
-    render();
-  }
-}
-
-async function refreshFirewallStatus() {
-  state.firewallStatus = await request('/api/firewall/status');
-  render();
-}
+});
+const {
+  applyFirewallWithRetry,
+  applyFirewall,
+  disableFirewall,
+  refreshFirewallStatus,
+  setFirewallBypassMode,
+  setFirewallRouterMode,
+  setFirewallDeviceMode,
+  setFirewallPortMode,
+  toggleFirewallDevice,
+  setFirewallBlockQuic,
+  setQuicPolicy
+} = firewallActions;
 
 const runtimeController = createRuntimeController({
   state,
@@ -1245,49 +1221,6 @@ async function checkObservatoryTargets() {
   const tags = selectors.length ? proxyOutbounds().filter((outbound) => outboundMatchesSelectors(outbound, selectors)).map((outbound) => outbound.tag).filter(Boolean) : [];
   const fallbackTags = proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean);
   await checkServers(tags.length ? tags : fallbackTags);
-}
-
-function setFirewallBypassMode(mode) {
-  state.firewallBypassMode = ['off', 'bypass', 'redirect'].includes(mode) ? mode : 'off';
-  localStorage.setItem(firewallBypassModeStorageKey, state.firewallBypassMode);
-  render();
-}
-
-function setFirewallRouterMode(mode) {
-  state.firewallRouterMode = ['tproxy', 'redirect'].includes(mode) ? mode : 'tproxy';
-  localStorage.setItem(firewallRouterModeStorageKey, state.firewallRouterMode);
-  render();
-}
-
-function setFirewallDeviceMode(mode) {
-  state.firewallDeviceMode = ['all', 'selected', 'exclude'].includes(mode) ? mode : 'all';
-  localStorage.setItem(firewallDeviceModeStorageKey, state.firewallDeviceMode);
-  render();
-}
-
-function setFirewallPortMode(mode) {
-  state.firewallPortMode = mode === 'all' ? 'all' : 'custom';
-  localStorage.setItem(firewallPortModeStorageKey, state.firewallPortMode);
-  render();
-}
-
-function toggleFirewallDevice(ip, enabled) {
-  const selected = new Set(state.firewallSelectedDevices);
-  if (enabled) selected.add(ip);
-  else selected.delete(ip);
-  state.firewallSelectedDevices = [...selected];
-  localStorage.setItem(firewallSelectedDevicesStorageKey, JSON.stringify(state.firewallSelectedDevices));
-  render();
-}
-
-function setFirewallBlockQuic(enabled) {
-  state.firewallBlockQuic = Boolean(enabled);
-  localStorage.setItem(firewallBlockQuicStorageKey, state.firewallBlockQuic ? '1' : '0');
-  render();
-}
-
-function setQuicPolicy(policy) {
-  setFirewallBlockQuic(policy === 'block');
 }
 
 function setActiveProxyDraft(tag) {
@@ -2349,224 +2282,44 @@ function focusSniResult(index) {
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function addDeviceRule() {
-  const ip = normalizeDeviceIp(state.deviceIp);
-  if (!ip) {
-    state.message = 'Укажите IP устройства в LAN, например 192.168.50.42';
-    render();
-    return;
-  }
-  const rule = {
-    type: 'field',
-    outboundTag: state.deviceMode,
-    source: [ip]
-  };
-  const inbounds = proxyInboundTags();
-  if (inbounds) rule.inboundTag = inbounds;
-  setRoutingDraft([rule, ...routeRules()]);
-  state.deviceIp = '';
-  state.deviceName = '';
-  state.message = `Правило для устройства ${ip} добавлено в черновик`;
-  render();
-}
+const devicesActions = createDevicesActions({
+  state,
+  render,
+  normalizeDeviceIp,
+  proxyInboundTags,
+  routeRules,
+  setRoutingDraft
+});
+const {
+  addDeviceRule,
+  updateDeviceRule,
+  removeDeviceRule
+} = devicesActions;
 
-function updateDeviceRule(index, outboundTag) {
-  const rules = routeRules().map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, outboundTag } : rule));
-  setRoutingDraft(rules);
-  state.message = 'Режим устройства изменен в черновике';
-  render();
-}
-
-function removeDeviceRule(index) {
-  const rules = routeRules().filter((_, ruleIndex) => ruleIndex !== index);
-  setRoutingDraft(rules);
-  state.message = 'Правило устройства удалено из черновика';
-  render();
-}
-
-function addDnsServer() {
-  const address = String(state.dnsAddress || '').trim();
-  if (!address) {
-    state.message = 'Укажите DNS-сервер, например https://dns.google:443/dns-query';
-    render();
-    return;
-  }
-  const domains = splitRouteValues(state.dnsDomains);
-  const normalized = normalizeDnsAddressInput(address);
-  const server = typeof normalized.config === 'object'
-    ? { ...normalized.config, ...(domains.length ? { domains } : {}) }
-    : domains.length
-      ? { address: normalized.config, domains }
-      : normalized.config;
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
-  next.dns.servers.push(server);
-  syncConfig(next);
-  state.dnsDomains = '';
-  state.message = 'DNS-сервер добавлен в черновик';
-  render();
-}
-
-function dnsHostValueFromInput(value) {
-  const values = splitRouteValues(value);
-  if (!values.length) return '';
-  return values.length === 1 ? values[0] : values;
-}
-
-function dnsHostValueToInput(value) {
-  if (Array.isArray(value)) return value.join(', ');
-  return String(value || '');
-}
-
-function saveDnsHost() {
-  const host = String(state.dnsHostName || '').trim();
-  const value = dnsHostValueFromInput(state.dnsHostValue);
-  if (!host || !value || (Array.isArray(value) && !value.length)) {
-    state.message = 'Укажите домен и значение host-подмены';
-    render();
-    return;
-  }
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.hosts = next.dns.hosts && typeof next.dns.hosts === 'object' && !Array.isArray(next.dns.hosts) ? next.dns.hosts : {};
-  next.dns.hosts[host] = value;
-  syncConfig(next);
-  state.dnsHostName = '';
-  state.dnsHostValue = '';
-  state.message = 'Host-подмена сохранена в черновик';
-  render();
-}
-
-function editDnsHost(host) {
-  const hosts = dnsConfig().hosts || {};
-  state.dnsHostName = host;
-  state.dnsHostValue = dnsHostValueToInput(hosts[host]);
-  state.message = '';
-  render();
-}
-
-function removeDnsHost(host) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.hosts = next.dns.hosts && typeof next.dns.hosts === 'object' && !Array.isArray(next.dns.hosts) ? next.dns.hosts : {};
-  delete next.dns.hosts[host];
-  syncConfig(next);
-  if (state.dnsHostName === host) {
-    state.dnsHostName = '';
-    state.dnsHostValue = '';
-  }
-  state.message = 'Host-подмена удалена из черновика';
-  render();
-}
-
-function ensureDnsServer(next, server) {
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
-  const target = typeof server === 'string' ? server : server.address;
-  const exists = next.dns.servers.some((item) => {
-    const address = typeof item === 'string' ? item : item?.address;
-    return address === target;
-  });
-  if (!exists) next.dns.servers.push(server);
-}
-
-function applyDnsGuardPreset(mode) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  if (mode === 'secure') {
-    ensureDnsServer(next, 'https://dns.google:443/dns-query');
-    ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');
-  }
-  if (mode === 'ru') {
-    ensureDnsServer(next, 'https://common.dot.dns.yandex.net/dns-query');
-    ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');
-  }
-  if (mode === 'strict') {
-    ensureDnsServer(next, 'https://dns.google:443/dns-query');
-    ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');
-    const rules = Array.isArray(next.routing?.rules) ? next.routing.rules : [];
-    const hasUdp443 = rules.some((rule) => String(rule.network || '').includes('udp') && String(rule.port || '') === '443');
-    next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
-    next.routing.rules = hasUdp443
-      ? rules
-      : [{ type: 'field', network: 'udp', port: '443', outboundTag: activeProxyTag() || 'proxy' }, ...rules];
-  }
-  syncConfig(next);
-  state.message = mode === 'strict'
-    ? 'Защита DNS добавила DoH и правило UDP/443 в черновик'
-    : 'Защита DNS добавила защищенные DNS-серверы в черновик';
-  render();
-}
-
-function removeDnsServer(index) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers.filter((_, itemIndex) => itemIndex !== index) : [];
-  syncConfig(next);
-  state.message = 'DNS-сервер удален из черновика';
-  render();
-}
-
-async function checkDnsServer() {
-  const normalized = normalizeDnsAddressInput(state.dnsAddress);
-  const result = await request('/api/dns/check', {
-    method: 'POST',
-    body: JSON.stringify({ server: normalized.check || state.dnsAddress, host: state.dnsCheckHost })
-  });
-  state.dnsCheckResult = result;
-  state.message = result.ok ? 'DNS проверен' : 'DNS не ответил';
-  render();
-}
-
-async function applyLanDnsUpstream() {
-  state.lanDnsSaving = true;
-  render();
-  try {
-    const result = await request('/api/dns/lan-upstream', {
-      method: 'POST',
-      body: JSON.stringify({
-        mode: state.lanDnsMode,
-        upstream: state.lanDnsUpstream,
-        restart: state.lanDnsRestart
-      })
-    });
-    syncLanDnsStatus(result);
-    state.message = result.ok ? 'LAN DNS настроен, dnsmasq обновлен' : (result.error || 'Не удалось настроить LAN DNS');
-  } finally {
-    state.lanDnsSaving = false;
-    render();
-  }
-}
-
-function applyDnsBootstrapHosts() {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  ensureDnsBootstrapHosts(next);
-  syncConfig(next);
-  state.message = 'Bootstrap hosts для DoH добавлены в черновик. Проверьте и примените конфигурацию.';
-  render();
-}
-
-async function previewLanDnsUpstream() {
-  state.lanDnsSaving = true;
-  state.lanDnsPreview = null;
-  render();
-  try {
-    const result = await request('/api/dns/lan-upstream', {
-      method: 'POST',
-      body: JSON.stringify({
-        mode: state.lanDnsMode,
-        upstream: state.lanDnsUpstream,
-        restart: state.lanDnsRestart,
-        dryRun: true
-      })
-    });
-    syncLanDnsStatus(result);
-    state.message = result.ok ? 'План LAN DNS готов: проверьте команды перед применением' : (result.error || 'Не удалось подготовить план LAN DNS');
-  } finally {
-    state.lanDnsSaving = false;
-    render();
-  }
-}
+const dnsActions = createDnsActions({
+  state,
+  request,
+  render,
+  syncConfig,
+  syncLanDnsStatus,
+  activeProxyTag,
+  splitRouteValues,
+  dnsConfig,
+  normalizeDnsAddressInput,
+  ensureDnsBootstrapHosts
+});
+const {
+  addDnsServer,
+  saveDnsHost,
+  editDnsHost,
+  removeDnsHost,
+  applyDnsGuardPreset,
+  removeDnsServer,
+  checkDnsServer,
+  applyLanDnsUpstream,
+  applyDnsBootstrapHosts,
+  previewLanDnsUpstream
+} = dnsActions;
 
 function loginView() {
   const eyeIcon = state.passwordVisible
