@@ -1,4 +1,5 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
+import { bindActionControls } from './action-bindings.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
 import { bindConfigControls } from './config-bindings.js';
@@ -5320,192 +5321,184 @@ function restoreConfigScroll() {
   });
 }
 
+function openRoutePresetPicker() {
+  resetRouteRuleForm();
+  state.routeRuleDialog = true;
+  state.routeRuleMode = 'presets';
+  state.selectedRoutePresets = [];
+  state.message = '';
+  render();
+}
+
 function bind() {
   bindNavigationControls({ state, render });
   bindModalControls();
-  document.querySelectorAll('[data-action]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      try {
-        if (button.classList.contains('modal-backdrop')) {
-          const startedInModal = button.dataset.pointerStartedInModal === '1';
-          button.dataset.pointerStartedInModal = '0';
-          if (startedInModal || event.target !== button) return;
-        }
-        const action = button.dataset.action;
-        if (['start', 'stop', 'restart'].includes(action)) return await service(action);
-        if (action === 'refresh') return await refresh();
-        if (action === 'changePanelPassword') return await changePanelPassword();
-        if (action === 'saveLoggingSettings') return await saveLoggingSettings();
-        if (action === 'clearLoggingFiles') return await clearLoggingFiles();
-        if (action === 'refreshDhcpLeases') return await refreshDhcpLeases();
-        if (action === 'saveServiceSettings') return await saveServiceSettings();
-        if (action === 'appVersionClick') return await appVersionClick();
-        if (action === 'checkAppUpdate') return await checkAppUpdate();
-        if (action === 'updateApp') return await updateApp();
-        if (action === 'test') return await testConfig();
-        if (action === 'apply') return await applyConfig();
-        if (action === 'applyFirewall') return await applyFirewall();
-        if (action === 'disableFirewall') return await disableFirewall();
-        if (action === 'refreshFirewallStatus') return await refreshFirewallStatus();
-        if (action === 'enableXrayStats') return await setXrayStats(true);
-        if (action === 'disableXrayStats') return await setXrayStats(false);
-        if (action === 'resetXrayStats') return await resetXrayStats();
-        if (action === 'analyzeConfig') return await analyzeConfig();
-        if (action === 'openCoreDialog') {
-          const info = coreUpdateInfo();
-          state.coreDialogOpen = true;
-          state.selectedCoreVersion = state.selectedCoreVersion || info.target?.tag || filteredCoreReleases().find((release) => release.assetUrl)?.tag || '';
-          return render();
-        }
-        if (action === 'closeCoreDialog') {
-          state.coreDialogOpen = false;
-          return render();
-        }
-        if (action === 'openRouteRuleDialog') {
-          resetRouteRuleForm();
-          state.routeRuleDialog = true;
-          state.routeRuleMode = 'single';
-          state.message = '';
-          return render();
-        }
-        if (action === 'openRouteRulePresets' || action === 'openRoutePresetDialog') {
-          resetRouteRuleForm();
-          state.routeRuleDialog = true;
-          state.routeRuleMode = 'presets';
-          state.selectedRoutePresets = [];
-          state.message = '';
-          return render();
-        }
-        if (action === 'closeRouteRuleDialog') {
-          state.routeRuleDialog = false;
-          resetRouteRuleForm();
-          state.selectedRoutePresets = [];
-          state.message = '';
-          return render();
-        }
-        if (action === 'openRouteBalancerDialog') return openRouteBalancerDialog();
-        if (action === 'closeRouteBalancerDialog') return closeRouteBalancerDialog();
-        if (action === 'saveRouteBalancer') return saveRouteBalancer();
-        if (action === 'newRoutePreset') return newRoutingPreset();
-        if (action === 'closeRoutePresetDialog') {
-          state.routePresetDialog = false;
-          clearRoutePresetEditor();
-          return render();
-        }
-        if (action === 'backToRoutePresets') {
-          clearRoutePresetEditor();
-          state.message = '';
-          return render();
-        }
-        if (action === 'selectAllRoutePresets') {
-          state.selectedRoutePresets = [...customRoutePresetEntries().map(([key]) => key), ...builtinRoutePresetEntries().map(([key]) => key)];
-          return render();
-        }
-        if (action === 'clearRoutePresets') {
-          state.selectedRoutePresets = [];
-          return render();
-        }
-        if (action === 'applyRoutePresets') return applySelectedRoutingPresets();
-        if (action === 'previewRoutePresetEdit') return previewRoutePresetEdit();
-        if (action === 'saveRoutePresetEdit') return saveRoutePresetEdit();
-        if (action === 'applyRoutePresetEdit') return applyRoutePresetEdit();
-        if (action === 'openInstallWizard') return await openInstallWizard();
-        if (action === 'openSetupWizard') return await openSetupWizard();
-        if (action === 'closeSetupWizard') {
-          state.setupWizardOpen = false;
-          return render();
-        }
-        if (action === 'setupPrepareDraft') return setupPrepareDraft();
-        if (action === 'runSetupWizard') return await runSetupWizard();
-        if (action === 'rollbackSetupWizard') return await rollbackSetupWizard();
-        if (action === 'clearSetupSnapshot') {
-          clearSetupSnapshot();
-          return render();
-        }
-        if (action === 'refreshInstallPlan') {
-          state.installPlan = await request('/api/install/plan');
-          return render();
-        }
-        if (action === 'closeInstallWizard') {
-          state.installWizardOpen = false;
-          return render();
-        }
-        if (action === 'updateCore') return await updateCore();
-        if (action === 'installCorePackage') return await installCorePackage();
-        if (action === 'updateGeo') return await updateGeo();
-        if (action === 'saveGeoSchedule') return await saveGeoSchedule();
-        if (action === 'cleanupGeoBackups') return await cleanupGeoBackups();
-        if (action === 'cleanupExtraGeoDat') return await cleanupExtraGeoDat();
-        if (action === 'addGeoSource') return await addGeoSource();
-        if (action === 'refreshLogs') return await refreshLogs(true, true);
-        if (action === 'runConnectivityDiagnostics') return await runConnectivityDiagnostics();
-        if (action === 'refreshDomainMonitor') return await refreshDomainMonitor(true);
-        if (action === 'startDomainMonitor') return await controlDomainMonitor('start');
-        if (action === 'stopDomainMonitor') return await controlDomainMonitor('stop');
-        if (action === 'clearDomainMonitor') return await controlDomainMonitor('clear');
-        if (action === 'toggleConfig') {
-          state.configExpanded = !state.configExpanded;
-          return render();
-        }
-        if (action === 'import') return await importLink();
-        if (action === 'previewImport') return await previewImport();
-        if (action === 'importToCurrent') return await importToCurrent(false);
-        if (action === 'importActive') return await importToCurrent(true);
-        if (action === 'previewSubscription') return await previewSubscription();
-        if (action === 'importSubscription') return await importSubscription();
-        if (action === 'importSubscriptionToCurrent') return await importSubscriptionToCurrent(false);
-        if (action === 'importSubscriptionActive') return await importSubscriptionToCurrent(true);
-        if (action === 'closeImport') {
-          state.importDialog = '';
-          return render();
-        }
-        if (action === 'addRoute') return addRoutingRule();
-        if (action === 'saveRouteEdit') return saveRoutingRuleEdit();
-        if (action === 'previewRouteDsl') return previewRoutingDsl();
-        if (action === 'appendRouteDsl') return applyRoutingDsl('append');
-        if (action === 'appendRouteDslFromDialog') return applyRoutingDsl('append', true);
-        if (action === 'replaceRouteDsl') return applyRoutingDsl('replace');
-        if (action === 'filterRoutes') return render();
-        if (action === 'disableVisibleRoutes') return disableVisibleRoutingRules();
-        if (action === 'restoreAllDisabledRoutes') return restoreAllDisabledRouteRules();
-        if (action === 'enableTcpFastOpenSystem') return await setSystemTcpFastOpen(true);
-        if (action === 'disableTcpFastOpenSystem') return await setSystemTcpFastOpen(false);
-        if (action === 'enableTcpFastOpenDraft') return setTcpFastOpenDraft(true);
-        if (action === 'disableTcpFastOpenDraft') return setTcpFastOpenDraft(false);
-        if (action === 'prepareTransparent') return prepareTransparentDraft();
-        if (action === 'prepareDnsInbound') return prepareDnsInboundDraft();
-        if (action === 'copyFirewall') return await copyFirewallCommands();
-        if (action === 'copyInstallCommand') return await copyInstallCommand();
-        if (action === 'copyInstallWithXrayCommand') return await copyInstallCommand(true);
-        if (action === 'startClientTrafficTest') return await startClientTrafficTest();
-        if (action === 'finishClientTrafficTest') return await finishClientTrafficTest();
-        if (action === 'addDevice') return addDeviceRule();
-        if (action === 'addDns') return addDnsServer();
-        if (action === 'saveDnsHost') return saveDnsHost();
-        if (action === 'previewLanDnsUpstream') return await previewLanDnsUpstream();
-        if (action === 'applyLanDnsUpstream') return await applyLanDnsUpstream();
-        if (action === 'dnsWizardSecure') return applyDnsGuardPreset('secure');
-        if (action === 'dnsWizardRu') return applyDnsGuardPreset('ru');
-        if (action === 'dnsWizardStrict') return applyDnsGuardPreset('strict');
-        if (action === 'checkDns') return await checkDnsServer();
-        if (action === 'applyDnsBootstrapHosts') return applyDnsBootstrapHosts();
-        if (action === 'checkServers') return await checkServers();
-        if (action === 'checkObservatoryTargets') return await checkObservatoryTargets();
-        if (action === 'enableObservatoryForProxy') return enableObservatoryForProxy();
-        if (action === 'fallbackSubscription') return await fallbackSubscriptionPool(button.dataset.subscriptionFallback || '');
-        if (action === 'scanSni') return await scanSni();
-        if (action === 'saveProfile') return await saveProfile();
-        if (action === 'backup') return await backup();
-        if (action === 'restoreLatestBackup') return await restoreLatestBackup();
-      } catch (error) {
-        state.configTesting = false;
-        state.configApplying = false;
-        state.serverChecking = false;
-        state.serverCheckingTags = [];
-        state.message = error.message;
+  bindActionControls({
+    state,
+    render,
+    handlers: {
+      start: () => service('start'),
+      stop: () => service('stop'),
+      restart: () => service('restart'),
+      refresh,
+      changePanelPassword,
+      saveLoggingSettings,
+      clearLoggingFiles,
+      refreshDhcpLeases,
+      saveServiceSettings,
+      appVersionClick,
+      checkAppUpdate,
+      updateApp,
+      test: testConfig,
+      apply: applyConfig,
+      applyFirewall,
+      disableFirewall,
+      refreshFirewallStatus,
+      enableXrayStats: () => setXrayStats(true),
+      disableXrayStats: () => setXrayStats(false),
+      resetXrayStats,
+      analyzeConfig,
+      openCoreDialog: () => {
+        const info = coreUpdateInfo();
+        state.coreDialogOpen = true;
+        state.selectedCoreVersion = state.selectedCoreVersion || info.target?.tag || filteredCoreReleases().find((release) => release.assetUrl)?.tag || '';
         render();
-      }
-    });
+      },
+      closeCoreDialog: () => {
+        state.coreDialogOpen = false;
+        render();
+      },
+      openRouteRuleDialog: () => {
+        resetRouteRuleForm();
+        state.routeRuleDialog = true;
+        state.routeRuleMode = 'single';
+        state.message = '';
+        render();
+      },
+      openRouteRulePresets: () => openRoutePresetPicker(),
+      openRoutePresetDialog: () => openRoutePresetPicker(),
+      closeRouteRuleDialog: () => {
+        state.routeRuleDialog = false;
+        resetRouteRuleForm();
+        state.selectedRoutePresets = [];
+        state.message = '';
+        render();
+      },
+      openRouteBalancerDialog,
+      closeRouteBalancerDialog,
+      saveRouteBalancer,
+      newRoutePreset: newRoutingPreset,
+      closeRoutePresetDialog: () => {
+        state.routePresetDialog = false;
+        clearRoutePresetEditor();
+        render();
+      },
+      backToRoutePresets: () => {
+        clearRoutePresetEditor();
+        state.message = '';
+        render();
+      },
+      selectAllRoutePresets: () => {
+        state.selectedRoutePresets = [...customRoutePresetEntries().map(([key]) => key), ...builtinRoutePresetEntries().map(([key]) => key)];
+        render();
+      },
+      clearRoutePresets: () => {
+        state.selectedRoutePresets = [];
+        render();
+      },
+      applyRoutePresets: applySelectedRoutingPresets,
+      previewRoutePresetEdit,
+      saveRoutePresetEdit,
+      applyRoutePresetEdit,
+      openInstallWizard,
+      openSetupWizard,
+      closeSetupWizard: () => {
+        state.setupWizardOpen = false;
+        render();
+      },
+      setupPrepareDraft,
+      runSetupWizard,
+      rollbackSetupWizard,
+      clearSetupSnapshot: () => {
+        clearSetupSnapshot();
+        render();
+      },
+      refreshInstallPlan: async () => {
+        state.installPlan = await request('/api/install/plan');
+        render();
+      },
+      closeInstallWizard: () => {
+        state.installWizardOpen = false;
+        render();
+      },
+      updateCore,
+      installCorePackage,
+      updateGeo,
+      saveGeoSchedule,
+      cleanupGeoBackups,
+      cleanupExtraGeoDat,
+      addGeoSource,
+      refreshLogs: () => refreshLogs(true, true),
+      runConnectivityDiagnostics,
+      refreshDomainMonitor: () => refreshDomainMonitor(true),
+      startDomainMonitor: () => controlDomainMonitor('start'),
+      stopDomainMonitor: () => controlDomainMonitor('stop'),
+      clearDomainMonitor: () => controlDomainMonitor('clear'),
+      toggleConfig: () => {
+        state.configExpanded = !state.configExpanded;
+        render();
+      },
+      import: importLink,
+      previewImport,
+      importToCurrent: () => importToCurrent(false),
+      importActive: () => importToCurrent(true),
+      previewSubscription,
+      importSubscription,
+      importSubscriptionToCurrent: () => importSubscriptionToCurrent(false),
+      importSubscriptionActive: () => importSubscriptionToCurrent(true),
+      closeImport: () => {
+        state.importDialog = '';
+        render();
+      },
+      addRoute: addRoutingRule,
+      saveRouteEdit: saveRoutingRuleEdit,
+      previewRouteDsl: previewRoutingDsl,
+      appendRouteDsl: () => applyRoutingDsl('append'),
+      appendRouteDslFromDialog: () => applyRoutingDsl('append', true),
+      replaceRouteDsl: () => applyRoutingDsl('replace'),
+      filterRoutes: render,
+      disableVisibleRoutes: disableVisibleRoutingRules,
+      restoreAllDisabledRoutes: restoreAllDisabledRouteRules,
+      enableTcpFastOpenSystem: () => setSystemTcpFastOpen(true),
+      disableTcpFastOpenSystem: () => setSystemTcpFastOpen(false),
+      enableTcpFastOpenDraft: () => setTcpFastOpenDraft(true),
+      disableTcpFastOpenDraft: () => setTcpFastOpenDraft(false),
+      prepareTransparent: prepareTransparentDraft,
+      prepareDnsInbound: prepareDnsInboundDraft,
+      copyFirewall: copyFirewallCommands,
+      copyInstallCommand: () => copyInstallCommand(),
+      copyInstallWithXrayCommand: () => copyInstallCommand(true),
+      startClientTrafficTest,
+      finishClientTrafficTest,
+      addDevice: addDeviceRule,
+      addDns: addDnsServer,
+      saveDnsHost,
+      previewLanDnsUpstream,
+      applyLanDnsUpstream,
+      dnsWizardSecure: () => applyDnsGuardPreset('secure'),
+      dnsWizardRu: () => applyDnsGuardPreset('ru'),
+      dnsWizardStrict: () => applyDnsGuardPreset('strict'),
+      checkDns: checkDnsServer,
+      applyDnsBootstrapHosts,
+      checkServers,
+      checkObservatoryTargets,
+      enableObservatoryForProxy,
+      fallbackSubscription: (button) => fallbackSubscriptionPool(button.dataset.subscriptionFallback || ''),
+      scanSni,
+      saveProfile,
+      backup,
+      restoreLatestBackup,
+    },
   });
   bindCoreControls({
     state,

@@ -1,4 +1,5 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
+import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
 import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
@@ -225,6 +226,12 @@ bindImportControls({
 bindServerCheckControls({
   state,
   render,
+});
+
+bindActionControls({
+  state,
+  render,
+  handlers: {},
 });
 
 const checks = [
