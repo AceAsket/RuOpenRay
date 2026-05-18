@@ -1,4 +1,5 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
+import { createApiClient } from './api-client.js';
 import {
   customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
@@ -240,30 +241,23 @@ const state = {
   pendingBackgroundRender: false
 };
 
+function clearAuth() {
+  state.token = '';
+  localStorage.removeItem('openray_token');
+}
+
+const api = createApiClient({
+  getToken: () => state.token,
+  onUnauthorized: clearAuth
+});
+
 async function keepOperationVisible(startedAt, minMs = 700) {
   const elapsed = Date.now() - startedAt;
   if (elapsed < minMs) await delay(minMs - elapsed);
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      'content-type': 'application/json',
-      ...(state.token ? { authorization: `Bearer ${state.token}` } : {}),
-      ...(options.headers || {})
-    }
-  });
-  const type = response.headers.get('content-type') || '';
-  const payload = type.includes('application/json') ? await response.json() : await response.text();
-  if (!response.ok) {
-    if (response.status === 401) {
-      state.token = '';
-      localStorage.removeItem('openray_token');
-    }
-    throw new Error(payload.error || payload.message || response.statusText);
-  }
-  return payload;
+  return api.request(path, options);
 }
 
 function formatDurationCompact(seconds = 0, { showSeconds = false, emptyText = 'меньше минуты' } = {}) {
@@ -1589,18 +1583,8 @@ function displayLogText(text) {
   return lines.reverse().join('\n');
 }
 
-function logHeaders() {
-  return state.token ? { authorization: `Bearer ${state.token}` } : {};
-}
-
 async function refreshLogs(renderAfter = true, patchOnly = false) {
-  const response = await fetch(logsUrl(), { headers: logHeaders() });
-  if (response.status === 401) {
-    state.token = '';
-    localStorage.removeItem('openray_token');
-    throw new Error('Требуется авторизация');
-  }
-  state.logs = displayLogText(await response.text());
+  state.logs = displayLogText(await api.text(logsUrl()));
   if (!renderAfter) return;
   if (patchOnly) {
     const consoles = document.querySelectorAll('.log-console');
@@ -1787,7 +1771,7 @@ async function refresh(options = {}) {
       request('/api/status'),
       request('/api/profiles'),
       request('/api/config'),
-      fetch(logsUrl(), { headers: logHeaders() }).then((r) => r.text()),
+      api.text(logsUrl()),
       request('/api/dhcp/leases').catch(() => ({ leases: [] })),
       request('/api/core/releases').catch(() => ({ releases: [], asset: '' })),
       request('/api/app/releases').catch(() => null),
