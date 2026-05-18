@@ -1,74 +1,38 @@
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile, copyFile, stat, statfs, unlink, truncate, rename } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { basename, dirname, extname, join, normalize, resolve } from 'node:path';
+import { basename, dirname, extname, join, normalize } from 'node:path';
 import { execFile } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { Resolver } from 'node:dns/promises';
 import { connect } from 'node:net';
 import tls from 'node:tls';
-import { fileURLToPath } from 'node:url';
 import os from 'node:os';
+import {
+  activeConfigPath,
+  appVersion,
+  backupDir,
+  contentTypes,
+  dataDir,
+  defaultAccessLogPath,
+  defaultConfig,
+  defaultErrorLogPath,
+  domainMonitorStatePath,
+  geoDir,
+  geoSchedulePath,
+  geoSourcesPath,
+  host,
+  loggingSettingsPath,
+  port,
+  profilesDir,
+  publicDir,
+  serviceName,
+  serviceSettingsPath
+} from './context.js';
 
-const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const publicDir = join(root, 'cmd', 'ruopenray-ui', 'web');
-const dataDir = resolve(process.env.RUOPENRAY_DATA_DIR || process.env.OPENRAY_DATA_DIR || join(root, 'data'));
-const profilesDir = resolve(process.env.RUOPENRAY_PROFILES_DIR || process.env.OPENRAY_PROFILES_DIR || join(dataDir, 'profiles'));
-const backupDir = resolve(process.env.RUOPENRAY_BACKUP_DIR || process.env.OPENRAY_BACKUP_DIR || join(dataDir, 'backups'));
-const activeConfigPath = resolve(process.env.RUOPENRAY_ACTIVE_CONFIG || process.env.OPENRAY_ACTIVE_CONFIG || join(dataDir, 'config.json'));
-const geoDir = resolve(process.env.RUOPENRAY_GEO_DIR || process.env.OPENRAY_GEO_DIR || join(dataDir, 'geo'));
-const geoSchedulePath = join(dataDir, 'geo-schedule.json');
-const geoSourcesPath = join(dataDir, 'geo-sources.json');
-const domainMonitorStatePath = join(dataDir, 'domain-monitor.enabled');
-const serviceSettingsPath = join(dataDir, 'service-settings.json');
-const loggingSettingsPath = join(dataDir, 'logging-settings.json');
-const defaultAccessLogPath = '/var/log/xray/access.log';
-const defaultErrorLogPath = '/var/log/xray/error.log';
-const serviceName = process.env.RUOPENRAY_XRAY_SERVICE || process.env.OPENRAY_XRAY_SERVICE || 'xray';
-const host = process.env.RUOPENRAY_HOST || process.env.OPENRAY_HOST || '127.0.0.1';
-const port = Number(process.env.RUOPENRAY_PORT || process.env.OPENRAY_PORT || 9090);
-const appVersion = process.env.RUOPENRAY_VERSION || 'dev';
 let authSecret = process.env.RUOPENRAY_PASSWORD || process.env.RUOPENRAY_TOKEN || process.env.OPENRAY_PASSWORD || process.env.OPENRAY_TOKEN || 'admin';
 const sessions = new Set();
 let previousCpuSample = null;
-
-const contentTypes = new Map([
-  ['.html', 'text/html; charset=utf-8'],
-  ['.css', 'text/css; charset=utf-8'],
-  ['.js', 'text/javascript; charset=utf-8'],
-  ['.json', 'application/json; charset=utf-8'],
-  ['.svg', 'image/svg+xml'],
-  ['.ico', 'image/x-icon']
-]);
-
-const defaultConfig = {
-  log: {
-    loglevel: 'warning'
-  },
-  inbounds: [
-    {
-      tag: 'socks-in',
-      port: 10808,
-      listen: '127.0.0.1',
-      protocol: 'socks',
-      settings: { udp: true }
-    }
-  ],
-  outbounds: [
-    {
-      tag: 'direct',
-      protocol: 'freedom'
-    },
-    {
-      tag: 'block',
-      protocol: 'blackhole'
-    }
-  ],
-  routing: {
-    domainStrategy: 'AsIs',
-    rules: []
-  }
-};
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload, null, 2);
