@@ -17,6 +17,7 @@ import { createFirewallActions } from '../cmd/ruopenray-ui/web/firewall-actions.
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
+import { createProfileActions } from '../cmd/ruopenray-ui/web/profile-actions.js';
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
@@ -275,6 +276,22 @@ const settingsActions = createSettingsActions({
 });
 await settingsActions.saveServiceSettings();
 await settingsActions.service('restart');
+
+const profileActionState = {
+  jsonDraft: JSON.stringify({ outbounds: [] }),
+};
+const profileActions = createProfileActions({
+  state: profileActionState,
+  request: async (path) => {
+    if (path === '/api/profiles/activate') return { ok: true };
+    if (path === '/api/backup') return { path: '/tmp/backup.json' };
+    return { ok: true };
+  },
+  render,
+  refresh: async () => { profileActionState.refreshed = true; },
+});
+await profileActions.activateProfile('default');
+await profileActions.backup();
 
 const configActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
@@ -646,6 +663,7 @@ const checks = [
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
+  ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],

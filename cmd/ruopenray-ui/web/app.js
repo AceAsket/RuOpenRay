@@ -26,6 +26,7 @@ import { createImportDialogView } from './import-dialog-view.js';
 import { bindGeoControls } from './geo-bindings.js';
 import { bindImportControls } from './import-bindings.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
+import { createProfileActions } from './profile-actions.js';
 import { bindProfileControls } from './profile-bindings.js';
 import { bindRoutingControls } from './routing-bindings.js';
 import { createSettingsView } from './settings-view.js';
@@ -1013,28 +1014,17 @@ async function importSubscription() {
   await refresh();
 }
 
-async function activateProfile(name) {
-  await request('/api/profiles/activate', { method: 'POST', body: JSON.stringify({ name }) });
-  state.message = `Активирован профиль ${name}`;
-  await refresh();
-}
-
-async function saveProfile() {
-  const name = prompt('Имя профиля', 'custom');
-  if (!name) return;
-  await request('/api/profiles', {
-    method: 'POST',
-    body: JSON.stringify({ name, config: JSON.parse(state.jsonDraft) })
-  });
-  state.message = `Профиль ${name} сохранен`;
-  await refresh();
-}
-
-async function backup() {
-  const result = await request('/api/backup', { method: 'POST', body: '{}' });
-  state.message = `Резервная копия создана: ${result.path}`;
-  render();
-}
+const profileActions = createProfileActions({
+  state,
+  request,
+  render,
+  refresh
+});
+const {
+  activateProfile,
+  saveProfile,
+  backup
+} = profileActions;
 
 function addRoutingRule() {
   const values = splitRouteValues(state.routeValue);
