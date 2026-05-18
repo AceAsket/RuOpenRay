@@ -5569,6 +5569,24 @@ function bind() {
       }
     });
   });
+  bindCoreControls({
+    state,
+    render,
+    filteredCoreReleases,
+  });
+  bindSettingsControls({
+    state,
+    render,
+    installPasswordStorageKey,
+    githubInstallCommand,
+  });
+  bindGeoControls({
+    state,
+    render,
+    toggleGeoSourceEnabled,
+    removeGeoSource,
+    deleteGeoFile,
+  });
   bindDeviceControls({
     state,
     render,
@@ -5636,69 +5654,6 @@ function bind() {
   document.querySelectorAll('[data-profile]').forEach((button) => {
     button.addEventListener('click', () => activateProfile(button.dataset.profile));
   });
-  document.querySelectorAll('[data-core-version]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.selectedCoreVersion = button.dataset.coreVersion;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-core-filter]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.coreReleaseFilter = button.dataset.coreFilter;
-      const visible = filteredCoreReleases().find((release) => release.assetUrl);
-      state.selectedCoreVersion = visible?.tag || '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-logging-level]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.loggingLevel = button.dataset.loggingLevel;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-geo-preset]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.geoPreset = button.dataset.geoPreset;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-geo-base]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.geoBasePreset = button.dataset.geoBase;
-      state.geoPreset = button.dataset.geoBase;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-geo-extra]').forEach((input) => {
-    input.addEventListener('change', () => {
-      const id = input.dataset.geoExtra;
-      state.geoExtraPresets = input.checked
-        ? [...new Set([...state.geoExtraPresets, id])]
-        : state.geoExtraPresets.filter((item) => item !== id);
-      render();
-    });
-  });
-  document.querySelectorAll('[data-geo-custom]').forEach((input) => {
-    input.addEventListener('change', () => {
-      const id = input.dataset.geoCustom;
-      state.geoCustomSourceIds = input.checked
-        ? [...new Set([...state.geoCustomSourceIds, id])]
-        : state.geoCustomSourceIds.filter((item) => item !== id);
-      render();
-    });
-  });
-  document.querySelectorAll('[data-geo-source-toggle]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const source = state.geoCustomSources.find((item) => item.id === button.dataset.geoSourceToggle);
-      if (source) toggleGeoSourceEnabled(source.id, source.enabled === false);
-    });
-  });
-  document.querySelectorAll('[data-geo-source-delete]').forEach((button) => {
-    button.addEventListener('click', () => removeGeoSource(button.dataset.geoSourceDelete));
-  });
-  document.querySelectorAll('[data-geo-delete]').forEach((button) => {
-    button.addEventListener('click', () => deleteGeoFile(button.dataset.geoDelete));
-  });
   const jsonDraftNode = document.querySelector('#jsonDraft');
   jsonDraftNode?.addEventListener('input', (event) => {
     state.jsonDraft = event.target.value;
@@ -5734,84 +5689,6 @@ function bind() {
     state.subscriptionBalancerStrategy = event.target.value;
     render();
   });
-  document.querySelector('#profileName')?.addEventListener('input', (event) => {
-    state.profileName = event.target.value;
-  });
-  document.querySelector('#coreBackup')?.addEventListener('change', (event) => {
-    state.coreBackup = event.target.checked;
-  });
-  document.querySelector('#appBackup')?.addEventListener('change', (event) => {
-    state.appBackup = event.target.checked;
-    render();
-  });
-  document.querySelector('#settingsCurrentPassword')?.addEventListener('input', (event) => {
-    state.settingsCurrentPassword = event.target.value;
-  });
-  document.querySelector('#settingsNewPassword')?.addEventListener('input', (event) => {
-    state.settingsNewPassword = event.target.value;
-  });
-  document.querySelector('#settingsConfirmPassword')?.addEventListener('input', (event) => {
-    state.settingsConfirmPassword = event.target.value;
-  });
-  document.querySelector('#installPassword')?.addEventListener('input', (event) => {
-    state.installPassword = event.target.value;
-    localStorage.setItem(installPasswordStorageKey, state.installPassword);
-    const basic = document.querySelector('#installCommandBasic');
-    const withXray = document.querySelector('#installCommandWithXray');
-    if (basic) basic.textContent = githubInstallCommand(false);
-    if (withXray) withXray.textContent = githubInstallCommand(true);
-  });
-  document.querySelector('#loggingAccessLog')?.addEventListener('change', (event) => {
-    state.loggingAccessLog = event.target.checked;
-    render();
-  });
-  document.querySelector('#loggingErrorLog')?.addEventListener('change', (event) => {
-    state.loggingErrorLog = event.target.checked;
-    render();
-  });
-  document.querySelector('#loggingDnsLog')?.addEventListener('change', (event) => {
-    state.loggingDnsLog = event.target.checked;
-    render();
-  });
-  document.querySelector('#loggingAccessPath')?.addEventListener('input', (event) => {
-    state.loggingAccessPath = event.target.value;
-  });
-  document.querySelector('#loggingErrorPath')?.addEventListener('input', (event) => {
-    state.loggingErrorPath = event.target.value;
-  });
-  document.querySelector('#loggingMaxSizeMb')?.addEventListener('input', (event) => {
-    state.loggingMaxSizeMb = event.target.value;
-  });
-  document.querySelector('#loggingRotateCopies')?.addEventListener('input', (event) => {
-    state.loggingRotateCopies = event.target.value;
-  });
-  document.querySelector('#loggingClearOnRestart')?.addEventListener('change', (event) => {
-    state.loggingClearOnRestart = event.target.checked;
-    render();
-  });
-  document.querySelector('#loggingRestart')?.addEventListener('change', (event) => {
-    state.loggingRestart = event.target.checked;
-    render();
-  });
-  document.querySelector('#serviceStartupDelaySec')?.addEventListener('input', (event) => {
-    state.serviceStartupDelaySec = event.target.value;
-  });
-  document.querySelector('#serviceApplyDelaySec')?.addEventListener('input', (event) => {
-    state.serviceApplyDelaySec = event.target.value;
-  });
-  document.querySelector('#serviceGoMemLimit')?.addEventListener('input', (event) => {
-    state.serviceGoMemLimit = event.target.value;
-  });
-  document.querySelector('#serviceGoGC')?.addEventListener('input', (event) => {
-    state.serviceGoGC = event.target.value;
-  });
-  document.querySelector('#serviceDownloadMirror')?.addEventListener('change', (event) => {
-    state.serviceDownloadMirror = event.target.value;
-    render();
-  });
-  document.querySelector('#serviceMirrorPrefix')?.addEventListener('input', (event) => {
-    state.serviceMirrorPrefix = event.target.value;
-  });
   document.querySelector('#serverCheckTimeout')?.addEventListener('input', (event) => {
     state.serverCheckTimeout = event.target.value;
   });
@@ -5830,52 +5707,6 @@ function bind() {
   });
   document.querySelector('#observatoryInterval')?.addEventListener('input', (event) => {
     state.observatoryInterval = event.target.value;
-  });
-  document.querySelector('#selectedCoreVersion')?.addEventListener('change', (event) => {
-    state.selectedCoreVersion = event.target.value;
-    render();
-  });
-  document.querySelector('#geoipUrl')?.addEventListener('input', (event) => {
-    state.geoipUrl = event.target.value;
-  });
-  document.querySelector('#geositeUrl')?.addEventListener('input', (event) => {
-    state.geositeUrl = event.target.value;
-  });
-  document.querySelector('#geoSourceName')?.addEventListener('input', (event) => {
-    state.geoSourceName = event.target.value;
-  });
-  document.querySelector('#geoSourceKind')?.addEventListener('change', (event) => {
-    state.geoSourceKind = event.target.value;
-    render();
-  });
-  document.querySelector('#geoSourceGeoipUrl')?.addEventListener('input', (event) => {
-    state.geoSourceGeoipUrl = event.target.value;
-  });
-  document.querySelector('#geoSourceGeositeUrl')?.addEventListener('input', (event) => {
-    state.geoSourceGeositeUrl = event.target.value;
-  });
-  document.querySelector('#geoSourceUrl')?.addEventListener('input', (event) => {
-    state.geoSourceUrl = event.target.value;
-  });
-  document.querySelector('#geoSourceTarget')?.addEventListener('input', (event) => {
-    state.geoSourceTarget = event.target.value;
-  });
-  document.querySelector('#geoBackup')?.addEventListener('change', (event) => {
-    state.geoBackup = event.target.checked;
-    render();
-  });
-  document.querySelector('#geoScheduleEnabled')?.addEventListener('change', (event) => {
-    state.geoScheduleEnabled = event.target.checked;
-  });
-  document.querySelector('#geoScheduleInterval')?.addEventListener('change', (event) => {
-    state.geoScheduleInterval = event.target.value;
-    render();
-  });
-  document.querySelector('#geoScheduleWeekday')?.addEventListener('change', (event) => {
-    state.geoScheduleWeekday = event.target.value;
-  });
-  document.querySelector('#geoScheduleTime')?.addEventListener('input', (event) => {
-    state.geoScheduleTime = event.target.value;
   });
 
 }
