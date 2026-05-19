@@ -84,7 +84,7 @@ RUOPENRAY_INSTALL_XRAY=1 sh -c "$(wget -O - https://raw.githubusercontent.com/Ac
 - группы серверов и балансировщики;
 - правила маршрутизации для доменов, IP, LAN-устройств, портов и inbound;
 - DNS-серверы, hosts, защита от утечек DNS и настройка dnsmasq для LAN;
-- TPROXY/REDIRECT/BYPASS режимы перехвата;
+- TPROXY/REDIRECT/BYPASS режимы перехвата и kill switch для адресов, которые нельзя выпускать напрямую;
 - обновление Xray core и geo-файлов;
 - логи, SNI/domain monitor, статистика Xray и проверка прохождения трафика.
 

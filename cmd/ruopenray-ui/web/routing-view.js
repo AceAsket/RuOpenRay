@@ -291,6 +291,7 @@ function routingPanel() {
     ['rules', 'Правила'],
     ['scenarios', 'Сценарии'],
     ['intercept', 'Перехват'],
+    ['leaks', 'Защита от утечек'],
     ['geo', 'Geo']
   ];
   const view = routingTabs.some(([value]) => value === state.routingView) ? state.routingView : 'rules';
@@ -298,6 +299,7 @@ function routingPanel() {
     rules: routingRulesPanel,
     scenarios: routingScenariosPanel,
     intercept: firewallPanel,
+    leaks: leakProtectionPanel,
     geo: geoPanel
   };
   return `
@@ -339,7 +341,7 @@ function firewallPanel() {
     <section class="route-hero firewall-hero intercept-hero">
       <div>
         <h2>Перехват трафика</h2>
-        <p>Короткая настройка transparent proxy: кого перехватываем, какие порты берем и как рано отсеиваем direct/proxy трафик.</p>
+        <p>Короткая настройка transparent proxy: кого обрабатываем, какие порты берем и как рано отсекаем direct/proxy трафик.</p>
       </div>
       <div class="route-score">
         <strong>${info.ready ? 'OK' : '3'}</strong>
@@ -349,7 +351,7 @@ function firewallPanel() {
 
     <section class="panel intercept-start-panel">
       <div class="panel-title">
-        <div><h2>Текущая схема</h2><span>Коротко: способ перехвата, политика до Xray и охват устройств.</span></div>
+        <div><h2>Текущая схема</h2><span>Коротко: способ обработки, политика до Xray и охват устройств.</span></div>
       </div>
       <div class="intercept-summary-grid">
         <article>
@@ -382,7 +384,7 @@ function firewallPanel() {
 
     <section class="panel intercept-compact-panel">
       <div class="panel-title">
-        <div><h2>Основной сценарий</h2><span>Выберите способ перехвата и сколько трафика отправлять в Xray.</span></div>
+        <div><h2>Основной сценарий</h2><span>Выберите способ обработки и сколько трафика отправлять в Xray.</span></div>
       </div>
       <div class="intercept-compact-grid">
         <div class="intercept-setting-card">
@@ -440,6 +442,10 @@ function firewallPanel() {
         <label class="settings-check compact intercept-quic-toggle ${state.firewallBlockQuic ? 'active' : ''}">
           <input id="firewallBlockQuic" type="checkbox" ${state.firewallBlockQuic ? 'checked' : ''} />
           <span><strong>Блокировать QUIC</strong><em>UDP/443 режется до Xray, браузеры переходят на TCP.</em></span>
+        </label>
+        <label class="settings-check compact intercept-quic-toggle ${state.firewallDnsIntercept ? 'active' : ''}">
+          <input id="firewallDnsIntercept" type="checkbox" ${state.firewallDnsIntercept ? 'checked' : ''} />
+          <span><strong>Перехватывать DNS</strong><em>UDP/TCP 53 отправляется в Xray DNS, даже если основные порты только 80/443.</em></span>
         </label>
       </div>
       <div class="firewall-device-list">
@@ -525,6 +531,68 @@ function firewallPanel() {
   `;
 }
 
+function leakProtectionPanel() {
+  const preview = firewallPolicyPreview();
+  const protectedIps = preview.guard?.ips || [];
+  const protectedDomains = preview.guard?.domains || [];
+  const invalidTargets = preview.guard?.invalid || [];
+  return `
+    <section class="route-hero firewall-hero intercept-hero">
+      <div>
+        <h2>Защита от утечек</h2>
+        <p>Цифровая гигиена для адресов, которые нельзя выпускать напрямую: если Xray остановлен или VPN не работает, firewall не даст им уйти мимо proxy.</p>
+      </div>
+      <div class="route-score">
+        <strong>${state.firewallKillSwitchEnabled ? protectedIps.length : 'OFF'}</strong>
+        <span>${state.firewallKillSwitchEnabled ? 'IP/подсетей под защитой' : 'защита выключена'}</span>
+      </div>
+    </section>
+
+    <section class="panel intercept-compact-panel">
+      <div class="panel-title">
+        <div><h2>Kill switch</h2><span>IP и подсети защищаются на уровне nftables. Домены сохраняются для следующего шага с DNS/nftset.</span></div>
+      </div>
+      <div class="intercept-compact-grid">
+        <label class="settings-check compact intercept-kill-toggle ${state.firewallKillSwitchEnabled ? 'active' : ''}">
+          <input id="firewallKillSwitchEnabled" type="checkbox" ${state.firewallKillSwitchEnabled ? 'checked' : ''} />
+          <span><strong>Не выпускать напрямую</strong><em>${escapeHtml(protectedIps.length ? `${protectedIps.length} IP/подсетей попадут в nftables` : 'Добавьте IP или подсети, которые нельзя выпускать без Xray.')}</em></span>
+        </label>
+        <div class="intercept-setting-card wide">
+          <span class="intercept-label">Защищенные адреса</span>
+          <textarea id="firewallKillSwitchTargets" rows="6" placeholder="162.159.140.0/24, 172.64.150.15, openai.com">${escapeHtml(state.firewallKillSwitchTargets || '')}</textarea>
+          <small>Пишите по одному или через запятую: IPv4, IPv4-подсети и домены. Сейчас firewall применяет IP/подсети; домены требуют DNS через RuOpenRay/nftset.</small>
+        </div>
+      </div>
+      <div class="intercept-summary-grid">
+        <article>
+          <span>Firewall-защита</span>
+          <strong>${escapeHtml(protectedIps.length ? `${protectedIps.length} IP/подсетей` : 'нет IP')}</strong>
+          <small>Эти цели уйдут только через Xray. Если Xray недоступен, прямой выход блокируется.</small>
+        </article>
+        <article>
+          <span>Домены</span>
+          <strong>${escapeHtml(protectedDomains.length ? `${protectedDomains.length} в списке` : 'нет')}</strong>
+          <small>Для доменов нужен DNS/nftset, иначе firewall не увидит имя на уровне пакетов.</small>
+        </article>
+        <article>
+          <span>Ошибки списка</span>
+          <strong>${escapeHtml(invalidTargets.length ? `${invalidTargets.length}` : 'нет')}</strong>
+          <small>${escapeHtml(invalidTargets.length ? invalidTargets.slice(0, 3).join(', ') : 'Список выглядит корректно.')}</small>
+        </article>
+        <article>
+          <span>Режим firewall</span>
+          <strong>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'REDIRECT' : 'TPROXY')}</strong>
+          <small>Защита применится вместе с текущей схемой перехвата.</small>
+        </article>
+      </div>
+      ${state.firewallKillSwitchEnabled && protectedDomains.length ? `<div class="settings-warning"><strong>Домены</strong><span>Сейчас nftables не видит доменные имена. Для ${escapeHtml(protectedDomains.length)} доменов нужен следующий шаг: dnsmasq/nftset, иначе firewall защитит только IP/подсети из списка.</span></div>` : ''}
+      ${state.firewallKillSwitchEnabled && !protectedIps.length ? `<div class="settings-warning"><strong>Нет IP</strong><span>Защита включена, но firewall пока нечего блокировать. Добавьте IP или подсеть, например 162.159.140.0/24.</span></div>` : ''}
+    </section>
+
+    ${firewallApplyPanel()}
+  `;
+}
+
 function firewallApplyPanel() {
   const status = state.firewallStatus || {};
   const active = Boolean(status.active);
@@ -544,6 +612,7 @@ function firewallApplyPanel() {
         <div><h2>Применение</h2><span>Сохраняет nftables и, для TPROXY, policy routing после перезапуска firewall.</span></div>
         <div class="split-actions">
           <button class="btn secondary" data-action="refreshFirewallStatus" ${state.firewallSaving ? 'disabled' : ''}>Обновить</button>
+          <button class="btn secondary" data-action="downloadFirewallRules" ${state.firewallSaving ? 'disabled' : ''}>Скачать правила</button>
           <button class="btn warning" data-action="applyFirewall" ${state.firewallSaving || !available ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю...' : 'Применить'}</button>
           <button class="btn secondary" data-action="disableFirewall" ${state.firewallSaving || (!active && !persistent) ? 'disabled' : ''}>Отключить</button>
         </div>

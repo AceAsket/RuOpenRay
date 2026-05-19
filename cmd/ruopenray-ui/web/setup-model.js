@@ -51,7 +51,7 @@ export function createSetupModel({
         key: 'firewall',
         ok: Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix),
         warn: Boolean(firewall.active),
-        title: 'Перехват nftables',
+        title: 'Защита nftables',
         detail: firewall.active
           ? `${firewall.routerMode || state.firewallRouterMode} · ${firewall.persistent ? 'сохранен' : 'только до перезапуска'}`
           : 'Нужно применить nftables и policy routing из RuOpenRay.'

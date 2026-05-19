@@ -35,11 +35,56 @@ func PortList(payload map[string]any) []string {
 	return ports
 }
 
+func DNSIntercept(payload map[string]any) bool {
+	return boolPayload(payload, "dnsIntercept", true)
+}
+
+func PortListCovers(ports []string, port int) bool {
+	if len(ports) == 0 {
+		return true
+	}
+	for _, item := range ports {
+		start, end, ok := portRange(item)
+		if ok && port >= start && port <= end {
+			return true
+		}
+	}
+	return false
+}
+
 func IPList(value any) []string {
 	out := []string{}
 	for _, item := range stringList(value) {
 		if net.ParseIP(item) != nil {
 			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func CIDRList(value any) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, item := range stringList(value) {
+		clean := strings.TrimSpace(item)
+		if clean == "" {
+			continue
+		}
+		if ip := net.ParseIP(clean); ip != nil {
+			if ip.To4() == nil {
+				continue
+			}
+			clean = ip.String()
+		} else {
+			ip, network, err := net.ParseCIDR(clean)
+			if err != nil || ip.To4() == nil {
+				continue
+			}
+			clean = network.String()
+		}
+		if !seen[clean] {
+			seen[clean] = true
+			out = append(out, clean)
 		}
 	}
 	return out
@@ -83,6 +128,10 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	ports := PortList(payload)
 	devices := IPList(payload["devices"])
 	blockQuic := boolPayload(payload, "blockQuic", true)
+	dnsIntercept := DNSIntercept(payload)
+	killSwitch := boolPayload(payload, "killSwitch", false)
+	killSwitchIPs := CIDRList(payload["killSwitchIps"])
+	killSwitchDomains := stringList(payload["killSwitchDomains"])
 	localBypass := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
 	setLines := []string{}
 	chainLines := []string{"  chain prerouting {"}
@@ -93,23 +142,44 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	}
 	chainLines = append(chainLines,
 		fmt.Sprintf("    iifname != %q return", lanInterface),
-		"    ip daddr "+NftSet(localBypass)+" return",
 	)
 	if deviceMode == "exclude" && len(devices) > 0 {
 		chainLines = append(chainLines, "    ip saddr "+NftSet(devices)+" return")
 	}
+	targetPrefix := fmt.Sprintf("    iifname %q ", lanInterface)
+	if deviceMode == "selected" && len(devices) > 0 {
+		targetPrefix += "ip saddr " + NftSet(devices) + " "
+	}
+	if killSwitch && len(killSwitchIPs) > 0 {
+		setLines = append(setLines, "  set killswitch4 { type ipv4_addr; flags interval; elements = "+NftSet(killSwitchIPs)+"; }")
+		if routerMode == "redirect" {
+			chainLines = append(chainLines,
+				targetPrefix+"ip daddr @killswitch4 meta l4proto tcp redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay Kill Switch\"",
+				targetPrefix+"ip daddr @killswitch4 meta l4proto udp drop comment \"RuOpenRay Kill Switch UDP guard\"",
+			)
+		} else {
+			chainLines = append(chainLines, targetPrefix+"ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay Kill Switch\"")
+		}
+	}
+	chainLines = append(chainLines, "    ip daddr "+NftSet(localBypass)+" return")
+	if dnsIntercept && !PortListCovers(ports, 53) {
+		if routerMode == "redirect" {
+			chainLines = append(chainLines,
+				targetPrefix+"meta l4proto tcp tcp dport 53 redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay DNS Intercept\"",
+				targetPrefix+"meta l4proto udp udp dport 53 drop comment \"RuOpenRay DNS UDP guard\"",
+			)
+		} else {
+			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp } th dport 53 counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay DNS Intercept\"")
+		}
+	}
 	if blockQuic {
-		chainLines = append(chainLines, fmt.Sprintf("    iifname %q udp dport 443 drop comment %q", lanInterface, "RuOpenRay Block QUIC"))
+		chainLines = append(chainLines, targetPrefix+"udp dport 443 drop comment \"RuOpenRay Block QUIC\"")
 	}
 	if bypassMode == "bypass" {
 		setLines = append(setLines, "  set bypass4 { type ipv4_addr; flags interval; elements = "+NftSet([]string{"10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})+"; }")
 		chainLines = append(chainLines,
 			"    ip daddr @bypass4 return",
 		)
-	}
-	targetPrefix := fmt.Sprintf("    iifname %q ", lanInterface)
-	if deviceMode == "selected" && len(devices) > 0 {
-		targetPrefix += "ip saddr " + NftSet(devices) + " "
 	}
 	if bypassMode == "redirect" {
 		setLines = append(setLines, "  set proxy4 { type ipv4_addr; flags interval; }")
@@ -130,16 +200,20 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	lines = append(lines, chainLines...)
 	lines = append(lines, "}")
 	meta := map[string]any{
-		"routerMode":      routerMode,
-		"bypassMode":      bypassMode,
-		"deviceMode":      deviceMode,
-		"devices":         devices,
-		"ports":           ports,
-		"portMode":        PayloadString(payload, "portMode", "custom"),
-		"blockQuic":       blockQuic,
-		"lanInterface":    lanInterface,
-		"transparentPort": transparentPort,
-		"path":            DefaultNftPath,
+		"routerMode":        routerMode,
+		"bypassMode":        bypassMode,
+		"deviceMode":        deviceMode,
+		"devices":           devices,
+		"ports":             ports,
+		"portMode":          PayloadString(payload, "portMode", "custom"),
+		"blockQuic":         blockQuic,
+		"dnsIntercept":      dnsIntercept,
+		"lanInterface":      lanInterface,
+		"transparentPort":   transparentPort,
+		"killSwitch":        killSwitch,
+		"killSwitchIps":     killSwitchIPs,
+		"killSwitchDomains": killSwitchDomains,
+		"path":              DefaultNftPath,
 	}
 	return strings.Join(lines, "\n") + "\n", meta
 }
@@ -221,6 +295,26 @@ func boolPayload(payload map[string]any, key string, fallback bool) bool {
 	default:
 		return fmt.Sprint(value) == "1"
 	}
+}
+
+func portRange(value string) (int, int, bool) {
+	parts := strings.Split(value, "-")
+	if len(parts) == 1 {
+		port, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil || port < 0 || port > 65535 {
+			return 0, 0, false
+		}
+		return port, port, true
+	}
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	start, startErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+	end, endErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if startErr != nil || endErr != nil || start < 0 || end > 65535 || start > end {
+		return 0, 0, false
+	}
+	return start, end, true
 }
 
 func number(value any, fallback int) int {

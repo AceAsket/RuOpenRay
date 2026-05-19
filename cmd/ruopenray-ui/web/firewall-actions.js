@@ -4,6 +4,7 @@ export function createFirewallActions({
   render,
   delay,
   firewallPayload,
+  firewallCommands,
   firewallReadyStatus,
   storageKeys
 }) {
@@ -13,7 +14,9 @@ export function createFirewallActions({
     firewallDeviceModeStorageKey,
     firewallPortModeStorageKey,
     firewallSelectedDevicesStorageKey,
-    firewallBlockQuicStorageKey
+    firewallBlockQuicStorageKey,
+    firewallKillSwitchEnabledStorageKey,
+    firewallKillSwitchTargetsStorageKey
   } = storageKeys;
 
   async function applyFirewallWithRetry(attempts = 2) {
@@ -47,7 +50,7 @@ export function createFirewallActions({
       });
       state.firewallStatus = result.status || result;
       state.message = result.ok
-        ? 'Перехват применен и сохранен для перезапуска firewall'
+        ? 'Firewall-правила применены и сохранены для перезапуска firewall'
         : (result.error || 'Не удалось применить перехват');
     } finally {
       state.firewallSaving = false;
@@ -61,7 +64,7 @@ export function createFirewallActions({
     try {
       const result = await request('/api/firewall/disable', { method: 'POST' });
       state.firewallStatus = result.status || result;
-      state.message = result.ok ? 'Перехват отключен' : 'Не удалось полностью отключить перехват';
+      state.message = result.ok ? 'Firewall-правила отключены' : 'Не удалось полностью отключить firewall-правила';
     } finally {
       state.firewallSaving = false;
       render();
@@ -71,6 +74,53 @@ export function createFirewallActions({
   async function refreshFirewallStatus() {
     state.firewallStatus = await request('/api/firewall/status');
     render();
+  }
+
+  async function downloadFirewallRules() {
+    state.firewallSaving = true;
+    render();
+    try {
+      const payload = firewallPayload();
+      const preview = await request('/api/firewall/preview', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      const status = preview.status || await request('/api/firewall/status').catch(() => null);
+      const report = [
+        'RuOpenRay UI firewall report',
+        `Generated: ${new Date().toISOString()}`,
+        '',
+        '== UI payload ==',
+        JSON.stringify(payload, null, 2),
+        '',
+        '== Generated nftables ==',
+        preview.nft || '',
+        '',
+        '== Active nftables on router ==',
+        status?.nft?.stdout || 'not available',
+        '',
+        '== Policy routing ==',
+        '-- ip rule show --',
+        status?.ipRules?.stdout || 'not available',
+        '',
+        '-- ip route show table 100 --',
+        status?.ipRoutes?.stdout || 'not available',
+        '',
+        '== Firewall status ==',
+        JSON.stringify(status || {}, null, 2),
+        '',
+        '== Manual commands preview ==',
+        typeof firewallCommands === 'function' ? firewallCommands() : '',
+        ''
+      ].join('\n');
+      downloadText(`ruopenray-firewall-${dateStamp()}.txt`, report);
+      state.message = 'Отчет по правилам firewall скачан';
+    } catch (error) {
+      state.message = error?.message || 'Не удалось скачать отчет по firewall';
+    } finally {
+      state.firewallSaving = false;
+      render();
+    }
   }
 
   function setFirewallBypassMode(mode) {
@@ -116,18 +166,47 @@ export function createFirewallActions({
     setFirewallBlockQuic(policy === 'block');
   }
 
+  function setFirewallKillSwitchEnabled(enabled) {
+    state.firewallKillSwitchEnabled = Boolean(enabled);
+    localStorage.setItem(firewallKillSwitchEnabledStorageKey, state.firewallKillSwitchEnabled ? '1' : '0');
+    render();
+  }
+
+  function setFirewallKillSwitchTargets(value) {
+    state.firewallKillSwitchTargets = value;
+    localStorage.setItem(firewallKillSwitchTargetsStorageKey, state.firewallKillSwitchTargets);
+  }
 
   return {
     applyFirewallWithRetry,
     applyFirewall,
     disableFirewall,
     refreshFirewallStatus,
+    downloadFirewallRules,
     setFirewallBypassMode,
     setFirewallRouterMode,
     setFirewallDeviceMode,
     setFirewallPortMode,
     toggleFirewallDevice,
     setFirewallBlockQuic,
-    setQuicPolicy
+    setQuicPolicy,
+    setFirewallKillSwitchEnabled,
+    setFirewallKillSwitchTargets
   };
+}
+
+function downloadText(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dateStamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
 }

@@ -154,7 +154,7 @@ export function createRoutingActions({
     const rule = routeRules()[index];
     if (!rule) return;
     if (isRuOpenRayManagedRoute(rule)) {
-      state.message = 'Это служебное правило RuOpenRay. Меняйте его через раздел DNS, Перехват или Статистика Xray, чтобы не сломать системную часть конфигурации.';
+      state.message = 'Это служебное правило RuOpenRay. Меняйте его через раздел DNS, Перехват, Защита от утечек или Статистика Xray, чтобы не сломать системную часть конфигурации.';
       render();
       return;
     }
@@ -560,7 +560,7 @@ export function createRoutingActions({
       <div class="route-actions">
         <button class="icon-btn route-action-btn move-up" type="button" data-route-move="${index}" data-direction="-1" ${index === 0 || managed ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять правило выше">↑</button>
         <button class="icon-btn route-action-btn move-down" type="button" data-route-move="${index}" data-direction="1" ${index === rulesLength - 1 || managed ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить правило ниже">↓</button>
-        <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват или Статистику Xray' : 'Править'}" aria-label="Править правило">✎</button>
+        <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват, Защиту от утечек или Статистику Xray' : 'Править'}" aria-label="Править правило">✎</button>
         <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
         <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : 'Удалить'}" aria-label="Удалить правило">×</button>
       </div>

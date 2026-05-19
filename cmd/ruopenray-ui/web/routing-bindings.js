@@ -2,6 +2,7 @@ export function bindRoutingControls({
   state,
   render,
   firewallPortsStorageKey,
+  firewallDnsInterceptStorageKey,
   addRoutingPreset,
   editRoutingPreset,
   deleteCustomRoutePreset,
@@ -29,6 +30,8 @@ export function bindRoutingControls({
   currentSnifferSettings,
   setFirewallPortMode,
   setFirewallBlockQuic,
+  setFirewallKillSwitchEnabled,
+  setFirewallKillSwitchTargets,
   applyLeaseSearch,
   setRouteBalancerSelector,
   moveRouteBalancerSelector,
@@ -212,6 +215,13 @@ export function bindRoutingControls({
     button.addEventListener('click', () => setFirewallPortMode(button.dataset.firewallPortMode));
   });
   document.querySelector('#firewallBlockQuic')?.addEventListener('change', (event) => setFirewallBlockQuic(event.target.checked));
+  document.querySelector('#firewallDnsIntercept')?.addEventListener('change', (event) => {
+    state.firewallDnsIntercept = event.target.checked;
+    localStorage.setItem(firewallDnsInterceptStorageKey, state.firewallDnsIntercept ? '1' : '0');
+    render();
+  });
+  document.querySelector('#firewallKillSwitchEnabled')?.addEventListener('change', (event) => setFirewallKillSwitchEnabled(event.target.checked));
+  document.querySelector('#firewallKillSwitchTargets')?.addEventListener('input', (event) => setFirewallKillSwitchTargets(event.target.value));
 
   document.querySelectorAll('#routeKind').forEach((input) => input.addEventListener('change', (event) => {
     state.routeKind = event.target.value;

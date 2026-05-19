@@ -170,7 +170,7 @@ function setupWizardDialog() {
             <small>${diskFree && diskFree < 16 * 1024 * 1024 ? 'Мало места: выбирайте компактные geo и без бэкапов.' : 'Для слабых роутеров всё равно лучше держать запас.'}</small>
           </article>
           <article>
-            <span>Режим перехвата</span>
+            <span>Режим защиты</span>
             <strong>${escapeHtml(state.firewallRouterMode.toUpperCase())}</strong>
             <small>${state.firewallRouterMode === 'redirect' ? 'TCP-only режим, проще, но без UDP.' : 'TPROXY для TCP/UDP transparent proxy.'}</small>
           </article>
@@ -239,7 +239,7 @@ function setupWizardDialog() {
         <div class="setup-actions">
           <button class="btn secondary" type="button" data-action="openInstallWizard">Установка Xray</button>
           <button class="btn secondary" type="button" data-tab-jump="geo">Geo-файлы</button>
-          <button class="btn secondary" type="button" data-tab-jump="firewall">Перехват</button>
+          <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Защита от утечек</button>
           <button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>
           <button class="btn warning" type="button" data-action="runSetupWizard" ${state.setupApplying || !readiness.canApply ? 'disabled' : ''}>${state.setupApplying ? 'Включаю...' : 'Включить активный режим'}</button>
         </div>

@@ -62,6 +62,9 @@ import {
   firewallBlockQuicStorageKey,
   firewallBypassModeStorageKey,
   firewallDeviceModeStorageKey,
+  firewallDnsInterceptStorageKey,
+  firewallKillSwitchEnabledStorageKey,
+  firewallKillSwitchTargetsStorageKey,
   firewallPortModeStorageKey,
   firewallPortsStorageKey,
   firewallRouterModeStorageKey,
@@ -490,6 +493,7 @@ const firewallActions = createFirewallActions({
   render,
   delay,
   firewallPayload,
+  firewallCommands,
   firewallReadyStatus,
   storageKeys: {
     firewallBypassModeStorageKey,
@@ -497,7 +501,10 @@ const firewallActions = createFirewallActions({
     firewallDeviceModeStorageKey,
     firewallPortModeStorageKey,
     firewallSelectedDevicesStorageKey,
-    firewallBlockQuicStorageKey
+    firewallBlockQuicStorageKey,
+    firewallDnsInterceptStorageKey,
+    firewallKillSwitchEnabledStorageKey,
+    firewallKillSwitchTargetsStorageKey
   }
 });
 const {
@@ -505,13 +512,16 @@ const {
   applyFirewall,
   disableFirewall,
   refreshFirewallStatus,
+  downloadFirewallRules,
   setFirewallBypassMode,
   setFirewallRouterMode,
   setFirewallDeviceMode,
   setFirewallPortMode,
   toggleFirewallDevice,
   setFirewallBlockQuic,
-  setQuicPolicy
+  setQuicPolicy,
+  setFirewallKillSwitchEnabled,
+  setFirewallKillSwitchTargets
 } = firewallActions;
 
 const runtimeController = createRuntimeController({
@@ -678,7 +688,9 @@ const {
   setXrayStats,
   resetXrayStats,
   analyzeConfig,
-  restoreLatestBackup
+  restoreLatestBackup,
+  downloadConfig,
+  downloadAnonymizedConfig
 } = configActions;
 
 
@@ -1293,6 +1305,8 @@ const routingDialogsView = createRoutingDialogsView({
   routeRules,
   balancerStrategyLabel,
   routePresetCheckResultView,
+  describeRouteRule,
+  routePresetRules,
 });
 
 function routeRuleDialog(...args) {
@@ -1423,6 +1437,7 @@ function bind() {
       applyFirewall,
       disableFirewall,
       refreshFirewallStatus,
+      downloadFirewallRules,
       enableXrayStats: () => setXrayStats(true),
       disableXrayStats: () => setXrayStats(false),
       resetXrayStats,
@@ -1517,6 +1532,8 @@ function bind() {
         state.configExpanded = !state.configExpanded;
         render();
       },
+      downloadConfig,
+      downloadAnonymizedConfig,
       import: importLink,
       previewImport,
       importToCurrent: () => importToCurrent(false),
@@ -1605,6 +1622,7 @@ function bind() {
     state,
     render,
     firewallPortsStorageKey,
+    firewallDnsInterceptStorageKey,
     addRoutingPreset,
     editRoutingPreset,
     deleteCustomRoutePreset,
@@ -1632,6 +1650,8 @@ function bind() {
     currentSnifferSettings,
     setFirewallPortMode,
     setFirewallBlockQuic,
+    setFirewallKillSwitchEnabled,
+    setFirewallKillSwitchTargets,
     applyLeaseSearch,
     setRouteBalancerSelector,
     moveRouteBalancerSelector,

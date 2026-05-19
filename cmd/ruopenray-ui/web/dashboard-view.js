@@ -72,6 +72,8 @@ function dashboard() {
           <div class="panel-title">
             <div><h2>Активная конфигурация</h2></div>
             <div class="split-actions">
+              <button class="btn secondary" data-action="downloadConfig">Скачать JSON</button>
+              <button class="btn secondary" data-action="downloadAnonymizedConfig">Обезличенный</button>
               <button class="btn secondary" data-action="toggleConfig">${state.configExpanded ? 'Свернуть' : 'Показать JSON'}</button>
               <button class="btn secondary" data-action="saveProfile">Сохранить профиль</button>
             </div>

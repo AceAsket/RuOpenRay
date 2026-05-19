@@ -113,6 +113,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.firewallStatus())
 	case path == "/firewall/snapshot" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallSnapshot())
+	case path == "/firewall/preview" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.previewFirewall(payload))
 	case path == "/firewall/apply" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.applyFirewall(payload))

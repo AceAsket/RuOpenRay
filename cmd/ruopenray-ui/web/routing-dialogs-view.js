@@ -21,6 +21,8 @@ export function createRoutingDialogsView({
   routeRules,
   balancerStrategyLabel,
   routePresetCheckResultView,
+  describeRouteRule,
+  routePresetRules,
 }) {
 function routeRuleDialog() {
   if (!state.routeRuleDialog) return '';

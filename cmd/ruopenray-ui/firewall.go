@@ -99,6 +99,16 @@ func (s *serverState) firewallSnapshot() map[string]any {
 	}
 }
 
+func (s *serverState) previewFirewall(payload map[string]any) map[string]any {
+	body, meta := rfw.NativeNft(payload)
+	return map[string]any{
+		"ok":     true,
+		"nft":    body,
+		"meta":   meta,
+		"status": s.firewallStatus(),
+	}
+}
+
 func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	if runtime.GOOS == "windows" || !commandExists("nft") {
 		return map[string]any{"ok": false, "available": false, "error": "nftables недоступен на этой системе"}

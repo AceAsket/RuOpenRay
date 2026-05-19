@@ -29,6 +29,26 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       .filter((item) => /^\d+(-\d+)?$/.test(item));
   }
 
+  function firewallKillSwitchTargets() {
+    const values = splitRouteValues(state.firewallKillSwitchTargets);
+    const ips = [];
+    const domains = [];
+    const invalid = [];
+    for (const value of values) {
+      const clean = String(value || '').trim();
+      if (!clean) continue;
+      const domain = clean.replace(/^\*\./, '');
+      if (/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(clean)) {
+        ips.push(clean);
+      } else if (/^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$/i.test(domain)) {
+        domains.push(domain);
+      } else {
+        invalid.push(clean);
+      }
+    }
+    return { ips: [...new Set(ips)], domains: [...new Set(domains)], invalid };
+  }
+
   function firewallDeviceChoices() {
     const map = new Map();
     for (const lease of state.leases || []) {
@@ -78,13 +98,14 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
   function firewallPolicyPreview() {
     const devices = firewallSelectedDevices();
     const ports = firewallPorts();
+    const guard = firewallKillSwitchTargets();
     const traffic = state.firewallDeviceMode === 'selected'
       ? `только выбранные устройства (${devices.length})`
       : state.firewallDeviceMode === 'exclude'
         ? `все LAN, кроме выбранных устройств (${devices.length})`
         : 'все LAN-устройства';
     const router = state.firewallRouterMode === 'redirect'
-      ? 'REDIRECT: проще, только TCP, без сохранения полного UDP/QUIC пути'
+      ? 'REDIRECT: проще, только TCP, QUIC лучше блокировать'
       : 'TPROXY: TCP+UDP, сохраняет исходное назначение';
     const policyName = state.firewallBypassMode === 'off'
       ? 'Все через правила Xray'
@@ -100,7 +121,21 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
     if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
     if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
-    return { router, traffic, policyName, policy, ports: state.firewallPortMode === 'all' ? 'все порты' : ports.join(', ') || 'не заданы', quic: state.firewallBlockQuic ? 'UDP/443 будет заблокирован до Xray' : 'UDP/443 не блокируется', warnings };
+    if (!state.firewallDnsIntercept) warnings.push('Перехват DNS выключен: клиенты смогут отправлять UDP/TCP 53 напрямую наружу, если не используют DNS роутера.');
+    if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length) warnings.push('Kill switch включен, но цели защиты не указаны.');
+    if (state.firewallKillSwitchEnabled && guard.domains.length) warnings.push('Домены в kill switch требуют DNS через RuOpenRay/nftset. Сейчас firewall применяет только IP и подсети.');
+    if (state.firewallKillSwitchEnabled && guard.invalid.length) warnings.push(`Некоторые цели kill switch не распознаны: ${guard.invalid.slice(0, 3).join(', ')}`);
+    return {
+      router,
+      traffic,
+      policyName,
+      policy,
+      ports: state.firewallPortMode === 'all' ? 'все порты' : ports.join(', ') || 'не заданы',
+      quic: state.firewallBlockQuic ? 'UDP/443 будет заблокирован до Xray' : 'UDP/443 не блокируется',
+      dns: state.firewallDnsIntercept ? 'DNS/53 перехватывается отдельно' : 'DNS/53 не перехватывается firewall',
+      warnings,
+      guard
+    };
   }
 
   function firewallCommands() {
@@ -110,7 +145,31 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const packageCommand = state.firewallRouterMode === 'tproxy'
       ? 'if command -v apk >/dev/null 2>&1; then apk update && apk add kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; else opkg update && opkg install kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; fi'
       : '# REDIRECT-режиму kmod-nft-tproxy не нужен';
-    const blockQuicRule = state.firewallBlockQuic ? 'nft add rule inet ruopenray prerouting iifname "br-lan" udp dport 443 drop # Block QUIC/HTTP3' : '';
+    const scopedDeviceExpr = state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : '';
+    const blockQuicRule = state.firewallBlockQuic ? `nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}udp dport 443 drop # Block QUIC/HTTP3` : '';
+    const dnsInterceptRules = [];
+    if (state.firewallDnsIntercept && state.firewallPortMode !== 'all' && !firewallPorts().some((item) => {
+      const [start, end = start] = String(item).split('-').map((part) => Number(part.trim()));
+      return Number.isFinite(start) && Number.isFinite(end) && start <= 53 && 53 <= end;
+    })) {
+      if (state.firewallRouterMode === 'redirect') {
+        dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto tcp tcp dport 53 redirect to :${port} comment "RuOpenRay DNS Intercept"`);
+        dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto udp udp dport 53 drop comment "RuOpenRay DNS UDP guard"`);
+      } else {
+        dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto { tcp, udp } th dport 53 counter tproxy to :${port} meta mark set 1 comment "RuOpenRay DNS Intercept"`);
+      }
+    }
+    const guard = firewallKillSwitchTargets();
+    const killSwitchRules = [];
+    if (state.firewallKillSwitchEnabled && guard.ips.length) {
+      killSwitchRules.push(`nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; elements = { ${guard.ips.join(', ')} } \\; }`);
+      if (state.firewallRouterMode === 'redirect') {
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto tcp redirect to :${port} comment "RuOpenRay Kill Switch"`);
+        killSwitchRules.push('nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto udp drop comment "RuOpenRay Kill Switch UDP guard"');
+      } else {
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy to :${port} meta mark set 1 comment "RuOpenRay Kill Switch"`);
+      }
+    }
     const common = [
       '# Черновик для OpenWrt firewall4/nftables. Проверьте LAN-интерфейс и порт перед применением.',
       packageCommand,
@@ -123,8 +182,10 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         : 'nft add chain inet ruopenray prerouting { type nat hook prerouting priority dstnat \\; policy accept \\; }',
       state.firewallRouterMode === 'tproxy' ? 'nft add chain inet ruopenray output { type route hook output priority mangle \\; policy accept \\; }' : '',
       'nft add rule inet ruopenray prerouting iifname != "br-lan" return',
-      'nft add rule inet ruopenray prerouting ip daddr { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return',
       excludedDeviceReturn ? `nft add rule inet ruopenray prerouting ${excludedDeviceReturn}` : '',
+      ...killSwitchRules,
+      'nft add rule inet ruopenray prerouting ip daddr { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return',
+      ...dnsInterceptRules,
       blockQuicRule,
       state.firewallRouterMode === 'tproxy' ? 'ip rule add fwmark 1 table 100' : '',
       state.firewallRouterMode === 'tproxy' ? 'ip route add local 0.0.0.0/0 dev lo table 100' : '',
@@ -137,7 +198,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         'nft add set inet ruopenray bypass4 { type ipv4_addr \\; flags interval \\; }',
         'nft add element inet ruopenray bypass4 { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }',
         'nft add rule inet ruopenray prerouting ip daddr @bypass4 return',
-        '# Позже сюда можно подключить dnsmasq/ipset для direct-доменов из правил.',
+        '# Позже сюда можно подключить dnsmasq/nftset для direct-доменов из правил.',
         firewallTargetRule(port)
       ].join('\n');
     }
@@ -146,7 +207,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         ...common,
         '# REDIRECT: в Xray идут только адреса из proxy4. Direct-трафик не заходит в Xray.',
         'nft add set inet ruopenray proxy4 { type ipv4_addr \\; flags interval \\; }',
-        '# Заполняйте proxy4 из доменов/geo-правил через dnsmasq/ipset или отдельный updater.',
+        '# Заполняйте proxy4 из доменов/geo-правил через dnsmasq/nftset или отдельный updater.',
         state.firewallRouterMode === 'redirect'
           ? `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto tcp${firewallPortExpression()} redirect to :${port}`
           : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy to :${port} meta mark set 1`
@@ -161,6 +222,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
 
   function firewallPayload() {
     const info = firewallInfo();
+    const guard = firewallKillSwitchTargets();
     return {
       routerMode: state.firewallRouterMode,
       bypassMode: state.firewallBypassMode,
@@ -169,6 +231,10 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       portMode: state.firewallPortMode,
       ports: firewallPorts(),
       blockQuic: state.firewallBlockQuic,
+      dnsIntercept: state.firewallDnsIntercept,
+      killSwitch: state.firewallKillSwitchEnabled,
+      killSwitchIps: guard.ips,
+      killSwitchDomains: guard.domains,
       transparentPort: Number(info.transparentPort || 52345),
       lanInterface: 'br-lan'
     };
@@ -187,6 +253,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     firewallPorts,
     firewallDeviceChoices,
     firewallSelectedDevices,
+    firewallKillSwitchTargets,
     nftList,
     firewallDeviceExpression,
     firewallPortExpression,

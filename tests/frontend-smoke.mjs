@@ -1,6 +1,6 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
-import { createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
+import { anonymizeConfig, createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
 import { createDevicesModel } from '../cmd/ruopenray-ui/web/devices-model.js';
 import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
@@ -25,6 +25,7 @@ import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js
 import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
 import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
 import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
+import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
@@ -624,6 +625,41 @@ const routingActions = createRoutingActions({
   saveDisabledRouteRules: () => {},
 });
 routingActions.addRoutingRule();
+const routeDialogState = {
+  routeRuleDialog: true,
+  routeRuleMode: 'presets',
+  routeRuleEditingIndex: -1,
+  selectedRoutePresets: [],
+  customRoutePresets: {},
+  message: '',
+};
+const routeDialogView = createRoutingDialogsView({
+  state: routeDialogState,
+  escapeHtml,
+  routeKinds: { domain: 'Сайт или домен' },
+  routePlaceholders: { domain: 'domain:example.com' },
+  customRoutePresetEntries: () => [],
+  builtinRoutePresetEntries: () => [['chatgpt', { title: 'ChatGPT', rule: { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] } }]],
+  ruleCountLabel: (count) => `${count} правило`,
+  routePresetConditionCount: () => 1,
+  routeTargetOptions: () => [],
+  balancerOptions: () => [],
+  outboundOptions: () => ['proxy'],
+  routeLeasePicker: () => '',
+  dslPreviewView: () => '',
+  routeBalancers: () => [],
+  balancerTargetOptions: () => [],
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
+  balancerSelectorMatches: () => [],
+  strategyObserverType: () => '',
+  observerLabel: () => '',
+  routeRules: () => [],
+  balancerStrategyLabel: () => '',
+  routePresetCheckResultView: () => '',
+  describeRouteRule: (rule) => ({ fullValue: rule?.domain?.join(', ') || 'правило' }),
+  routePresetRules: (key) => key === 'chatgpt' ? [{ type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] }] : [],
+});
+const routeDialogPresetsHtml = routeDialogView.routeRuleDialog();
 const routeBalancerState = {
   config: { routing: { balancers: [] } },
   routeBalancerEditingIndex: -1,
@@ -707,6 +743,8 @@ const firewallState = {
   firewallPorts: '80,443',
   firewallRouterMode: 'tproxy',
   firewallSelectedDevices: [],
+  firewallKillSwitchEnabled: true,
+  firewallKillSwitchTargets: '162.159.140.0/24, openai.com',
   leases: [],
 };
 const firewallModel = createFirewallModel({
@@ -724,12 +762,14 @@ const firewallActions = createFirewallActions({
   request: async (path) => {
     if (path === '/api/firewall/apply') return { ok: true, status: { active: true, routerMode: 'tproxy', ipRule: true, ipRoute: true } };
     if (path === '/api/firewall/status') return { active: true, routerMode: 'tproxy', ipRule: true, ipRoute: true };
+    if (path === '/api/firewall/preview') return { ok: true, nft: 'table inet ruopenray {}', status: { active: true } };
     if (path === '/api/firewall/disable') return { ok: true, status: { active: false } };
     return { ok: true };
   },
   render,
   delay: async () => {},
   firewallPayload: firewallModel.firewallPayload,
+  firewallCommands: firewallModel.firewallCommands,
   firewallReadyStatus: firewallModel.firewallReadyStatus,
   storageKeys: {
     firewallBypassModeStorageKey: 'ruopenray:test:fw:bypass',
@@ -738,10 +778,13 @@ const firewallActions = createFirewallActions({
     firewallPortModeStorageKey: 'ruopenray:test:fw:port',
     firewallSelectedDevicesStorageKey: 'ruopenray:test:fw:selected',
     firewallBlockQuicStorageKey: 'ruopenray:test:fw:quic',
+    firewallKillSwitchEnabledStorageKey: 'ruopenray:test:fw:ks',
+    firewallKillSwitchTargetsStorageKey: 'ruopenray:test:fw:ks-targets',
   },
 });
 firewallActions.setFirewallBypassMode('redirect');
 firewallActions.setFirewallPortMode('all');
+firewallActions.setFirewallKillSwitchTargets('172.64.150.0/24, chatgpt.com');
 const xrayDraftState = {
   config: {
     inbounds: [{ tag: 'transparent_ipv4', protocol: 'dokodemo-door', streamSettings: {} }],
@@ -919,6 +962,16 @@ bindActionControls({
   handlers: {},
 });
 
+const anonymizedConfig = anonymizeConfig({
+  outbounds: [{
+    tag: 'cloudone-private',
+    protocol: 'vless',
+    settings: { vnext: [{ address: 'cloudone.example', users: [{ id: '4277f460-216c-412e-99fb-c94534544138', encryption: 'none' }] }] },
+    streamSettings: { security: 'reality', realitySettings: { serverName: 'cloudone.example', privateKey: 'secret', shortId: 'abcd' } }
+  }],
+  routing: { rules: [{ outboundTag: 'cloudone-private', domain: ['domain:2ip.ru'] }] }
+});
+
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
@@ -938,6 +991,7 @@ const checks = [
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
+  ['config anonymized export', anonymizedConfig.outbounds[0]?.tag === 'proxy-1' && anonymizedConfig.routing.rules[0]?.outboundTag === 'proxy-1' && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.address?.startsWith('[masked') && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.users?.[0]?.id?.startsWith('[masked')],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],
   ['sni actions scan', sniActionState.sniScan?.results?.length === 1 && sniActionState.sniTarget === 'cloudone.example'],
@@ -947,11 +1001,12 @@ const checks = [
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
   ['routing dsl parser', parsedDsl.rules.length === 2 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2],
+  ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
-  ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy'],
-  ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all'],
+  ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24'],
+  ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all' && firewallState.firewallKillSwitchTargets.includes('chatgpt.com')],
   ['xray draft actions', xrayDraftState.config.dns.fakeDNS?.length === 1 && xrayDraftState.config.outbounds[0]?.streamSettings?.sockopt?.tcpFastOpen === true && xrayDraftState.config.routing.rules[0]?.outboundTag === 'direct'],
   ['server model active proxy', serverModel.activeProxyTag() === 'cloudone' && serverModel.proxyOutbounds().length === 1 && serverModel.outboundUsage('cloudone') === 1],
   ['xray config model', xrayConfigModel.currentSnifferSettings().mode === 'http-tls' && xrayConfigModel.outboundAddress(xrayConfigModel.configOutbounds()[0]) === 'example.com:443'],

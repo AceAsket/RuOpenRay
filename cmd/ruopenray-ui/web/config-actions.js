@@ -85,6 +85,24 @@ export function createConfigActions({
     await refresh();
   }
 
+  function downloadConfig({ anonymized = false } = {}) {
+    let config;
+    try {
+      config = JSON.parse(state.jsonDraft || '{}');
+    } catch (error) {
+      state.message = `Не удалось скачать config: JSON сейчас невалидный (${error.message})`;
+      render();
+      return;
+    }
+    const payload = anonymized ? anonymizeConfig(config) : config;
+    const suffix = anonymized ? 'anonymized' : 'full';
+    const filename = `ruopenray-config-${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadJSON(filename, payload);
+    state.message = anonymized
+      ? 'Скачан обезличенный config: адреса серверов, теги proxy и ключи заменены масками'
+      : 'Скачан полный config Xray';
+    render();
+  }
 
   return {
     testConfig,
@@ -92,6 +110,89 @@ export function createConfigActions({
     setXrayStats,
     resetXrayStats,
     analyzeConfig,
-    restoreLatestBackup
+    restoreLatestBackup,
+    downloadConfig,
+    downloadAnonymizedConfig: () => downloadConfig({ anonymized: true })
   };
+}
+
+export function anonymizeConfig(config) {
+  const cloned = JSON.parse(JSON.stringify(config || {}));
+  const tagMap = new Map();
+  const systemTags = new Set(['direct', 'block', 'dns-out', 'ruopenray-api']);
+  let proxyIndex = 1;
+
+  for (const outbound of Array.isArray(cloned.outbounds) ? cloned.outbounds : []) {
+    const tag = String(outbound?.tag || '');
+    if (!tag || systemTags.has(tag)) continue;
+    tagMap.set(tag, `proxy-${proxyIndex}`);
+    outbound.tag = `proxy-${proxyIndex}`;
+    proxyIndex += 1;
+  }
+
+  const masked = redactConfigValue(cloned, tagMap);
+  masked._ruopenray_export = {
+    anonymized: true,
+    note: 'Sensitive server addresses, credentials and user proxy tags were masked by RuOpenRay UI.'
+  };
+  return masked;
+}
+
+function redactConfigValue(value, tagMap, key = '', parentKey = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactConfigValue(item, tagMap, key, parentKey));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') return redactString(value, key, parentKey, tagMap);
+    return value;
+  }
+  const out = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    if (isSensitiveKey(rawKey, parentKey)) {
+      out[rawKey] = maskedValue(rawValue, rawKey);
+    } else {
+      out[rawKey] = redactConfigValue(rawValue, tagMap, rawKey, key);
+    }
+  }
+  return out;
+}
+
+function redactString(value, key, parentKey, tagMap) {
+  if (tagMap.has(value)) return tagMap.get(value);
+  if (key === 'selector' && tagMap.has(value)) return tagMap.get(value);
+  if (key === 'fallbackTag' && tagMap.has(value)) return tagMap.get(value);
+  if (key === 'outboundTag' && tagMap.has(value)) return tagMap.get(value);
+  if (key === 'tag' && parentKey === 'outbounds' && tagMap.has(value)) return tagMap.get(value);
+  return value;
+}
+
+function isSensitiveKey(key, parentKey) {
+  const normalized = String(key || '').toLowerCase();
+  if (['password', 'pass', 'secret', 'token', 'privatekey', 'shortid', 'spiderx', 'path'].includes(normalized)) return true;
+  if (['id', 'uuid', 'alterid'].includes(normalized)) return true;
+  if (['address', 'server', 'servername', 'sni', 'host', 'dest'].includes(normalized)) return true;
+  if (parentKey === 'headers' && ['host'].includes(normalized)) return true;
+  return false;
+}
+
+function maskedValue(value, key) {
+  if (Array.isArray(value)) return value.map((item) => maskedValue(item, key));
+  if (value && typeof value === 'object') return '[masked]';
+  if (typeof value === 'number') return 0;
+  if (typeof value === 'boolean') return value;
+  return `[masked:${key}]`;
+}
+
+function downloadJSON(filename, payload) {
+  const text = JSON.stringify(payload, null, 2);
+  const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
