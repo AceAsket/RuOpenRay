@@ -1,6 +1,6 @@
 {
   "name": "ruopenray-ui",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "Standalone RuOpenRay UI MVP for OpenWrt Xray management",
   "private": true,
   "type": "module",
