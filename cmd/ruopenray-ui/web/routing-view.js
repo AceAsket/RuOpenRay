@@ -28,6 +28,7 @@ export function createRoutingView(deps) {
     currentSnifferSettings,
     tcpFastOpenDraftEnabled,
     firewallInfo,
+    firewallReadyStatus,
     firewallPolicyPreview,
     firewallDeviceChoices,
     firewallSelectedDevices,
@@ -602,6 +603,7 @@ function firewallApplyPanel() {
   const persistent = Boolean(status.persistent);
   const tproxyReady = status.routerMode !== 'tproxy' || (status.ipRule && status.ipRoute && status.hotplug);
   const available = status.available !== false;
+  const matchesSelection = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : true;
   const summary = active
     ? persistent
       ? 'активен и сохранен'

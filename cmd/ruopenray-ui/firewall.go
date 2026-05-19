@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,7 +55,11 @@ func (s *serverState) firewallStatus() map[string]any {
 	} else if strings.Contains(nftBody, " redirect ") {
 		routerMode = "redirect"
 	}
-	return map[string]any{
+	meta := parseFirewallStatusMeta(nftBody)
+	if value := strings.TrimSpace(fmt.Sprint(meta["routerMode"])); value != "" && value != "<nil>" {
+		routerMode = value
+	}
+	status := map[string]any{
 		"ok":          true,
 		"available":   runtime.GOOS != "windows" && commandExists("nft"),
 		"persistent":  nftExists,
@@ -79,6 +84,136 @@ func (s *serverState) firewallStatus() map[string]any {
 		}()),
 		"needsPolicyFix": routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
 	}
+	for key, value := range meta {
+		status[key] = value
+	}
+	return status
+}
+
+func parseFirewallStatusMeta(nftBody string) map[string]any {
+	meta := map[string]any{}
+	for _, line := range strings.Split(nftBody, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "# ruopenray-meta ") {
+			continue
+		}
+		for _, field := range strings.Fields(strings.TrimPrefix(line, "# ruopenray-meta ")) {
+			key, value, ok := strings.Cut(field, "=")
+			if !ok {
+				continue
+			}
+			switch key {
+			case "blockQuic", "dnsIntercept", "killSwitch":
+				meta[key] = value == "true"
+			case "transparentPort":
+				if port, err := strconv.Atoi(value); err == nil {
+					meta[key] = port
+				}
+			case "ports":
+				if value == "" {
+					meta[key] = []string{}
+				} else {
+					meta[key] = strings.Split(value, ",")
+				}
+			default:
+				meta[key] = value
+			}
+		}
+		return meta
+	}
+	if strings.Contains(nftBody, " tproxy ") {
+		meta["routerMode"] = "tproxy"
+	} else if strings.Contains(nftBody, " redirect ") {
+		meta["routerMode"] = "redirect"
+	}
+	if strings.Contains(nftBody, "set bypass4") {
+		meta["bypassMode"] = "bypass"
+	} else if strings.Contains(nftBody, "set proxy4") {
+		meta["bypassMode"] = "redirect"
+	} else if nftBody != "" {
+		meta["bypassMode"] = "off"
+	}
+	if strings.Contains(nftBody, "RuOpenRay DNS Intercept") {
+		meta["dnsIntercept"] = true
+	}
+	if strings.Contains(nftBody, "RuOpenRay Block QUIC") {
+		meta["blockQuic"] = true
+	}
+	if strings.Contains(nftBody, " ip saddr ") {
+		if strings.Contains(nftBody, " ip saddr ") && strings.Contains(nftBody, " return") {
+			meta["deviceMode"] = "exclude"
+		}
+		if strings.Contains(nftBody, `iifname "br-lan" ip saddr `) {
+			meta["deviceMode"] = "selected"
+		}
+	} else if nftBody != "" {
+		meta["deviceMode"] = "all"
+	}
+	if ports := parseFirewallPortsFromBody(nftBody); len(ports) > 0 {
+		meta["portMode"] = "custom"
+		meta["ports"] = ports
+	} else if nftBody != "" {
+		meta["portMode"] = "all"
+		meta["ports"] = []string{}
+	}
+	if port := parseFirewallTransparentPort(nftBody); port > 0 {
+		meta["transparentPort"] = port
+	}
+	return meta
+}
+
+func parseFirewallPortsFromBody(nftBody string) []string {
+	for _, line := range strings.Split(nftBody, "\n") {
+		if strings.Contains(line, "DNS Intercept") || strings.Contains(line, "Block QUIC") || strings.Contains(line, "Kill Switch") {
+			continue
+		}
+		for _, marker := range []string{" th dport ", " tcp dport ", " udp dport "} {
+			index := strings.Index(line, marker)
+			if index < 0 {
+				continue
+			}
+			rest := strings.TrimSpace(line[index+len(marker):])
+			if strings.HasPrefix(rest, "{") {
+				end := strings.Index(rest, "}")
+				if end < 0 {
+					continue
+				}
+				values := []string{}
+				for _, item := range strings.Split(strings.Trim(rest[:end+1], "{} \t\r\n"), ",") {
+					clean := strings.TrimSpace(item)
+					if clean != "" {
+						values = append(values, clean)
+					}
+				}
+				return values
+			}
+			end := 0
+			for end < len(rest) && ((rest[end] >= '0' && rest[end] <= '9') || rest[end] == '-') {
+				end++
+			}
+			if end > 0 {
+				return []string{rest[:end]}
+			}
+		}
+	}
+	return []string{}
+}
+
+func parseFirewallTransparentPort(nftBody string) int {
+	index := strings.Index(nftBody, " to :")
+	if index < 0 {
+		return 0
+	}
+	rest := nftBody[index+5:]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	port, _ := strconv.Atoi(rest[:end])
+	return port
 }
 
 func (s *serverState) firewallSnapshot() map[string]any {

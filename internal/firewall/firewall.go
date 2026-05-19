@@ -195,10 +195,6 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+DportExpression(ports, "meta")+" counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
 	}
 	chainLines = append(chainLines, "  }")
-	lines := []string{"table inet ruopenray {"}
-	lines = append(lines, setLines...)
-	lines = append(lines, chainLines...)
-	lines = append(lines, "}")
 	meta := map[string]any{
 		"routerMode":        routerMode,
 		"bypassMode":        bypassMode,
@@ -215,6 +211,23 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"killSwitchDomains": killSwitchDomains,
 		"path":              DefaultNftPath,
 	}
+	metaLine := fmt.Sprintf(
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t",
+		routerMode,
+		bypassMode,
+		deviceMode,
+		PayloadString(payload, "portMode", "custom"),
+		strings.Join(ports, ","),
+		blockQuic,
+		dnsIntercept,
+		transparentPort,
+		lanInterface,
+		killSwitch,
+	)
+	lines := []string{metaLine, "table inet ruopenray {"}
+	lines = append(lines, setLines...)
+	lines = append(lines, chainLines...)
+	lines = append(lines, "}")
 	return strings.Join(lines, "\n") + "\n", meta
 }
 

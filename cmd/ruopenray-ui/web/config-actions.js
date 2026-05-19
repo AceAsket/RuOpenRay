@@ -96,7 +96,7 @@ export function createConfigActions({
     }
     const payload = anonymized ? anonymizeConfig(config) : config;
     const suffix = anonymized ? 'anonymized' : 'full';
-    const filename = `ruopenray-config-${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
+    const filename = `ruopenray-config-${suffix}-${dateTimeStamp()}.json`;
     downloadJSON(filename, payload);
     state.message = anonymized
       ? 'Скачан обезличенный config: адреса серверов, теги proxy и ключи заменены масками'
@@ -114,6 +114,11 @@ export function createConfigActions({
     downloadConfig,
     downloadAnonymizedConfig: () => downloadConfig({ anonymized: true })
   };
+}
+
+function dateTimeStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
 }
 
 export function anonymizeConfig(config) {

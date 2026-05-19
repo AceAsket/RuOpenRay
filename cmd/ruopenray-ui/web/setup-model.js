@@ -2,6 +2,7 @@ export function createSetupModel({
   state,
   byteSize,
   firewallInfo,
+  firewallReadyStatus,
   proxyOutbounds,
   setupSnapshotStorageKey,
   request,
@@ -16,6 +17,9 @@ export function createSetupModel({
     const transparent = firewallInfo();
     const dnsReadiness = lanDns.readiness || {};
     const proxyCount = proxyOutbounds().length;
+    const firewallMatchesSelection = typeof firewallReadyStatus === 'function'
+      ? firewallReadyStatus(firewall)
+      : Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix);
     const items = [
       {
         key: 'core',
@@ -49,10 +53,12 @@ export function createSetupModel({
       },
       {
         key: 'firewall',
-        ok: Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix),
+        ok: firewallMatchesSelection,
         warn: Boolean(firewall.active),
         title: 'Защита nftables',
-        detail: firewall.active
+        detail: firewall.active && !firewallMatchesSelection
+          ? 'nftables активен, но примененная схема отличается от выбранной сейчас.'
+          : firewall.active
           ? `${firewall.routerMode || state.firewallRouterMode} · ${firewall.persistent ? 'сохранен' : 'только до перезапуска'}`
           : 'Нужно применить nftables и policy routing из RuOpenRay.'
       },

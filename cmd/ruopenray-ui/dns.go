@@ -14,7 +14,20 @@ import (
 func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	available := runtime.GOOS != "windows" && commandExists("uci")
 	xrayTarget := s.xrayDNSUpstreamTarget()
+	targetOwner := ""
+	targetConflict := false
+	if cfg, err := s.readActiveConfig(); err == nil {
+		host, port, found := xrayDNSInboundEndpoint(cfg)
+		if found {
+			xrayTarget = fmt.Sprintf("%s#%d", host, port)
+			targetOwner = udpPortOwner(host, port)
+			targetConflict = targetOwner != "" && !strings.Contains(targetOwner, "/xray")
+		}
+	}
 	suggestedPort, conflictOwner := suggestedXrayDNSPort()
+	if targetConflict {
+		conflictOwner = targetOwner
+	}
 	result := map[string]any{
 		"ok":                   true,
 		"available":            available,
@@ -25,8 +38,10 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		"xrayTarget":           xrayTarget,
 		"suggestedXrayPort":    suggestedPort,
 		"suggestedXrayTarget":  fmt.Sprintf("127.0.0.1#%d", suggestedPort),
-		"dnsPortConflict":      conflictOwner != "",
+		"dnsPortConflict":      conflictOwner != "" || targetConflict,
 		"dnsPortConflictOwner": conflictOwner,
+		"xrayPortConflict":     targetConflict,
+		"xrayPortOwner":        targetOwner,
 	}
 	if !available {
 		result["mode"] = "manual"

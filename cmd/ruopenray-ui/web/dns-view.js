@@ -51,6 +51,12 @@ function dnsLeakChecklist(dns, stats) {
     const inbound = Array.isArray(rule.inboundTag) && rule.inboundTag.includes('ruopenray_dns_in');
     return inbound || String(rule.port || '') === '53' || rule.outboundTag === 'dns-out';
   });
+  const lanDns = state.lanDnsStatus || {};
+  const readiness = lanDns.readiness || {};
+  const dnsPortConflict = Boolean(lanDns.dnsPortConflict || readiness.udpConflict);
+  const dnsConflictOwner = lanDns.dnsPortConflictOwner || readiness.udpOwner || '';
+  const xrayDnsTarget = readiness.target || lanDns.xrayTarget || '127.0.0.1#5353';
+  const suggestedDnsTarget = lanDns.suggestedXrayTarget || '127.0.0.1#10535';
   const items = [
     {
       ok: hasDns,
@@ -100,7 +106,15 @@ function dnsLeakChecklist(dns, stats) {
       ? 'В списке есть DNS без шифрования. Оставляйте его для локального DNS, Pi-hole или аварийного резерва; основным лучше держать DoH/TCP.'
       : 'В основном DNS-пути нет обычного UDP/53, который легко увидеть провайдеру.';
   }
-  if (items[4] && dnsInbound && dnsRouting) {
+  if (items[4] && dnsPortConflict) {
+    items[4].ok = false;
+    items[4].warn = true;
+    items[4].title = 'Порт DNS inbound занят';
+    items[4].detail = `Xray не сможет принять DNS на ${xrayDnsTarget}: порт уже держит ${dnsConflictOwner || 'другой процесс'}. Подготовьте DNS inbound заново, RuOpenRay выберет ${suggestedDnsTarget}.`;
+    items[4].action = 'prepareDnsInbound';
+    items[4].actionLabel = 'Перевыбрать порт';
+  }
+  if (items[4] && dnsInbound && dnsRouting && !dnsPortConflict) {
     items[4].detail = 'Xray готов принимать DNS на 127.0.0.1:5353. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.';
   }
   return `

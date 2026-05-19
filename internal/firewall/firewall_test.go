@@ -64,6 +64,9 @@ func TestNativeNftTProxy(t *testing.T) {
 	if meta["routerMode"] != "tproxy" {
 		t.Fatalf("routerMode = %#v, want tproxy", meta["routerMode"])
 	}
+	if !strings.Contains(body, "# ruopenray-meta routerMode=tproxy") {
+		t.Fatalf("nft body does not contain status metadata:\n%s", body)
+	}
 }
 
 func TestNativeNftInterceptsDNSOutsidePortList(t *testing.T) {

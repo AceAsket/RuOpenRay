@@ -250,11 +250,24 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
   }
 
   function firewallReadyStatus(status) {
-    return Boolean(
-      status?.active &&
-      status?.persistent &&
-      (state.firewallRouterMode !== 'tproxy' || (status.ipRule && status.ipRoute))
-    );
+    if (!status?.active || !status?.persistent) return false;
+    const expectedRouterMode = state.firewallRouterMode || 'tproxy';
+    if (status.routerMode && status.routerMode !== expectedRouterMode) return false;
+    if (expectedRouterMode === 'tproxy' && (!status.ipRule || !status.ipRoute)) return false;
+    if (status.bypassMode && status.bypassMode !== (state.firewallBypassMode || 'off')) return false;
+    if (status.deviceMode && status.deviceMode !== (state.firewallDeviceMode || 'all')) return false;
+    if (status.portMode && status.portMode !== (state.firewallPortMode || 'custom')) return false;
+    if (status.portMode === 'custom' && !sameStringSet(status.ports || [], firewallPorts())) return false;
+    if (typeof status.dnsIntercept === 'boolean' && status.dnsIntercept !== Boolean(state.firewallDnsIntercept)) return false;
+    if (typeof status.blockQuic === 'boolean' && status.blockQuic !== Boolean(state.firewallBlockQuic)) return false;
+    return true;
+  }
+
+  function sameStringSet(left, right) {
+    const normalize = (items) => [...new Set((Array.isArray(items) ? items : []).map((item) => String(item).trim()).filter(Boolean))].sort();
+    const a = normalize(left);
+    const b = normalize(right);
+    return a.length === b.length && a.every((item, index) => item === b[index]);
   }
 
   return {
