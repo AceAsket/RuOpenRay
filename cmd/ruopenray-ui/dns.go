@@ -13,14 +13,20 @@ import (
 
 func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	available := runtime.GOOS != "windows" && commandExists("uci")
+	xrayTarget := s.xrayDNSUpstreamTarget()
+	suggestedPort, conflictOwner := suggestedXrayDNSPort()
 	result := map[string]any{
-		"ok":         true,
-		"available":  available,
-		"mode":       "unknown",
-		"noresolv":   false,
-		"servers":    []string{},
-		"routerLan":  "192.168.1.1",
-		"xrayTarget": "127.0.0.1#5353",
+		"ok":                   true,
+		"available":            available,
+		"mode":                 "unknown",
+		"noresolv":             false,
+		"servers":              []string{},
+		"routerLan":            "192.168.1.1",
+		"xrayTarget":           xrayTarget,
+		"suggestedXrayPort":    suggestedPort,
+		"suggestedXrayTarget":  fmt.Sprintf("127.0.0.1#%d", suggestedPort),
+		"dnsPortConflict":      conflictOwner != "",
+		"dnsPortConflictOwner": conflictOwner,
 	}
 	if !available {
 		result["mode"] = "manual"
@@ -40,7 +46,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		lanIP = strings.SplitN(lanIP, "/", 2)[0]
 	}
 	mode := "system"
-	if noresolv && len(servers) == 1 && servers[0] == "127.0.0.1#5353" {
+	if noresolv && len(servers) == 1 && servers[0] == xrayTarget {
 		mode = "xray"
 	} else if noresolv && len(servers) > 0 {
 		mode = "upstream"
@@ -82,7 +88,11 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 		restart = value
 	}
 	dryRun := boolPayload(payload, "dryRun", false)
-	plan, err := dnsconfig.LANCommandPlan(mode, fmt.Sprint(payload["upstream"]), restart)
+	upstream := fmt.Sprint(payload["upstream"])
+	if mode == "xray" && strings.TrimSpace(upstream) == "" {
+		upstream = s.xrayDNSUpstreamTarget()
+	}
+	plan, err := dnsconfig.LANCommandPlan(mode, upstream, restart)
 	if err != nil {
 		status := s.lanDNSUpstreamStatus(plan)
 		status["ok"] = false
@@ -100,7 +110,7 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 		status := s.lanDNSUpstreamStatus(plan)
 		status["ok"] = false
 		status["readiness"] = readiness
-		status["error"] = "DNS inbound Xray еще не готов. Сначала примените конфигурацию Xray и убедитесь, что порт 127.0.0.1:5353 слушает."
+		status["error"] = "DNS inbound Xray еще не готов. Сначала примените конфигурацию Xray и убедитесь, что порт " + fmt.Sprint(readiness["targetTCP"]) + " слушает."
 		return status
 	}
 	steps := []map[string]any{}
@@ -131,18 +141,11 @@ func (s *serverState) lanDNSReadiness() map[string]any {
 	if err != nil {
 		return map[string]any{"ready": false, "error": err.Error()}
 	}
-	inboundReady := false
+	targetHost, targetPort, inboundReady := xrayDNSInboundEndpoint(cfg)
+	targetTCP := fmt.Sprintf("%s:%d", targetHost, targetPort)
+	targetUDP := targetTCP
 	outboundReady := false
 	ruleReady := false
-	for _, item := range anySlice(cfg["inbounds"]) {
-		inbound, ok := item.(map[string]any)
-		if !ok || fmt.Sprint(inbound["tag"]) != "ruopenray_dns_in" {
-			continue
-		}
-		port := number(inbound["port"], 0)
-		listen := strings.TrimSpace(fmt.Sprint(inbound["listen"]))
-		inboundReady = port == 5353 && (listen == "" || listen == "<nil>" || listen == "127.0.0.1")
-	}
 	for _, item := range anySlice(cfg["outbounds"]) {
 		outbound, ok := item.(map[string]any)
 		if ok && fmt.Sprint(outbound["tag"]) == "dns-out" && fmt.Sprint(outbound["protocol"]) == "dns" {
@@ -161,14 +164,86 @@ func (s *serverState) lanDNSReadiness() map[string]any {
 			}
 		}
 	}
-	portReady := tcpPortOpen("127.0.0.1:5353", 700*time.Millisecond)
+	portReady := tcpPortOpen(targetTCP, 700*time.Millisecond)
+	udpOwner := udpPortOwner(targetHost, targetPort)
 	return map[string]any{
-		"ready":    inboundReady && outboundReady && ruleReady && portReady,
-		"inbound":  inboundReady,
-		"outbound": outboundReady,
-		"rule":     ruleReady,
-		"port":     portReady,
+		"ready":       inboundReady && outboundReady && ruleReady && portReady,
+		"inbound":     inboundReady,
+		"outbound":    outboundReady,
+		"rule":        ruleReady,
+		"port":        portReady,
+		"target":      fmt.Sprintf("%s#%d", targetHost, targetPort),
+		"targetTCP":   targetTCP,
+		"targetUDP":   targetUDP,
+		"udpOwner":    udpOwner,
+		"udpConflict": udpOwner != "" && !strings.Contains(udpOwner, "/xray"),
 	}
+}
+
+func (s *serverState) xrayDNSUpstreamTarget() string {
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		return dnsconfig.DefaultXrayDnsmasqTarget
+	}
+	host, port, _ := xrayDNSInboundEndpoint(cfg)
+	return fmt.Sprintf("%s#%d", host, port)
+}
+
+func xrayDNSInboundEndpoint(cfg map[string]any) (string, int, bool) {
+	host := "127.0.0.1"
+	port := 5353
+	for _, item := range anySlice(cfg["inbounds"]) {
+		inbound, ok := item.(map[string]any)
+		if !ok || fmt.Sprint(inbound["tag"]) != "ruopenray_dns_in" {
+			continue
+		}
+		listen := strings.TrimSpace(fmt.Sprint(inbound["listen"]))
+		switch listen {
+		case "", "<nil>", "0.0.0.0", "::":
+			host = "127.0.0.1"
+		default:
+			host = listen
+		}
+		if value := number(inbound["port"], 0); value > 0 && value < 65536 {
+			port = value
+		}
+		return host, port, true
+	}
+	return host, port, false
+}
+
+func suggestedXrayDNSPort() (int, string) {
+	candidates := []int{5353, 10535, 15353, 53530}
+	var conflictOwner string
+	for index, port := range candidates {
+		owner := udpPortOwner("127.0.0.1", port)
+		if index == 0 && owner != "" && !strings.Contains(owner, "/xray") {
+			conflictOwner = owner
+		}
+		if owner == "" || strings.Contains(owner, "/xray") {
+			return port, conflictOwner
+		}
+	}
+	return candidates[len(candidates)-1], conflictOwner
+}
+
+func dnsPortFromTarget(target string, fallback int) int {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return fallback
+	}
+	if strings.Contains(target, "#") {
+		parts := strings.Split(target, "#")
+		return number(parts[len(parts)-1], fallback)
+	}
+	if host, port, err := net.SplitHostPort(target); err == nil && host != "" && port != "" {
+		return number(port, fallback)
+	}
+	if strings.Count(target, ":") == 1 {
+		parts := strings.Split(target, ":")
+		return number(parts[1], fallback)
+	}
+	return fallback
 }
 
 func tcpPortOpen(address string, timeout time.Duration) bool {
@@ -178,6 +253,32 @@ func tcpPortOpen(address string, timeout time.Duration) bool {
 	}
 	_ = conn.Close()
 	return true
+}
+
+func udpPortOwner(_ string, port int) string {
+	if runtime.GOOS == "windows" || port <= 0 || port > 65535 {
+		return ""
+	}
+	needle := fmt.Sprintf(":%d", port)
+	result := runTimeout(2*time.Second, "sh", "-c", fmt.Sprintf("(netstat -lnup 2>/dev/null || ss -lunp 2>/dev/null) | grep ':%d'", port))
+	text := strings.TrimSpace(fmt.Sprint(result["stdout"]))
+	if text == "" || !strings.Contains(text, needle) {
+		return ""
+	}
+	lines := strings.Split(text, "\n")
+	chosen := strings.TrimSpace(lines[0])
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.Contains(line, "/xray") {
+			chosen = line
+			break
+		}
+	}
+	fields := strings.Fields(chosen)
+	if len(fields) == 0 {
+		return chosen
+	}
+	return fields[len(fields)-1]
 }
 
 func (s *serverState) checkDNS(w http.ResponseWriter, r *http.Request) {

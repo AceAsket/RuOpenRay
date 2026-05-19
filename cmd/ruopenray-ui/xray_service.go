@@ -62,7 +62,7 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	if action == "start" || action == "restart" {
 		logMaintenance = s.maintainLogFiles(true)
 		if s.cfg.ServiceName == "xray" {
-			xrayEnable = enableXrayServiceConfig()
+			xrayEnable = s.enableXrayServiceConfig()
 		}
 	}
 	delay := s.waitBeforeXrayAction(action)
@@ -84,13 +84,23 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	return result
 }
 
-func enableXrayServiceConfig() map[string]any {
+func (s *serverState) enableXrayServiceConfig() map[string]any {
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: enable xray service config"}
 	}
 	steps := []map[string]any{}
 	if commandExists("uci") {
+		steps = append(steps, run("uci", "set", "xray.enabled=xray"))
+		steps = append(steps, run("uci", "set", "xray.config=xray"))
 		steps = append(steps, run("uci", "set", "xray.enabled.enabled=1"))
+		if strings.TrimSpace(s.cfg.ActiveConfig) != "" {
+			steps = append(steps, run("uci", "set", "xray.config.conffiles="+s.cfg.ActiveConfig))
+			steps = append(steps, run("uci", "-q", "delete", "xray.config.confdir"))
+		}
+		if strings.TrimSpace(s.cfg.GeoDir) != "" {
+			steps = append(steps, run("uci", "set", "xray.config.datadir="+s.cfg.GeoDir))
+		}
+		steps = append(steps, run("uci", "set", "xray.config.format=json"))
 		steps = append(steps, run("uci", "commit", "xray"))
 	}
 	if _, err := os.Stat("/etc/init.d/xray"); err == nil {

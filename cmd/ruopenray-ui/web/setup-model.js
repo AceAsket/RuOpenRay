@@ -256,14 +256,18 @@ export function createSetupModel({
     if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {
       next.outbounds.push({ tag: 'dns-out', protocol: 'dns', settings: { address: '8.8.8.8', port: 53, network: 'udp' } });
     }
-    if (!next.inbounds.some((item) => item?.tag === 'ruopenray_dns_in')) {
+    const dnsPort = Number(state.lanDnsStatus?.dnsPortConflict ? state.lanDnsStatus?.suggestedXrayPort : 5353) || 5353;
+    const dnsInbound = next.inbounds.find((item) => item?.tag === 'ruopenray_dns_in');
+    if (!dnsInbound) {
       next.inbounds.push({
         tag: 'ruopenray_dns_in',
         listen: '127.0.0.1',
-        port: 5353,
+        port: dnsPort,
         protocol: 'dokodemo-door',
         settings: { address: '8.8.8.8', port: 53, network: 'tcp,udp' }
       });
+    } else if (state.lanDnsStatus?.dnsPortConflict && Number(dnsInbound.port) === 5353) {
+      dnsInbound.port = dnsPort;
     }
     ensureDnsServer(next, 'https://dns.google:443/dns-query');
     ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');

@@ -88,6 +88,13 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	if hasDNSInbound && !hasTransparentInbound {
 		warnings = append(warnings, "DNS inbound ruopenray_dns_in есть, но он обрабатывает только DNS с dnsmasq. Для сайтов и приложений LAN-клиентов нужен отдельный transparent inbound.")
 	}
+	if hasDNSInbound && runtime.GOOS != "windows" {
+		host, port, _ := xrayDNSInboundEndpoint(cfg)
+		owner := udpPortOwner(host, port)
+		if owner != "" && !strings.Contains(owner, "/xray") {
+			warnings = append(warnings, fmt.Sprintf("DNS inbound ruopenray_dns_in не сможет стартовать: UDP %s:%d уже занят процессом %s. Подготовьте DNS inbound заново, RuOpenRay выберет свободный порт.", host, port, owner))
+		}
+	}
 	geoipPath := filepath.Join(s.cfg.GeoDir, "geoip.dat")
 	geositePath := filepath.Join(s.cfg.GeoDir, "geosite.dat")
 	routing, _ := cfg["routing"].(map[string]any)

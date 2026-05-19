@@ -41,6 +41,20 @@ func TestLANCommandPlan(t *testing.T) {
 	}
 }
 
+func TestLANCommandPlanXrayCustomTarget(t *testing.T) {
+	plan, err := LANCommandPlan("xray", "127.0.0.1#10535", false)
+	if err != nil {
+		t.Fatalf("LANCommandPlan returned error: %v", err)
+	}
+	commands := PlanCommands(plan)
+	if len(commands) != 4 {
+		t.Fatalf("expected 4 commands, got %d: %#v", len(commands), commands)
+	}
+	if got := commands[2][2]; got != "dhcp.@dnsmasq[0].server=127.0.0.1#10535" {
+		t.Fatalf("unexpected xray upstream command: %q", got)
+	}
+}
+
 func TestCleanCheckHost(t *testing.T) {
 	tests := map[string]string{
 		"":                         "example.com",

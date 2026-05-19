@@ -326,6 +326,10 @@ function lanDnsSection() {
       : (status.noresolv ? 'серверы не заданы' : 'системный resolv.conf');
   const routerLan = status.routerLan || '192.168.1.1';
   const xrayTarget = status.xrayTarget || '127.0.0.1#5353';
+  const xrayPort = String(xrayTarget).split('#').pop() || '5353';
+  const dnsPortConflict = status.dnsPortConflict || readiness.udpConflict;
+  const conflictOwner = status.dnsPortConflictOwner || readiness.udpOwner || '';
+  const suggestedTarget = status.suggestedXrayTarget || '127.0.0.1#10535';
   return `
     <section class="panel settings-section lan-dns-panel">
       <div class="panel-title">
@@ -343,7 +347,7 @@ function lanDnsSection() {
       <div class="advanced-grid three lan-dns-modes">
         <button type="button" class="advanced-card ${state.lanDnsMode === 'xray' ? 'active' : ''}" data-lan-dns-mode="xray">
           <strong>DNS через Xray</strong>
-          <span>LAN → dnsmasq → 127.0.0.1#5353 → Xray DNS. Подходит, когда RuOpenRay управляет DNS-маршрутизацией.</span>
+          <span>LAN → dnsmasq → ${escapeHtml(xrayTarget)} → Xray DNS. Подходит, когда RuOpenRay управляет DNS-маршрутизацией.</span>
         </button>
         <button type="button" class="advanced-card ${state.lanDnsMode === 'upstream' ? 'active' : ''}" data-lan-dns-mode="upstream">
           <strong>Внешний DNS / Pi-hole</strong>
@@ -368,14 +372,15 @@ function lanDnsSection() {
         <article class="${readiness.inbound ? 'ok' : 'warn'}"><span>DNS inbound</span><strong>${readiness.inbound ? 'готов' : 'не найден'}</strong></article>
         <article class="${readiness.outbound ? 'ok' : 'warn'}"><span>dns-out</span><strong>${readiness.outbound ? 'готов' : 'не найден'}</strong></article>
         <article class="${readiness.rule ? 'ok' : 'warn'}"><span>Маршрут DNS</span><strong>${readiness.rule ? 'готов' : 'не найден'}</strong></article>
-        <article class="${readiness.port ? 'ok' : 'warn'}"><span>Порт 5353</span><strong>${readiness.port ? 'слушает' : 'закрыт'}</strong></article>
+        <article class="${dnsPortConflict ? 'warn' : (readiness.port ? 'ok' : 'warn')}"><span>Порт ${escapeHtml(xrayPort)}</span><strong>${dnsPortConflict ? 'занят' : (readiness.port ? 'слушает' : 'закрыт')}</strong></article>
       </div>
       ${commands.length ? `<div class="lan-dns-preview">
         <strong>Будет выполнено</strong>
         <pre>${escapeHtml(commands.join('\n'))}</pre>
       </div>` : '<p class="muted">Сначала нажмите «Проверить и показать команды»: RuOpenRay ничего не изменит, только покажет план.</p>'}
       ${warnings.length ? `<div class="settings-warning"><strong>Важно</strong><span>${escapeHtml(warnings.join(' '))}</span></div>` : ''}
-      ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт 127.0.0.1:5353 слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
+      ${dnsPortConflict ? `<div class="settings-warning"><strong>Порт DNS занят</strong><span>UDP ${escapeHtml(xrayTarget)} уже держит ${escapeHtml(conflictOwner || 'другой процесс')}. При подготовке черновика RuOpenRay выберет запасной порт ${escapeHtml(suggestedTarget)}, а dnsmasq нужно направить туда же.</span></div>` : ''}
+      ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт ${escapeHtml(readiness.targetTCP || xrayTarget.replace('#', ':'))} слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
       <div class="settings-warning">
         <strong>Если Pi-hole главный DNS</strong>
         <span>DHCP может выдавать клиентам Pi-hole напрямую. Тогда в Pi-hole upstream укажите ${escapeHtml(routerLan)}#5353, а Xray DNS inbound должен быть доступен с LAN-адреса роутера. Не делайте цепочку Pi-hole → роутер → Pi-hole.</span>

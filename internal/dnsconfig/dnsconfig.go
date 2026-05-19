@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const DefaultXrayDnsmasqTarget = "127.0.0.1#5353"
+
 func NormalizeDnsmasqServer(value string) string {
 	raw := strings.TrimSpace(value)
 	if raw == "" {
@@ -52,10 +54,14 @@ func LANCommandPlan(mode, upstream string, restart bool) (map[string]any, error)
 			[]string{"uci", "-q", "delete", "dhcp.@dnsmasq[0].server"},
 		)
 	case "xray":
+		server := NormalizeDnsmasqServer(upstream)
+		if server == "" {
+			server = DefaultXrayDnsmasqTarget
+		}
 		commands = append(commands,
 			[]string{"uci", "set", "dhcp.@dnsmasq[0].noresolv=1"},
 			[]string{"uci", "-q", "delete", "dhcp.@dnsmasq[0].server"},
-			[]string{"uci", "add_list", "dhcp.@dnsmasq[0].server=127.0.0.1#5353"},
+			[]string{"uci", "add_list", "dhcp.@dnsmasq[0].server=" + server},
 		)
 		warnings = append(warnings, "Если Xray DNS inbound не запущен, устройства в LAN временно потеряют DNS.")
 	case "upstream":

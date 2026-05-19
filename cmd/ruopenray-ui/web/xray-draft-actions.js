@@ -155,15 +155,19 @@ export function createXrayDraftActions({
     next.routing.rules = Array.isArray(next.routing.rules) ? next.routing.rules : [];
     next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
     next.dns.servers = Array.isArray(next.dns.servers) && next.dns.servers.length ? next.dns.servers : ['https://dns.google/dns-query'];
+    const dnsPort = Number(state.lanDnsStatus?.dnsPortConflict ? state.lanDnsStatus?.suggestedXrayPort : 5353) || 5353;
+    const dnsInbound = next.inbounds.find((item) => item?.tag === 'ruopenray_dns_in');
 
-    if (!next.inbounds.some((item) => item?.tag === 'ruopenray_dns_in')) {
+    if (!dnsInbound) {
       next.inbounds.push({
         tag: 'ruopenray_dns_in',
         listen: '127.0.0.1',
-        port: 5353,
+        port: dnsPort,
         protocol: 'dokodemo-door',
         settings: { address: '8.8.8.8', port: 53, network: 'tcp,udp' }
       });
+    } else if (state.lanDnsStatus?.dnsPortConflict && Number(dnsInbound.port) === 5353) {
+      dnsInbound.port = dnsPort;
     }
     if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {
       next.outbounds.push({
@@ -177,7 +181,7 @@ export function createXrayDraftActions({
       next.routing.rules.unshift(dnsRule);
     }
     syncConfig(next);
-    state.message = 'DNS inbound подготовлен в черновике. После применения dnsmasq можно направить на 127.0.0.1#5353.';
+    state.message = `DNS inbound подготовлен в черновике. После применения dnsmasq можно направить на 127.0.0.1#${dnsPort}.`;
     render();
   }
 

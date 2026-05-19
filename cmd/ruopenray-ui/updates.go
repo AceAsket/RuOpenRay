@@ -270,7 +270,7 @@ func (s *serverState) updateCore(version string, keepBackup bool) map[string]any
 	}
 
 	after := firstLine(fmt.Sprint(run("xray", "version")["stdout"]), "xray не найден")
-	enable := enableXrayServiceConfig()
+	enable := s.enableXrayServiceConfig()
 	arch := systemArchitecture(manager)
 	restart := s.serviceAction("restart")
 	ok := update["ok"].(bool) && install["ok"].(bool) && enable["ok"].(bool) && restart["ok"].(bool)

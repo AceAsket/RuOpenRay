@@ -544,7 +544,12 @@ enable_xray_service_config() {
 	command -v xray >/dev/null 2>&1 || return 0
 	[ -x "/etc/init.d/$XRAY_SERVICE" ] || return 0
 	if command -v uci >/dev/null 2>&1 && uci -q get xray.enabled >/dev/null 2>&1; then
+		uci -q set xray.config=xray || true
 		uci -q set xray.enabled.enabled='1' || true
+		uci -q set xray.config.conffiles="$ACTIVE_CONFIG" || true
+		uci -q delete xray.config.confdir || true
+		uci -q set xray.config.datadir="$GEO_DIR" || true
+		uci -q set xray.config.format='json' || true
 		uci -q commit xray || true
 	fi
 	"/etc/init.d/$XRAY_SERVICE" enable >/dev/null 2>&1 || true
