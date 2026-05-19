@@ -1,4 +1,14 @@
 export function bindNavigationControls({ state, render }) {
+  function closeDialogsForNavigation() {
+    state.coreDialogOpen = false;
+    state.installWizardOpen = false;
+    state.setupWizardOpen = false;
+    state.importDialog = '';
+    state.routeRuleDialog = false;
+    state.routeBalancerDialog = false;
+    state.routePresetDialog = false;
+  }
+
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       state.tab = button.dataset.tab;
@@ -10,6 +20,7 @@ export function bindNavigationControls({ state, render }) {
       state.tab = button.dataset.tabJump;
       if (button.dataset.routingViewJump) state.routingView = button.dataset.routingViewJump;
       if (button.dataset.diagnosticsJump) state.diagnosticsView = button.dataset.diagnosticsJump;
+      closeDialogsForNavigation();
       render();
     });
   });
