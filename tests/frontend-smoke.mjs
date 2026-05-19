@@ -23,9 +23,12 @@ import { createProfileActions } from '../cmd/ruopenray-ui/web/profile-actions.js
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
+import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
+import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
+import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
@@ -35,6 +38,7 @@ import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 import { createSniActions } from '../cmd/ruopenray-ui/web/sni-actions.js';
 import { createUpdatesActions } from '../cmd/ruopenray-ui/web/updates-actions.js';
+import { createXrayDraftActions } from '../cmd/ruopenray-ui/web/xray-draft-actions.js';
 import { createXrayConfigModel } from '../cmd/ruopenray-ui/web/xray-config-model.js';
 
 const state = {
@@ -341,6 +345,44 @@ const importActions = createImportActions({
 await importActions.previewImport();
 await importActions.importToCurrent(true);
 
+const serverActionState = {
+  config: {
+    outbounds: [{ tag: 'proxy-old' }, { tag: 'proxy-new' }],
+    routing: { rules: [{ outboundTag: 'proxy-old', type: 'field', domain: ['domain:example.com'] }] },
+  },
+  serverCheckTimeout: 100,
+  serverCheckAttempts: 1,
+  serverCheckMode: 'tcp',
+  serverCheckUrl: 'https://www.gstatic.com/generate_204',
+  serverChecks: {},
+  serverCheckHistory: [],
+  serverChecking: false,
+  serverCheckingTags: [],
+  pendingServerTag: '',
+};
+const serverActions = createServerActions({
+  state: serverActionState,
+  request: async (path) => {
+    if (path === '/api/outbounds/check') return { results: [{ tag: 'proxy-new', ok: true, latencyMs: 10 }] };
+    if (path === '/api/subscriptions/fallback') return { ok: true, selected: { tag: 'proxy-new' } };
+    return { ok: true };
+  },
+  render,
+  refresh: async () => { serverActionState.refreshed = true; },
+  syncConfig: (config) => { serverActionState.config = config; },
+  keepOperationVisible: async () => {},
+  configOutbounds: () => serverActionState.config.outbounds || [],
+  proxyOutbounds: () => (serverActionState.config.outbounds || []).filter((item) => item.tag?.startsWith('proxy')),
+  proxyRuleStrategyStats: () => ({ primary: 1, pinned: 0 }),
+  setActiveProxyDraft: (tag) => {
+    serverActionState.config.routing.rules = serverActionState.config.routing.rules.map((rule) => ({ ...rule, outboundTag: tag }));
+  },
+  applyConfig: async () => { serverActionState.applied = true; },
+});
+await serverActions.checkServers(['proxy-new']);
+await serverActions.routeAllToOutbound('proxy-new');
+await serverActions.fallbackSubscriptionPool('subscription');
+
 const observatoryState = {
   config: {},
   serverCheckUrl: 'https://www.gstatic.com/generate_204',
@@ -476,6 +518,95 @@ const routingDsl = createRoutingDsl({
   routeStatsFor: () => ({}),
 });
 const parsedDsl = routingDsl.parseRoutingDsl('domain(domain:discord.com) -> proxy\nnetwork(udp) && ip(104.16.0.0/12) -> proxy');
+const routingActionState = {
+  config: { routing: { rules: [] } },
+  routeKind: 'domain',
+  routeValue: 'domain:example.com',
+  routeName: 'Example',
+  routeTargetType: 'outbound',
+  routeOutbound: 'proxy',
+  routeBalancer: '',
+  routeNames: {},
+  disabledRouteRules: [],
+  customRoutePresets: {},
+  selectedRoutePresets: [],
+  routeRuleDialog: true,
+  routeRuleMode: 'single',
+  routeRuleEditingIndex: -1,
+  routeSearch: '',
+};
+const routingActionModel = createRoutingModel({
+  state: routingActionState,
+  managedRouteTags: { proxy: 'proxy' },
+  routeBundles: {},
+  routeKinds: { domain: 'Сайт или домен' },
+  routePresets: {},
+  proxyOutbounds: () => [{ tag: 'proxy' }],
+});
+const routingActions = createRoutingActions({
+  state: routingActionState,
+  render,
+  escapeHtml,
+  routeKinds: { domain: 'Сайт или домен' },
+  routePresets: {},
+  routeBundles: {},
+  hiddenBuiltinRoutePresetKeys: new Set(),
+  customRoutePresetsStorageKey: 'ruopenray:test:custom-presets',
+  parseRoutingDsl: routingDsl.parseRoutingDsl,
+  isDslDefaultRule: routingDsl.isDslDefaultRule,
+  dslPreviewStats: routingDsl.dslPreviewStats,
+  dslPreviewView: routingDsl.dslPreviewView,
+  routeRules: routingActionModel.routeRules,
+  setRoutingDraft: (rules) => {
+    routingActionState.config.routing = { ...(routingActionState.config.routing || {}), rules };
+  },
+  activeProxyTag: () => 'proxy',
+  balancerOptions: () => [],
+  splitRouteValues: routingActionModel.splitRouteValues,
+  routeTarget: routingActionModel.routeTarget,
+  routeRuleKey: routingActionModel.routeRuleKey,
+  readableRouteTag: routingActionModel.readableRouteTag,
+  encodedRouteTarget: routingActionModel.encodedRouteTarget,
+  isRuOpenRayManagedRoute: routingActionModel.isRuOpenRayManagedRoute,
+  routeRuleName: routingActionModel.routeRuleName,
+  setRouteRuleName: routingActionModel.setRouteRuleName,
+  copyRouteRuleName: routingActionModel.copyRouteRuleName,
+  describeRouteRule: routingActionModel.describeRouteRule,
+  routeSectionDefinitions: routingActionModel.routeSectionDefinitions,
+  routeCategoryForRule: routingActionModel.routeCategoryForRule,
+  routeRuleSource: routingActionModel.routeRuleSource,
+  routeTargetOptions: routingActionModel.routeTargetOptions,
+  saveRouteNames: routingActionModel.saveRouteNames,
+  saveDisabledRouteRules: () => {},
+});
+routingActions.addRoutingRule();
+const routeBalancerState = {
+  config: { routing: { balancers: [] } },
+  routeBalancerEditingIndex: -1,
+  routeBalancerTag: 'auto',
+  routeBalancerStrategy: 'leastPing',
+  routeBalancerSelectors: 'proxy-one\nproxy-two',
+  routeBalancerFallback: 'proxy-one',
+  routeBalancer: '',
+  routeTargetType: 'outbound',
+};
+const routeBalancerActions = createRouteBalancerActions({
+  state: routeBalancerState,
+  render,
+  routeBalancers: () => routeBalancerState.config.routing.balancers || [],
+  routeRules: () => [],
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
+  setRouteBalancersDraft: (balancers) => {
+    routeBalancerState.config.routing = { ...(routeBalancerState.config.routing || {}), balancers };
+  },
+  syncConfig: (config) => {
+    routeBalancerState.config = config;
+  },
+  strategyObserverType: (strategy) => (strategy === 'leastPing' ? 'observatory' : ''),
+  applyObserverForStrategy: (config) => ({ ...config, observatory: { enabled: true } }),
+  observerLabel: () => 'Observatory',
+});
+routeBalancerActions.saveRouteBalancer();
 const dnsModel = createDnsModel({
   state: {
     config: {
@@ -567,6 +698,29 @@ const firewallActions = createFirewallActions({
 });
 firewallActions.setFirewallBypassMode('redirect');
 firewallActions.setFirewallPortMode('all');
+const xrayDraftState = {
+  config: {
+    inbounds: [{ tag: 'transparent_ipv4', protocol: 'dokodemo-door', streamSettings: {} }],
+    outbounds: [{ tag: 'proxy', protocol: 'vless', streamSettings: {} }],
+    routing: { rules: [] },
+    dns: { servers: [] },
+  },
+  firewallRouterMode: 'tproxy',
+};
+const xrayDraftActions = createXrayDraftActions({
+  state: xrayDraftState,
+  render,
+  syncConfig: (config) => { xrayDraftState.config = config; },
+  advancedInbounds: () => xrayDraftState.config.inbounds,
+  currentSnifferSettings: () => ({ mode: 'http-tls', routeOnly: true, excluded: '' }),
+  proxyOutbounds: () => xrayDraftState.config.outbounds.filter((item) => item.tag === 'proxy'),
+  normalizeSetupRules: (config) => { config.routing.rules.push({ type: 'field', ip: ['geoip:private'], outboundTag: 'direct' }); },
+  firewallCommands: () => 'nft list ruleset',
+  githubInstallCommand: () => 'install command',
+});
+xrayDraftActions.setDnsModeDraft('fakedns');
+xrayDraftActions.setTcpFastOpenDraft(true);
+xrayDraftActions.prepareTransparentDraft();
 const serverModel = createServerModel({
   state: {
     activeServerTag: '',
@@ -735,6 +889,7 @@ const checks = [
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
+  ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
@@ -746,10 +901,12 @@ const checks = [
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
   ['routing dsl parser', parsedDsl.rules.length === 2 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2],
+  ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy'],
   ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all'],
+  ['xray draft actions', xrayDraftState.config.dns.fakeDNS?.length === 1 && xrayDraftState.config.outbounds[0]?.streamSettings?.sockopt?.tcpFastOpen === true && xrayDraftState.config.routing.rules[0]?.outboundTag === 'direct'],
   ['server model active proxy', serverModel.activeProxyTag() === 'cloudone' && serverModel.proxyOutbounds().length === 1 && serverModel.outboundUsage('cloudone') === 1],
   ['xray config model', xrayConfigModel.currentSnifferSettings().mode === 'http-tls' && xrayConfigModel.outboundAddress(xrayConfigModel.configOutbounds()[0]) === 'example.com:443'],
 ];

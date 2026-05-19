@@ -26,10 +26,13 @@ import { createImportDialogView } from './import-dialog-view.js';
 import { bindGeoControls } from './geo-bindings.js';
 import { createImportActions } from './import-actions.js';
 import { bindImportControls } from './import-bindings.js';
+import { createLoginView } from './login-view.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
 import { createObservatoryActions } from './observatory-actions.js';
 import { createProfileActions } from './profile-actions.js';
 import { bindProfileControls } from './profile-bindings.js';
+import { createRouteBalancerActions } from './route-balancer-actions.js';
+import { createRoutingActions } from './routing-actions.js';
 import { bindRoutingControls } from './routing-bindings.js';
 import { createSettingsView } from './settings-view.js';
 import { bindSettingsControls } from './settings-bindings.js';
@@ -39,6 +42,7 @@ import { createRoutingDialogsView } from './routing-dialogs-view.js';
 import { createRoutingDsl } from './routing-dsl.js';
 import { createRoutingModel } from './routing-model.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
+import { createServerActions } from './server-actions.js';
 import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSettingsActions } from './settings-actions.js';
@@ -49,6 +53,7 @@ import { createSetupModel } from './setup-model.js';
 import { createSniActions } from './sni-actions.js';
 import { createSniView } from './sni-view.js';
 import { createInitialState } from './state.js';
+import { createXrayDraftActions } from './xray-draft-actions.js';
 import { createXrayConfigModel } from './xray-config-model.js';
 import {
   customRoutePresetsStorageKey,
@@ -133,6 +138,7 @@ const {
   routeRuleName,
   setRouteRuleName,
   copyRouteRuleName,
+  saveRouteNames,
   describeRouteRule,
   routeStats,
   routeSectionDefinitions,
@@ -203,6 +209,9 @@ const {
   outboundTransport
 } = xrayConfigModel;
 
+let serverActions;
+const checkServers = (...args) => serverActions.checkServers(...args);
+
 const observatoryActions = createObservatoryActions({
   state,
   syncConfig,
@@ -226,6 +235,113 @@ const {
   enableObservatoryForProxy,
   checkObservatoryTargets
 } = observatoryActions;
+
+const activeProxyTagForRouting = (...args) => activeProxyTag(...args);
+
+function resolveRoutingAlias(tag) {
+  const value = String(tag || '').trim();
+  if (value === 'proxy') return activeProxyTagForRouting() || 'proxy';
+  return value;
+}
+
+const routingDsl = createRoutingDsl({
+  state,
+  escapeHtml,
+  resolveRoutingAlias,
+  routeStatsFor
+});
+const {
+  parseRoutingDsl,
+  isDslDefaultRule,
+  dslPreviewStats,
+  dslPreviewView
+} = routingDsl;
+
+
+
+
+
+const routingActions = createRoutingActions({
+  state,
+  render,
+  escapeHtml,
+  routeKinds,
+  routePresets,
+  routeBundles,
+  hiddenBuiltinRoutePresetKeys,
+  customRoutePresetsStorageKey,
+  parseRoutingDsl,
+  isDslDefaultRule,
+  dslPreviewStats,
+  dslPreviewView,
+  routeRules,
+  setRoutingDraft,
+  activeProxyTag: activeProxyTagForRouting,
+  balancerOptions,
+  splitRouteValues,
+  routeTarget,
+  routeRuleKey,
+  readableRouteTag,
+  encodedRouteTarget,
+  isRuOpenRayManagedRoute,
+  routeRuleName,
+  setRouteRuleName,
+  copyRouteRuleName,
+  saveRouteNames,
+  describeRouteRule,
+  routeSectionDefinitions,
+  routeCategoryForRule,
+  routeRuleSource,
+  routeTargetOptions,
+  saveDisabledRouteRules
+});
+const {
+  previewRoutingDsl,
+  configAnalysisView,
+  applyRoutingDsl,
+  addRoutingRule,
+  resetRouteRuleForm,
+  routeRuleFromForm,
+  openRoutingRuleEditor,
+  saveRoutingRuleEdit,
+  addRoutingPreset,
+  normalizePresetRule,
+  applySelectedRoutingPresets,
+  routePresetRules,
+  routePresetTitle,
+  routePresetDetail,
+  routeRuleConditionCount,
+  routePresetConditionCount,
+  builtinRoutePresetEntries,
+  ruleCountLabel,
+  customRoutePreset,
+  customRoutePresetEntries,
+  saveCustomRoutePresets,
+  scenarioIdFromTitle,
+  routeRuleToDslLines,
+  clearRoutePresetEditor,
+  newRoutingPreset,
+  editRoutingPreset,
+  previewRoutePresetEdit,
+  routePresetCheckResultView,
+  applyRoutePresetEdit,
+  saveRoutePresetEdit,
+  deleteCustomRoutePreset,
+  removeRoutingRule,
+  disableRoutingRule,
+  restoreDisabledRouteRule,
+  deleteDisabledRouteRule,
+  visibleRoutingRuleItems,
+  routeRowHtml,
+  orderedRouteList,
+  disableVisibleRoutingRules,
+  restoreAllDisabledRouteRules,
+  updateRoutingTarget,
+  moveRoutingRule,
+  reorderRoutingRule,
+  renameRoutingRule
+} = routingActions;
+
 
 const serverModel = createServerModel({
   state,
@@ -272,170 +388,27 @@ const {
   balancerMembersView
 } = serverModel;
 
-function setSnifferDraft(mode, patch = {}) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  const targets = advancedInbounds().map((item) => item?.tag).filter(Boolean);
-  next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
-  const current = currentSnifferSettings();
-  const enabled = mode !== 'off';
-  const destOverride = mode === 'http-tls-quic' ? ['http', 'tls', 'quic'] : ['http', 'tls'];
-  const domainsExcluded = String(patch.excluded ?? current.excluded ?? '')
-    .split(/\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const routeOnly = patch.routeOnly ?? current.routeOnly;
-  next.inbounds = next.inbounds.map((inbound) => {
-    if (targets.length && !targets.includes(inbound?.tag)) return inbound;
-    if (!targets.length && inbound?.protocol === 'api') return inbound;
-    const item = { ...inbound };
-    if (!enabled) {
-      item.sniffing = { ...(item.sniffing || {}), enabled: false };
-      delete item.sniffing.destOverride;
-      delete item.sniffing.domainsExcluded;
-      delete item.sniffing.routeOnly;
-      return item;
-    }
-    item.sniffing = {
-      ...(item.sniffing || {}),
-      enabled: true,
-      destOverride,
-      routeOnly: Boolean(routeOnly)
-    };
-    if (domainsExcluded.length) item.sniffing.domainsExcluded = domainsExcluded;
-    else delete item.sniffing.domainsExcluded;
-    return item;
-  });
-  syncConfig(next);
-  state.message = enabled ? 'Сниффер обновлен в черновике. Проверьте конфигурацию и примените.' : 'Сниффер выключен в черновике.';
-  render();
-}
-
-function setTcpFastOpenDraft(enabled) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  const proxyTags = new Set(proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean));
-  next.outbounds = (Array.isArray(next.outbounds) ? next.outbounds : []).map((outbound) => {
-    if (!proxyTags.has(outbound?.tag)) return outbound;
-    const item = { ...outbound, streamSettings: { ...(outbound.streamSettings || {}) } };
-    item.streamSettings.sockopt = { ...(item.streamSettings.sockopt || {}), tcpFastOpen: Boolean(enabled) };
-    return item;
-  });
-  const transparentTags = new Set(advancedInbounds().map((inbound) => inbound?.tag).filter(Boolean));
-  next.inbounds = (Array.isArray(next.inbounds) ? next.inbounds : []).map((inbound) => {
-    if (transparentTags.size && !transparentTags.has(inbound?.tag)) return inbound;
-    if (!transparentTags.size && inbound?.protocol === 'api') return inbound;
-    const item = { ...inbound, streamSettings: { ...(inbound.streamSettings || {}) } };
-    item.streamSettings.sockopt = { ...(item.streamSettings.sockopt || {}), tcpFastOpen: Boolean(enabled) };
-    return item;
-  });
-  syncConfig(next);
-  state.message = enabled ? 'TCP Fast Open добавлен в черновик Xray.' : 'TCP Fast Open выключен в черновике Xray.';
-  render();
-}
-
-function setDnsModeDraft(mode) {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
-  if (mode === 'fakedns') {
-    next.dns.fakeDNS = next.dns.fakeDNS?.length ? next.dns.fakeDNS : [{ ipPool: '198.18.0.0/15', poolSize: 65535 }];
-    if (!next.dns.servers.some((server) => typeof server === 'object' && server?.address === 'fakedns')) {
-      next.dns.servers.unshift({ address: 'fakedns', domains: ['geosite:geolocation-!cn'] });
-    }
-    const current = currentSnifferSettings();
-    const targets = new Set(advancedInbounds().map((inbound) => inbound?.tag).filter(Boolean));
-    const destOverride = current.mode === 'http-tls-quic' ? ['http', 'tls', 'quic', 'fakedns'] : ['http', 'tls', 'fakedns'];
-    const domainsExcluded = String(current.excluded || '').split(/\n|,/).map((item) => item.trim()).filter(Boolean);
-    next.inbounds = (Array.isArray(next.inbounds) ? next.inbounds : []).map((inbound) => {
-      if (targets.size && !targets.has(inbound?.tag)) return inbound;
-      if (!targets.size && inbound?.protocol === 'api') return inbound;
-      const item = { ...inbound };
-      item.sniffing = { ...(item.sniffing || {}), enabled: true, destOverride, routeOnly: true };
-      if (domainsExcluded.length) item.sniffing.domainsExcluded = domainsExcluded;
-      return item;
-    });
-    syncConfig(next);
-    state.message = 'FakeDNS подготовлен в черновике. Это advanced-режим: проверьте DNS/TProxy перед применением.';
-    render();
-    return;
-  }
-  delete next.dns.fakeDNS;
-  next.dns.servers = next.dns.servers.filter((server) => !(typeof server === 'object' && server?.address === 'fakedns'));
-  syncConfig(next);
-  state.message = 'DNS-режим возвращен к обычному черновику.';
-  render();
-}
-
-function resolveRoutingAlias(tag) {
-  const value = String(tag || '').trim();
-  if (value === 'proxy') return activeProxyTag() || 'proxy';
-  return value;
-}
-
-const routingDsl = createRoutingDsl({
+const routeBalancerActions = createRouteBalancerActions({
   state,
-  escapeHtml,
-  resolveRoutingAlias,
-  routeStatsFor
+  render,
+  routeBalancers,
+  routeRules,
+  splitRouteValues,
+  setRouteBalancersDraft,
+  syncConfig,
+  strategyObserverType,
+  applyObserverForStrategy,
+  observerLabel
 });
 const {
-  parseRoutingDsl,
-  isDslDefaultRule,
-  dslPreviewStats,
-  dslPreviewView
-} = routingDsl;
-
-function previewRoutingDsl() {
-  state.routeDslPreview = parseRoutingDsl(state.routeDsl);
-  const parsed = state.routeDslPreview;
-  state.message = `Распознано правил: ${parsed.rules.length}${parsed.warnings.length ? `, предупреждений: ${parsed.warnings.length}` : ''}`;
-  render();
-}
-
-function configAnalysisView() {
-  const analysis = state.configAnalysis;
-  if (!analysis) return '';
-  const counts = analysis.counts || {};
-  const lines = [
-    ...(analysis.errors || []).map((text) => ['error', text]),
-    ...(analysis.warnings || []).map((text) => ['warn', text]),
-    ...(analysis.info || []).map((text) => ['info', text])
-  ];
-  return `
-    <div class="config-analysis ${analysis.ok ? 'ok' : 'bad'}">
-      <div class="analysis-head">
-        <strong>${analysis.ok ? 'Правила выглядят согласованно' : 'Есть ошибки в правилах'}</strong>
-        <span>${counts.total || 0} правил · proxy ${counts.proxy || 0} · direct ${counts.direct || 0} · block ${counts.block || 0} · другое ${counts.other || 0}</span>
-      </div>
-      ${lines.length ? `<ul>${lines.slice(0, 8).map(([kind, text]) => `<li class="${kind}">${escapeHtml(text)}</li>`).join('')}${lines.length > 8 ? `<li class="info">Еще ${lines.length - 8} сообщений...</li>` : ''}</ul>` : '<p class="muted">Отсутствующие geo-файлы и несуществующие outboundTag не найдены.</p>'}
-    </div>
-  `;
-}
-
-function applyRoutingDsl(mode, closeDialog = false) {
-  const parsed = parseRoutingDsl(state.routeDsl);
-  state.routeDslPreview = parsed;
-  if (!parsed.rules.length) {
-    state.message = 'Не нашёл правил для импорта';
-    render();
-    return;
-  }
-  const nextRules = mode === 'append' ? [...routeRules(), ...parsed.rules] : parsed.rules;
-  setRoutingDraft(nextRules);
-  const listName = state.routeDslName.trim();
-  if (listName) {
-    parsed.rules
-      .filter((rule) => !isDslDefaultRule(rule, parsed))
-      .forEach((rule) => setRouteRuleName(rule, listName));
-  }
-  state.message = mode === 'append'
-    ? `Добавлено правил: ${parsed.rules.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`
-    : `Черновик маршрутизации заменен: ${parsed.rules.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`;
-  if (closeDialog) {
-    state.routeRuleDialog = false;
-    state.routeRuleMode = 'single';
-  }
-  render();
-}
+  resetRouteBalancerForm,
+  openRouteBalancerDialog,
+  closeRouteBalancerDialog,
+  setRouteBalancerSelector,
+  moveRouteBalancerSelector,
+  saveRouteBalancer,
+  removeRouteBalancer
+} = routeBalancerActions;
 
 function checkForTag(tag) {
   return state.serverChecks[tag] || null;
@@ -655,12 +628,21 @@ const {
   service
 } = settingsActions;
 
+const loginViewController = createLoginView({
+  state,
+  app,
+  escapeHtml,
+  savedPasswordStorageKey,
+  login
+});
+const { loginView } = loginViewController;
+
 const updatesActions = createUpdatesActions({
   state,
   request,
   render,
   refresh,
-  geoSelectedPresetIds
+  geoSelectedPresetIds: (...args) => geoSelectedPresetIds(...args)
 });
 const {
   updateCore,
@@ -732,6 +714,25 @@ const {
   importSubscription
 } = importActions;
 
+serverActions = createServerActions({
+  state,
+  request,
+  render,
+  refresh,
+  syncConfig,
+  keepOperationVisible,
+  configOutbounds,
+  proxyOutbounds,
+  proxyRuleStrategyStats,
+  setActiveProxyDraft,
+  applyConfig
+});
+const {
+  removeOutbound,
+  routeAllToOutbound,
+  fallbackSubscriptionPool
+} = serverActions;
+
 const profileActions = createProfileActions({
   state,
   request,
@@ -744,866 +745,46 @@ const {
   backup
 } = profileActions;
 
-function addRoutingRule() {
-  const values = splitRouteValues(state.routeValue);
-  if (!values.length) {
-    state.message = 'Укажите сайт, IP, устройство или порт для правила';
-    render();
-    return;
-  }
-  const rule = { type: 'field' };
-  if (state.routeTargetType === 'balancer') {
-    if (!state.routeBalancer) {
-      state.message = 'Выберите балансировщик или создайте его в маршрутизации';
-      render();
-      return;
-    }
-    rule.balancerTag = state.routeBalancer;
-  } else {
-    rule.outboundTag = state.routeOutbound;
-  }
-  if (state.routeKind === 'port') {
-    rule.port = values.join(',');
-  } else {
-    rule[state.routeKind] = values;
-  }
-  setRouteRuleName(rule, state.routeName);
-  setRoutingDraft([rule, ...routeRules()]);
-  state.routeName = '';
-  state.routeValue = '';
-  state.routeRuleDialog = false;
-  state.message = 'Правило добавлено в черновик маршрутизации. Проверьте конфигурацию и примените изменения.';
-  render();
-}
 
-function resetRouteRuleForm() {
-  state.routeName = '';
-  state.routeKind = 'domain';
-  state.routeValue = '';
-  state.routeOutbound = activeProxyTag() || 'proxy';
-  state.routeTargetType = 'outbound';
-  state.routeBalancer = balancerOptions()[0] || '';
-  state.routeRuleMode = 'single';
-  state.routeRuleEditingIndex = -1;
-}
 
-function routeRuleFromForm(baseRule = {}) {
-  const values = splitRouteValues(state.routeValue);
-  if (!values.length) return null;
-  const rule = { ...baseRule, type: baseRule.type || 'field' };
-  delete rule.domain;
-  delete rule.ip;
-  delete rule.source;
-  delete rule.port;
-  delete rule.inboundTag;
-  delete rule.outboundTag;
-  delete rule.balancerTag;
-  if (state.routeTargetType === 'balancer') {
-    if (!state.routeBalancer) return null;
-    rule.balancerTag = state.routeBalancer;
-  } else {
-    rule.outboundTag = state.routeOutbound || 'proxy';
-  }
-  if (state.routeKind === 'port') rule.port = values.join(',');
-  else rule[state.routeKind] = values;
-  return rule;
-}
 
-function openRoutingRuleEditor(index) {
-  const rule = routeRules()[index];
-  if (!rule) return;
-  if (isRuOpenRayManagedRoute(rule)) {
-    state.message = 'Это служебное правило RuOpenRay. Меняйте его через раздел DNS, Перехват или Статистика Xray, чтобы не сломать системную часть конфигурации.';
-    render();
-    return;
-  }
-  const target = routeTarget(rule);
-  if (!routeKinds[target.kind]) {
-    state.message = 'Это особое правило пока нельзя редактировать в форме. Его можно изменить в активной конфигурации.';
-    render();
-    return;
-  }
-  const info = describeRouteRule(rule);
-  state.routeRuleEditingIndex = index;
-  state.routeRuleDialog = true;
-  state.routeRuleMode = 'single';
-  state.routeName = routeRuleName(rule, info);
-  state.routeKind = target.kind;
-  state.routeValue = target.values.join(', ');
-  state.routeTargetType = rule.balancerTag ? 'balancer' : 'outbound';
-  state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
-  state.routeOutbound = rule.outboundTag || 'proxy';
-  state.message = '';
-  render();
-}
 
-function saveRoutingRuleEdit() {
-  const index = state.routeRuleEditingIndex;
-  const current = routeRules();
-  const oldRule = current[index];
-  if (!oldRule) {
-    resetRouteRuleForm();
-    state.routeRuleDialog = false;
-    render();
-    return;
-  }
-  const nextRule = routeRuleFromForm(oldRule);
-  if (!nextRule) {
-    state.message = state.routeTargetType === 'balancer' && !state.routeBalancer
-      ? 'Выберите балансировщик или переключите цель на сервер'
-      : 'Укажите значение правила';
-    render();
-    return;
-  }
-  const nextRules = current.map((rule, ruleIndex) => (ruleIndex === index ? nextRule : rule));
-  delete state.routeNames[routeRuleKey(oldRule)];
-  setRouteRuleName(nextRule, state.routeName);
-  setRoutingDraft(nextRules);
-  resetRouteRuleForm();
-  state.routeRuleDialog = false;
-  state.message = 'Правило обновлено в черновике маршрутизации. Проверьте конфигурацию и примените изменения.';
-  render();
-}
 
-function addRoutingPreset(name) {
-  const rules = routePresetRules(name);
-  if (!rules.length) return;
-  setRoutingDraft([...rules.map(normalizePresetRule), ...routeRules()]);
-  state.message = `Подборка добавлена: ${routePresetTitle(name)}`;
-  render();
-}
 
-function normalizePresetRule(rule) {
-  const next = JSON.parse(JSON.stringify(rule));
-  if (next.outboundTag === 'proxy') next.outboundTag = activeProxyTag() || 'proxy';
-  return next;
-}
 
-function applySelectedRoutingPresets() {
-  const selectedPresets = state.selectedRoutePresets.filter((key) => routePresets[key] || routeBundles[key]);
-  const selectedCustom = state.selectedRoutePresets.filter((key) => customRoutePreset(key));
-  const selected = [...selectedPresets, ...selectedCustom];
-  if (!selected.length) {
-    state.message = 'Отметьте хотя бы одну подборку';
-    render();
-    return;
-  }
-  const rules = [
-    ...selectedPresets.flatMap((key) => routePresetRules(key).map(normalizePresetRule)),
-    ...selectedCustom.flatMap((key) => routePresetRules(key).map(normalizePresetRule))
-  ];
-  setRoutingDraft([...rules, ...routeRules()]);
-  state.routePresetDialog = false;
-  state.routeRuleDialog = false;
-  state.routeRuleMode = 'single';
-  state.selectedRoutePresets = [];
-  state.message = `Добавлено подборок: ${selected.length}, правил: ${rules.length}`;
-  render();
-}
 
-function routePresetRules(key) {
-  const custom = customRoutePreset(key);
-  if (custom) return custom.rules || [];
-  if (routeBundles[key]) return routeBundles[key].rules;
-  if (routePresets[key]) return [routePresets[key].rule];
-  return [];
-}
 
-function routePresetTitle(key) {
-  const custom = customRoutePreset(key);
-  if (custom) return custom.title || key;
-  return routeBundles[key]?.title || routePresets[key]?.title || key;
-}
 
-function routePresetDetail(key) {
-  const custom = customRoutePreset(key);
-  if (custom) return custom.detail || ruleCountLabel((custom.rules || []).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0));
-  const preset = routeBundles[key] || routePresets[key];
-  if (!preset) return '';
-  if (preset.detail) return preset.detail;
-  if (preset.rule) return describeRouteRule(preset.rule).fullValue;
-  return '';
-}
 
-function routeRuleConditionCount(rule) {
-  if (!rule) return 0;
-  let count = 0;
-  for (const key of ['domain', 'ip', 'source', 'inboundTag']) {
-    if (Array.isArray(rule[key])) count += rule[key].length;
-    else if (rule[key]) count += 1;
-  }
-  if (rule.port) count += 1;
-  if (!count && rule.network) count += 1;
-  return Math.max(1, count);
-}
 
-function routePresetConditionCount(key) {
-  return routePresetRules(key).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0);
-}
 
-function builtinRoutePresetEntries({ includeHidden = false } = {}) {
-  return [
-    ...Object.entries(routeBundles),
-    ...Object.entries(routePresets)
-  ].filter(([key]) => includeHidden || !hiddenBuiltinRoutePresetKeys.has(key));
-}
 
-function ruleCountLabel(count) {
-  const n = Math.abs(Number(count || 0));
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  const word = mod10 === 1 && mod100 !== 11
-    ? 'правило'
-    : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-      ? 'правила'
-      : 'правил';
-  return `${count || 0} ${word}`;
-}
 
-function customRoutePreset(key) {
-  const id = String(key || '').startsWith('custom:') ? String(key).slice(7) : '';
-  return id ? state.customRoutePresets[id] : null;
-}
 
-function customRoutePresetEntries() {
-  return Object.entries(state.customRoutePresets)
-    .sort(([, left], [, right]) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
-    .map(([id, preset]) => [`custom:${id}`, preset]);
-}
 
-function saveCustomRoutePresets() {
-  localStorage.setItem(customRoutePresetsStorageKey, JSON.stringify(state.customRoutePresets));
-}
 
-function scenarioIdFromTitle(title) {
-  const base = String(title || 'scenario')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9а-яё]+/gi, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 42) || 'scenario';
-  let id = base;
-  let counter = 2;
-  while (state.customRoutePresets[id]) {
-    id = `${base}-${counter}`;
-    counter += 1;
-  }
-  return id;
-}
 
-function routeRuleToDslLines(rule) {
-  const outbound = rule.balancerTag ? `balancer:${rule.balancerTag}` : (rule.outboundTag || 'proxy');
-  const prefix = rule.network ? [`network(${rule.network})`] : [];
-  const lines = [];
-  const addMany = (kind, values) => {
-    for (const value of values || []) {
-      lines.push([...prefix, `${kind}(${value})`].join(' && ') + ` -> ${outbound}`);
-    }
-  };
-  addMany('domain', rule.domain);
-  addMany('ip', rule.ip);
-  addMany('source', rule.source);
-  addMany('inboundTag', rule.inboundTag);
-  if (rule.port) lines.push([...prefix, `port(${rule.port})`].join(' && ') + ` -> ${outbound}`);
-  if (!lines.length && prefix.length) lines.push(`${prefix.join(' && ')} -> ${outbound}`);
-  return lines;
-}
 
-function clearRoutePresetEditor() {
-  state.routePresetEditor = '';
-  state.routePresetEditTitle = '';
-  state.routePresetEditDetail = '';
-  state.routePresetEditDsl = '';
-  state.routePresetEditPreview = null;
-  state.routePresetEditChecked = false;
-}
 
-function newRoutingPreset() {
-  state.routeRuleDialog = false;
-  state.routePresetDialog = true;
-  state.routePresetEditor = 'custom:new';
-  state.routePresetEditTitle = '';
-  state.routePresetEditDetail = '';
-  state.routePresetEditDsl = '';
-  state.routePresetEditPreview = null;
-  state.routePresetEditChecked = false;
-  state.message = '';
-  render();
-}
 
-function editRoutingPreset(key) {
-  const rules = routePresetRules(key);
-  if (!rules.length) return;
-  const title = routePresetTitle(key);
-  state.routeRuleDialog = false;
-  state.routePresetDialog = true;
-  state.routePresetEditor = key;
-  state.routePresetEditTitle = title;
-  state.routePresetEditDetail = routePresetDetail(key);
-  state.routePresetEditDsl = [`# ${title}`, ...rules.flatMap(routeRuleToDslLines)].join('\n');
-  state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
-  state.routePresetEditChecked = false;
-  state.message = '';
-  render();
-}
 
-function previewRoutePresetEdit() {
-  state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
-  state.routePresetEditChecked = true;
-  state.message = '';
-  render();
-}
 
-function routePresetCheckResultView(preview) {
-  const stats = dslPreviewStats(preview);
-  const tone = stats.total ? 'ok' : 'bad';
-  const text = stats.total
-    ? `Распознано правил: ${stats.total}. Через proxy: ${stats.proxy}, напрямую: ${stats.direct}, блокировка: ${stats.block}, другое: ${stats.other}.`
-    : 'Правила пока не распознаны. Вставьте строки маршрутизации и нажмите “Проверить” еще раз.';
-  return `
-    <div class="preset-check-result ${tone}">
-      <strong>Результат проверки</strong>
-      <span>${escapeHtml(text)}</span>
-      ${(preview.warnings || []).length ? `<ul>${preview.warnings.slice(0, 6).map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>` : ''}
-    </div>
-    ${dslPreviewView(preview)}
-  `;
-}
 
-function applyRoutePresetEdit() {
-  const parsed = parseRoutingDsl(state.routePresetEditDsl);
-  state.routePresetEditPreview = parsed;
-  state.routePresetEditChecked = true;
-  if (!parsed.rules.length) {
-    state.message = 'Не нашёл правил в изменённом сценарии';
-    render();
-    return;
-  }
-  const rules = parsed.rules.map(normalizePresetRule);
-  setRoutingDraft([...rules, ...routeRules()]);
-  const title = state.routePresetEditTitle.trim() || routePresetTitle(state.routePresetEditor);
-  clearRoutePresetEditor();
-  state.routePresetDialog = false;
-  state.selectedRoutePresets = [];
-  state.message = `Добавлена подборка после правки: ${title}. Правил: ${rules.length}`;
-  render();
-}
 
-function saveRoutePresetEdit() {
-  const parsed = parseRoutingDsl(state.routePresetEditDsl);
-  state.routePresetEditPreview = parsed;
-  state.routePresetEditChecked = true;
-  if (!parsed.rules.length) {
-    state.message = 'Не нашёл правил в сценарии';
-    render();
-    return;
-  }
-  const title = state.routePresetEditTitle.trim() || 'Новая подборка';
-  const key = state.routePresetEditor || 'custom:new';
-  const existingId = key.startsWith('custom:') && key !== 'custom:new' ? key.slice(7) : '';
-  const id = existingId || scenarioIdFromTitle(title);
-  state.customRoutePresets[id] = {
-    title,
-    detail: state.routePresetEditDetail.trim(),
-    rules: parsed.rules.map((rule) => JSON.parse(JSON.stringify(rule))),
-    updatedAt: new Date().toISOString()
-  };
-  saveCustomRoutePresets();
-  state.routePresetEditor = '';
-  state.routePresetDialog = false;
-  state.selectedRoutePresets = [`custom:${id}`];
-  state.message = `Подборка сохранена: ${title}`;
-  render();
-}
 
-function deleteCustomRoutePreset(key) {
-  const id = String(key || '').startsWith('custom:') ? String(key).slice(7) : '';
-  if (!id || !state.customRoutePresets[id]) return;
-  const title = state.customRoutePresets[id].title || id;
-  delete state.customRoutePresets[id];
-  state.selectedRoutePresets = state.selectedRoutePresets.filter((item) => item !== key);
-  saveCustomRoutePresets();
-  state.message = `Подборка удалена: ${title}`;
-  render();
-}
 
-function removeRoutingRule(index) {
-  const current = routeRules();
-  if (current[index]) {
-    delete state.routeNames[routeRuleKey(current[index])];
-    saveRouteNames();
-  }
-  const rules = current.filter((_, ruleIndex) => ruleIndex !== index);
-  setRoutingDraft(rules);
-  state.message = 'Правило удалено из черновика';
-  render();
-}
 
-function disableRoutingRule(index) {
-  const current = routeRules();
-  const rule = current[index];
-  if (!rule) return;
-  const info = describeRouteRule(rule);
-  const name = routeRuleName(rule, info);
-  state.disabledRouteRules = [
-    { id: `disabled-${Date.now()}-${index}`, rule: JSON.parse(JSON.stringify(rule)), name, disabledAt: new Date().toISOString() },
-    ...state.disabledRouteRules
-  ].slice(0, 120);
-  saveDisabledRouteRules();
-  setRoutingDraft(current.filter((_, ruleIndex) => ruleIndex !== index));
-  state.message = `Правило отключено без удаления: ${name}`;
-  render();
-}
 
-function restoreDisabledRouteRule(id) {
-  const item = state.disabledRouteRules.find((entry) => entry.id === id);
-  if (!item?.rule) return;
-  state.disabledRouteRules = state.disabledRouteRules.filter((entry) => entry.id !== id);
-  saveDisabledRouteRules();
-  setRoutingDraft([item.rule, ...routeRules()]);
-  if (item.name) setRouteRuleName(item.rule, item.name);
-  state.message = `Правило возвращено наверх списка: ${item.name || 'без названия'}`;
-  render();
-}
 
-function deleteDisabledRouteRule(id) {
-  state.disabledRouteRules = state.disabledRouteRules.filter((entry) => entry.id !== id);
-  saveDisabledRouteRules();
-  state.message = 'Отключенное правило удалено из панели';
-  render();
-}
 
-function visibleRoutingRuleItems(limit = 80) {
-  const search = state.routeSearch.trim().toLowerCase();
-  return routeRules()
-    .map((rule, index) => {
-      const info = describeRouteRule(rule);
-      return { rule, index, info, name: routeRuleName(rule, info), source: routeRuleSource(rule) };
-    })
-    .filter(({ info, name, source }) => {
-      if (!search) return true;
-      return `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`.toLowerCase().includes(search);
-    })
-    .slice(0, limit);
-}
 
-function routeRowHtml(item, options, rulesLength) {
-  const { index, info, name, source } = item;
-  const selectedTarget = encodedRouteTarget(item.rule);
-  const category = routeCategoryForRule(item.rule);
-  const managed = isRuOpenRayManagedRoute(item.rule);
-  const targetOptions = options.some((option) => option.value === selectedTarget)
-    ? options
-    : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${item.rule.balancerTag}` : readableRouteTag(item.rule.outboundTag || 'не задано') }, ...options];
-  const section = routeSectionDefinitions().find((entry) => entry.id === category) || routeSectionDefinitions().find((entry) => entry.id === 'other');
-  return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''}" draggable="${managed ? 'false' : 'true'}" data-route-index="${index}">
-    <div class="route-order">
-      <button class="route-drag-handle" type="button" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
-      <span>${index + 1}</span>
-    </div>
-    <div class="route-kind-stack">
-      <span class="route-category route-category-${escapeHtml(category)}">${escapeHtml(section?.title || 'Другое')}</span>
-      <span class="route-kind">${escapeHtml(info.kind)}</span>
-    </div>
-    <div class="route-title">
-      <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
-      <span>${escapeHtml(source)} · выше = раньше</span>
-    </div>
-    <div class="route-main">
-      <strong title="${escapeHtml(info.fullValue)}">${escapeHtml(info.value)}</strong>
-      <span>${escapeHtml(info.detail)}</span>
-    </div>
-    <select class="route-outbound" data-route-target="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через профильный раздел' : ''}">
-      ${targetOptions.map((option) => `<option value="${escapeHtml(option.value)}" ${selectedTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-    </select>
-    <div class="route-actions">
-      <button class="icon-btn route-action-btn move-up" type="button" data-route-move="${index}" data-direction="-1" ${index === 0 || managed ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять правило выше">↑</button>
-      <button class="icon-btn route-action-btn move-down" type="button" data-route-move="${index}" data-direction="1" ${index === rulesLength - 1 || managed ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить правило ниже">↓</button>
-      <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват или Статистику Xray' : 'Править'}" aria-label="Править правило">✎</button>
-      <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
-      <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${managed ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : 'Удалить'}" aria-label="Удалить правило">×</button>
-    </div>
-  </article>`;
-}
 
-function orderedRouteList(items, options, rulesLength) {
-  if (!items.length) {
-    return `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
-  }
-  return `<section class="route-ordered-list">
-    <header class="route-order-head">
-      <strong>Порядок выполнения Xray</strong>
-      <span>Сверху вниз: правило №1 проверяется первым. Перетаскивание меняет реальный порядок в конфигурации.</span>
-    </header>
-    <div class="route-section-list">
-      ${items.map((item) => routeRowHtml(item, options, rulesLength)).join('')}
-    </div>
-  </section>`;
-}
 
-function disableVisibleRoutingRules() {
-  const visible = visibleRoutingRuleItems(80);
-  if (!visible.length) return;
-  const current = routeRules();
-  const disabledIndexes = new Set(visible.map((item) => item.index));
-  const disabled = visible.map(({ rule, name, index }) => ({
-    id: `disabled-${Date.now()}-${index}`,
-    rule: JSON.parse(JSON.stringify(rule)),
-    name,
-    disabledAt: new Date().toISOString()
-  }));
-  state.disabledRouteRules = [...disabled, ...state.disabledRouteRules].slice(0, 160);
-  saveDisabledRouteRules();
-  setRoutingDraft(current.filter((_, index) => !disabledIndexes.has(index)));
-  state.message = `Отключено правил: ${disabled.length}. Их можно вернуть из списка ниже.`;
-  render();
-}
 
-function restoreAllDisabledRouteRules() {
-  if (!state.disabledRouteRules.length) return;
-  const restored = state.disabledRouteRules.map((item) => item.rule).filter(Boolean);
-  for (const item of state.disabledRouteRules) {
-    if (item.rule && item.name) setRouteRuleName(item.rule, item.name);
-  }
-  state.disabledRouteRules = [];
-  saveDisabledRouteRules();
-  setRoutingDraft([...restored, ...routeRules()]);
-  state.message = `Возвращено правил: ${restored.length}. Они добавлены в начало списка.`;
-  render();
-}
 
-function updateRoutingTarget(index, targetValue) {
-  const rules = routeRules().map((rule, ruleIndex) => {
-    if (ruleIndex !== index) return rule;
-    const [kind, ...rest] = String(targetValue || '').split(':');
-    const tag = rest.join(':') || 'proxy';
-    const next = { ...rule };
-    delete next.outboundTag;
-    delete next.balancerTag;
-    if (kind === 'balancer') next.balancerTag = tag;
-    else next.outboundTag = tag;
-    copyRouteRuleName(rule, next);
-    return next;
-  });
-  setRoutingDraft(rules);
-  state.message = 'Цель правила изменена в черновике';
-  render();
-}
 
-function moveRoutingRule(index, direction) {
-  reorderRoutingRule(index, direction > 0 ? index + 2 : index - 1);
-}
 
-function reorderRoutingRule(fromIndex, toIndex) {
-  const rules = [...routeRules()];
-  if (fromIndex < 0 || toIndex < 0 || fromIndex >= rules.length || toIndex > rules.length || fromIndex === toIndex) return;
-  const [rule] = rules.splice(fromIndex, 1);
-  if (fromIndex < toIndex) toIndex -= 1;
-  if (toIndex === fromIndex) return;
-  rules.splice(toIndex, 0, rule);
-  setRoutingDraft(rules);
-  state.message = 'Порядок правил изменен. Xray читает правила сверху вниз.';
-  render();
-}
 
-function renameRoutingRule(index) {
-  const rule = routeRules()[index];
-  if (!rule) return;
-  const info = describeRouteRule(rule);
-  const nextName = prompt('Название правила', routeRuleName(rule, info));
-  if (nextName === null) return;
-  setRouteRuleName(rule, nextName);
-  state.message = nextName.trim() ? 'Название правила сохранено' : 'Название сброшено, будет показано автоматически';
-  render();
-}
-
-function prepareTransparentDraft() {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
-  next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
-  next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
-  next.routing.rules = Array.isArray(next.routing.rules) ? next.routing.rules : [];
-  const redirectMode = state.firewallRouterMode === 'redirect';
-  const sockoptMode = redirectMode ? 'redirect' : 'tproxy';
-  const transparentNetwork = redirectMode ? 'tcp' : 'tcp,udp';
-
-  const transparentInbound = next.inbounds.find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy);
-  if (!transparentInbound) {
-    next.inbounds.push({
-      tag: 'transparent_ipv4',
-      port: 52345,
-      listen: '0.0.0.0',
-      protocol: 'dokodemo-door',
-      sniffing: { enabled: true, destOverride: ['http', 'tls'], routeOnly: true },
-      settings: { network: transparentNetwork, followRedirect: true },
-      streamSettings: { sockopt: { tproxy: sockoptMode } }
-    });
-  } else {
-    transparentInbound.settings = transparentInbound.settings && typeof transparentInbound.settings === 'object' ? transparentInbound.settings : {};
-    transparentInbound.settings.network = transparentNetwork;
-    transparentInbound.settings.followRedirect = true;
-    transparentInbound.streamSettings = transparentInbound.streamSettings && typeof transparentInbound.streamSettings === 'object' ? transparentInbound.streamSettings : {};
-    transparentInbound.streamSettings.sockopt = transparentInbound.streamSettings.sockopt && typeof transparentInbound.streamSettings.sockopt === 'object' ? transparentInbound.streamSettings.sockopt : {};
-    transparentInbound.streamSettings.sockopt.tproxy = sockoptMode;
-  }
-
-  if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {
-    next.outbounds.push({
-      tag: 'dns-out',
-      protocol: 'dns',
-      settings: { address: '8.8.8.8', port: 53, network: 'udp' }
-    });
-  }
-
-  normalizeSetupRules(next);
-
-  syncConfig(next);
-  state.message = 'Черновик прозрачного прокси подготовлен. Проверьте конфигурацию и примените изменения.';
-  render();
-}
-
-function prepareDnsInboundDraft() {
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
-  next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
-  next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
-  next.routing.rules = Array.isArray(next.routing.rules) ? next.routing.rules : [];
-  next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-  next.dns.servers = Array.isArray(next.dns.servers) && next.dns.servers.length ? next.dns.servers : ['https://dns.google/dns-query'];
-
-  if (!next.inbounds.some((item) => item?.tag === 'ruopenray_dns_in')) {
-    next.inbounds.push({
-      tag: 'ruopenray_dns_in',
-      listen: '127.0.0.1',
-      port: 5353,
-      protocol: 'dokodemo-door',
-      settings: { address: '8.8.8.8', port: 53, network: 'tcp,udp' }
-    });
-  }
-  if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {
-    next.outbounds.push({
-      tag: 'dns-out',
-      protocol: 'dns',
-      settings: { address: '8.8.8.8', port: 53, network: 'udp' }
-    });
-  }
-  const dnsRule = { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' };
-  if (!next.routing.rules.some((rule) => JSON.stringify(rule) === JSON.stringify(dnsRule))) {
-    next.routing.rules.unshift(dnsRule);
-  }
-  syncConfig(next);
-  state.message = 'DNS inbound подготовлен в черновике. После применения dnsmasq можно направить на 127.0.0.1#5353.';
-  render();
-}
-
-async function copyFirewallCommands() {
-  await navigator.clipboard.writeText(firewallCommands());
-  state.message = 'Команды OpenWrt скопированы в буфер обмена';
-  render();
-}
-
-async function copyInstallCommand(withXray = false) {
-  await navigator.clipboard.writeText(githubInstallCommand(withXray));
-  state.message = 'Команда установки скопирована';
-  render();
-}
-
-function removeOutbound(index) {
-  const outbound = configOutbounds()[index];
-  const tag = outbound?.tag || '';
-  if (['direct', 'block', 'dns-out'].includes(tag)) {
-    state.message = 'Служебные направления direct, block и dns-out лучше не удалять';
-    render();
-    return;
-  }
-  const next = JSON.parse(JSON.stringify(state.config || {}));
-  next.outbounds = configOutbounds().filter((_, itemIndex) => itemIndex !== index);
-  syncConfig(next);
-  state.message = `Сервер ${tag || index + 1} удален из черновика`;
-  render();
-}
-
-async function routeAllToOutbound(tag, { apply = true } = {}) {
-  if (state.configApplying) return;
-  const before = proxyRuleStrategyStats();
-  setActiveProxyDraft(tag);
-  const after = proxyRuleStrategyStats(tag);
-  state.pendingServerTag = '';
-  const switched = Math.max(before.primary, after.primary);
-  const pinned = after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : '';
-  if (!apply) {
-    state.message = `Основное proxy-направление теперь ведет в ${tag}. Переключено правил: ${switched}${pinned}`;
-    render();
-    return;
-  }
-  state.message = `Подключаю ${tag}: меняю proxy-направление, записываю config.json и перезапускаю Xray...`;
-  render();
-  await applyConfig({
-    successMessage: `Подключен ${tag}. Переключено правил: ${switched}${pinned}`
-  });
-}
-
-function resetRouteBalancerForm() {
-  state.routeBalancerEditingIndex = -1;
-  state.routeBalancerTag = '';
-  state.routeBalancerStrategy = 'random';
-  state.routeBalancerSelectors = '';
-  state.routeBalancerFallback = '';
-}
-
-function openRouteBalancerDialog(index = -1) {
-  const balancer = routeBalancers()[index];
-  if (balancer) {
-    state.routeBalancerEditingIndex = index;
-    state.routeBalancerTag = balancer.tag || '';
-    state.routeBalancerStrategy = balancer.strategy?.type || 'random';
-    state.routeBalancerSelectors = Array.isArray(balancer.selector) ? balancer.selector.join('\n') : '';
-    state.routeBalancerFallback = balancer.fallbackTag || '';
-  } else {
-    resetRouteBalancerForm();
-  }
-  state.routeBalancerDialog = true;
-  state.message = '';
-  render();
-}
-
-function closeRouteBalancerDialog() {
-  state.routeBalancerDialog = false;
-  resetRouteBalancerForm();
-  render();
-}
-
-function setRouteBalancerSelector(tag, enabled) {
-  const selectors = splitRouteValues(state.routeBalancerSelectors);
-  const next = enabled
-    ? [...selectors, tag]
-    : selectors.filter((item) => item !== tag);
-  state.routeBalancerSelectors = [...new Set(next)].join('\n');
-}
-
-function moveRouteBalancerSelector(tag, direction) {
-  const selectors = splitRouteValues(state.routeBalancerSelectors);
-  const index = selectors.indexOf(tag);
-  const nextIndex = index + direction;
-  if (index < 0 || nextIndex < 0 || nextIndex >= selectors.length) return;
-  [selectors[index], selectors[nextIndex]] = [selectors[nextIndex], selectors[index]];
-  state.routeBalancerSelectors = selectors.join('\n');
-}
-
-function saveRouteBalancer() {
-  const tag = state.routeBalancerTag.trim();
-  const selectors = splitRouteValues(state.routeBalancerSelectors);
-  if (!tag) {
-    state.message = 'Укажите имя балансировщика';
-    render();
-    return;
-  }
-  if (!selectors.length) {
-    state.message = 'Выберите хотя бы один сервер или подписку для балансировщика';
-    render();
-    return;
-  }
-  const editing = state.routeBalancerEditingIndex;
-  const exists = routeBalancers().some((item, index) => item?.tag === tag && index !== editing);
-  if (exists) {
-    state.message = `Балансировщик ${tag} уже есть`;
-    render();
-    return;
-  }
-  const balancer = {
-    tag,
-    selector: selectors,
-    strategy: { type: state.routeBalancerStrategy || 'random' }
-  };
-  if (state.routeBalancerFallback.trim()) balancer.fallbackTag = state.routeBalancerFallback.trim();
-  const balancers = [...routeBalancers()];
-  if (editing >= 0 && balancers[editing]) balancers[editing] = balancer;
-  else balancers.unshift(balancer);
-  setRouteBalancersDraft(balancers);
-  const observerType = strategyObserverType(balancer.strategy.type);
-  if (observerType) syncConfig(applyObserverForStrategy(state.config, balancer.strategy.type, selectors));
-  state.routeBalancer = tag;
-  state.routeTargetType = 'balancer';
-  state.routeBalancerDialog = false;
-  resetRouteBalancerForm();
-  state.message = `Группа серверов ${tag} сохранена в черновик${observerType ? `, ${observerLabel(observerType)} включен для Xray` : ''}`;
-  render();
-}
-
-function removeRouteBalancer(index) {
-  const balancer = routeBalancers()[index];
-  if (!balancer) return;
-  const used = routeRules().some((rule) => rule.balancerTag === balancer.tag);
-  if (used) {
-    state.message = `Балансировщик ${balancer.tag} используется в правилах. Сначала переназначьте эти правила.`;
-    render();
-    return;
-  }
-  setRouteBalancersDraft(routeBalancers().filter((_, itemIndex) => itemIndex !== index));
-  if (state.routeBalancer === balancer.tag) state.routeBalancer = '';
-  state.message = `Балансировщик ${balancer.tag} удален из черновика`;
-  render();
-}
-
-async function checkServers(tags = [], options = {}) {
-  const startedAt = Date.now();
-  const renderAfter = options.renderAfter !== false;
-  const requestedTags = tags.length
-    ? tags
-    : proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean);
-  state.serverChecking = true;
-  state.serverCheckingTags = requestedTags;
-  state.message = requestedTags.length === 1 ? 'Проверяю выбранный прокси...' : 'Проверяю все прокси...';
-  if (renderAfter) render();
-  const result = await request('/api/outbounds/check', {
-    method: 'POST',
-    body: JSON.stringify({
-      tags: requestedTags,
-      timeoutMs: Number(state.serverCheckTimeout) || 2500,
-      attempts: Number(state.serverCheckAttempts) || 1,
-      mode: state.serverCheckMode,
-      url: state.serverCheckUrl
-    })
-  });
-  for (const item of result.results || []) {
-    if (item.tag) state.serverChecks[item.tag] = item;
-  }
-  const alive = (result.results || []).filter((item) => item.ok).length;
-  state.serverCheckHistory = [
-    {
-      at: new Date().toISOString(),
-      total: result.results?.length || 0,
-      alive,
-      results: result.results || []
-    },
-    ...state.serverCheckHistory
-  ].slice(0, 12);
-  state.message = requestedTags.length === 1
-    ? `Проверка сервера: ${alive ? 'доступен' : 'нет ответа'}`
-    : `Проверено серверов: ${result.results?.length || 0}, доступны: ${alive}`;
-  await keepOperationVisible(startedAt);
-  state.serverChecking = false;
-  state.serverCheckingTags = [];
-  if (renderAfter) render();
-}
-
-async function fallbackSubscriptionPool(tag) {
-  const result = await request('/api/subscriptions/fallback', {
-    method: 'POST',
-    body: JSON.stringify({
-      tag,
-      mode: state.serverCheckMode,
-      url: state.serverCheckUrl,
-      timeoutMs: Number(state.serverCheckTimeout) || 2500,
-      attempts: Number(state.serverCheckAttempts) || 1,
-      restart: true
-    })
-  });
-  state.message = result.ok
-    ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый сервер'}`
-    : `Подписка ${tag}: ${result.error || 'доступный сервер не найден'}`;
-  await refresh();
-}
 
 const sniActions = createSniActions({
   state,
@@ -1656,52 +837,6 @@ const {
   previewLanDnsUpstream
 } = dnsActions;
 
-function loginView() {
-  const eyeIcon = state.passwordVisible
-    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"></path><path d="M9.9 4.2A10.5 10.5 0 0 1 12 4c5 0 8.6 3.6 10 8a13.3 13.3 0 0 1-3 4.7"></path><path d="M6.6 6.6A13 13 0 0 0 2 12c1.4 4.4 5 8 10 8 1.5 0 2.9-.3 4.1-.9"></path></svg>'
-    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-  app.innerHTML = `
-    <main class="login">
-      <form class="login-card" id="loginForm">
-        <div class="brand" style="margin-bottom: 18px">
-          <img class="brand-mark" src="/assets/ruopenray-icon-512.png" alt="" />
-          <div><strong>RuOpenRay UI</strong><span>Панель управления Xray</span></div>
-        </div>
-        <div class="form-row">
-          <label>Пароль</label>
-          <div class="password-field">
-            <input id="password" type="${state.passwordVisible ? 'text' : 'password'}" value="${escapeHtml(state.password)}" autocomplete="current-password" autofocus />
-            <button type="button" class="password-toggle" data-action="togglePassword" aria-label="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}" title="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}">${eyeIcon}</button>
-          </div>
-        </div>
-        <label class="login-remember">
-          <input id="rememberPassword" type="checkbox" ${state.rememberPassword ? 'checked' : ''} />
-          <span>Запомнить пароль в этом браузере</span>
-        </label>
-        <button class="btn" type="submit" style="width: 100%; height: 42px">Войти</button>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
-      </form>
-    </main>
-  `;
-  document.querySelector('#loginForm').addEventListener('submit', login);
-  document.querySelector('#password').addEventListener('input', (event) => {
-    state.password = event.target.value;
-    if (state.rememberPassword) localStorage.setItem(savedPasswordStorageKey, state.password);
-  });
-  document.querySelector('#rememberPassword').addEventListener('change', (event) => {
-    state.rememberPassword = event.target.checked;
-    if (state.rememberPassword) localStorage.setItem(savedPasswordStorageKey, state.password);
-    else localStorage.removeItem(savedPasswordStorageKey);
-  });
-  document.querySelector('[data-action="togglePassword"]').addEventListener('click', () => {
-    state.passwordVisible = !state.passwordVisible;
-    loginView();
-    const password = document.querySelector('#password');
-    password.focus();
-    password.setSelectionRange(password.value.length, password.value.length);
-  });
-}
-
 const setupView = createSetupView({
   state,
   shellQuote,
@@ -1712,70 +847,48 @@ const setupView = createSetupView({
   firewallReadyStatus,
   firewallPorts,
 });
+const {
+  normalizeCoreVersion,
+  versionParts,
+  compareCoreVersions,
+  installedCoreVersion,
+  releaseDate,
+  filteredCoreReleases,
+  coreUpdateInfo,
+  coreReleaseBadge,
+  appVersionPill,
+  coreArchitectureText,
+  githubInstallCommand
+} = setupView;
 
-function normalizeCoreVersion(...args) {
-  return setupView.normalizeCoreVersion(...args);
-}
+const xrayDraftActions = createXrayDraftActions({
+  state,
+  render,
+  syncConfig,
+  advancedInbounds,
+  currentSnifferSettings,
+  proxyOutbounds,
+  normalizeSetupRules,
+  firewallCommands,
+  githubInstallCommand
+});
+const {
+  setSnifferDraft,
+  setTcpFastOpenDraft,
+  setDnsModeDraft,
+  prepareTransparentDraft,
+  prepareDnsInboundDraft,
+  copyFirewallCommands,
+  copyInstallCommand
+} = xrayDraftActions;
 
-function versionParts(...args) {
-  return setupView.versionParts(...args);
-}
-
-function compareCoreVersions(...args) {
-  return setupView.compareCoreVersions(...args);
-}
-
-function installedCoreVersion(...args) {
-  return setupView.installedCoreVersion(...args);
-}
-
-function releaseDate(...args) {
-  return setupView.releaseDate(...args);
-}
-
-function filteredCoreReleases(...args) {
-  return setupView.filteredCoreReleases(...args);
-}
-
-function coreUpdateInfo(...args) {
-  return setupView.coreUpdateInfo(...args);
-}
-
-function coreReleaseBadge(...args) {
-  return setupView.coreReleaseBadge(...args);
-}
-
-function appVersionPill(...args) {
-  return setupView.appVersionPill(...args);
-}
-
-function coreArchitectureText(...args) {
-  return setupView.coreArchitectureText(...args);
-}
-
-function githubInstallCommand(...args) {
-  return setupView.githubInstallCommand(...args);
-}
-
-function setupFlowStep(...args) {
-  return setupView.setupFlowStep(...args);
-}
-
-function setupFlowGuide(...args) {
-  return setupView.setupFlowGuide(...args);
-}
-
-function setupWizardDialog(...args) {
-  return setupView.setupWizardDialog(...args);
-}
-
-function installWizardDialog(...args) {
-  return setupView.installWizardDialog(...args);
-}
-
-function coreUpdateDialog(...args) {
-  return setupView.coreUpdateDialog(...args);
-}
+const {
+  setupFlowStep,
+  setupFlowGuide,
+  setupWizardDialog,
+  installWizardDialog,
+  coreUpdateDialog
+} = setupView;
 const dashboardView = createDashboardView({
   state,
   labels,
@@ -1787,7 +900,7 @@ const dashboardView = createDashboardView({
   proxyOutbounds,
   deviceRules,
   outboundAddress,
-  logsPanel,
+  logsPanel: (...args) => logsPanel(...args),
   byteSize,
   fmtUptime,
   byteRate,
@@ -1805,118 +918,36 @@ const dashboardView = createDashboardView({
   checkLabel,
   checkMethodLabel,
 });
-
-function checkModeLabel(...args) {
-  return dashboardView.checkModeLabel(...args);
-}
-
-function coreStat(...args) {
-  return dashboardView.coreStat(...args);
-}
-
-function dashboard(...args) {
-  return dashboardView.dashboard(...args);
-}
-
-function dashboardServerSwitch(...args) {
-  return dashboardView.dashboardServerSwitch(...args);
-}
-
-function dashboardSystemStats(...args) {
-  return dashboardView.dashboardSystemStats(...args);
-}
-
-function flowStep(...args) {
-  return dashboardView.flowStep(...args);
-}
-
-function isCheckingServer(...args) {
-  return dashboardView.isCheckingServer(...args);
-}
-
-function metricIcon(...args) {
-  return dashboardView.metricIcon(...args);
-}
-
-function metricStat(...args) {
-  return dashboardView.metricStat(...args);
-}
-
-function operationProgressView(...args) {
-  return dashboardView.operationProgressView(...args);
-}
-
-function quickAction(...args) {
-  return dashboardView.quickAction(...args);
-}
-
-function serverCheckButton(...args) {
-  return dashboardView.serverCheckButton(...args);
-}
-
-function serverTrafficView(...args) {
-  return dashboardView.serverTrafficView(...args);
-}
-
-function stat(...args) {
-  return dashboardView.stat(...args);
-}
-
-function trafficMetricStat(...args) {
-  return dashboardView.trafficMetricStat(...args);
-}
-
-function trafficMonitor(...args) {
-  return dashboardView.trafficMonitor(...args);
-}
-
-function xrayActiveGraph(...args) {
-  return dashboardView.xrayActiveGraph(...args);
-}
-
-function xrayActiveStats(...args) {
-  return dashboardView.xrayActiveStats(...args);
-}
-
-function xrayCoreDashboard(...args) {
-  return dashboardView.xrayCoreDashboard(...args);
-}
-
-function xrayDashboardStats(...args) {
-  return dashboardView.xrayDashboardStats(...args);
-}
-
-function xrayStatsGroupLabel(...args) {
-  return dashboardView.xrayStatsGroupLabel(...args);
-}
-
-function xrayStatsOutbound(...args) {
-  return dashboardView.xrayStatsOutbound(...args);
-}
-
-function xrayStatsOutboundConfig(...args) {
-  return dashboardView.xrayStatsOutboundConfig(...args);
-}
-
-function xrayStatsPanel(...args) {
-  return dashboardView.xrayStatsPanel(...args);
-}
-
-function xrayStatsPeriodLabel(...args) {
-  return dashboardView.xrayStatsPeriodLabel(...args);
-}
-
-function xrayStatsSeriesPath(...args) {
-  return dashboardView.xrayStatsSeriesPath(...args);
-}
-
-function xrayStatsShare(...args) {
-  return dashboardView.xrayStatsShare(...args);
-}
-
-function xrayStatsTotals(...args) {
-  return dashboardView.xrayStatsTotals(...args);
-}
+const {
+  checkModeLabel,
+  coreStat,
+  dashboard,
+  dashboardServerSwitch,
+  dashboardSystemStats,
+  flowStep,
+  isCheckingServer,
+  metricIcon,
+  metricStat,
+  operationProgressView,
+  quickAction,
+  serverCheckButton,
+  serverTrafficView,
+  stat,
+  trafficMetricStat,
+  trafficMonitor,
+  xrayActiveGraph,
+  xrayActiveStats,
+  xrayCoreDashboard,
+  xrayDashboardStats,
+  xrayStatsGroupLabel,
+  xrayStatsOutbound,
+  xrayStatsOutboundConfig,
+  xrayStatsPanel,
+  xrayStatsPeriodLabel,
+  xrayStatsSeriesPath,
+  xrayStatsShare,
+  xrayStatsTotals
+} = dashboardView;
 
 const importDialogView = createImportDialogView({
   state,
@@ -1929,26 +960,13 @@ const importDialogView = createImportDialogView({
   suggestedSubscriptionBalancerTag,
   serverImportPreviewItem,
 });
-
-function importButton(...args) {
-  return importDialogView.importButton(...args);
-}
-
-function serverMini(...args) {
-  return importDialogView.serverMini(...args);
-}
-
-function emptyMini(...args) {
-  return importDialogView.emptyMini(...args);
-}
-
-function importDialog(...args) {
-  return importDialogView.importDialog(...args);
-}
-
-function previewBox(...args) {
-  return importDialogView.previewBox(...args);
-}
+const {
+  importButton,
+  serverMini,
+  emptyMini,
+  importDialog,
+  previewBox
+} = importDialogView;
 
 const serversView = createServersView({
   activeProxyTag,
@@ -1962,7 +980,7 @@ const serversView = createServersView({
   outboundUsage,
   proxyOutbounds,
   proxyRuleStrategyStats,
-  routingBalancersPanel,
+  routingBalancersPanel: (...args) => routingBalancersPanel(...args),
   serverCheckButton,
   serverMetaChips,
   serverStats,
@@ -1970,22 +988,12 @@ const serversView = createServersView({
   state,
   stat,
 });
-
-function serverCard(...args) {
-  return serversView.serverCard(...args);
-}
-
-function subscriptionPoolCard(...args) {
-  return serversView.subscriptionPoolCard(...args);
-}
-
-function serverAvailabilityPanel(...args) {
-  return serversView.serverAvailabilityPanel(...args);
-}
-
-function serversPanel(...args) {
-  return serversView.serversPanel(...args);
-}
+const {
+  serverCard,
+  subscriptionPoolCard,
+  serverAvailabilityPanel,
+  serversPanel
+} = serversView;
 
 const sniView = createSniView({
   state,
@@ -1994,64 +1002,26 @@ const sniView = createSniView({
   outboundAddress,
   activeProxyOutbound,
 });
-
-function clamp(...args) {
-  return sniView.clamp(...args);
-}
-
-function ipParts(...args) {
-  return sniView.ipParts(...args);
-}
-
-function sniRadar(...args) {
-  return sniView.sniRadar(...args);
-}
-
-function sniPanel(...args) {
-  return sniView.sniPanel(...args);
-}
+const {
+  clamp,
+  ipParts,
+  sniRadar,
+  sniPanel
+} = sniView;
 
 const geoView = createGeoView({ state, escapeHtml, stat });
-
-function fileSize(...args) {
-  return geoView.fileSize(...args);
-}
-
-function geoSelectedPresetIds(...args) {
-  return geoView.geoSelectedPresetIds(...args);
-}
-
-function geoSelectedPresets(...args) {
-  return geoView.geoSelectedPresets(...args);
-}
-
-function geoRequiredSpace(...args) {
-  return geoView.geoRequiredSpace(...args);
-}
-
-function geoDiskWarning(...args) {
-  return geoView.geoDiskWarning(...args);
-}
-
-function selectedGeoPreset(...args) {
-  return geoView.selectedGeoPreset(...args);
-}
-
-function geoActionLabel(...args) {
-  return geoView.geoActionLabel(...args);
-}
-
-function geoNandCard(...args) {
-  return geoView.geoNandCard(...args);
-}
-
-function geoPurposeLabel(...args) {
-  return geoView.geoPurposeLabel(...args);
-}
-
-function geoPanel(...args) {
-  return geoView.geoPanel(...args);
-}
+const {
+  fileSize,
+  geoSelectedPresetIds,
+  geoSelectedPresets,
+  geoRequiredSpace,
+  geoDiskWarning,
+  selectedGeoPreset,
+  geoActionLabel,
+  geoNandCard,
+  geoPurposeLabel,
+  geoPanel
+} = geoView;
 
 const dnsView = createDnsView({
   activeProxyTag,
@@ -2067,10 +1037,7 @@ const dnsView = createDnsView({
   state,
   stat,
 });
-
-function dnsPanel(...args) {
-  return dnsView.dnsPanel(...args);
-}
+const { dnsPanel } = dnsView;
 
 const auxPanelsView = createAuxPanelsView({
   state,
@@ -2084,26 +1051,13 @@ const auxPanelsView = createAuxPanelsView({
   formatDuration,
   leaseByIp,
 });
-
-function devicesPanel(...args) {
-  return auxPanelsView.devicesPanel(...args);
-}
-
-function profilesPanel(...args) {
-  return auxPanelsView.profilesPanel(...args);
-}
-
-function logsPanel(...args) {
-  return auxPanelsView.logsPanel(...args);
-}
-
-function accessLogRows(...args) {
-  return auxPanelsView.accessLogRows(...args);
-}
-
-function accessLogTable(...args) {
-  return auxPanelsView.accessLogTable(...args);
-}
+const {
+  devicesPanel,
+  profilesPanel,
+  logsPanel,
+  accessLogRows,
+  accessLogTable
+} = auxPanelsView;
 
 function applyLeaseSearch(scope, query) {
   const text = String(query || '').trim().toLowerCase();
@@ -2124,78 +1078,26 @@ const diagnosticsModel = createDiagnosticsModel({
   describeRouteRule,
   isIpLiteral,
 });
-
-function domainDiagnosticRows(...args) {
-  return diagnosticsModel.domainDiagnosticRows(...args);
-}
-
-function isPrivateIp(...args) {
-  return diagnosticsModel.isPrivateIp(...args);
-}
-
-function cleanLogHost(...args) {
-  return diagnosticsModel.cleanLogHost(...args);
-}
-
-function logEvents(...args) {
-  return diagnosticsModel.logEvents(...args);
-}
-
-function aggregateLogDevices(...args) {
-  return diagnosticsModel.aggregateLogDevices(...args);
-}
-
-function aggregateLogDomains(...args) {
-  return diagnosticsModel.aggregateLogDomains(...args);
-}
-
-function domainMonitorProtocols(...args) {
-  return diagnosticsModel.domainMonitorProtocols(...args);
-}
-
-function domainMonitorDevicesText(...args) {
-  return diagnosticsModel.domainMonitorDevicesText(...args);
-}
-
-function domainMonitorHost(...args) {
-  return diagnosticsModel.domainMonitorHost(...args);
-}
-
-function domainMonitorMatchesFilter(...args) {
-  return diagnosticsModel.domainMonitorMatchesFilter(...args);
-}
-
-function domainMonitorMatchesQuery(...args) {
-  return diagnosticsModel.domainMonitorMatchesQuery(...args);
-}
-
-function domainMonitorRows(...args) {
-  return diagnosticsModel.domainMonitorRows(...args);
-}
-
-function domainMonitorFilterCounts(...args) {
-  return diagnosticsModel.domainMonitorFilterCounts(...args);
-}
-
-function monitoredDomains(...args) {
-  return diagnosticsModel.monitoredDomains(...args);
-}
-
-function monitoredDevices(...args) {
-  return diagnosticsModel.monitoredDevices(...args);
-}
-
-function monitoredEvents(...args) {
-  return diagnosticsModel.monitoredEvents(...args);
-}
-
-function monitorSourceLabel(...args) {
-  return diagnosticsModel.monitorSourceLabel(...args);
-}
-
-function domainMonitorDomainQuality(...args) {
-  return diagnosticsModel.domainMonitorDomainQuality(...args);
-}
+const {
+  domainDiagnosticRows,
+  isPrivateIp,
+  cleanLogHost,
+  logEvents,
+  aggregateLogDevices,
+  aggregateLogDomains,
+  domainMonitorProtocols,
+  domainMonitorDevicesText,
+  domainMonitorHost,
+  domainMonitorMatchesFilter,
+  domainMonitorMatchesQuery,
+  domainMonitorRows,
+  domainMonitorFilterCounts,
+  monitoredDomains,
+  monitoredDevices,
+  monitoredEvents,
+  monitorSourceLabel,
+  domainMonitorDomainQuality
+} = diagnosticsModel;
 
 const diagnosticsActions = createDiagnosticsActions({
   state,
@@ -2205,30 +1107,14 @@ const diagnosticsActions = createDiagnosticsActions({
   xrayActiveStats,
   activeProxyTag,
 });
-
-function nftBytes(...args) {
-  return diagnosticsActions.nftBytes(...args);
-}
-
-function totalXrayStatsBytes(...args) {
-  return diagnosticsActions.totalXrayStatsBytes(...args);
-}
-
-function triggerBrowserTraffic(...args) {
-  return diagnosticsActions.triggerBrowserTraffic(...args);
-}
-
-async function runConnectivityDiagnostics(...args) {
-  return diagnosticsActions.runConnectivityDiagnostics(...args);
-}
-
-async function startClientTrafficTest(...args) {
-  return diagnosticsActions.startClientTrafficTest(...args);
-}
-
-async function finishClientTrafficTest(...args) {
-  return diagnosticsActions.finishClientTrafficTest(...args);
-}
+const {
+  nftBytes,
+  totalXrayStatsBytes,
+  triggerBrowserTraffic,
+  runConnectivityDiagnostics,
+  startClientTrafficTest,
+  finishClientTrafficTest
+} = diagnosticsActions;
 
 const diagnosticsView = createDiagnosticsView({
   accessLogRows,
@@ -2274,22 +1160,12 @@ const diagnosticsView = createDiagnosticsView({
   xrayStatsPanel,
   xrayStatsTotals,
 });
-
-function clientTrafficTestView(...args) {
-  return diagnosticsView.clientTrafficTestView(...args);
-}
-
-function diagnosticsChainView(...args) {
-  return diagnosticsView.diagnosticsChainView(...args);
-}
-
-function diagnosticsPanel(...args) {
-  return diagnosticsView.diagnosticsPanel(...args);
-}
-
-function observatoryPanel(...args) {
-  return diagnosticsView.observatoryPanel(...args);
-}
+const {
+  clientTrafficTestView,
+  diagnosticsChainView,
+  diagnosticsPanel,
+  observatoryPanel
+} = diagnosticsView;
 const routingView = createRoutingView({
   state,
   escapeHtml,
@@ -2325,38 +1201,16 @@ const routingView = createRoutingView({
   firewallCommands,
   geoPanel,
 });
-
-function routingRulesPanel(...args) {
-  return routingView.routingRulesPanel(...args);
-}
-
-function routingScenariosPanel(...args) {
-  return routingView.routingScenariosPanel(...args);
-}
-
-function routingBalancersPanel(...args) {
-  return routingView.routingBalancersPanel(...args);
-}
-
-function interceptAdvancedSections(...args) {
-  return routingView.interceptAdvancedSections(...args);
-}
-
-function interceptAdvancedAccordion(...args) {
-  return routingView.interceptAdvancedAccordion(...args);
-}
-
-function routingPanel(...args) {
-  return routingView.routingPanel(...args);
-}
-
-function firewallPanel(...args) {
-  return routingView.firewallPanel(...args);
-}
-
-function firewallApplyPanel(...args) {
-  return routingView.firewallApplyPanel(...args);
-}
+const {
+  routingRulesPanel,
+  routingScenariosPanel,
+  routingBalancersPanel,
+  interceptAdvancedSections,
+  interceptAdvancedAccordion,
+  routingPanel,
+  firewallPanel,
+  firewallApplyPanel
+} = routingView;
 
 function placeholder(title, body) {
   return `
@@ -2396,10 +1250,7 @@ function loadingDashboard() {
 }
 
 const settingsView = createSettingsView({ state, byteSize, escapeHtml });
-
-function settingsPanel(...args) {
-  return settingsView.settingsPanel(...args);
-}
+const { settingsPanel } = settingsView;
 
 function content() {
   if (!state.status) return loadingDashboard();
