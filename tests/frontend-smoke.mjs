@@ -282,6 +282,9 @@ const settingsActions = createSettingsActions({
 });
 await settingsActions.saveServiceSettings();
 await settingsActions.service('restart');
+settingsActionState.token = 'test-token';
+localStorage.setItem('openray_token', 'test-token');
+settingsActions.logout();
 
 const profileActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
@@ -887,6 +890,7 @@ const checks = [
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
+  ['settings actions logout', !settingsActionState.token && !localStorage.getItem('openray_token') && settingsActionState.tab === 'dashboard'],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],

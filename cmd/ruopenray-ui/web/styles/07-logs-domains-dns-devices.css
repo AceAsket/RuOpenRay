@@ -1116,6 +1116,15 @@
     flex: 0 0 auto;
   }
 
+  .sidebar-footer {
+    margin-top: 12px;
+    padding-top: 0;
+  }
+
+  .logout-button {
+    width: auto;
+  }
+
   .grid,
   .dashboard-layout,
   .dash-hero,

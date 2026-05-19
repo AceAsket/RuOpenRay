@@ -619,6 +619,7 @@ const settingsActions = createSettingsActions({
 });
 const {
   login,
+  logout,
   changePanelPassword,
   saveLoggingSettings,
   clearLoggingFiles,
@@ -1344,6 +1345,12 @@ function render() {
         <nav class="nav">
           ${nav.map(([key, title]) => `<button class="${key === state.tab ? 'active' : ''}" data-tab="${key}">${title}</button>`).join('')}
         </nav>
+        <div class="sidebar-footer">
+          <button class="logout-button" data-action="logout" type="button" title="Выйти из панели" aria-label="Выйти из панели">
+            <span aria-hidden="true">↩</span>
+            <span>Выйти</span>
+          </button>
+        </div>
       </aside>
       <main class="main">
         <header class="topbar">
@@ -1401,6 +1408,7 @@ function bind() {
       start: () => service('start'),
       stop: () => service('stop'),
       restart: () => service('restart'),
+      logout,
       refresh,
       changePanelPassword,
       saveLoggingSettings,

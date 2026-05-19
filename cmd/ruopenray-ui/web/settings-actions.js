@@ -35,6 +35,14 @@ export function createSettingsActions({
     }
   }
 
+  function logout() {
+    state.token = '';
+    localStorage.removeItem('openray_token');
+    state.message = '';
+    state.tab = 'dashboard';
+    render();
+  }
+
   async function changePanelPassword() {
     if (!state.settingsNewPassword || state.settingsNewPassword.length < 8) {
       state.message = 'Новый пароль должен быть не короче 8 символов';
@@ -179,6 +187,7 @@ export function createSettingsActions({
 
   return {
     login,
+    logout,
     changePanelPassword,
     saveLoggingSettings,
     clearLoggingFiles,
