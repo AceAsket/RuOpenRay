@@ -285,6 +285,35 @@ await settingsActions.service('restart');
 settingsActionState.token = 'test-token';
 localStorage.setItem('openray_token', 'test-token');
 settingsActions.logout();
+const logoutClearedSession = !settingsActionState.token && !localStorage.getItem('openray_token') && settingsActionState.tab === 'dashboard';
+
+let loginRefreshStarted = false;
+let loginRefreshResolved = false;
+let loginRenderCount = 0;
+const loginActionState = { password: '', rememberPassword: false, message: '' };
+const loginActions = createSettingsActions({
+  state: loginActionState,
+  request: async (path) => {
+    if (path === '/api/login') return { token: 'login-token' };
+    return { ok: true };
+  },
+  render: () => { loginRenderCount += 1; },
+  refresh: () => {
+    loginRefreshStarted = true;
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        loginRefreshResolved = true;
+        resolve();
+      }, 25);
+    });
+  },
+  refreshLogs: async () => {},
+  configureLogTimer: () => {},
+  configureStatusTimer: () => {},
+  syncLoggingSettings: () => {},
+  syncServiceSettings: () => {},
+  savedPasswordStorageKey: 'ruopenray:test:login-password',
+});
 
 const profileActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
@@ -497,6 +526,18 @@ globalThis.window = globalThis.window || {
     },
   },
 };
+globalThis.document = {
+  ...globalThis.document,
+  querySelector: (selector) => {
+    if (selector === '#password') return { value: 'admin' };
+    if (selector === '#rememberPassword') return { checked: false };
+    return null;
+  },
+  querySelectorAll: () => [],
+};
+await loginActions.login({ preventDefault: () => {} });
+const loginReturnedBeforeRefresh = loginRefreshStarted && !loginRefreshResolved && loginActionState.token === 'login-token' && loginRenderCount > 0;
+await new Promise((resolve) => setTimeout(resolve, 35));
 
 const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
 const initialState = createInitialState();
@@ -890,7 +931,8 @@ const checks = [
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
-  ['settings actions logout', !settingsActionState.token && !localStorage.getItem('openray_token') && settingsActionState.tab === 'dashboard'],
+  ['settings actions logout', logoutClearedSession],
+  ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],

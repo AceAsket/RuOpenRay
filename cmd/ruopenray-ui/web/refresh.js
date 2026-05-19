@@ -2,6 +2,24 @@ export function isAuthError(error) {
   return /Authentication|authorization|авторизац/i.test(String(error?.message || ''));
 }
 
+function timeoutError(path) {
+  const error = new Error(`Timeout while loading ${path}`);
+  error.name = 'TimeoutError';
+  return error;
+}
+
+async function optionalRequest(request, path, fallback, timeoutMs = 3500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(timeoutError(path)), timeoutMs);
+  try {
+    return await request(path, { signal: controller.signal });
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function loadAppSnapshot({ request, text, logsUrl }) {
   const [
     status,
@@ -26,9 +44,9 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     request('/api/config'),
     text(logsUrl()),
     request('/api/dhcp/leases').catch(() => ({ leases: [] })),
-    request('/api/core/releases').catch(() => ({ releases: [], asset: '' })),
-    request('/api/app/releases').catch(() => null),
-    request('/api/geo/status').catch(() => null),
+    optionalRequest(request, '/api/core/releases', { releases: [], asset: '' }),
+    optionalRequest(request, '/api/app/releases', null),
+    optionalRequest(request, '/api/geo/status', null),
     request('/api/domain-monitor?limit=1200').catch(() => null),
     request('/api/settings/logging').catch(() => null),
     request('/api/settings/service').catch(() => null),

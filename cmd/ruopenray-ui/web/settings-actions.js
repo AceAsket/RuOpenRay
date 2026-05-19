@@ -28,7 +28,11 @@ export function createSettingsActions({
       state.message = '';
       configureLogTimer();
       configureStatusTimer();
-      await refresh();
+      render();
+      refresh({ background: true }).catch((error) => {
+        state.message = error.message;
+        render();
+      });
     } catch (error) {
       state.message = error.message;
       render();
