@@ -49,6 +49,8 @@ define Package/ruopenray-ui/install
 	$(INSTALL_DATA) ./files/usr/share/rpcd/acl.d/luci-app-ruopenray.json $(1)/usr/share/rpcd/acl.d/luci-app-ruopenray.json
 	$(INSTALL_DIR) $(1)/usr/share/ucode/luci/template/ruopenray
 	$(INSTALL_DATA) ./files/usr/share/ucode/luci/template/ruopenray/dashboard.ut $(1)/usr/share/ucode/luci/template/ruopenray/dashboard.ut
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/ruopenray
+	$(INSTALL_DATA) ./files/www/luci-static/resources/view/ruopenray/dashboard.js $(1)/www/luci-static/resources/view/ruopenray/dashboard.js
 endef
 
 define Package/ruopenray-ui/postinst

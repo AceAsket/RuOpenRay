@@ -3,7 +3,7 @@
 		"title": "RuOpenRay UI",
 		"order": 72,
 		"action": {
-			"type": "template",
+			"type": "view",
 			"path": "ruopenray/dashboard"
 		},
 		"depends": {
