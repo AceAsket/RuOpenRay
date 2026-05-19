@@ -1,9 +1,12 @@
 export function createFirewallModel({ state, configInbounds, configOutbounds, routeRules, splitRouteValues, deviceRules, routeRuleName, describeRouteRule }) {
   function firewallInfo() {
     const transparent = configInbounds().filter((item) => {
-      const tproxy = item?.streamSettings?.sockopt?.tproxy;
-      return item?.protocol === 'dokodemo-door' || tproxy || String(item?.tag || '').includes('transparent');
+      const tag = String(item?.tag || '');
+      const tproxy = String(item?.streamSettings?.sockopt?.tproxy || '');
+      const followRedirect = item?.settings?.followRedirect === true;
+      return tag.includes('transparent') || followRedirect || tproxy === 'tproxy' || tproxy === 'redirect';
     });
+    const dnsIn = configInbounds().filter((item) => item?.tag === 'ruopenray_dns_in');
     const dnsOut = configOutbounds().filter((item) => item?.protocol === 'dns' || String(item?.tag || '').includes('dns'));
     const localBypass = routeRules().filter((rule) => {
       const ips = Array.isArray(rule.ip) ? rule.ip.join(' ') : '';
@@ -14,6 +17,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
 
     return {
       transparent,
+      dnsIn,
       dnsOut,
       localBypass,
       sourceRules,
@@ -96,6 +100,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
   }
 
   function firewallPolicyPreview() {
+    const info = firewallInfo();
     const devices = firewallSelectedDevices();
     const ports = firewallPorts();
     const guard = firewallKillSwitchTargets();
@@ -118,6 +123,10 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         ? 'Адреса из direct-списка сразу идут напрямую, остальное передается в Xray.'
         : 'В Xray отправляются только адреса из proxy-списка, остальное сразу идет напрямую.';
     const warnings = [];
+    if (!info.transparent.length) warnings.push('Нет transparent inbound: firewall будет отправлять LAN-трафик в Xray, но Xray не слушает порт перехвата. Нажмите «Подготовить черновик».');
+    if (info.dnsIn.length && !info.transparent.length) warnings.push('DNS inbound найден, но он обрабатывает только DNS. Для сайтов и приложений LAN-клиентов нужен transparent inbound.');
+    if (!info.dnsOut.length) warnings.push('Не найден dns-out: перехват DNS не сможет отправлять запросы через Xray DNS.');
+    if (!info.localBypass.length) warnings.push('Не найден local bypass: приватные адреса LAN лучше явно оставить напрямую.');
     if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
     if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
     if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');

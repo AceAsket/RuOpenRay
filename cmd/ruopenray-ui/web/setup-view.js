@@ -114,6 +114,8 @@ function setupFlowGuide(readiness) {
   const xrayReady = state.status?.core?.available;
   const dnsReady = Boolean(state.lanDnsStatus?.ok && state.lanDnsStatus?.mode === 'xray' && state.lanDnsStatus?.readiness?.ready);
   const fwReady = firewallReadyStatus(state.firewallStatus || {});
+  const transparentReady = Boolean(readiness.items.find((item) => item.key === 'transparent')?.ok);
+  const interceptReady = Boolean(fwReady && transparentReady);
   const statsReady = Boolean(state.status?.xrayStats?.enabled);
   return `
     <section class="setup-flow-guide">
@@ -124,7 +126,7 @@ function setupFlowGuide(readiness) {
       <div class="setup-flow-grid">
         ${setupFlowStep('1', 'Установить основу', xrayReady ? 'Xray найден. Можно продолжать.' : 'Поставьте Xray и зависимости OpenWrt 24/25.', xrayReady, 'Открыть установку', 'data-action="openInstallWizard"')}
         ${setupFlowStep('2', 'Настроить DNS', dnsReady ? 'dnsmasq → Xray DNS.' : 'Подготовьте DNS inbound и направьте LAN DNS в 127.0.0.1#5353 или внешний Pi-hole.', dnsReady, 'DNS', 'data-tab-jump="dns"')}
-        ${setupFlowStep('3', 'Включить перехват', fwReady ? 'nftables и policy routing активны.' : 'Выберите TPROXY/REDIRECT, устройства и порты, затем примените firewall.', fwReady, 'Перехват', 'data-tab-jump="routing" data-routing-view-jump="intercept"')}
+        ${setupFlowStep('3', 'Включить перехват', interceptReady ? 'transparent inbound, nftables и policy routing активны.' : transparentReady ? 'Выберите TPROXY/REDIRECT, устройства и порты, затем примените firewall.' : 'Сначала подготовьте transparent inbound, иначе LAN-трафик не попадет в Xray.', interceptReady, 'Перехват', 'data-tab-jump="routing" data-routing-view-jump="intercept"')}
         ${setupFlowStep('4', 'Проверить трафик', statsReady ? 'Статистика Xray включена.' : 'Включите статистику Xray и проверьте рост счетчиков с LAN-устройства.', statsReady, 'Диагностика', 'data-tab-jump="diagnostics" data-diagnostics-jump="chain"')}
       </div>
       ${!readiness.canApply ? '<p class="settings-warning compact"><strong>Перед включением</strong><span>Закройте красные пункты готовности выше: мастер не применяет рискованную схему вслепую.</span></p>' : ''}

@@ -336,6 +336,7 @@ function firewallPanel() {
   const sourceRows = info.sourceRules.length
     ? info.sourceRules.slice(0, 8).map((rule) => `${rule.source.join(', ')} -> ${rule.outboundTag}`).join('\n')
     : 'Отдельных правил для LAN-устройств пока нет.';
+  const missingTransparent = !info.transparent.length;
 
   return `
     <section class="route-hero firewall-hero intercept-hero">
@@ -380,6 +381,7 @@ function firewallPanel() {
         </article>
       </div>
       ${preview.warnings.length ? `<div class="settings-warning compact"><strong>Проверить</strong><span>${escapeHtml(preview.warnings.join(' '))}</span></div>` : ''}
+      ${missingTransparent ? `<div class="settings-warning compact"><strong>Перехват не готов</strong><span>Сейчас найден только DNS/SOCKS-вход или входов нет. Для LAN-клиентов нужен transparent inbound на порт перехвата.</span><button class="btn secondary" data-action="prepareTransparent">Подготовить черновик</button></div>` : ''}
     </section>
 
     <section class="panel intercept-compact-panel">
@@ -536,6 +538,7 @@ function leakProtectionPanel() {
   const protectedIps = preview.guard?.ips || [];
   const protectedDomains = preview.guard?.domains || [];
   const invalidTargets = preview.guard?.invalid || [];
+
   return `
     <section class="route-hero firewall-hero intercept-hero">
       <div>

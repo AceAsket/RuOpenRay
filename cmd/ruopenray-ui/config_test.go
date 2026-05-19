@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,5 +47,27 @@ func TestEnsureDataCreatesDefaultProfile(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected file %s: %v", path, err)
 		}
+	}
+}
+
+func TestAnalyzeConfigWarnsAboutMissingTransparentInbound(t *testing.T) {
+	state := &serverState{cfg: appConfig{GeoDir: t.TempDir()}}
+	result := state.analyzeConfig(map[string]any{
+		"inbounds": []any{
+			map[string]any{"tag": "socks-in", "listen": "127.0.0.1", "port": 10808, "protocol": "socks"},
+			map[string]any{"tag": "ruopenray_dns_in", "listen": "127.0.0.1", "port": 5353, "protocol": "dokodemo-door", "settings": map[string]any{"network": "tcp,udp"}},
+		},
+		"outbounds": []any{
+			map[string]any{"tag": "proxy", "protocol": "vless"},
+			map[string]any{"tag": "dns-out", "protocol": "dns"},
+		},
+		"routing": map[string]any{"rules": []any{
+			map[string]any{"type": "field", "port": "443", "network": "udp", "outboundTag": "proxy"},
+			map[string]any{"type": "field", "inboundTag": []any{"ruopenray_dns_in"}, "outboundTag": "dns-out"},
+		}},
+	})
+	warnings := strings.Join(stringSlice(result["warnings"]), "\n")
+	if !strings.Contains(warnings, "Нет transparent inbound") {
+		t.Fatalf("expected transparent inbound warning, got %#v", result["warnings"])
 	}
 }

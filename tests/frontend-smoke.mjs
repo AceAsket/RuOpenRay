@@ -757,6 +757,16 @@ const firewallModel = createFirewallModel({
   routeRuleName: () => 'rule',
   describeRouteRule: () => ({ kind: 'ip' }),
 });
+const dnsOnlyFirewallModel = createFirewallModel({
+  state: firewallState,
+  configInbounds: () => [{ tag: 'ruopenray_dns_in', protocol: 'dokodemo-door', port: 5353, settings: { network: 'tcp,udp' } }],
+  configOutbounds: () => [{ tag: 'dns-out', protocol: 'dns' }],
+  routeRules: () => [{ outboundTag: 'dns-out', inboundTag: ['ruopenray_dns_in'], type: 'field' }],
+  splitRouteValues: (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean),
+  deviceRules: () => [],
+  routeRuleName: () => 'rule',
+  describeRouteRule: () => ({ kind: 'ip' }),
+});
 const firewallActions = createFirewallActions({
   state: firewallState,
   request: async (path) => {
@@ -1006,6 +1016,7 @@ const checks = [
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24'],
+  ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],
   ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all' && firewallState.firewallKillSwitchTargets.includes('chatgpt.com')],
   ['xray draft actions', xrayDraftState.config.dns.fakeDNS?.length === 1 && xrayDraftState.config.outbounds[0]?.streamSettings?.sockopt?.tcpFastOpen === true && xrayDraftState.config.routing.rules[0]?.outboundTag === 'direct'],
   ['server model active proxy', serverModel.activeProxyTag() === 'cloudone' && serverModel.proxyOutbounds().length === 1 && serverModel.outboundUsage('cloudone') === 1],

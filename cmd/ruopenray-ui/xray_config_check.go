@@ -47,6 +47,31 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			}
 		}
 	}
+	hasTransparentInbound := false
+	hasDNSInbound := false
+	hasPlainLocalInbound := false
+	for _, item := range asArray(cfg["inbounds"]) {
+		inbound, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		tag := strings.TrimSpace(fmt.Sprint(inbound["tag"]))
+		protocol := strings.TrimSpace(fmt.Sprint(inbound["protocol"]))
+		if tag == "ruopenray_dns_in" {
+			hasDNSInbound = true
+			continue
+		}
+		if protocol == "socks" || protocol == "http" {
+			hasPlainLocalInbound = true
+		}
+		settings, _ := inbound["settings"].(map[string]any)
+		streamSettings, _ := inbound["streamSettings"].(map[string]any)
+		sockopt, _ := streamSettings["sockopt"].(map[string]any)
+		tproxyMode := strings.TrimSpace(fmt.Sprint(sockopt["tproxy"]))
+		if protocol == "dokodemo-door" && (strings.Contains(tag, "transparent") || settings["followRedirect"] == true || tproxyMode == "tproxy" || tproxyMode == "redirect") {
+			hasTransparentInbound = true
+		}
+	}
 	apiTags := map[string]bool{}
 	if api, ok := cfg["api"].(map[string]any); ok {
 		if tag := strings.TrimSpace(fmt.Sprint(api["tag"])); tag != "" && tag != "<nil>" {
@@ -57,6 +82,12 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	errors := []string{}
 	info := []string{}
 	counts := map[string]int{"proxy": 0, "direct": 0, "block": 0, "other": 0, "total": 0}
+	if !hasTransparentInbound && (hasDNSInbound || hasPlainLocalInbound) {
+		warnings = append(warnings, "Нет transparent inbound: LAN-трафик через nftables/TPROXY не попадет в Xray. Подготовьте transparent_ipv4 в разделе Перехват или через мастер настройки.")
+	}
+	if hasDNSInbound && !hasTransparentInbound {
+		warnings = append(warnings, "DNS inbound ruopenray_dns_in есть, но он обрабатывает только DNS с dnsmasq. Для сайтов и приложений LAN-клиентов нужен отдельный transparent inbound.")
+	}
 	geoipPath := filepath.Join(s.cfg.GeoDir, "geoip.dat")
 	geositePath := filepath.Join(s.cfg.GeoDir, "geosite.dat")
 	routing, _ := cfg["routing"].(map[string]any)
