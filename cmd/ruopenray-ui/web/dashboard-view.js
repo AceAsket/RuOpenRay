@@ -70,7 +70,7 @@ function dashboard() {
         </section>
         <section class="panel config-panel ${state.configExpanded ? 'is-open' : ''}">
           <div class="panel-title">
-            <div><h2>Активная конфигурация</h2><span>JSON-редактор остается под рукой, но больше не забирает главный экран на себя.</span></div>
+            <div><h2>Активная конфигурация</h2></div>
             <div class="split-actions">
               <button class="btn secondary" data-action="toggleConfig">${state.configExpanded ? 'Свернуть' : 'Показать JSON'}</button>
               <button class="btn secondary" data-action="saveProfile">Сохранить профиль</button>
