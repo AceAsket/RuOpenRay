@@ -1098,13 +1098,21 @@
 
 @media (max-width: 1040px) {
   .shell {
-    grid-template-columns: 1fr;
+    display: block;
   }
 
   .sidebar {
     position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
     border-right: 0;
     border-bottom: 1px solid var(--line-soft);
+  }
+
+  .main {
+    min-height: 0;
+    margin-left: 0;
   }
 
   .nav {

@@ -1,6 +1,7 @@
 /* Base layout, shell and shared navigation */
 :root {
   color-scheme: dark;
+  --sidebar-width: 244px;
   --bg: #0b1014;
   --panel: #11191f;
   --panel-2: #162229;
@@ -56,12 +57,15 @@ button:disabled {
 
 .shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
+  display: block;
   min-width: 0;
 }
 
 .sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-width);
   padding: 24px 16px;
   border-right: 1px solid var(--line-soft);
   background: rgba(8, 13, 17, 0.88);
@@ -69,6 +73,8 @@ button:disabled {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
@@ -155,6 +161,8 @@ button:disabled {
 
 .main {
   min-width: 0;
+  min-height: 100vh;
+  margin-left: var(--sidebar-width);
   padding: 24px 28px 40px;
 }
 
@@ -336,4 +344,3 @@ button:disabled {
 .grid > * {
   min-width: 0;
 }
-
