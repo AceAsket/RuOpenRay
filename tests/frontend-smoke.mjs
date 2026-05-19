@@ -972,6 +972,55 @@ bindActionControls({
   handlers: {},
 });
 
+const actionBusyState = {
+  busyAction: '',
+  busyLabel: '',
+  configTesting: false,
+  configApplying: false,
+  serverChecking: false,
+  serverCheckingTags: [],
+  message: '',
+};
+let actionBusySeen = false;
+let actionBusyDuringHandler = false;
+let actionClickHandler = null;
+let actionErrorClickHandler = null;
+const actionButton = {
+  dataset: { action: 'apply' },
+  classList: { contains: () => false },
+  textContent: 'Применить',
+  addEventListener: (_event, handler) => { actionClickHandler = handler; },
+};
+const actionErrorButton = {
+  dataset: { action: 'restart' },
+  classList: { contains: () => false },
+  textContent: 'Перезапустить',
+  addEventListener: (_event, handler) => { actionErrorClickHandler = handler; },
+};
+globalThis.document = {
+  ...globalThis.document,
+  querySelectorAll: (selector) => (selector === '[data-action]' ? [actionButton, actionErrorButton] : []),
+};
+bindActionControls({
+  state: actionBusyState,
+  render: () => {
+    if (actionBusyState.busyAction === 'apply' && actionBusyState.busyLabel.includes('конфигурацию')) {
+      actionBusySeen = true;
+    }
+  },
+  handlers: {
+    apply: async () => {
+      actionBusyDuringHandler = actionBusyState.busyAction === 'apply';
+      await Promise.resolve();
+    },
+    restart: async () => {
+      throw new Error('exit status 1');
+    },
+  },
+});
+await actionClickHandler({ target: actionButton });
+await actionErrorClickHandler({ target: actionErrorButton });
+
 const anonymizedConfig = anonymizeConfig({
   outbounds: [{
     tag: 'cloudone-private',
@@ -996,6 +1045,7 @@ const checks = [
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['settings actions logout', logoutClearedSession],
   ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
+  ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('системная команда вернула exit status 1')],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],

@@ -30,6 +30,8 @@ export function createInitialState() {
   lastApplyBackup: '',
   logs: '',
   message: '',
+  busyAction: '',
+  busyLabel: '',
   coreUpdate: null,
   coreUpdating: false,
   coreReleases: [],

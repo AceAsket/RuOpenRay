@@ -1327,6 +1327,7 @@ function render() {
   const statusLoaded = Boolean(state.status);
   const running = state.status?.service?.running;
   const xrayUptime = Number(state.status?.service?.uptime || 0);
+  const serviceBusy = ['start', 'stop', 'restart'].includes(state.busyAction);
   const xrayStatusText = statusLoaded
     ? running
       ? `Xray работает${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
@@ -1338,12 +1339,12 @@ function render() {
       ? null
       : running
         ? null
-        : '<button class="service-icon" data-action="start" title="Запустить Xray" aria-label="Запустить Xray">▶</button>',
+        : `<button class="service-icon" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
     statusLoaded && running
-      ? '<button class="service-icon" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray">↻</button>'
+      ? `<button class="service-icon" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
       : null,
     statusLoaded && running
-      ? '<button class="service-icon danger" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray">■</button>'
+      ? `<button class="service-icon danger" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
       : null,
   ].filter(Boolean).join('');
   app.innerHTML = `
@@ -1367,12 +1368,19 @@ function render() {
         </div>
       </aside>
       <main class="main">
+        ${state.busyAction ? `
+          <div class="global-action-progress" role="status" aria-live="polite">
+            <span>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>
+            <i></i>
+          </div>
+        ` : ''}
         <header class="topbar">
           <div class="title">
             <h1>${tabTitles[state.tab] || state.tab}</h1>
             ${state.status ? '' : '<p>Загрузка статуса роутера</p>'}
           </div>
           <div class="top-actions">
+            ${state.busyAction ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
             ${appVersionPill()}
             <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
             <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
