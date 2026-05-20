@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestParseFirewallStatusMeta(t *testing.T) {
 	body := `# ruopenray-meta routerMode=tproxy bypassMode=off deviceMode=selected portMode=custom ports=80,443 blockQuic=true dnsIntercept=false transparentPort=52345 lanInterface=br-lan killSwitch=true
@@ -25,6 +28,29 @@ table inet ruopenray {}
 	ports, ok := meta["ports"].([]string)
 	if !ok || len(ports) != 2 || ports[0] != "80" || ports[1] != "443" {
 		t.Fatalf("ports = %#v, want [80 443]", meta["ports"])
+	}
+}
+
+func TestSanitizeKillSwitchDomains(t *testing.T) {
+	got := sanitizeKillSwitchDomains([]any{" OpenAI.com ", "*.chatgpt.com", "bad value", "10.0.0.1", "openai.com"})
+	want := []string{"openai.com", "chatgpt.com"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sanitizeKillSwitchDomains() = %#v, want %#v", got, want)
+	}
+}
+
+func TestKillSwitchDomainFromNftsetEntry(t *testing.T) {
+	got := killSwitchDomainFromNftsetEntry("/openai.com/4#inet#ruopenray#killswitch4")
+	if got != "openai.com" {
+		t.Fatalf("domain = %#v, want openai.com", got)
+	}
+}
+
+func TestKillSwitchDNSBlockEntries(t *testing.T) {
+	got := killSwitchDNSBlockEntries([]string{"openai.com", "*.chatgpt.com", "bad value"})
+	want := []string{"/openai.com/0.0.0.0", "/openai.com/::", "/chatgpt.com/0.0.0.0", "/chatgpt.com/::"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("killSwitchDNSBlockEntries() = %#v, want %#v", got, want)
 	}
 }
 

@@ -49,8 +49,8 @@ function dashboard() {
       </div>
       <div class="dash-actions">
         <button class="btn secondary" data-action="openSetupWizard">Мастер</button>
-        <button class="btn" data-action="test">Проверить</button>
-        <button class="btn warning" data-action="apply">Сохранить и применить</button>
+        <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить'}</button>
+        <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
       </div>
     </section>
 
@@ -557,7 +557,7 @@ function isCheckingServer(tag) {
 
 function serverCheckButton(tag, extraClass = '') {
   const busy = isCheckingServer(tag);
-  return `<button class="btn secondary ${extraClass}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>${busy ? 'Проверяю...' : 'Проверить'}</button>`;
+  return `<button class="btn secondary ${extraClass} ${busy ? 'is-busy' : ''}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>${busy ? 'Проверяю...' : 'Проверить'}</button>`;
 }
 
 function checkModeLabel(mode) {
@@ -579,6 +579,15 @@ function operationProgressView() {
       <div class="operation-progress check-progress" role="status">
         <span>Проверяю конфигурацию</span>
         <strong>Xray читает временный config без применения</strong>
+        <i></i>
+      </div>
+    `;
+  }
+  if (state.firewallSaving) {
+    return `
+      <div class="operation-progress apply-progress" role="status">
+        <span>Применяю firewall</span>
+        <strong>Записываю nftables и проверяю состояние перехвата</strong>
         <i></i>
       </div>
     `;

@@ -84,7 +84,7 @@ function settingsPanel() {
         <span>Access-логи при активном трафике создают много записей. Для постоянного мониторинга лучше использовать временный каталог или внешний накопитель.</span>
       </div>
       <div class="toolbar">
-        <button class="btn warning" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить логирование'}</button>
+        <button class="btn warning ${state.loggingSaving ? 'is-busy' : ''}" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить логирование'}</button>
         <button class="btn secondary" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>Очистить логи</button>
       </div>
     </section>
@@ -137,8 +137,8 @@ function settingsPanel() {
         </label>
       </div>
       <div class="toolbar">
-        <button class="btn secondary" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
-        <button class="btn warning" data-action="updateApp" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${state.appUpdating ? 'Обновляю...' : appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
+        <button class="btn secondary ${state.appReleaseChecking ? 'is-busy' : ''}" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
+        <button class="btn warning ${state.appUpdating ? 'is-busy' : ''}" data-action="updateApp" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${state.appUpdating ? 'Обновляю...' : appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
         <strong>${state.appUpdate.ok ? 'Готово' : 'Ошибка'}</strong>
@@ -193,7 +193,7 @@ function settingsPanel() {
         </div>
       </div>
       <div class="toolbar">
-        <button class="btn warning" data-action="saveServiceSettings" ${state.serviceSettingsSaving ? 'disabled' : ''}>${state.serviceSettingsSaving ? 'Сохраняю...' : 'Сохранить сервис'}</button>
+        <button class="btn warning ${state.serviceSettingsSaving ? 'is-busy' : ''}" data-action="saveServiceSettings" ${state.serviceSettingsSaving ? 'disabled' : ''}>${state.serviceSettingsSaving ? 'Сохраняю...' : 'Сохранить сервис'}</button>
       </div>
     </section>
   `;

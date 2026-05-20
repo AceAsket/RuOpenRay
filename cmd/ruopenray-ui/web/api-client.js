@@ -9,7 +9,15 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
 
   async function parseResponse(response) {
     const type = response.headers.get('content-type') || '';
-    return type.includes('application/json') ? await response.json() : await response.text();
+    if (response.status === 204 || response.status === 205) return {};
+    const text = await response.text();
+    if (!text.trim()) return type.includes('application/json') ? {} : '';
+    if (!type.includes('application/json')) return text;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return { error: text || error.message };
+    }
   }
 
   async function request(path, options = {}) {
@@ -23,7 +31,10 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
     const payload = await parseResponse(response);
     if (!response.ok) {
       if (response.status === 401) onUnauthorized();
-      throw new Error(payload.error || payload.message || response.statusText);
+      const message = typeof payload === 'string'
+        ? payload
+        : payload.error || payload.message || response.statusText;
+      throw new Error(message);
     }
     return payload;
   }

@@ -1,7 +1,10 @@
 export function createConfigStateHelpers(state) {
   function syncConfig(config) {
+    const nextText = JSON.stringify(config, null, 2);
+    const draftWasClean = !state.jsonDraft || state.jsonDraft === state.appliedConfigText || state.configApplying;
     state.config = config;
-    state.jsonDraft = JSON.stringify(config, null, 2);
+    if (draftWasClean) state.jsonDraft = nextText;
+    state.appliedConfigText = nextText;
   }
   
   function syncLoggingSettings(settings) {

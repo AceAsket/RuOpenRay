@@ -131,9 +131,11 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
     if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
     if (!state.firewallDnsIntercept) warnings.push('Перехват DNS выключен: клиенты смогут отправлять UDP/TCP 53 напрямую наружу, если не используют DNS роутера.');
-    if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length) warnings.push('Kill switch включен, но цели защиты не указаны.');
-    if (state.firewallKillSwitchEnabled && guard.domains.length) warnings.push('Домены в kill switch требуют DNS через RuOpenRay/nftset. Сейчас firewall применяет только IP и подсети.');
-    if (state.firewallKillSwitchEnabled && guard.invalid.length) warnings.push(`Некоторые цели kill switch не распознаны: ${guard.invalid.slice(0, 3).join(', ')}`);
+    if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length) warnings.push('Защита от прямого выхода включена, но цели не указаны.');
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block') warnings.push('Домены будут точно блокироваться через DNS для всех LAN-клиентов, которые используют DNS роутера.');
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') warnings.push('Домены будут защищены через dnsmasq/nftset после применения firewall. Этот режим можно ограничить выбранными LAN-клиентами, но он работает по IP после DNS-резолва.');
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block' && state.firewallDeviceMode !== 'all') warnings.push('Точная DNS-блокировка применяется ко всем LAN-клиентам. Для выбранных клиентов используйте режим “для выбранных клиентов”.');
+    if (state.firewallKillSwitchEnabled && guard.invalid.length) warnings.push(`Некоторые цели защиты не распознаны: ${guard.invalid.slice(0, 3).join(', ')}`);
     return {
       router,
       traffic,
@@ -170,8 +172,14 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     }
     const guard = firewallKillSwitchTargets();
     const killSwitchRules = [];
-    if (state.firewallKillSwitchEnabled && guard.ips.length) {
-      killSwitchRules.push(`nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; elements = { ${guard.ips.join(', ')} } \\; }`);
+    const domainSetMode = state.firewallKillSwitchDomainMode === 'nftset';
+    if (state.firewallKillSwitchEnabled && (guard.ips.length || (domainSetMode && guard.domains.length))) {
+      killSwitchRules.push(guard.ips.length
+        ? `nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; elements = { ${guard.ips.join(', ')} } \\; }`
+        : 'nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; }');
+      if (domainSetMode && guard.domains.length) {
+        killSwitchRules.push('# Домены добавляются в dnsmasq nftset: /domain/4#inet#ruopenray#killswitch4');
+      }
       if (state.firewallRouterMode === 'redirect') {
         killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto tcp redirect to :${port} comment "RuOpenRay Kill Switch"`);
         killSwitchRules.push('nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto udp drop comment "RuOpenRay Kill Switch UDP guard"');
@@ -244,8 +252,105 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       killSwitch: state.firewallKillSwitchEnabled,
       killSwitchIps: guard.ips,
       killSwitchDomains: guard.domains,
+      killSwitchDomainMode: state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block',
       transparentPort: Number(info.transparentPort || 52345),
       lanInterface: 'br-lan'
+    };
+  }
+
+  function firewallSafetyCheck() {
+    const info = firewallInfo();
+    const guard = firewallKillSwitchTargets();
+    const devices = firewallSelectedDevices();
+    const routerLan = routerLanAddress();
+    const items = [];
+
+    const add = (level, title, detail, fix = '') => {
+      items.push({ level, title, detail, fix });
+    };
+
+    if (!info.transparent.length) {
+      add(
+        'danger',
+        'Нет входа для перехвата',
+        'Firewall отправит LAN-трафик в Xray, но transparent inbound в конфигурации не найден. У клиентов может пропасть интернет.',
+        'Сначала нажмите «Подготовить черновик», проверьте и примените Xray.'
+      );
+    }
+
+    if (state.firewallDeviceMode === 'selected' && devices.some((device) => isRouterAddress(device.ip, routerLan))) {
+      add(
+        'danger',
+        'Выбран сам роутер',
+        'Роутер не должен попадать в список LAN-клиентов для перехвата. Это может сломать доступ к LuCI, SSH или самой панели RuOpenRay.',
+        'Уберите адрес роутера из выбранных клиентов.'
+      );
+    }
+
+    const privateTargets = guard.ips.filter((value) => isPrivateOrGatewayTarget(value, routerLan));
+    if (state.firewallKillSwitchEnabled && privateTargets.length) {
+      add(
+        'danger',
+        'Защита затрагивает локальную сеть',
+        `В целях защиты есть локальные адреса: ${privateTargets.slice(0, 4).join(', ')}. Такое правило может заблокировать доступ к роутеру или устройствам LAN.`,
+        'Оставляйте здесь только внешние IP/подсети или домены, которые нельзя выпускать напрямую.'
+      );
+    }
+
+    if (state.firewallDeviceMode === 'all' && state.firewallPortMode === 'all') {
+      add(
+        'warn',
+        'Перехватывается весь LAN и все порты',
+        'Это рабочий режим, но ошибка в конфигурации затронет сразу всех клиентов. Для первого запуска безопаснее начать с выбранного устройства или портов 80/443.',
+        'Проверьте доступ к LuCI/SSH после применения.'
+      );
+    }
+
+    if (!info.localBypass.length) {
+      add(
+        'warn',
+        'Локальные адреса не вынесены напрямую',
+        'В Xray routing не найдено явное direct-правило для geoip:private или локальных подсетей. Firewall сам обходит private-сети, но в конфиге Xray лучше закрепить это явно.',
+        'Добавьте правило ip(geoip:private) -> direct.'
+      );
+    }
+
+    if (state.firewallDnsIntercept && state.lanDnsStatus?.dnsPortConflict) {
+      const port = state.lanDnsStatus?.xrayDnsPort || state.lanDnsStatus?.dnsPort || 5353;
+      add(
+        'warn',
+        'DNS-порт занят',
+        `На роутере уже есть процесс на DNS-порту Xray (${port}). DNS-перехват может не заработать, пока Xray DNS inbound не перенесен на свободный порт.`,
+        'Откройте DNS и примените предложенный свободный порт.'
+      );
+    }
+
+    if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) {
+      add(
+        'warn',
+        'QUIC может пройти мимо',
+        'REDIRECT хорошо работает для TCP, но UDP/QUIC лучше блокировать или использовать TPROXY.',
+        'Включите блокировку QUIC или переключитесь на TPROXY.'
+      );
+    }
+
+    if (state.firewallKillSwitchEnabled && guard.invalid.length) {
+      add(
+        'warn',
+        'Есть нераспознанные цели',
+        `RuOpenRay не понял: ${guard.invalid.slice(0, 4).join(', ')}.`,
+        'Используйте IPv4, IPv4-подсети или домены.'
+      );
+    }
+
+    const dangerCount = items.filter((item) => item.level === 'danger').length;
+    const warningCount = items.filter((item) => item.level !== 'danger').length;
+    return {
+      level: dangerCount ? 'danger' : warningCount ? 'warn' : 'safe',
+      items,
+      dangerCount,
+      warningCount,
+      hasDanger: dangerCount > 0
     };
   }
 
@@ -260,7 +365,103 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (status.portMode === 'custom' && !sameStringSet(status.ports || [], firewallPorts())) return false;
     if (typeof status.dnsIntercept === 'boolean' && status.dnsIntercept !== Boolean(state.firewallDnsIntercept)) return false;
     if (typeof status.blockQuic === 'boolean' && status.blockQuic !== Boolean(state.firewallBlockQuic)) return false;
+    const guard = firewallKillSwitchTargets();
+    if (state.firewallKillSwitchEnabled && status.killSwitch !== true) return false;
+    if (!state.firewallKillSwitchEnabled && status.killSwitch === true) return false;
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') {
+      const nftsetDomains = status.killSwitchNftset?.domains || [];
+      if (!sameStringSet(nftsetDomains, guard.domains)) return false;
+    }
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode !== 'nftset') {
+      const dnsBlockDomains = status.killSwitchDNSBlock?.domains || [];
+      if (!sameStringSet(dnsBlockDomains, guard.domains)) return false;
+    }
     return true;
+  }
+
+  function firewallPendingReasons(status = state.firewallStatus || {}) {
+    const reasons = [];
+    if (!status?.active) reasons.push('nftables-таблица не активна');
+    if (!status?.persistent) reasons.push('правила не сохранены для перезапуска firewall');
+    const expectedRouterMode = state.firewallRouterMode || 'tproxy';
+    if (status.routerMode && status.routerMode !== expectedRouterMode) {
+      reasons.push(`режим: ${routerModeLabel(status.routerMode)} -> ${routerModeLabel(expectedRouterMode)}`);
+    }
+    if (expectedRouterMode === 'tproxy') {
+      if (!status.ipRule) reasons.push('нет policy rule для TPROXY');
+      if (!status.ipRoute) reasons.push('нет route table 100 для TPROXY');
+      if (!status.hotplug) reasons.push('нет hotplug-восстановления policy routing');
+    }
+    const expectedBypassMode = state.firewallBypassMode || 'off';
+    if (status.bypassMode && status.bypassMode !== expectedBypassMode) {
+      reasons.push(`политика: ${bypassModeLabel(status.bypassMode)} -> ${bypassModeLabel(expectedBypassMode)}`);
+    }
+    const expectedDeviceMode = state.firewallDeviceMode || 'all';
+    if (status.deviceMode && status.deviceMode !== expectedDeviceMode) {
+      reasons.push(`клиенты: ${deviceModeLabel(status.deviceMode)} -> ${deviceModeLabel(expectedDeviceMode)}`);
+    }
+    const expectedPortMode = state.firewallPortMode || 'custom';
+    if (status.portMode && status.portMode !== expectedPortMode) {
+      reasons.push(`порты: ${portModeLabel(status.portMode)} -> ${portModeLabel(expectedPortMode)}`);
+    } else if (expectedPortMode === 'custom' && !sameStringSet(status.ports || [], firewallPorts())) {
+      reasons.push(`порты: ${stringListLabel(status.ports || [])} -> ${stringListLabel(firewallPorts())}`);
+    }
+    if (typeof status.dnsIntercept === 'boolean' && status.dnsIntercept !== Boolean(state.firewallDnsIntercept)) {
+      reasons.push(`DNS-перехват: ${onOffLabel(status.dnsIntercept)} -> ${onOffLabel(state.firewallDnsIntercept)}`);
+    }
+    if (typeof status.blockQuic === 'boolean' && status.blockQuic !== Boolean(state.firewallBlockQuic)) {
+      reasons.push(`QUIC: ${onOffLabel(status.blockQuic)} -> ${onOffLabel(state.firewallBlockQuic)}`);
+    }
+    const guard = firewallKillSwitchTargets();
+    if (state.firewallKillSwitchEnabled && status.killSwitch !== true) reasons.push('защита от прямого выхода еще не применена');
+    if (!state.firewallKillSwitchEnabled && status.killSwitch === true) reasons.push('защита включена в firewall, но выключена в настройках');
+    if (state.firewallKillSwitchEnabled && guard.domains.length) {
+      const expectedDomainMode = state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block';
+      if (status.killSwitchDomainMode && status.killSwitchDomainMode !== expectedDomainMode) {
+        reasons.push(`домены защиты: ${domainModeLabel(status.killSwitchDomainMode)} -> ${domainModeLabel(expectedDomainMode)}`);
+      }
+      const actualDomains = expectedDomainMode === 'nftset'
+        ? status.killSwitchNftset?.domains || []
+        : status.killSwitchDNSBlock?.domains || [];
+      if (!sameStringSet(actualDomains, guard.domains)) {
+        reasons.push(`домены защиты: ${actualDomains.length} -> ${guard.domains.length}`);
+      }
+    }
+    if (!reasons.length && !firewallReadyStatus(status)) reasons.push('выбранные настройки firewall еще не применены');
+    return reasons;
+  }
+
+  function routerModeLabel(value) {
+    return value === 'redirect' ? 'REDIRECT' : value === 'tproxy' ? 'TPROXY' : String(value || 'неизвестно');
+  }
+
+  function bypassModeLabel(value) {
+    if (value === 'bypass') return 'BYPASS';
+    if (value === 'redirect') return 'REDIRECT';
+    return 'OFF';
+  }
+
+  function deviceModeLabel(value) {
+    if (value === 'selected') return 'выбранные клиенты';
+    if (value === 'exclude') return 'кроме выбранных';
+    return 'весь LAN';
+  }
+
+  function portModeLabel(value) {
+    return value === 'all' ? 'все' : 'список';
+  }
+
+  function domainModeLabel(value) {
+    return value === 'nftset' ? 'по клиентам через nftset' : 'точно через DNS';
+  }
+
+  function onOffLabel(value) {
+    return value ? 'вкл' : 'выкл';
+  }
+
+  function stringListLabel(items) {
+    const values = (Array.isArray(items) ? items : []).filter(Boolean);
+    return values.length ? values.join(', ') : 'пусто';
   }
 
   function sameStringSet(left, right) {
@@ -268,6 +469,32 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const a = normalize(left);
     const b = normalize(right);
     return a.length === b.length && a.every((item, index) => item === b[index]);
+  }
+
+  function routerLanAddress() {
+    return String(
+      state.lanDnsStatus?.routerLan ||
+      state.status?.routerLan ||
+      state.status?.lan?.ip ||
+      ''
+    ).trim();
+  }
+
+  function isRouterAddress(value, routerLan) {
+    const clean = String(value || '').trim();
+    if (!clean) return false;
+    if (routerLan && clean === routerLan) return true;
+    return /^192\.168\.\d+\.1$/.test(clean) || /^10\.\d+\.\d+\.1$/.test(clean) || /^172\.(1[6-9]|2\d|3[01])\.\d+\.1$/.test(clean);
+  }
+
+  function isPrivateOrGatewayTarget(value, routerLan) {
+    const clean = String(value || '').trim();
+    if (!clean) return false;
+    if (routerLan && (clean === routerLan || clean === `${routerLan}/32`)) return true;
+    if (/^(0\.0\.0\.0\/0|127\.0\.0\.0\/8|10\.0\.0\.0\/8|172\.16\.0\.0\/12|192\.168\.0\.0\/16|169\.254\.0\.0\/16)$/.test(clean)) return true;
+    return /^192\.168\.\d+\.\d+(\/\d{1,2})?$/.test(clean) ||
+      /^10\.\d+\.\d+\.\d+(\/\d{1,2})?$/.test(clean) ||
+      /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(\/\d{1,2})?$/.test(clean);
   }
 
   return {
@@ -283,6 +510,8 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     firewallPolicyPreview,
     firewallCommands,
     firewallPayload,
-    firewallReadyStatus
+    firewallSafetyCheck,
+    firewallReadyStatus,
+    firewallPendingReasons
   };
 }

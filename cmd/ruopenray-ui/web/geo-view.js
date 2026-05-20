@@ -168,8 +168,8 @@ function geoPanel() {
       <div class="panel-title">
         <div><h2>Источники geodata</h2><span>Выберите один основной источник: пару geoip/geosite или отдельный geoip.dat. Дополнительные dat-файлы для ext-правил можно ставить вместе с ним.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="cleanupGeoBackups">Очистить geo-бэкапы</button>
-          <button class="btn warning" data-action="updateGeo" ${state.geoUpdating || !canUpdate ? 'disabled' : ''}>${geoActionLabel(selected)}</button>
+          <button class="btn secondary ${state.busyAction === 'cleanupGeoBackups' ? 'is-busy' : ''}" data-action="cleanupGeoBackups" ${state.busyAction === 'cleanupGeoBackups' ? 'disabled' : ''}>${state.busyAction === 'cleanupGeoBackups' ? 'Очищаю...' : 'Очистить geo-бэкапы'}</button>
+          <button class="btn warning ${state.geoUpdating ? 'is-busy' : ''}" data-action="updateGeo" ${state.geoUpdating || !canUpdate ? 'disabled' : ''}>${state.geoUpdating ? 'Обновляю...' : geoActionLabel(selected)}</button>
         </div>
       </div>
       <div class="geo-presets">
@@ -296,7 +296,7 @@ function geoPanel() {
             <label>Время</label>
             <input id="geoScheduleTime" type="time" value="${escapeHtml(state.geoScheduleTime)}" />
           </div>
-          <button class="btn secondary" data-action="saveGeoSchedule">Сохранить расписание</button>
+          <button class="btn secondary ${state.busyAction === 'saveGeoSchedule' ? 'is-busy' : ''}" data-action="saveGeoSchedule" ${state.busyAction === 'saveGeoSchedule' ? 'disabled' : ''}>${state.busyAction === 'saveGeoSchedule' ? 'Сохраняю...' : 'Сохранить расписание'}</button>
         </div>
       </div>
       ${state.geoUpdate ? `<div class="core-result">

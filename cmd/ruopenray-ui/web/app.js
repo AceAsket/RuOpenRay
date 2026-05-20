@@ -64,6 +64,7 @@ import {
   firewallDeviceModeStorageKey,
   firewallDnsInterceptStorageKey,
   firewallKillSwitchEnabledStorageKey,
+  firewallKillSwitchDomainModeStorageKey,
   firewallKillSwitchTargetsStorageKey,
   firewallPortModeStorageKey,
   firewallPortsStorageKey,
@@ -484,7 +485,9 @@ const {
   firewallPolicyPreview,
   firewallCommands,
   firewallPayload,
-  firewallReadyStatus
+  firewallSafetyCheck,
+  firewallReadyStatus,
+  firewallPendingReasons
 } = firewallModel;
 
 const firewallActions = createFirewallActions({
@@ -494,6 +497,7 @@ const firewallActions = createFirewallActions({
   delay,
   firewallPayload,
   firewallCommands,
+  firewallSafetyCheck,
   firewallReadyStatus,
   storageKeys: {
     firewallBypassModeStorageKey,
@@ -504,6 +508,7 @@ const firewallActions = createFirewallActions({
     firewallBlockQuicStorageKey,
     firewallDnsInterceptStorageKey,
     firewallKillSwitchEnabledStorageKey,
+    firewallKillSwitchDomainModeStorageKey,
     firewallKillSwitchTargetsStorageKey
   }
 });
@@ -521,6 +526,7 @@ const {
   setFirewallBlockQuic,
   setQuicPolicy,
   setFirewallKillSwitchEnabled,
+  setFirewallKillSwitchDomainMode,
   setFirewallKillSwitchTargets
 } = firewallActions;
 
@@ -1211,6 +1217,7 @@ const routingView = createRoutingView({
   firewallInfo,
   firewallReadyStatus,
   firewallPolicyPreview,
+  firewallSafetyCheck,
   firewallDeviceChoices,
   firewallSelectedDevices,
   firewallCommands,
@@ -1266,6 +1273,49 @@ function loadingDashboard() {
 
 const settingsView = createSettingsView({ state, byteSize, escapeHtml });
 const { settingsPanel } = settingsView;
+
+function normalizedConfigDraftText() {
+  try {
+    return JSON.stringify(JSON.parse(state.jsonDraft || '{}'), null, 2);
+  } catch {
+    return state.jsonDraft || '';
+  }
+}
+
+function configHasUnappliedChanges() {
+  return Boolean(state.appliedConfigText && normalizedConfigDraftText() !== state.appliedConfigText);
+}
+
+function firewallHasUnappliedChanges() {
+  if (!state.firewallStatus || typeof firewallReadyStatus !== 'function') return false;
+  return !firewallReadyStatus(state.firewallStatus);
+}
+
+function pendingChangesBanner() {
+  const configDirty = configHasUnappliedChanges();
+  const firewallDirty = firewallHasUnappliedChanges();
+  if (!configDirty && !firewallDirty) return '';
+  const firewallReasons = firewallDirty && typeof firewallPendingReasons === 'function'
+    ? firewallPendingReasons(state.firewallStatus || {})
+    : [];
+  const visibleFirewallReasons = firewallReasons.slice(0, 4);
+  return `
+    <section class="pending-changes" role="status" aria-live="polite">
+      <div>
+        <strong>Есть непримененные изменения</strong>
+        <span>${[
+          configDirty ? 'черновик Xray отличается от активного config.json' : '',
+          firewallDirty ? `firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки еще не применены'}` : ''
+        ].filter(Boolean).join(' · ')}</span>
+        ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
+      </div>
+      <div class="pending-actions">
+        ${configDirty ? `<button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>` : ''}
+        ${firewallDirty ? `<button class="btn warning ${state.firewallSaving ? 'is-busy' : ''}" data-action="applyFirewall" ${state.firewallSaving ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю firewall...' : 'Применить firewall'}</button>` : ''}
+      </div>
+    </section>
+  `;
+}
 
 function content() {
   if (!state.status) return loadingDashboard();
@@ -1323,7 +1373,37 @@ function routePresetDialog(...args) {
   return routingDialogsView.routePresetDialog(...args);
 }
 
+function captureRenderState() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return { tab: state.tab, scrollY: 0, details: {} };
+  }
+  const details = {};
+  document.querySelectorAll('details[data-details-key]').forEach((node) => {
+    const key = node.getAttribute('data-details-key');
+    if (key) details[key] = node.open;
+  });
+  state.openDetails = details;
+  return {
+    tab: state.tab,
+    scrollY: window.scrollY || 0,
+    details,
+  };
+}
+
+function restoreRenderState(snapshot) {
+  if (!snapshot || typeof document === 'undefined') return;
+  Object.entries(snapshot.details || {}).forEach(([key, open]) => {
+    const node = Array.from(document.querySelectorAll('details[data-details-key]'))
+      .find((item) => item.getAttribute('data-details-key') === key);
+    if (node) node.open = Boolean(open);
+  });
+  if (typeof window === 'undefined' || snapshot.tab !== state.tab) return;
+  const top = Number(snapshot.scrollY || 0);
+  requestAnimationFrame(() => window.scrollTo({ top, left: 0 }));
+}
+
 function render() {
+  const renderSnapshot = captureRenderState();
   state.pendingBackgroundRender = false;
   if (!state.token) return loginView();
   const statusLoaded = Boolean(state.status);
@@ -1341,12 +1421,12 @@ function render() {
       ? null
       : running
         ? null
-        : `<button class="service-icon" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
+        : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
     statusLoaded && running
-      ? `<button class="service-icon" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
+      ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
       : null,
     statusLoaded && running
-      ? `<button class="service-icon danger" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
+      ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
       : null,
   ].filter(Boolean).join('');
   app.innerHTML = `
@@ -1391,6 +1471,7 @@ function render() {
             </div>
           </div>
         </header>
+        ${pendingChangesBanner()}
         ${content()}
       </main>
     </div>
@@ -1401,6 +1482,7 @@ function render() {
   `;
   bind();
   restoreConfigScroll();
+  restoreRenderState(renderSnapshot);
   scrollLogsToBottom();
 }
 
@@ -1661,6 +1743,7 @@ function bind() {
     setFirewallPortMode,
     setFirewallBlockQuic,
     setFirewallKillSwitchEnabled,
+    setFirewallKillSwitchDomainMode,
     setFirewallKillSwitchTargets,
     applyLeaseSearch,
     setRouteBalancerSelector,

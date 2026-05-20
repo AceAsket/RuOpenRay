@@ -68,8 +68,8 @@ function observatoryPanel() {
       <div class="panel-title">
         <div><h2>Наблюдение Xray для балансировки</h2><span>Это настройки xray-core для групп серверов. Ручная проверка RuOpenRay остается в разделе Proxy и не меняет конфигурацию Xray.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="checkObservatoryTargets" ${checkTags.length ? '' : 'disabled'}>Проверить через RuOpenRay</button>
-          <button class="btn" data-action="enableObservatoryForProxy">Включить для proxy</button>
+          <button class="btn secondary ${state.busyAction === 'checkObservatoryTargets' ? 'is-busy' : ''}" data-action="checkObservatoryTargets" ${checkTags.length && state.busyAction !== 'checkObservatoryTargets' ? '' : 'disabled'}>${state.busyAction === 'checkObservatoryTargets' ? 'Проверяю...' : 'Проверить через RuOpenRay'}</button>
+          <button class="btn ${state.busyAction === 'enableObservatoryForProxy' ? 'is-busy' : ''}" data-action="enableObservatoryForProxy" ${state.busyAction === 'enableObservatoryForProxy' ? 'disabled' : ''}>${state.busyAction === 'enableObservatoryForProxy' ? 'Включаю...' : 'Включить для proxy'}</button>
         </div>
       </div>
       <div class="observatory-settings">

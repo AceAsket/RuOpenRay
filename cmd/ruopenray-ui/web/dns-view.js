@@ -121,7 +121,7 @@ function dnsLeakChecklist(dns, stats) {
     <section class="panel dns-guard-panel">
       <div class="panel-title">
         <div><h2>Защита от утечек DNS</h2><span>Проверяем, куда пойдут DNS-запросы LAN-устройств и где может появиться открытый UDP/53.</span></div>
-        <button class="btn secondary" data-action="checkDns">Проверить DNS</button>
+        <button class="btn secondary ${state.busyAction === 'checkDns' ? 'is-busy' : ''}" data-action="checkDns" ${state.busyAction === 'checkDns' ? 'disabled' : ''}>${state.busyAction === 'checkDns' ? 'Проверяю...' : 'Проверить DNS'}</button>
       </div>
       <div class="dns-wizard">
         <button class="wizard-card" data-action="dnsWizardSecure">
@@ -190,7 +190,7 @@ function dnsServersSection(dns) {
         </div>
         <div class="dns-check">
           <input id="dnsCheckHost" value="${escapeHtml(state.dnsCheckHost)}" placeholder="ya.ru" />
-          <button class="btn secondary" data-action="checkDns">Проверить DNS</button>
+          <button class="btn secondary ${state.busyAction === 'checkDns' ? 'is-busy' : ''}" data-action="checkDns" ${state.busyAction === 'checkDns' ? 'disabled' : ''}>${state.busyAction === 'checkDns' ? 'Проверяю...' : 'Проверить DNS'}</button>
         </div>
         ${state.dnsCheckResult ? `<div class="notice dns-check-result">
           Ответ: ${escapeHtml(dnsAnswerText(state.dnsCheckResult))}
@@ -204,8 +204,8 @@ function dnsServersSection(dns) {
       <div class="panel-title">
         <div><h2>DNS-серверы</h2><span>Порядок важен: Xray обрабатывает список сверху вниз. Изменения остаются в черновике до применения.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="test">Проверить конфигурацию</button>
-          <button class="btn warning" data-action="apply">Применить</button>
+          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
+          <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
         </div>
       </div>
       <div class="dns-list">
@@ -238,8 +238,8 @@ function dnsHostsSection(dns) {
       <div class="panel-title">
         <div><h2>Hosts</h2><span>Локальные подмены доменов из dns.hosts. Удобно для роутера, NAS, Pi-hole и домашних сервисов.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="test">Проверить конфигурацию</button>
-          <button class="btn warning" data-action="apply">Применить</button>
+          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
+          <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
         </div>
       </div>
       <div class="dns-host-form">
@@ -293,7 +293,7 @@ function dnsCheckSection() {
           <label>Домен для проверки</label>
           <input id="dnsCheckHost" value="${escapeHtml(state.dnsCheckHost)}" placeholder="ya.ru" />
         </div>
-        <button class="btn secondary" data-action="checkDns">Проверить DNS</button>
+        <button class="btn secondary ${state.busyAction === 'checkDns' ? 'is-busy' : ''}" data-action="checkDns" ${state.busyAction === 'checkDns' ? 'disabled' : ''}>${state.busyAction === 'checkDns' ? 'Проверяю...' : 'Проверить DNS'}</button>
       </div>
       ${state.dnsCheckResult ? `<div class="notice dns-check-result">
         Ответ: ${escapeHtml(dnsAnswerText(state.dnsCheckResult))}
@@ -311,8 +311,8 @@ function dnsAdvancedSection() {
       <div class="panel-title">
         <div><h2>DNS inbound</h2><span>Xray принимает DNS на 127.0.0.1:5353, а dnsmasq можно направить на этот порт.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="prepareDnsInbound">Подготовить inbound</button>
-          <button class="btn warning" data-action="test">Проверить конфигурацию</button>
+          <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить inbound'}</button>
+          <button class="btn warning ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
         </div>
       </div>
       <div class="settings-warning">
@@ -400,9 +400,9 @@ function lanDnsSection() {
         <span>DHCP может выдавать клиентам Pi-hole напрямую. Тогда в Pi-hole upstream укажите ${escapeHtml(routerLan)}#5353, а Xray DNS inbound должен быть доступен с LAN-адреса роутера. Не делайте цепочку Pi-hole → роутер → Pi-hole.</span>
       </div>
       <div class="toolbar">
-        <button class="btn secondary" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>Проверить и показать команды</button>
-        <button class="btn warning" data-action="applyLanDnsUpstream" ${applyDisabled ? 'disabled' : ''}>Применить LAN DNS</button>
-        <button class="btn secondary" data-action="prepareDnsInbound">Подготовить DNS inbound</button>
+        <button class="btn secondary ${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'is-busy' : ''}" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'Проверяю...' : 'Проверить и показать команды'}</button>
+        <button class="btn warning ${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'is-busy' : ''}" data-action="applyLanDnsUpstream" ${applyDisabled ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'Применяю LAN DNS...' : 'Применить LAN DNS'}</button>
+        <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить DNS inbound'}</button>
       </div>
     </section>
   `;

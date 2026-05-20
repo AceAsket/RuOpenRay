@@ -144,11 +144,11 @@ function routeRuleDialog() {
               <button class="btn secondary" type="button" data-action="selectAllRoutePresets">Отметить все</button>
               <button class="btn secondary" type="button" data-action="clearRoutePresets">Снять выбор</button>
             </div>
-            <button class="btn warning" type="button" data-action="applyRoutePresets" ${state.selectedRoutePresets.length ? '' : 'disabled'}>Добавить подборки</button>
+            <button class="btn warning ${state.busyAction === 'applyRoutePresets' ? 'is-busy' : ''}" type="button" data-action="applyRoutePresets" ${state.selectedRoutePresets.length && state.busyAction !== 'applyRoutePresets' ? '' : 'disabled'}>${state.busyAction === 'applyRoutePresets' ? 'Добавляю...' : 'Добавить подборки'}</button>
           ` : listMode ? `
-            <button class="btn secondary" type="button" data-action="previewRouteDsl">Проверить список</button>
-            <button class="btn warning" type="button" data-action="appendRouteDslFromDialog">Добавить список</button>
-          ` : `<button class="btn warning" type="button" data-action="${editing ? 'saveRouteEdit' : 'addRoute'}">${editing ? 'Сохранить правило' : 'Добавить правило'}</button>`}
+            <button class="btn secondary ${state.busyAction === 'previewRouteDsl' ? 'is-busy' : ''}" type="button" data-action="previewRouteDsl" ${state.busyAction === 'previewRouteDsl' ? 'disabled' : ''}>${state.busyAction === 'previewRouteDsl' ? 'Проверяю...' : 'Проверить список'}</button>
+            <button class="btn warning ${state.busyAction === 'appendRouteDslFromDialog' ? 'is-busy' : ''}" type="button" data-action="appendRouteDslFromDialog" ${state.busyAction === 'appendRouteDslFromDialog' ? 'disabled' : ''}>${state.busyAction === 'appendRouteDslFromDialog' ? 'Добавляю...' : 'Добавить список'}</button>
+          ` : `<button class="btn warning ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'is-busy' : ''}" type="button" data-action="${editing ? 'saveRouteEdit' : 'addRoute'}" ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'disabled' : ''}>${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'Сохраняю...' : editing ? 'Сохранить правило' : 'Добавить правило'}</button>`}
         </div>
       </section>
     </div>
@@ -287,7 +287,7 @@ function routeBalancerDialog() {
         ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteBalancerDialog">Отмена</button>
-          <button class="btn warning" type="button" data-action="saveRouteBalancer">Сохранить</button>
+          <button class="btn warning ${state.busyAction === 'saveRouteBalancer' ? 'is-busy' : ''}" type="button" data-action="saveRouteBalancer" ${state.busyAction === 'saveRouteBalancer' ? 'disabled' : ''}>${state.busyAction === 'saveRouteBalancer' ? 'Сохраняю...' : 'Сохранить'}</button>
         </div>
       </section>
     </div>
@@ -330,9 +330,9 @@ function routePresetDialog() {
           <div class="modal-actions">
             <button class="btn secondary" type="button" data-action="closeRoutePresetDialog">Отмена</button>
             <div class="split-actions">
-              <button class="btn secondary" type="button" data-action="previewRoutePresetEdit">Проверить</button>
-              <button class="btn secondary" type="button" data-action="saveRoutePresetEdit">Сохранить подборку</button>
-              <button class="btn warning" type="button" data-action="applyRoutePresetEdit">Добавить в правила</button>
+              <button class="btn secondary ${state.busyAction === 'previewRoutePresetEdit' ? 'is-busy' : ''}" type="button" data-action="previewRoutePresetEdit" ${state.busyAction === 'previewRoutePresetEdit' ? 'disabled' : ''}>${state.busyAction === 'previewRoutePresetEdit' ? 'Проверяю...' : 'Проверить'}</button>
+              <button class="btn secondary ${state.busyAction === 'saveRoutePresetEdit' ? 'is-busy' : ''}" type="button" data-action="saveRoutePresetEdit" ${state.busyAction === 'saveRoutePresetEdit' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetEdit' ? 'Сохраняю...' : 'Сохранить подборку'}</button>
+              <button class="btn warning ${state.busyAction === 'applyRoutePresetEdit' ? 'is-busy' : ''}" type="button" data-action="applyRoutePresetEdit" ${state.busyAction === 'applyRoutePresetEdit' ? 'disabled' : ''}>${state.busyAction === 'applyRoutePresetEdit' ? 'Добавляю...' : 'Добавить в правила'}</button>
             </div>
           </div>
       </section>

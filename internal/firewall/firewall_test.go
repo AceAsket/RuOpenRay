@@ -156,6 +156,43 @@ func TestNativeNftKillSwitchRedirectDropsUDP(t *testing.T) {
 	}
 }
 
+func TestNativeNftKillSwitchDomainsCreateDynamicSet(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"transparentPort":      "52345",
+		"killSwitch":           true,
+		"killSwitchDomainMode": "nftset",
+		"killSwitchDomains":    []any{"openai.com", "chatgpt.com"},
+		"killSwitchIps":        []any{},
+		"firewallDeviceMode":   "all",
+	})
+	if !strings.Contains(body, "set killswitch4 { type ipv4_addr; flags interval; }") {
+		t.Fatalf("domain kill switch should create an empty dynamic nft set:\n%s", body)
+	}
+	if !strings.Contains(body, "ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :52345") {
+		t.Fatalf("domain kill switch should force resolved IPs to Xray:\n%s", body)
+	}
+	domains, ok := meta["killSwitchDomains"].([]string)
+	if !ok || len(domains) != 2 {
+		t.Fatalf("killSwitchDomains = %#v, want 2 domains", meta["killSwitchDomains"])
+	}
+}
+
+func TestNativeNftKillSwitchDNSBlockDomainsDoNotCreateSet(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"killSwitch":           true,
+		"killSwitchDomainMode": "dns-block",
+		"killSwitchDomains":    []any{"openai.com"},
+	})
+	if strings.Contains(body, "set killswitch4") {
+		t.Fatalf("dns-block domain mode should not create nft set without IPs:\n%s", body)
+	}
+	if meta["killSwitchDomainMode"] != "dns-block" {
+		t.Fatalf("killSwitchDomainMode = %#v, want dns-block", meta["killSwitchDomainMode"])
+	}
+}
+
 func TestStepOKAllowsMissingDeletes(t *testing.T) {
 	if !StepOK(map[string]any{"ok": false, "stderr": "No such file or directory"}) {
 		t.Fatal("StepOK should allow idempotent missing-file errors")

@@ -100,8 +100,8 @@ function clientTrafficTestView() {
           <span>Самый честный тест transparent proxy: открыть URL с телефона/ПК в LAN и проверить, выросли ли nft/Xray счетчики.</span>
         </div>
         <div class="split-actions">
-          <button class="btn secondary" type="button" data-action="startClientTrafficTest">Начать замер</button>
-          <button class="btn warning" type="button" data-action="finishClientTrafficTest" ${baseline ? '' : 'disabled'}>Проверить после клиента</button>
+          <button class="btn secondary ${state.busyAction === 'startClientTrafficTest' ? 'is-busy' : ''}" type="button" data-action="startClientTrafficTest" ${state.busyAction === 'startClientTrafficTest' ? 'disabled' : ''}>${state.busyAction === 'startClientTrafficTest' ? 'Начинаю...' : 'Начать замер'}</button>
+          <button class="btn warning ${state.busyAction === 'finishClientTrafficTest' ? 'is-busy' : ''}" type="button" data-action="finishClientTrafficTest" ${baseline && state.busyAction !== 'finishClientTrafficTest' ? '' : 'disabled'}>${state.busyAction === 'finishClientTrafficTest' ? 'Проверяю...' : 'Проверить после клиента'}</button>
         </div>
       </div>
       <div class="client-test-grid">

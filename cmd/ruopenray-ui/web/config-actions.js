@@ -20,7 +20,14 @@ export function createConfigActions({
     state.configAnalysis = analysis;
     await keepOperationVisible(startedAt);
     state.configTesting = false;
-    state.message = result.stdout || result.stderr || (result.ok ? 'Конфигурация корректна' : 'Проверка конфигурации не прошла');
+    state.configTestLog = {
+      ok: Boolean(result.ok),
+      at: new Date().toISOString(),
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      message: result.message || ''
+    };
+    state.message = configTestSummary(result, analysis);
     render();
   }
 
@@ -32,6 +39,8 @@ export function createConfigActions({
     try {
       const parsed = JSON.parse(state.jsonDraft);
       const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
+      state.appliedConfigText = JSON.stringify(parsed, null, 2);
+      state.jsonDraft = state.appliedConfigText;
       state.configAnalysis = result.analysis || null;
       state.lastApplyBackup = result.backup || state.lastApplyBackup;
       state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
@@ -114,6 +123,17 @@ export function createConfigActions({
     downloadConfig,
     downloadAnonymizedConfig: () => downloadConfig({ anonymized: true })
   };
+}
+
+function configTestSummary(result = {}, analysis = {}) {
+  const errors = Array.isArray(analysis.errors) ? analysis.errors.length : 0;
+  const warnings = Array.isArray(analysis.warnings) ? analysis.warnings.length : 0;
+  if (result.ok) {
+    if (warnings > 0) return `Конфигурация корректна, но есть предупреждения: ${warnings}`;
+    return 'Конфигурация корректна. Xray принял черновик без ошибок.';
+  }
+  if (errors > 0) return `Конфигурация не прошла проверку: ошибок ${errors}`;
+  return 'Конфигурация не прошла проверку. Подробности сохранены в техническом выводе.';
 }
 
 function dateTimeStamp(date = new Date()) {

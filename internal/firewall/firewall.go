@@ -132,6 +132,10 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	killSwitch := boolPayload(payload, "killSwitch", false)
 	killSwitchIPs := CIDRList(payload["killSwitchIps"])
 	killSwitchDomains := stringList(payload["killSwitchDomains"])
+	killSwitchDomainMode := PayloadString(payload, "killSwitchDomainMode", "dns-block")
+	if killSwitchDomainMode != "nftset" {
+		killSwitchDomainMode = "dns-block"
+	}
 	localBypass := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
 	setLines := []string{}
 	chainLines := []string{"  chain prerouting {"}
@@ -150,8 +154,12 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	if deviceMode == "selected" && len(devices) > 0 {
 		targetPrefix += "ip saddr " + NftSet(devices) + " "
 	}
-	if killSwitch && len(killSwitchIPs) > 0 {
-		setLines = append(setLines, "  set killswitch4 { type ipv4_addr; flags interval; elements = "+NftSet(killSwitchIPs)+"; }")
+	if killSwitch && (len(killSwitchIPs) > 0 || (len(killSwitchDomains) > 0 && killSwitchDomainMode == "nftset")) {
+		if len(killSwitchIPs) > 0 {
+			setLines = append(setLines, "  set killswitch4 { type ipv4_addr; flags interval; elements = "+NftSet(killSwitchIPs)+"; }")
+		} else {
+			setLines = append(setLines, "  set killswitch4 { type ipv4_addr; flags interval; }")
+		}
 		if routerMode == "redirect" {
 			chainLines = append(chainLines,
 				targetPrefix+"ip daddr @killswitch4 meta l4proto tcp redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay Kill Switch\"",
@@ -196,23 +204,24 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	}
 	chainLines = append(chainLines, "  }")
 	meta := map[string]any{
-		"routerMode":        routerMode,
-		"bypassMode":        bypassMode,
-		"deviceMode":        deviceMode,
-		"devices":           devices,
-		"ports":             ports,
-		"portMode":          PayloadString(payload, "portMode", "custom"),
-		"blockQuic":         blockQuic,
-		"dnsIntercept":      dnsIntercept,
-		"lanInterface":      lanInterface,
-		"transparentPort":   transparentPort,
-		"killSwitch":        killSwitch,
-		"killSwitchIps":     killSwitchIPs,
-		"killSwitchDomains": killSwitchDomains,
-		"path":              DefaultNftPath,
+		"routerMode":           routerMode,
+		"bypassMode":           bypassMode,
+		"deviceMode":           deviceMode,
+		"devices":              devices,
+		"ports":                ports,
+		"portMode":             PayloadString(payload, "portMode", "custom"),
+		"blockQuic":            blockQuic,
+		"dnsIntercept":         dnsIntercept,
+		"lanInterface":         lanInterface,
+		"transparentPort":      transparentPort,
+		"killSwitch":           killSwitch,
+		"killSwitchIps":        killSwitchIPs,
+		"killSwitchDomains":    killSwitchDomains,
+		"killSwitchDomainMode": killSwitchDomainMode,
+		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDomainMode=%s killSwitchDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -223,6 +232,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		transparentPort,
 		lanInterface,
 		killSwitch,
+		killSwitchDomainMode,
+		strings.Join(killSwitchDomains, ","),
 	)
 	lines := []string{metaLine, "table inet ruopenray {"}
 	lines = append(lines, setLines...)

@@ -787,11 +787,53 @@
   background: rgba(7, 12, 16, 0.34);
 }
 
+.xray-test-log {
+  margin-top: 12px;
+  border: 1px solid rgba(126, 230, 216, 0.18);
+  border-radius: 8px;
+  background: rgba(5, 12, 15, 0.55);
+}
+
+.xray-test-log > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.xray-test-log > summary::-webkit-details-marker {
+  display: none;
+}
+
+.xray-test-log > summary::after {
+  float: right;
+  color: var(--accent-2);
+  content: "Показать";
+}
+
+.xray-test-log[open] > summary::after {
+  content: "Скрыть";
+}
+
+.xray-test-log .mini-console {
+  margin: 0 12px 12px;
+}
+
 .intercept-command-panel {
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.intercept-command-panel .panel-title {
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+
+.intercept-command-panel .panel-title > div {
+  display: none;
 }
 
 .firewall-mode-panel {
@@ -869,10 +911,131 @@
   font-style: normal;
 }
 
+.leak-scope-panel {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 12, 16, 0.38);
+}
+
+.leak-scope-panel .panel-title {
+  margin-bottom: 12px;
+}
+
+.leak-device-list {
+  margin-top: 12px;
+}
+
 .firewall-preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 10px;
+}
+
+.firewall-safety-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid rgba(242, 189, 82, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(242, 189, 82, 0.08), transparent 46%),
+    rgba(13, 20, 25, 0.72);
+}
+
+.firewall-safety-panel.safe {
+  border-color: rgba(49, 210, 189, 0.28);
+  background:
+    linear-gradient(90deg, rgba(49, 210, 189, 0.08), transparent 44%),
+    rgba(13, 20, 25, 0.72);
+}
+
+.firewall-safety-panel.danger {
+  border-color: rgba(200, 57, 74, 0.58);
+  background:
+    linear-gradient(90deg, rgba(200, 57, 74, 0.14), transparent 48%),
+    rgba(13, 20, 25, 0.82);
+}
+
+.firewall-safety-panel > strong,
+.firewall-safety-head strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.firewall-safety-panel > span,
+.firewall-safety-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.firewall-safety-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.firewall-safety-list {
+  display: grid;
+  gap: 8px;
+}
+
+.firewall-safety-list article {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 12, 16, 0.46);
+}
+
+.firewall-safety-list article.danger {
+  border-color: rgba(200, 57, 74, 0.42);
+}
+
+.firewall-safety-list b {
+  display: inline-grid;
+  min-height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  color: #151006;
+  background: var(--yellow);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.firewall-safety-list article.danger b {
+  color: #fff;
+  background: #bd3948;
+}
+
+.firewall-safety-list span,
+.firewall-safety-list strong,
+.firewall-safety-list em {
+  display: block;
+  min-width: 0;
+}
+
+.firewall-safety-list strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.firewall-safety-list em {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.firewall-risk-ack {
+  margin: 0;
 }
 
 .firewall-preview-grid article {

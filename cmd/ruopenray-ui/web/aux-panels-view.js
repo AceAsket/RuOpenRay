@@ -76,8 +76,8 @@ function devicesPanel() {
         <div class="panel-title">
           <div><h2>Найденные правила устройств</h2><span>Это source-правила из текущей маршрутизации.</span></div>
           <div class="split-actions">
-            <button class="btn secondary" data-action="test">Проверить конфигурацию</button>
-            <button class="btn warning" data-action="apply">Применить</button>
+            <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
+            <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
           </div>
         </div>
         <div class="device-list">

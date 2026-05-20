@@ -328,10 +328,10 @@ function diagnosticsDomainMonitorView() {
         <div><h2>Мониторинг доменов</h2><span>SNI/домены как в B4SNI: живой поток, группировка по устройствам и быстрое добавление в маршрутизацию.</span></div>
         <div class="split-actions">
           ${running
-            ? '<button class="btn danger" data-action="stopDomainMonitor">Остановить</button>'
-            : '<button class="btn warning" data-action="startDomainMonitor">Запустить</button>'}
-          <button class="btn secondary" data-action="clearDomainMonitor">Очистить</button>
-          <button class="btn secondary" data-action="refreshDomainMonitor">Обновить</button>
+            ? `<button class="btn danger ${state.busyAction === 'stopDomainMonitor' ? 'is-busy' : ''}" data-action="stopDomainMonitor" ${state.busyAction === 'stopDomainMonitor' ? 'disabled' : ''}>${state.busyAction === 'stopDomainMonitor' ? 'Останавливаю...' : 'Остановить'}</button>`
+            : `<button class="btn warning ${state.busyAction === 'startDomainMonitor' ? 'is-busy' : ''}" data-action="startDomainMonitor" ${state.busyAction === 'startDomainMonitor' ? 'disabled' : ''}>${state.busyAction === 'startDomainMonitor' ? 'Запускаю...' : 'Запустить'}</button>`}
+          <button class="btn secondary ${state.busyAction === 'clearDomainMonitor' ? 'is-busy' : ''}" data-action="clearDomainMonitor" ${state.busyAction === 'clearDomainMonitor' ? 'disabled' : ''}>${state.busyAction === 'clearDomainMonitor' ? 'Очищаю...' : 'Очистить'}</button>
+          <button class="btn secondary ${state.busyAction === 'refreshDomainMonitor' ? 'is-busy' : ''}" data-action="refreshDomainMonitor" ${state.busyAction === 'refreshDomainMonitor' ? 'disabled' : ''}>${state.busyAction === 'refreshDomainMonitor' ? 'Обновляю...' : 'Обновить'}</button>
           <button class="btn secondary" data-tab-jump="routing">Маршруты</button>
         </div>
       </div>

@@ -31,6 +31,7 @@ export function bindRoutingControls({
   setFirewallPortMode,
   setFirewallBlockQuic,
   setFirewallKillSwitchEnabled,
+  setFirewallKillSwitchDomainMode,
   setFirewallKillSwitchTargets,
   applyLeaseSearch,
   setRouteBalancerSelector,
@@ -208,6 +209,7 @@ export function bindRoutingControls({
     setSnifferDraft(currentSnifferSettings().mode, { excluded: event.target.value });
   });
   document.querySelector('#firewallPorts')?.addEventListener('input', (event) => {
+    state.firewallSafetyAccepted = false;
     state.firewallPorts = event.target.value;
     localStorage.setItem(firewallPortsStorageKey, state.firewallPorts);
   });
@@ -216,11 +218,19 @@ export function bindRoutingControls({
   });
   document.querySelector('#firewallBlockQuic')?.addEventListener('change', (event) => setFirewallBlockQuic(event.target.checked));
   document.querySelector('#firewallDnsIntercept')?.addEventListener('change', (event) => {
+    state.firewallSafetyAccepted = false;
     state.firewallDnsIntercept = event.target.checked;
     localStorage.setItem(firewallDnsInterceptStorageKey, state.firewallDnsIntercept ? '1' : '0');
     render();
   });
+  document.querySelector('#firewallSafetyAccepted')?.addEventListener('change', (event) => {
+    state.firewallSafetyAccepted = event.target.checked;
+    render();
+  });
   document.querySelector('#firewallKillSwitchEnabled')?.addEventListener('change', (event) => setFirewallKillSwitchEnabled(event.target.checked));
+  document.querySelectorAll('[data-kill-switch-domain-mode]').forEach((button) => {
+    button.addEventListener('click', () => setFirewallKillSwitchDomainMode(button.dataset.killSwitchDomainMode));
+  });
   document.querySelector('#firewallKillSwitchTargets')?.addEventListener('input', (event) => setFirewallKillSwitchTargets(event.target.value));
 
   document.querySelectorAll('#routeKind').forEach((input) => input.addEventListener('change', (event) => {

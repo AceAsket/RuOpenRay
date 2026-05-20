@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,7 +18,10 @@ const (
 	ruOpenRayFirewallNftPath       = "/etc/ruopenray-ui/firewall.nft"
 	ruOpenRayFirewallLegacyNftPath = "/etc/nftables.d/ruopenray.nft"
 	ruOpenRayFirewallHotplugPath   = "/etc/hotplug.d/iface/90-ruopenray-tproxy"
+	ruOpenRayKillSwitchDNSPath     = "/etc/ruopenray-ui/killswitch-dns-domains"
 )
+
+var killSwitchDomainPattern = regexp.MustCompile(`^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$`)
 
 func applyTProxyPolicyRouting(enabled bool) []map[string]any {
 	if !enabled {
@@ -31,6 +36,190 @@ func applyTProxyPolicyRouting(enabled bool) []map[string]any {
 		runTimeout(5*time.Second, "ip", "rule", "add", "fwmark", "1", "table", "100"),
 		runTimeout(5*time.Second, "ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "100"),
 	}
+}
+
+func sanitizeKillSwitchDomains(value any) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, item := range stringList(value) {
+		clean := strings.ToLower(strings.TrimSpace(item))
+		clean = strings.TrimPrefix(clean, "*.")
+		clean = strings.Trim(clean, ".")
+		if net.ParseIP(clean) != nil {
+			continue
+		}
+		if clean == "" || !killSwitchDomainPattern.MatchString(clean) || seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		out = append(out, clean)
+	}
+	return out
+}
+
+func killSwitchNftsetEntry(domain string) string {
+	return "/" + domain + "/4#inet#ruopenray#killswitch4"
+}
+
+func killSwitchNftsetValues() []string {
+	if runtime.GOOS == "windows" || !commandExists("uci") {
+		return []string{}
+	}
+	out := fmt.Sprint(runTimeout(5*time.Second, "uci", "-q", "get", "dhcp.@dnsmasq[0].nftset")["stdout"])
+	values := []string{}
+	for _, item := range strings.Fields(strings.ReplaceAll(out, "\n", " ")) {
+		clean := strings.TrimSpace(item)
+		if strings.Contains(clean, "#inet#ruopenray#killswitch4") {
+			values = append(values, clean)
+		}
+	}
+	return values
+}
+
+func killSwitchDomainFromNftsetEntry(entry string) string {
+	if !strings.Contains(entry, "#inet#ruopenray#killswitch4") {
+		return ""
+	}
+	if !strings.HasPrefix(entry, "/") {
+		return ""
+	}
+	parts := strings.Split(entry, "/")
+	if len(parts) < 3 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
+func killSwitchNftsetStatus() map[string]any {
+	values := killSwitchNftsetValues()
+	domains := []string{}
+	for _, entry := range values {
+		if domain := killSwitchDomainFromNftsetEntry(entry); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+	return map[string]any{
+		"available": runtime.GOOS != "windows" && commandExists("uci"),
+		"active":    len(values) > 0,
+		"count":     len(values),
+		"domains":   domains,
+		"set":       "inet ruopenray killswitch4",
+	}
+}
+
+func killSwitchDNSBlockEntries(domains []string) []string {
+	entries := []string{}
+	for _, domain := range sanitizeKillSwitchDomains(domains) {
+		entries = append(entries, "/"+domain+"/0.0.0.0", "/"+domain+"/::")
+	}
+	return entries
+}
+
+func readKillSwitchDNSBlockDomains() []string {
+	body, err := os.ReadFile(ruOpenRayKillSwitchDNSPath)
+	if err != nil {
+		return []string{}
+	}
+	return sanitizeKillSwitchDomains(strings.Fields(strings.ReplaceAll(string(body), ",", "\n")))
+}
+
+func killSwitchDNSBlockStatus() map[string]any {
+	domains := readKillSwitchDNSBlockDomains()
+	return map[string]any{
+		"available": runtime.GOOS != "windows" && commandExists("uci"),
+		"active":    len(domains) > 0,
+		"count":     len(domains),
+		"domains":   domains,
+		"path":      ruOpenRayKillSwitchDNSPath,
+	}
+}
+
+func applyKillSwitchDNSBlock(domains []string, enabled bool) []map[string]any {
+	if runtime.GOOS == "windows" || !commandExists("uci") {
+		return []map[string]any{{"ok": true, "skipped": true, "message": "uci unavailable"}}
+	}
+	steps := []map[string]any{}
+	previousDomains := readKillSwitchDNSBlockDomains()
+	previousEntries := killSwitchDNSBlockEntries(previousDomains)
+	nextDomains := []string{}
+	if enabled {
+		nextDomains = sanitizeKillSwitchDomains(domains)
+	}
+	nextEntries := killSwitchDNSBlockEntries(nextDomains)
+	if sameStringSet(previousEntries, nextEntries) {
+		return []map[string]any{{"ok": true, "unchanged": true, "message": "dnsmasq DNS block already matches"}}
+	}
+	for _, entry := range previousEntries {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "del_list", "dhcp.@dnsmasq[0].address="+entry))
+	}
+	for _, entry := range nextEntries {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "add_list", "dhcp.@dnsmasq[0].address="+entry))
+	}
+	if len(nextDomains) > 0 {
+		_ = os.MkdirAll(filepath.Dir(ruOpenRayKillSwitchDNSPath), 0o755)
+		_ = os.WriteFile(ruOpenRayKillSwitchDNSPath, []byte(strings.Join(nextDomains, "\n")+"\n"), 0o644)
+	} else {
+		_ = os.Remove(ruOpenRayKillSwitchDNSPath)
+	}
+	steps = append(steps, runTimeout(5*time.Second, "uci", "commit", "dhcp"))
+	if commandExists("/etc/init.d/dnsmasq") {
+		steps = append(steps, runTimeout(15*time.Second, "/etc/init.d/dnsmasq", "restart"))
+	}
+	return steps
+}
+
+func applyKillSwitchDomainProtection(domains []string, enabled bool, mode string) []map[string]any {
+	if mode == "nftset" {
+		steps := applyKillSwitchDNSBlock(nil, false)
+		return append(steps, applyKillSwitchNftsets(domains, enabled)...)
+	}
+	steps := applyKillSwitchNftsets(nil, false)
+	return append(steps, applyKillSwitchDNSBlock(domains, enabled)...)
+}
+
+func applyKillSwitchNftsets(domains []string, enabled bool) []map[string]any {
+	if runtime.GOOS == "windows" || !commandExists("uci") {
+		return []map[string]any{{"ok": true, "skipped": true, "message": "uci unavailable"}}
+	}
+	steps := []map[string]any{}
+	existing := killSwitchNftsetValues()
+	desired := []string{}
+	if enabled {
+		for _, domain := range sanitizeKillSwitchDomains(domains) {
+			desired = append(desired, killSwitchNftsetEntry(domain))
+		}
+	}
+	if sameStringSet(existing, desired) {
+		return []map[string]any{{"ok": true, "unchanged": true, "message": "dnsmasq nftset already matches"}}
+	}
+	for _, entry := range existing {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "del_list", "dhcp.@dnsmasq[0].nftset="+entry))
+	}
+	for _, entry := range desired {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "add_list", "dhcp.@dnsmasq[0].nftset="+entry))
+	}
+	steps = append(steps, runTimeout(5*time.Second, "uci", "commit", "dhcp"))
+	if commandExists("/etc/init.d/dnsmasq") {
+		steps = append(steps, runTimeout(15*time.Second, "/etc/init.d/dnsmasq", "restart"))
+	}
+	return steps
+}
+
+func sameStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, item := range left {
+		seen[item]++
+	}
+	for _, item := range right {
+		seen[item]--
+		if seen[item] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *serverState) firewallStatus() map[string]any {
@@ -82,7 +271,9 @@ func (s *serverState) firewallStatus() map[string]any {
 			}
 			return ""
 		}()),
-		"needsPolicyFix": routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
+		"killSwitchNftset":   killSwitchNftsetStatus(),
+		"killSwitchDNSBlock": killSwitchDNSBlockStatus(),
+		"needsPolicyFix":     routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
 	}
 	for key, value := range meta {
 		status[key] = value
@@ -115,6 +306,17 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				} else {
 					meta[key] = strings.Split(value, ",")
 				}
+			case "killSwitchDomains":
+				if value == "" {
+					meta[key] = []string{}
+				} else {
+					meta[key] = strings.Split(value, ",")
+				}
+			case "killSwitchDomainMode":
+				if value != "nftset" {
+					value = "dns-block"
+				}
+				meta[key] = value
 			default:
 				meta[key] = value
 			}
@@ -272,6 +474,11 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	steps = append(steps, runTimeout(5*time.Second, "nft", "delete", "table", "inet", "ruopenray"))
 	steps = append(steps, runTimeout(10*time.Second, "nft", "-f", ruOpenRayFirewallNftPath))
 	steps = append(steps, applyTProxyPolicyRouting(routerMode == "tproxy")...)
+	steps = append(steps, applyKillSwitchDomainProtection(
+		stringList(payload["killSwitchDomains"]),
+		boolPayload(payload, "killSwitch", false),
+		rfw.PayloadString(payload, "killSwitchDomainMode", "dns-block"),
+	)...)
 	status := s.firewallStatus()
 	ok := rfw.AllStepsOK(steps) && status["active"] == true
 	if routerMode == "tproxy" {
@@ -318,6 +525,12 @@ func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string
 		routerMode = "tproxy"
 	}
 	steps = append(steps, applyTProxyPolicyRouting(routerMode == "tproxy")...)
+	meta := parseFirewallStatusMeta(nftBody)
+	steps = append(steps, applyKillSwitchDomainProtection(
+		stringList(meta["killSwitchDomains"]),
+		meta["killSwitch"] == true,
+		fmt.Sprint(meta["killSwitchDomainMode"]),
+	)...)
 	status := s.firewallStatus()
 	ok := rfw.AllStepsOK(steps) && status["active"] == true
 	if routerMode == "tproxy" {
@@ -338,6 +551,8 @@ func (s *serverState) disableFirewall() map[string]any {
 		steps = append(steps, runTimeout(5*time.Second, "nft", "delete", "table", "inet", "ruopenray"))
 	}
 	steps = append(steps, applyTProxyPolicyRouting(false)...)
+	steps = append(steps, applyKillSwitchNftsets(nil, false)...)
+	steps = append(steps, applyKillSwitchDNSBlock(nil, false)...)
 	status := s.firewallStatus()
 	return map[string]any{"ok": rfw.AllStepsOK(steps), "steps": steps, "status": status}
 }
