@@ -1,3 +1,5 @@
+import { configTestFailureDetails } from './xray-error-details.js';
+
 export function createConfigActions({
   state,
   request,
@@ -10,6 +12,7 @@ export function createConfigActions({
   async function testConfig() {
     const startedAt = Date.now();
     state.configTesting = true;
+    state.messageDetails = null;
     state.message = 'Проверяю конфигурацию Xray...';
     render();
     const config = JSON.parse(state.jsonDraft);
@@ -28,12 +31,14 @@ export function createConfigActions({
       message: result.message || ''
     };
     state.message = configTestSummary(result, analysis);
+    state.messageDetails = configTestFailureDetails(result, analysis, state.message);
     render();
   }
 
   async function applyConfig(options = {}) {
     const startedAt = Date.now();
     state.configApplying = true;
+    state.messageDetails = null;
     state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
     render();
     try {
@@ -44,6 +49,7 @@ export function createConfigActions({
       state.configAnalysis = result.analysis || null;
       state.lastApplyBackup = result.backup || state.lastApplyBackup;
       state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
+      state.messageDetails = null;
       await refresh({ renderAfter: false });
       await keepOperationVisible(startedAt, 900);
     } finally {

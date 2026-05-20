@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createServersView(deps) {
   const {
     activeProxyTag,
@@ -167,7 +169,7 @@ function serversPanel() {
           .map(({ outbound, index }) => serverCard(outbound, index, activeTag))
           .join('') || '<p class="muted">В конфигурации пока нет proxy-серверов. Добавьте VLESS/VMess/Trojan ссылкой или подпиской.</p>'}
       </div>
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
     </section>
     ` : ''}
 

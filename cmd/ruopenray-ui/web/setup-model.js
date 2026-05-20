@@ -134,16 +134,6 @@ export function createSetupModel({
     return ['10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/3', '::1/128', 'fc00::/7', 'fe80::/10'];
   }
 
-  function normalizePrivateBypassRules(config) {
-    const cidrs = privateBypassCidrs();
-    const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
-    for (const rule of rules) {
-      if (!Array.isArray(rule.ip)) continue;
-      if (!rule.ip.includes('geoip:private')) continue;
-      rule.ip = [...new Set(rule.ip.flatMap((item) => item === 'geoip:private' ? cidrs : [item]))];
-    }
-  }
-
   function setupRuleSignature(rule) {
     const normalize = (value) => {
       if (Array.isArray(value)) return value.map(normalize).sort();
@@ -204,7 +194,6 @@ export function createSetupModel({
   }
 
   function normalizeSetupRules(config) {
-    normalizePrivateBypassRules(config);
     ensureDnsBootstrapHosts(config);
     config.routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
     const rules = Array.isArray(config.routing.rules) ? config.routing.rules : [];
@@ -292,7 +281,6 @@ export function createSetupModel({
     captureSetupSnapshot,
     lanDnsRestorePayload,
     privateBypassCidrs,
-    normalizePrivateBypassRules,
     setupRuleSignature,
     isIpLiteral,
     hostnameFromUrl,

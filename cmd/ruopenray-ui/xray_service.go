@@ -95,7 +95,15 @@ func (s *serverState) enableXrayServiceConfig() map[string]any {
 		steps = append(steps, run("uci", "set", "xray.enabled.enabled=1"))
 		if strings.TrimSpace(s.cfg.ActiveConfig) != "" {
 			steps = append(steps, run("uci", "set", "xray.config.conffiles="+s.cfg.ActiveConfig))
-			steps = append(steps, run("uci", "-q", "delete", "xray.config.confdir"))
+			deleteConfdir := run("uci", "-q", "delete", "xray.config.confdir")
+			// Missing confdir is the desired state. OpenWrt uci returns 1 when
+			// deleting a non-existing option, so keep the operation quiet.
+			if deleteConfdir["ok"] != true {
+				deleteConfdir["ok"] = true
+				deleteConfdir["stderr"] = ""
+				deleteConfdir["message"] = ""
+			}
+			steps = append(steps, deleteConfdir)
 		}
 		if strings.TrimSpace(s.cfg.GeoDir) != "" {
 			steps = append(steps, run("uci", "set", "xray.config.datadir="+s.cfg.GeoDir))

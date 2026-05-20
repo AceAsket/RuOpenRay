@@ -308,5 +308,5 @@ func (s *serverState) downloadGeoFile(name string, rawURL string, keepBackup ...
 	if err := os.WriteFile(target, body, 0o644); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "url": downloadURL, "sourceUrl": rawURL}
 	}
-	return map[string]any{"ok": true, "stdout": fmt.Sprintf("%s обновлен: %.1f MB", name, float64(len(body))/1024/1024), "url": downloadURL, "sourceUrl": rawURL, "size": len(body)}
+	return map[string]any{"ok": true, "stdout": fmt.Sprintf("%s обновлен: %s", name, byteCount(int64(len(body)))), "url": downloadURL, "sourceUrl": rawURL, "size": len(body)}
 }

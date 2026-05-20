@@ -28,6 +28,7 @@ import { createImportActions } from './import-actions.js';
 import { bindImportControls } from './import-bindings.js';
 import { createLoginView } from './login-view.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
+import { noticeView } from './notice-view.js';
 import { createObservatoryActions } from './observatory-actions.js';
 import { createProfileActions } from './profile-actions.js';
 import { bindProfileControls } from './profile-bindings.js';
@@ -584,8 +585,6 @@ const {
   clearSetupSnapshot,
   captureSetupSnapshot,
   lanDnsRestorePayload,
-  privateBypassCidrs,
-  normalizePrivateBypassRules,
   setupRuleSignature,
   isIpLiteral,
   hostnameFromUrl,
@@ -1250,7 +1249,7 @@ function loadingDashboard() {
         <span class="eyebrow">Состояние роутера</span>
         <h2>Проверяем Xray</h2>
         <p>Получаем статус сервиса, ядра и активной конфигурации с OpenWrt.</p>
-        ${state.message ? `<p class="notice dash-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
       </div>
       <div class="dash-actions">
         <button class="btn secondary" data-action="refresh">Обновить статус</button>

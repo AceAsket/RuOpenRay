@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createRoutingView(deps) {
   const {
     state,
@@ -66,7 +68,7 @@ function routingRulesPanel() {
         <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
         <span class="muted">${visibleRules.length} из ${rules.length}</span>
       </div>
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       <div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length)}
       </div>
@@ -508,7 +510,7 @@ function firewallPanel() {
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
           <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
         </div>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+        ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
         ${xrayConfigTestLogView()}
       </section>
     </div>

@@ -799,6 +799,50 @@ select {
   font-size: 13px;
 }
 
+.notice-details {
+  margin-top: 10px;
+  border-top: 1px solid rgba(242, 189, 82, 0.22);
+  padding-top: 10px;
+}
+
+.notice-details summary {
+  width: max-content;
+  max-width: 100%;
+  color: var(--accent-2);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.notice-details-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.notice-details-body strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.notice-details-body p {
+  margin: 0;
+  color: #f8dfaa;
+  line-height: 1.45;
+}
+
+.notice-details-body pre {
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgba(242, 189, 82, 0.22);
+  border-radius: 8px;
+  color: #f3f8f6;
+  background: rgba(5, 10, 13, 0.48);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .operation-progress {
   position: relative;
   display: grid;

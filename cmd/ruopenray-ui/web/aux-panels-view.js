@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createAuxPanelsView({
   state,
   labels,
@@ -69,7 +71,7 @@ function devicesPanel() {
           <button class="mode-card" data-device-mode="direct"><strong>Напрямую</strong><span>Банки, локальные сервисы, умный дом и IPTV.</span></button>
           <button class="mode-card" data-device-mode="block"><strong>Блокировка</strong><span>Отключить доступ для отдельного клиента.</span></button>
         </div>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+        ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       </section>
 
       <section class="panel">

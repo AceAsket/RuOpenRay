@@ -31,6 +31,7 @@ export function createInitialState() {
   lastApplyBackup: '',
   logs: '',
   message: '',
+  messageDetails: null,
   busyAction: '',
   busyLabel: '',
   coreUpdate: null,

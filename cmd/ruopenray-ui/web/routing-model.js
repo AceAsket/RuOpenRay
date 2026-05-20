@@ -127,7 +127,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const first = compactRouteValue(target.values[0]);
     const managedName = managedRouteName(rule || {});
     if (managedName) return managedName;
-    if (raw.includes('geoip:private')) return 'Локальная сеть';
+    if (raw.includes('geoip:private') || raw.includes('10.0.0.0/8') || raw.includes('192.168.0.0/16') || raw.includes('172.16.0.0/12')) return 'Локальная сеть';
     if (raw.includes('antifilter')) return 'Antifilter community';
     if (raw.includes('discord')) return rule.network === 'udp' ? 'Discord UDP' : 'Discord';
     if (raw.includes('telegram') || raw.includes('91.108.') || raw.includes('149.154.')) return rule.network === 'udp' ? 'Telegram calls' : 'Telegram';

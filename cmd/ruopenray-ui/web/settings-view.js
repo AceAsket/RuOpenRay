@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createSettingsView({ state, byteSize, escapeHtml }) {
 function settingsPanel() {
   const logLevels = [
@@ -223,7 +225,7 @@ function settingsPanel() {
     ${visibleSection}
 
     <section class="settings-message">
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
     </section>
   `;
 }

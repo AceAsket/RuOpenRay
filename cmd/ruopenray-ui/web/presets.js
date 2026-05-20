@@ -516,10 +516,10 @@ export const routePresets = {
 export const routeBundles = {
   ruMinimal: {
     title: 'Минимальный РФ',
-    detail: 'Локальная сеть и CN напрямую, antifilter-community через proxy.',
+    detail: 'Локальная сеть и RU напрямую, antifilter-community через proxy.',
     rules: [
       { type: 'field', outboundTag: 'direct', ip: ['geoip:private'] },
-      { type: 'field', outboundTag: 'direct', domain: ['geosite:cn'] },
+      { type: 'field', outboundTag: 'direct', domain: ['geosite:ru'] },
       { type: 'field', outboundTag: 'proxy', domain: ['ext:"LoyalsoldierSite.dat:antifilter-community"'] }
     ]
   },

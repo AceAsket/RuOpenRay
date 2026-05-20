@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createDnsView(deps) {
   const {
     activeProxyTag,
@@ -452,7 +454,7 @@ function dnsPanel() {
     </section>
 
     ${views[view]()}
-    ${state.message ? `<p class="notice dns-page-message">${escapeHtml(state.message)}</p>` : ''}
+    ${noticeView(state, escapeHtml, { className: 'dns-page-message' })}
   `;
 }
 

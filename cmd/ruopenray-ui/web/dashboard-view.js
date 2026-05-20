@@ -1,3 +1,5 @@
+import { noticeView } from './notice-view.js';
+
 export function createDashboardView(deps) {
   const {
     state,
@@ -45,7 +47,7 @@ function dashboard() {
       <div class="dash-status">
         <span class="eyebrow">Ресурсы роутера</span>
         ${dashboardSystemStats(s.system)}
-        ${state.message ? `<p class="notice dash-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
       </div>
       <div class="dash-actions">
         <button class="btn secondary" data-action="openSetupWizard">Мастер</button>

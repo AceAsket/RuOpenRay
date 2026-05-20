@@ -310,8 +310,8 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       add(
         'warn',
         'Локальные адреса не вынесены напрямую',
-        'В Xray routing не найдено явное direct-правило для geoip:private или локальных подсетей. Firewall сам обходит private-сети, но в конфиге Xray лучше закрепить это явно.',
-        'Добавьте правило ip(geoip:private) -> direct.'
+        'В Xray routing не найдено direct-правило для geoip:private или локальных подсетей. Firewall сам обходит private-сети, но в конфигурации Xray лучше закрепить это явно.',
+        'Если текущий geoip.dat не содержит PRIVATE, проверка покажет короткую ошибку. Тогда замените geoip:private на локальные CIDR-подсети вручную.'
       );
     }
 
