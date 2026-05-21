@@ -109,6 +109,20 @@ func TestNativeNftBlockQuicRespectsSelectedDevice(t *testing.T) {
 	}
 }
 
+func TestNativeNftSelectedDeviceModeWithoutDevicesIsNoop(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode": "tproxy",
+		"deviceMode": "selected",
+		"devices":    []any{},
+	})
+	if !strings.Contains(body, `return comment "RuOpenRay selected device list is empty"`) {
+		t.Fatalf("selected mode without devices should no-op before catch-all rules:\n%s", body)
+	}
+	if meta["deviceMode"] != "selected" {
+		t.Fatalf("deviceMode = %#v, want selected", meta["deviceMode"])
+	}
+}
+
 func TestNativeNftCanDisableDNSIntercept(t *testing.T) {
 	body, meta := NativeNft(map[string]any{
 		"ports":        []any{"80", "443"},
@@ -119,6 +133,50 @@ func TestNativeNftCanDisableDNSIntercept(t *testing.T) {
 	}
 	if meta["dnsIntercept"] != false {
 		t.Fatalf("dnsIntercept = %#v, want false", meta["dnsIntercept"])
+	}
+}
+
+func TestNativeNftBypassUsesDirectIPs(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"bypassMode": "bypass",
+		"directIps":  []any{"178.217.100.241", "107.155.0.0/16", "geoip:private", "bad"},
+	})
+	if !strings.Contains(body, "set bypass4") {
+		t.Fatalf("bypass mode should create bypass4 set:\n%s", body)
+	}
+	if !strings.Contains(body, "178.217.100.241") || !strings.Contains(body, "107.155.0.0/16") {
+		t.Fatalf("bypass4 should include direct IP rules:\n%s", body)
+	}
+	if strings.Contains(body, "geoip:private") || strings.Contains(body, "bad") {
+		t.Fatalf("bypass4 should not include non-IP rules:\n%s", body)
+	}
+	got, ok := meta["directIps"].([]string)
+	if !ok || len(got) != 2 {
+		t.Fatalf("directIps meta = %#v, want two concrete IP entries", meta["directIps"])
+	}
+}
+
+func TestNativeNftRedirectUsesProxyIPs(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"bypassMode":      "redirect",
+		"transparentPort": "52345",
+		"proxyIps":        []any{"91.108.4.0/22", "149.154.160.0/20", "geosite:telegram"},
+	})
+	if !strings.Contains(body, "set proxy4") {
+		t.Fatalf("redirect mode should create proxy4 set:\n%s", body)
+	}
+	if !strings.Contains(body, "91.108.4.0/22") || !strings.Contains(body, "149.154.160.0/20") {
+		t.Fatalf("proxy4 should include proxy IP rules:\n%s", body)
+	}
+	if strings.Contains(body, "geosite:telegram") {
+		t.Fatalf("proxy4 should not include non-IP rules:\n%s", body)
+	}
+	if !strings.Contains(body, "ip daddr @proxy4 meta l4proto { tcp, udp }") {
+		t.Fatalf("redirect policy should match proxy4 before sending to Xray:\n%s", body)
+	}
+	got, ok := meta["proxyIps"].([]string)
+	if !ok || len(got) != 2 {
+		t.Fatalf("proxyIps meta = %#v, want two concrete IP entries", meta["proxyIps"])
 	}
 }
 
@@ -138,6 +196,71 @@ func TestNativeNftKillSwitchForcesProtectedIPsToXray(t *testing.T) {
 	}
 	if meta["killSwitch"] != true {
 		t.Fatalf("killSwitch = %#v, want true", meta["killSwitch"])
+	}
+}
+
+func TestNativeNftKillSwitchRespectsSelectedDevice(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"transparentPort":      "52345",
+		"killSwitch":           true,
+		"killSwitchDeviceMode": "selected",
+		"killSwitchDevices":    []any{"192.168.1.190"},
+		"killSwitchIps":        []any{"162.159.140.0/24"},
+	})
+	if !strings.Contains(body, `iifname "br-lan" ip saddr { 192.168.1.190 } ip daddr @killswitch4`) {
+		t.Fatalf("kill switch should be scoped to selected device:\n%s", body)
+	}
+	devices, ok := meta["killSwitchDevices"].([]string)
+	if !ok || len(devices) != 1 || devices[0] != "192.168.1.190" {
+		t.Fatalf("killSwitchDevices = %#v, want selected device", meta["killSwitchDevices"])
+	}
+}
+
+func TestNativeNftKillSwitchSelectedDeviceModeWithoutDevicesIsNoop(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"transparentPort":      "52345",
+		"killSwitch":           true,
+		"killSwitchDeviceMode": "selected",
+		"killSwitchDevices":    []any{},
+		"killSwitchIps":        []any{"162.159.140.0/24"},
+	})
+	if strings.Contains(body, `ip daddr @killswitch4`) {
+		t.Fatalf("kill switch selected mode without devices must not create all-LAN rules:\n%s", body)
+	}
+	if meta["killSwitchDeviceMode"] != "selected" {
+		t.Fatalf("killSwitchDeviceMode = %#v, want selected", meta["killSwitchDeviceMode"])
+	}
+}
+
+func TestNativeNftKillSwitchCanRunWhenInterceptSelectedListIsEmpty(t *testing.T) {
+	body, _ := NativeNft(map[string]any{
+		"routerMode":      "tproxy",
+		"deviceMode":      "selected",
+		"devices":         []any{},
+		"transparentPort": "52345",
+		"killSwitch":      true,
+		"killSwitchIps":   []any{"162.159.140.0/24"},
+	})
+	killSwitchIndex := strings.Index(body, `ip daddr @killswitch4`)
+	returnIndex := strings.Index(body, `return comment "RuOpenRay selected device list is empty"`)
+	if killSwitchIndex < 0 || returnIndex < 0 || killSwitchIndex > returnIndex {
+		t.Fatalf("kill switch should be emitted before empty intercept return:\n%s", body)
+	}
+}
+
+func TestNativeNftKillSwitchExcludesDevice(t *testing.T) {
+	body, _ := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"transparentPort":      "52345",
+		"killSwitch":           true,
+		"killSwitchDeviceMode": "exclude",
+		"killSwitchDevices":    []any{"192.168.1.190"},
+		"killSwitchIps":        []any{"162.159.140.0/24"},
+	})
+	if !strings.Contains(body, `iifname "br-lan" ip saddr != { 192.168.1.190 } ip daddr @killswitch4`) {
+		t.Fatalf("kill switch exclude mode should use negative source match:\n%s", body)
 	}
 }
 

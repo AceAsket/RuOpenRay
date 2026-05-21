@@ -640,12 +640,13 @@ function dashboardServerSwitch(servers) {
           const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
           const check = checkForTag(tag);
           const ping = check?.ok ? checkLabel(check) : '';
+          const connecting = state.pendingServerTag === tag;
           const stateLabel = activeServer ? (direction?.rules ? `${direction.rules} правил` : 'Текущий') : 'Сервер';
           const action = activeServer
             ? `<span class="server-state-pill active">${summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный'}</span>`
-            : `<button class="btn warning compact-action" data-dashboard-connect="${escapeHtml(tag)}">Подключиться</button>`;
+            : `<button class="btn warning compact-action ${connecting ? 'is-busy' : ''}" data-dashboard-connect="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>`;
           return `<article class="dashboard-server-option ${activeServer ? 'active' : ''}">
-            <button type="button" class="server-option-pick" ${activeServer ? '' : `data-dashboard-connect="${escapeHtml(tag)}"`}>
+            <button type="button" class="server-option-pick" ${activeServer || connecting ? 'disabled' : `data-dashboard-connect="${escapeHtml(tag)}"`}>
               <span class="server-option-state ${activeServer ? 'active' : ''}">${stateLabel}</span>
               <span class="server-option-main">
                 <strong>${escapeHtml(tag || 'server')}</strong>

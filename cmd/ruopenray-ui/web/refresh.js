@@ -25,6 +25,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     status,
     profiles,
     config,
+    configDraft,
     logs,
     leases,
     releases,
@@ -37,11 +38,13 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     lanDns,
     firewallStatus,
     subscriptions,
-    disabledRoutes
+    disabledRoutes,
+    routeNames
   ] = await Promise.all([
     request('/api/status'),
     request('/api/profiles'),
     request('/api/config'),
+    request('/api/config/draft').catch(() => ({ ok: false, exists: false })),
     text(logsUrl()),
     request('/api/dhcp/leases').catch(() => ({ leases: [] })),
     optionalRequest(request, '/api/core/releases', { releases: [], asset: '' }),
@@ -54,12 +57,14 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     request('/api/dns/lan-upstream').catch(() => null),
     request('/api/firewall/status').catch(() => null),
     request('/api/subscriptions').catch(() => ({ pools: [] })),
-    request('/api/routing/disabled').catch(() => null)
+    request('/api/routing/disabled').catch(() => null),
+    request('/api/routing/names').catch(() => null)
   ]);
   return {
     status,
     profiles,
     config,
+    configDraft,
     logs,
     leases,
     releases,
@@ -72,7 +77,8 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     lanDns,
     firewallStatus,
     subscriptions,
-    disabledRoutes
+    disabledRoutes,
+    routeNames
   };
 }
 

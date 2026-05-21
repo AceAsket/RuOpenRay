@@ -87,7 +87,7 @@ function settingsPanel() {
       </div>
       <div class="toolbar">
         <button class="btn warning ${state.loggingSaving ? 'is-busy' : ''}" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить логирование'}</button>
-        <button class="btn secondary" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>Очистить логи</button>
+        <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
       </div>
     </section>
   `;

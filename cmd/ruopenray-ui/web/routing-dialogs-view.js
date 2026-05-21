@@ -7,6 +7,8 @@ export function createRoutingDialogsView({
   builtinRoutePresetEntries,
   ruleCountLabel,
   routePresetConditionCount,
+  routePresetInstallSummary = () => ({ installed: false, partial: false }),
+  routePresetInstallLabel = () => '',
   routeTargetOptions,
   balancerOptions,
   outboundOptions,
@@ -31,6 +33,7 @@ function routeRuleDialog() {
   const editing = state.routeRuleEditingIndex >= 0;
   const listMode = !editing && state.routeRuleMode === 'list';
   const presetsMode = !editing && state.routeRuleMode === 'presets';
+  const defaultMode = state.routeKind === 'default';
   const selected = new Set(state.selectedRoutePresets);
   const customEntries = customRoutePresetEntries();
   return `
@@ -55,33 +58,43 @@ function routeRuleDialog() {
           <button class="preset-create" type="button" data-action="newRoutePreset">Добавить свою подборку</button>
           ${customEntries.length ? `
             <div class="preset-group-title">Мои подборки</div>
-            ${customEntries.map(([key, preset]) => `
-              <label class="preset-check custom ${selected.has(key) ? 'active' : ''}">
+            ${customEntries.map(([key, preset]) => {
+              const install = routePresetInstallSummary(key);
+              const label = routePresetInstallLabel(key);
+              return `
+              <label class="preset-check custom ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
                 <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
                 <span class="checkmark"></span>
                 <span>
                   <strong>${escapeHtml(preset.title)}</strong>
                   <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
+                  ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
                 </span>
                 <span class="preset-check-actions">
                   <button class="preset-edit" type="button" data-route-preset-edit="${key}">Править</button>
                   <button class="preset-delete" type="button" data-route-preset-delete="${key}">Удалить</button>
                 </span>
               </label>
-            `).join('')}
+            `;
+            }).join('')}
           ` : ''}
           <div class="preset-group-title">Подборки</div>
-          ${builtinRoutePresetEntries().map(([key, preset]) => `
-            <label class="preset-check ${selected.has(key) ? 'active' : ''}">
+          ${builtinRoutePresetEntries().map(([key, preset]) => {
+            const install = routePresetInstallSummary(key);
+            const label = routePresetInstallLabel(key);
+            return `
+            <label class="preset-check ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
               <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
               <span class="checkmark"></span>
               <span>
                 <strong>${escapeHtml(preset.title)}</strong>
                 <small>${escapeHtml(`${preset.detail || describeRouteRule(preset.rule || routePresetRules(key)[0]).fullValue} · ${ruleCountLabel(routePresetConditionCount(key))}`)}</small>
+                ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
               </span>
               <button class="preset-edit" type="button" data-route-preset-edit="${key}">Править</button>
             </label>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
         ` : listMode ? `
         <div class="route-form route-form-dialog route-list-form">
@@ -110,11 +123,18 @@ function routeRuleDialog() {
                 .join('')}
             </select>
           </div>
+          ${defaultMode ? `
+          <div class="route-default-hint">
+            <strong>Остальной трафик</strong>
+            <span>Это правило сработает только после всех правил выше. Обычно его ставят последним: например, <code>default: direct</code>.</span>
+          </div>
+          ` : `
           <div class="form-row route-value">
             <label>Значение</label>
             <input id="routeValue" value="${escapeHtml(state.routeValue)}" placeholder="${escapeHtml(routePlaceholders[state.routeKind])}" />
           </div>
           ${routeLeasePicker()}
+          `}
           <div class="form-row">
             <label>Тип цели</label>
             <div class="segmented route-target-switch" aria-label="Тип цели правила">

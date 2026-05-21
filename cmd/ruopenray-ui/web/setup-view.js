@@ -169,7 +169,7 @@ function setupWizardDialog() {
           <article>
             <span>Свободное место</span>
             <strong>${escapeHtml(byteSize(diskFree))}</strong>
-            <small>${diskFree && diskFree < 16 * 1024 * 1024 ? 'Мало места: выбирайте компактные geo и без бэкапов.' : 'Для слабых роутеров всё равно лучше держать запас.'}</small>
+            <small>${diskFree && diskFree < 16 * 1024 * 1024 ? 'Свободное место ограничено: используйте компактные geo и отключайте бэкап только осознанно.' : 'Для слабых роутеров лучше оставить запас под временные файлы.'}</small>
           </article>
           <article>
             <span>Режим защиты</span>
@@ -304,7 +304,7 @@ function installWizardDialog() {
         </section>
         <div class="nand-plan ${storage.leanOk === false ? 'danger' : ''}">
           <div>
-            <strong>NAND-friendly профиль</strong>
+            <strong>Экономный режим для роутера</strong>
             <span>${escapeHtml(storage.recommendedMode || 'Без лишних бэкапов, компактные geo и контроль свободного места.')}</span>
           </div>
           <div class="nand-plan-grid">

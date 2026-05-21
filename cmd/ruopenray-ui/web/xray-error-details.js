@@ -64,6 +64,17 @@ function explainConfigError(line = '', technical = '') {
       body: 'В правилах есть geoip:private, но текущий geoip.dat не содержит список PRIVATE. Обновите geoip.dat на источник с PRIVATE или вручную замените правило на локальные CIDR-подсети.'
     };
   }
+  const missingGeoCode = source.match(/code not found in (geoip|geosite)\.dat:\s*([a-z0-9_-]+)/i)
+    || source.match(/failed to load (GeoIP|GeoSite):\s*([a-z0-9_-]+)/i);
+  if (missingGeoCode) {
+    const fileKind = missingGeoCode[1].toLowerCase().includes('site') ? 'geosite' : 'geoip';
+    const file = `${fileKind}.dat`;
+    const code = String(missingGeoCode[2] || '').toUpperCase();
+    return {
+      title: `${file} не содержит ${code}`,
+      body: `В правилах есть ${fileKind}:${code.toLowerCase()}, но установленный ${file} не содержит такой список. Выберите другой источник geodata или замените правило на список, который есть в текущем dat-файле.`
+    };
+  }
   if (/geoip\.dat/i.test(source) && /no such file|failed to load|open .*geoip\.dat/i.test(source)) {
     return {
       title: 'Не найден geoip.dat',

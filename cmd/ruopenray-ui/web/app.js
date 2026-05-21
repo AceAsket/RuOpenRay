@@ -64,8 +64,10 @@ import {
   firewallBypassModeStorageKey,
   firewallDeviceModeStorageKey,
   firewallDnsInterceptStorageKey,
+  firewallKillSwitchDeviceModeStorageKey,
   firewallKillSwitchEnabledStorageKey,
   firewallKillSwitchDomainModeStorageKey,
+  firewallKillSwitchSelectedDevicesStorageKey,
   firewallKillSwitchTargetsStorageKey,
   firewallPortModeStorageKey,
   firewallPortsStorageKey,
@@ -73,6 +75,7 @@ import {
   firewallSelectedDevicesStorageKey,
   installPasswordStorageKey,
   loadDisabledRouteRules,
+  routeNamesStorageKey,
   savedPasswordStorageKey,
   setupSnapshotStorageKey,
   shellQuote,
@@ -108,7 +111,54 @@ async function request(path, options = {}) {
   return api.request(path, options);
 }
 
+async function upload(path, formData, options = {}) {
+  return api.upload(path, formData, options);
+}
 
+let serverDraftSaveTimer = null;
+let serverDraftSaveSeq = 0;
+
+function scheduleServerDraftSave(config) {
+  if (!state.token || !config || typeof config !== 'object') return;
+  const seq = ++serverDraftSaveSeq;
+  clearTimeout(serverDraftSaveTimer);
+  state.serverDraftSaving = true;
+  state.serverDraftError = '';
+  serverDraftSaveTimer = setTimeout(async () => {
+    try {
+      const result = await request('/api/config/draft', {
+        method: 'POST',
+        body: JSON.stringify({ config })
+      });
+      if (seq !== serverDraftSaveSeq) return;
+      state.serverDraftExists = Boolean(result.exists);
+      state.serverDraftSavedAt = result.updatedAt || '';
+      state.serverDraftError = result.error || '';
+    } catch (error) {
+      if (seq === serverDraftSaveSeq) state.serverDraftError = error.message || 'Не удалось сохранить черновик на роутере';
+    } finally {
+      if (seq === serverDraftSaveSeq) state.serverDraftSaving = false;
+    }
+  }, 650);
+}
+
+function cancelServerDraftSave() {
+  clearTimeout(serverDraftSaveTimer);
+  serverDraftSaveTimer = null;
+  serverDraftSaveSeq += 1;
+  state.serverDraftSaving = false;
+}
+
+function saveRouteNamesToServer(names) {
+  if (!state.token) return;
+  request('/api/routing/names', {
+    method: 'POST',
+    body: JSON.stringify({ names: names || {} })
+  }).catch((error) => {
+    state.message = error.message || 'Не удалось сохранить названия маршрутов на роутере';
+    render();
+  });
+}
 
 const {
   syncConfig,
@@ -116,7 +166,7 @@ const {
   syncServiceSettings,
   syncLanDnsStatus,
   lanDnsModeLabel
-} = createConfigStateHelpers(state);
+} = createConfigStateHelpers(state, { onDraftChange: scheduleServerDraftSave });
 
 const routingModel = createRoutingModel({
   state,
@@ -124,7 +174,8 @@ const routingModel = createRoutingModel({
   routeBundles,
   routeKinds,
   routePresets,
-  proxyOutbounds: () => proxyOutbounds()
+  proxyOutbounds: () => proxyOutbounds(),
+  persistRouteNames: saveRouteNamesToServer
 });
 const {
   routeRules,
@@ -317,6 +368,8 @@ const {
   routePresetDetail,
   routeRuleConditionCount,
   routePresetConditionCount,
+  routePresetInstallSummary,
+  routePresetInstallLabel,
   builtinRoutePresetEntries,
   ruleCountLabel,
   customRoutePreset,
@@ -504,8 +557,10 @@ const firewallActions = createFirewallActions({
     firewallBypassModeStorageKey,
     firewallRouterModeStorageKey,
     firewallDeviceModeStorageKey,
+    firewallKillSwitchDeviceModeStorageKey,
     firewallPortModeStorageKey,
     firewallSelectedDevicesStorageKey,
+    firewallKillSwitchSelectedDevicesStorageKey,
     firewallBlockQuicStorageKey,
     firewallDnsInterceptStorageKey,
     firewallKillSwitchEnabledStorageKey,
@@ -528,6 +583,8 @@ const {
   setQuicPolicy,
   setFirewallKillSwitchEnabled,
   setFirewallKillSwitchDomainMode,
+  setFirewallKillSwitchDeviceMode,
+  toggleFirewallKillSwitchDevice,
   setFirewallKillSwitchTargets
 } = firewallActions;
 
@@ -544,6 +601,7 @@ const runtimeController = createRuntimeController({
   inferredActiveProxyTag,
   syncLanDnsStatus,
   disabledRouteRulesStorageKey,
+  routeNamesStorageKey,
   syncLoggingSettings,
   syncServiceSettings,
   clearAuth
@@ -657,6 +715,7 @@ const { loginView } = loginViewController;
 const updatesActions = createUpdatesActions({
   state,
   request,
+  upload,
   render,
   refresh,
   geoSelectedPresetIds: (...args) => geoSelectedPresetIds(...args)
@@ -667,17 +726,48 @@ const {
   checkAppUpdate,
   appVersionClick,
   updateGeo,
+  checkGeoAudit,
   saveGeoSchedule,
   installCorePackage,
   cleanupGeoBackups,
+  uploadGeoFile,
   deleteGeoFile,
   cleanupExtraGeoDat,
   cleanGeoSourcePayload,
   saveGeoSources,
   addGeoSource,
+  editGeoPreset,
+  resetGeoPresetOverride,
+  editGeoSource,
+  cancelGeoSourceEdit,
   removeGeoSource,
-  toggleGeoSourceEnabled
+  toggleGeoSourceEnabled,
+  addGeoList,
+  editGeoList,
+  cancelGeoListEdit,
+  loadGeoCatalog,
+  openGeoCatalogCategory,
+  saveGeoCatalogCategory,
+  removeGeoList,
+  toggleGeoListEnabled
 } = updatesActions;
+
+function addGeoListToRouting(id) {
+  const list = state.geoUserLists.find((item) => item.id === id);
+  if (!list || !Array.isArray(list.items) || !list.items.length) return;
+  const target = ['direct', 'block'].includes(list.target) ? list.target : activeProxyTagForRouting();
+  const rule = {
+    type: 'field',
+    outboundTag: target,
+  };
+  if (list.kind === 'ip') rule.ip = [...list.items];
+  else rule.domain = [...list.items];
+  setRoutingDraft([...cloneRules(routeRules()), rule]);
+  setRouteRuleName(rule, list.name || 'Geo-список');
+  saveRouteNames();
+  state.message = `Geo-список «${list.name || id}» добавлен в черновик маршрутизации`;
+  render();
+}
 
 const configActions = createConfigActions({
   state,
@@ -686,7 +776,8 @@ const configActions = createConfigActions({
   refresh,
   keepOperationVisible,
   recordXrayStatsSample,
-  xrayStatsResetAtStorageKey
+  xrayStatsResetAtStorageKey,
+  cancelServerDraftSave
 });
 const {
   testConfig,
@@ -698,6 +789,46 @@ const {
   downloadConfig,
   downloadAnonymizedConfig
 } = configActions;
+
+async function applyConfigAndFirewall() {
+  const configDirty = configHasUnappliedChanges();
+  const firewallDirty = firewallHasUnappliedChanges();
+  if (!configDirty && !firewallDirty) {
+    state.message = 'Непримененных изменений нет';
+    render();
+    return;
+  }
+
+  state.busyAction = 'apply';
+  state.busyLabel = configDirty && firewallDirty ? 'Применяю Xray и firewall' : '';
+  render();
+  try {
+    if (configDirty) {
+      await applyConfig({
+        progressMessage: firewallDirty
+          ? 'Применяю Xray, затем обновлю правила firewall...'
+          : 'Применяю конфигурацию Xray...',
+        successMessage: firewallDirty
+          ? 'Xray применен, применяю firewall...'
+          : 'Конфигурация Xray применена'
+      });
+    }
+
+    if (firewallDirty || firewallHasUnappliedChanges()) {
+      await applyFirewall({
+        busyAction: 'apply',
+        busyLabel: configDirty ? 'Применяю firewall' : '',
+        successMessage: configDirty
+          ? 'Xray и firewall применены'
+          : 'Firewall-правила применены и сохранены для перезапуска firewall'
+      });
+    }
+  } finally {
+    if (state.busyAction === 'apply') state.busyAction = '';
+    state.busyLabel = '';
+    render();
+  }
+}
 
 
 
@@ -749,7 +880,8 @@ serverActions = createServerActions({
 const {
   removeOutbound,
   routeAllToOutbound,
-  fallbackSubscriptionPool
+  fallbackSubscriptionPool,
+  deleteSubscriptionPool
 } = serverActions;
 
 const profileActions = createProfileActions({
@@ -851,6 +983,7 @@ const {
   applyDnsGuardPreset,
   removeDnsServer,
   checkDnsServer,
+  checkDnsDiagnostics,
   applyLanDnsUpstream,
   applyDnsBootstrapHosts,
   previewLanDnsUpstream
@@ -1039,6 +1172,7 @@ const {
   geoActionLabel,
   geoNandCard,
   geoPurposeLabel,
+  geoEditorPanel,
   geoPanel
 } = geoView;
 
@@ -1205,6 +1339,8 @@ const routingView = createRoutingView({
   customRoutePresetEntries,
   ruleCountLabel,
   routePresetConditionCount,
+  routePresetInstallSummary,
+  routePresetInstallLabel,
   routeBalancers,
   observatoryPanel,
   balancerSelectorMatches,
@@ -1215,11 +1351,13 @@ const routingView = createRoutingView({
   tcpFastOpenDraftEnabled,
   firewallInfo,
   firewallReadyStatus,
+  firewallPendingReasons,
   firewallPolicyPreview,
   firewallSafetyCheck,
   firewallDeviceChoices,
   firewallSelectedDevices,
   firewallCommands,
+  geoEditorPanel,
   geoPanel,
 });
 const {
@@ -1298,19 +1436,26 @@ function pendingChangesBanner() {
     ? firewallPendingReasons(state.firewallStatus || {})
     : [];
   const visibleFirewallReasons = firewallReasons.slice(0, 4);
+  const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
+  const applyLabel = applying
+    ? 'Применяю изменения...'
+    : configDirty && firewallDirty
+      ? 'Применить Xray и firewall'
+      : configDirty
+        ? 'Применить Xray'
+        : 'Применить firewall';
   return `
     <section class="pending-changes" role="status" aria-live="polite">
       <div>
         <strong>Есть непримененные изменения</strong>
         <span>${[
           configDirty ? 'черновик Xray отличается от активного config.json' : '',
-          firewallDirty ? `firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки еще не применены'}` : ''
+          firewallDirty ? `будет применено в firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки еще не применены'}` : ''
         ].filter(Boolean).join(' · ')}</span>
         ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
       </div>
       <div class="pending-actions">
-        ${configDirty ? `<button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>` : ''}
-        ${firewallDirty ? `<button class="btn warning ${state.firewallSaving ? 'is-busy' : ''}" data-action="applyFirewall" ${state.firewallSaving ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю firewall...' : 'Применить firewall'}</button>` : ''}
+        <button class="btn warning ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
     </section>
   `;
@@ -1342,6 +1487,8 @@ const routingDialogsView = createRoutingDialogsView({
   builtinRoutePresetEntries,
   ruleCountLabel,
   routePresetConditionCount,
+  routePresetInstallSummary,
+  routePresetInstallLabel,
   routeTargetOptions,
   balancerOptions,
   outboundOptions,
@@ -1374,9 +1521,9 @@ function routePresetDialog(...args) {
 
 function captureRenderState() {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
-    return { tab: state.tab, scrollY: 0, details: {} };
+    return { tab: state.tab, scrollY: 0, details: { ...(state.openDetails || {}) } };
   }
-  const details = {};
+  const details = { ...(state.openDetails || {}) };
   document.querySelectorAll('details[data-details-key]').forEach((node) => {
     const key = node.getAttribute('data-details-key');
     if (key) details[key] = node.open;
@@ -1391,7 +1538,8 @@ function captureRenderState() {
 
 function restoreRenderState(snapshot) {
   if (!snapshot || typeof document === 'undefined') return;
-  Object.entries(snapshot.details || {}).forEach(([key, open]) => {
+  const details = { ...(state.openDetails || {}), ...(snapshot.details || {}) };
+  Object.entries(details).forEach(([key, open]) => {
     const node = Array.from(document.querySelectorAll('details[data-details-key]'))
       .find((item) => item.getAttribute('data-details-key') === key);
     if (node) node.open = Boolean(open);
@@ -1480,9 +1628,69 @@ function render() {
     ${routePresetDialog()}
   `;
   bind();
+  bindDetailsPersistence();
+  decorateBusyActionButtons();
   restoreConfigScroll();
   restoreRenderState(renderSnapshot);
   scrollLogsToBottom();
+}
+
+function bindDetailsPersistence() {
+  document.querySelectorAll('details[data-details-key]').forEach((node) => {
+    const key = node.getAttribute('data-details-key');
+    if (!key) return;
+    node.addEventListener('toggle', () => {
+      state.openDetails = { ...(state.openDetails || {}), [key]: node.open };
+    });
+  });
+}
+
+function decorateBusyActionButtons() {
+  if (!state.busyAction) return;
+  document.querySelectorAll('[data-action]').forEach((button) => {
+    if (button.dataset.action !== state.busyAction) return;
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.classList.add('is-busy');
+    if (button.dataset.busyDisabled !== '0') button.disabled = true;
+    const label = busyButtonLabel(state.busyAction, state.busyLabel || button.textContent || '');
+    if (!label || button.dataset.busyLabelInline === '0') return;
+    button.textContent = label;
+    if (button.classList.contains('service-icon')) {
+      button.classList.add('is-busy-label');
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    }
+  });
+}
+
+function busyButtonLabel(action, fallback = '') {
+  const map = {
+    start: 'Запускаю',
+    stop: 'Останавливаю',
+    restart: 'Перезапускаю',
+    refresh: 'Обновляю',
+    test: 'Проверяю',
+    apply: 'Применяю изменения',
+    applyFirewall: 'Применяю firewall',
+    disableFirewall: 'Отключаю',
+    refreshFirewallStatus: 'Обновляю',
+    downloadFirewallRules: 'Готовлю файл',
+    prepareTransparent: 'Готовлю',
+    prepareDnsInbound: 'Готовлю',
+    checkServers: 'Проверяю',
+    checkDns: 'Проверяю DNS',
+    runSetupWizard: 'Применяю',
+    setupPrepareDraft: 'Готовлю',
+    installCorePackage: 'Устанавливаю',
+    updateCore: 'Устанавливаю',
+    updateGeo: 'Обновляю',
+    checkGeoAudit: 'Проверяю geo',
+    saveLoggingSettings: 'Сохраняю',
+    saveServiceSettings: 'Сохраняю',
+    previewLanDnsUpstream: 'Проверяю',
+    applyLanDnsUpstream: 'Применяю DNS'
+  };
+  return map[action] || String(fallback || '').replace(/\s+/g, ' ').trim() || 'Выполняю';
 }
 
 function restoreConfigScroll() {
@@ -1524,7 +1732,7 @@ function bind() {
       checkAppUpdate,
       updateApp,
       test: testConfig,
-      apply: applyConfig,
+      apply: applyConfigAndFirewall,
       applyFirewall,
       disableFirewall,
       refreshFirewallStatus,
@@ -1609,10 +1817,14 @@ function bind() {
       updateCore,
       installCorePackage,
       updateGeo,
+      checkGeoAudit,
       saveGeoSchedule,
       cleanupGeoBackups,
+      uploadGeoFile,
       cleanupExtraGeoDat,
       addGeoSource,
+      addGeoList,
+      saveGeoCatalogCategory,
       refreshLogs: () => refreshLogs(true, true),
       runConnectivityDiagnostics,
       refreshDomainMonitor: () => refreshDomainMonitor(true),
@@ -1666,11 +1878,13 @@ function bind() {
       dnsWizardRu: () => applyDnsGuardPreset('ru'),
       dnsWizardStrict: () => applyDnsGuardPreset('strict'),
       checkDns: checkDnsServer,
+      checkDnsDiagnostics,
       applyDnsBootstrapHosts,
       checkServers,
       checkObservatoryTargets,
       enableObservatoryForProxy,
       fallbackSubscription: (button) => fallbackSubscriptionPool(button.dataset.subscriptionFallback || ''),
+      deleteSubscription: (button) => deleteSubscriptionPool(button.dataset.subscriptionDelete || ''),
       scanSni,
       saveProfile,
       backup,
@@ -1693,7 +1907,19 @@ function bind() {
     render,
     toggleGeoSourceEnabled,
     removeGeoSource,
+    editGeoPreset,
+    resetGeoPresetOverride,
+    editGeoSource,
+    cancelGeoSourceEdit,
     deleteGeoFile,
+    toggleGeoListEnabled,
+    removeGeoList,
+    editGeoList,
+    cancelGeoListEdit,
+    loadGeoCatalog,
+    openGeoCatalogCategory,
+    saveGeoCatalogCategory,
+    addGeoListToRouting,
   });
   bindDeviceControls({
     state,
@@ -1743,6 +1969,8 @@ function bind() {
     setFirewallBlockQuic,
     setFirewallKillSwitchEnabled,
     setFirewallKillSwitchDomainMode,
+    setFirewallKillSwitchDeviceMode,
+    toggleFirewallKillSwitchDevice,
     setFirewallKillSwitchTargets,
     applyLeaseSearch,
     setRouteBalancerSelector,
@@ -1761,7 +1989,7 @@ function bind() {
     scrollLogsToBottom,
   });
   bindProfileControls({ activateProfile });
-  bindConfigControls({ state });
+  bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
   bindServerCheckControls({ state, render });
 

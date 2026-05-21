@@ -27,6 +27,17 @@ func TestSaveLoadStoreKeepsEmptyPoolsArray(t *testing.T) {
 	}
 }
 
+func TestRemovePoolDeletesByTag(t *testing.T) {
+	store := Store{Pools: []Pool{{Tag: "first", URL: "drop"}, {Tag: "second", URL: "keep"}}}
+	next, removed := RemovePool(store, "first")
+	if !removed {
+		t.Fatal("RemovePool removed = false, want true")
+	}
+	if len(next.Pools) != 1 || next.Pools[0].Tag != "second" {
+		t.Fatalf("unexpected pools after remove: %#v", next.Pools)
+	}
+}
+
 func TestPublicPoolActiveCandidate(t *testing.T) {
 	pool := Pool{
 		Tag:    "proxy",

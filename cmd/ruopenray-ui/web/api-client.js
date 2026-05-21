@@ -39,6 +39,24 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
     return payload;
   }
 
+  async function upload(path, formData, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      method: options.method || 'POST',
+      body: formData,
+      headers: authHeaders(options.headers || {})
+    });
+    const payload = await parseResponse(response);
+    if (!response.ok) {
+      if (response.status === 401) onUnauthorized();
+      const message = typeof payload === 'string'
+        ? payload
+        : payload.error || payload.message || response.statusText;
+      throw new Error(message);
+    }
+    return payload;
+  }
+
   async function text(path, options = {}) {
     const response = await fetch(path, {
       ...options,
@@ -54,5 +72,5 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
     return await response.text();
   }
 
-  return { authHeaders, request, text };
+  return { authHeaders, request, text, upload };
 }

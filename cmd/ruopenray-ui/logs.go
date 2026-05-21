@@ -70,11 +70,11 @@ func (s *serverState) readLogsUncached(query url.Values) string {
 	}
 	if kind == "access" || kind == "all" {
 		settings := s.loggingSettings()
-		paths = append(paths, cleanLogPath(fmt.Sprint(settings["accessPath"]), defaultAccessLogPath), defaultAccessLogPath, filepath.Join(s.cfg.DataDir, "access.log"))
+		paths = append(paths, s.normalizeManagedLogPath(fmt.Sprint(settings["accessPath"]), s.defaultAccessLogPath()), s.defaultAccessLogPath(), legacyAccessLogPath, filepath.Join(s.cfg.DataDir, "access.log"))
 	}
 	if kind == "error" || kind == "all" || kind == "system" {
 		settings := s.loggingSettings()
-		paths = append(paths, cleanLogPath(fmt.Sprint(settings["errorPath"]), defaultErrorLogPath), defaultErrorLogPath, filepath.Join(s.cfg.DataDir, "error.log"))
+		paths = append(paths, s.normalizeManagedLogPath(fmt.Sprint(settings["errorPath"]), s.defaultErrorLogPath()), s.defaultErrorLogPath(), legacyErrorLogPath, filepath.Join(s.cfg.DataDir, "error.log"))
 	}
 	seen := map[string]bool{}
 	for _, path := range paths {

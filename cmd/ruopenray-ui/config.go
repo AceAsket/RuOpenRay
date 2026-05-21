@@ -95,13 +95,16 @@ func (s *serverState) ensureData() error {
 		return err
 	}
 	if _, err := os.Stat(s.cfg.ActiveConfig); err == nil {
-		return nil
+		return s.prepareActiveLogFiles()
 	}
 	if err := os.MkdirAll(filepath.Dir(s.cfg.ActiveConfig), 0o755); err != nil {
 		return err
 	}
 	body, _ := json.MarshalIndent(defaultConfig(), "", "  ")
 	if err := os.WriteFile(s.cfg.ActiveConfig, body, 0o600); err != nil {
+		return err
+	}
+	if err := s.prepareActiveLogFiles(); err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(s.cfg.ProfilesDir, "default.json"), body, 0o600)

@@ -68,6 +68,17 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/config" && r.Method == http.MethodGet:
 		cfg, err := s.readActiveConfig()
 		respond(w, cfg, err)
+	case path == "/config/draft" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.readConfigDraft())
+	case path == "/config/draft" && r.Method == http.MethodPost:
+		payload, err := readJSON(r)
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, s.saveConfigDraft(payload))
+	case path == "/config/draft" && r.Method == http.MethodDelete:
+		writeJSON(w, 200, s.clearConfigDraft())
 	case path == "/config/test" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		cfg, _ := payload["config"].(map[string]any)
@@ -84,6 +95,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/routing/disabled" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.saveDisabledRouteRules(payload))
+	case path == "/routing/names" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.routeNamesReport())
+	case path == "/routing/names" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveRouteNames(payload))
 	case path == "/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
@@ -155,12 +171,31 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.domainProxyProbe(payload))
 	case path == "/geo/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.geoStatus())
+	case path == "/geo/catalog" && r.Method == http.MethodGet:
+		full := r.URL.Query().Get("full") == "1" || r.URL.Query().Get("full") == "true" || r.URL.Query().Get("full") == "all"
+		writeJSON(w, 200, s.geoCatalog(r.URL.Query().Get("kind"), r.URL.Query().Get("code"), full, r.URL.Query().Get("file")))
+	case path == "/geo/catalog" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveGeoCatalogCategory(payload))
+	case path == "/geo/audit" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.checkGeoAudit(payload))
 	case path == "/geo/sources" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.saveGeoCustomSources(payload))
+	case path == "/geo/preset-overrides" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveGeoPresetOverrides(payload))
+	case path == "/geo/lists" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveGeoUserLists(payload))
 	case path == "/geo/update" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.updateGeo(payload))
+	case path == "/geo/upload" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.uploadGeoFile(r))
+	case path == "/geo/download" && r.Method == http.MethodGet:
+		s.downloadGeoDat(w, r)
 	case path == "/geo/delete" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.deleteGeoFiles(payload))
@@ -186,12 +221,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.subscriptionReport())
 	case path == "/subscriptions/pool" && r.Method == http.MethodPost:
 		s.saveSubscriptionPool(w, r)
+	case path == "/subscriptions/delete" && r.Method == http.MethodPost:
+		s.deleteSubscriptionPool(w, r)
 	case path == "/subscriptions/fallback" && r.Method == http.MethodPost:
 		s.fallbackSubscription(w, r)
 	case path == "/dhcp/leases" && r.Method == http.MethodGet:
 		writeJSON(w, 200, dhcpLeaseReport(s.cfg.DataDir))
 	case path == "/dns/check" && r.Method == http.MethodPost:
 		s.checkDNS(w, r)
+	case path == "/dns/diagnostics" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.dnsDiagnostics())
 	case path == "/dns/lan-upstream" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.lanDNSUpstreamStatus(nil))
 	case path == "/dns/lan-upstream" && r.Method == http.MethodPost:

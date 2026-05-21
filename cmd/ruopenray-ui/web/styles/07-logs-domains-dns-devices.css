@@ -549,6 +549,58 @@
   margin-bottom: 16px;
 }
 
+.dns-diagnostics-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(13, 20, 25, 0.78);
+}
+
+.dns-diagnostics-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.dns-diagnostics-card span {
+  color: var(--muted);
+}
+
+.dns-diagnostics-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dns-diagnostics-grid article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 13, 16, 0.72);
+}
+
+.dns-diagnostics-grid article.ok {
+  border-color: rgba(103, 222, 120, 0.45);
+  background: rgba(103, 222, 120, 0.08);
+}
+
+.dns-diagnostics-grid article.warn {
+  border-color: rgba(242, 189, 82, 0.38);
+  background: rgba(242, 189, 82, 0.08);
+}
+
+.dns-diagnostics-grid strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
 .dns-wizard {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1148,6 +1200,7 @@
   }
 
   .intercept-summary-grid,
+  .leak-status-strip,
   .traffic-outcomes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1176,14 +1229,25 @@
   .core-release-list,
   .core-dialog-release,
   .geo-presets,
+  .geo-doctor-grid,
   .geo-file-list article,
   .geo-source-form,
   .geo-source-list article,
+  .geo-list-form,
+  .geo-list-saved article,
   .geo-custom,
   .setup-readiness,
   .setup-choice-grid,
   .setup-actions {
     grid-template-columns: 1fr;
+  }
+
+  .geo-source-name-row,
+  .geo-source-kind-row,
+  .geo-source-target-row,
+  .geo-source-url-row,
+  .geo-source-form > .btn {
+    grid-column: 1 / -1;
   }
 
   .route-form,
@@ -1208,6 +1272,8 @@
   .domain-monitor-device,
   .domain-monitor-row,
   .dns-wizard,
+  .dns-diagnostics-card,
+  .dns-diagnostics-grid,
   .guard-list,
   .device-form,
   .device-row,

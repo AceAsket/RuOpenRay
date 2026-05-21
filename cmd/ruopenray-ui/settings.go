@@ -52,9 +52,17 @@ func (s *serverState) changePassword(payload map[string]any) map[string]any {
 }
 
 const (
-	defaultAccessLogPath = "/var/log/xray/access.log"
-	defaultErrorLogPath  = "/var/log/xray/error.log"
+	legacyAccessLogPath = "/var/log/xray/access.log"
+	legacyErrorLogPath  = "/var/log/xray/error.log"
 )
+
+func (s *serverState) defaultAccessLogPath() string {
+	return filepath.Join(s.cfg.DataDir, "logs", "access.log")
+}
+
+func (s *serverState) defaultErrorLogPath() string {
+	return filepath.Join(s.cfg.DataDir, "logs", "error.log")
+}
 
 func (s *serverState) loggingSettingsPath() string {
 	return filepath.Join(s.cfg.DataDir, "logging-settings.json")
@@ -339,6 +347,69 @@ func cleanLogPath(value string, fallback string) string {
 	return clean
 }
 
+func isVolatileLogPath(path string) bool {
+	clean := filepath.Clean(strings.TrimSpace(path))
+	clean = filepath.ToSlash(clean)
+	return clean == "/tmp" || strings.HasPrefix(clean, "/tmp/") || clean == "/var" || strings.HasPrefix(clean, "/var/")
+}
+
+func (s *serverState) normalizeManagedLogPath(value string, fallback string) string {
+	path := cleanLogPath(value, fallback)
+	if isVolatileLogPath(path) {
+		return fallback
+	}
+	return path
+}
+
+func ensureLogFileDir(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "<nil>" {
+		return nil
+	}
+	return os.MkdirAll(filepath.Dir(path), 0o755)
+}
+
+func (s *serverState) prepareActiveLogFiles() error {
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		return err
+	}
+	changed, err := s.prepareConfigLogFiles(cfg)
+	if err != nil {
+		return err
+	}
+	if changed {
+		return s.writeActiveConfigRaw(cfg)
+	}
+	return nil
+}
+
+func (s *serverState) prepareConfigLogFiles(cfg map[string]any) (bool, error) {
+	logConfig, _ := cfg["log"].(map[string]any)
+	if logConfig == nil {
+		return false, nil
+	}
+	changed := false
+	for key, fallback := range map[string]string{
+		"access": s.defaultAccessLogPath(),
+		"error":  s.defaultErrorLogPath(),
+	} {
+		raw := strings.TrimSpace(fmt.Sprint(logConfig[key]))
+		if raw == "" || raw == "<nil>" {
+			continue
+		}
+		path := s.normalizeManagedLogPath(raw, fallback)
+		if path != raw {
+			logConfig[key] = path
+			changed = true
+		}
+		if err := ensureLogFileDir(path); err != nil {
+			return changed, err
+		}
+	}
+	return changed, nil
+}
+
 func intSetting(settings map[string]any, key string, fallback int) int {
 	if value, ok := settings[key]; ok {
 		return number(value, fallback)
@@ -366,8 +437,8 @@ func (s *serverState) loggingSettings() map[string]any {
 	runtimeSettings := s.readLoggingRuntimeSettings()
 	accessRaw := strings.TrimSpace(fmt.Sprint(logConfig["access"]))
 	errorRaw := strings.TrimSpace(fmt.Sprint(logConfig["error"]))
-	accessPath := cleanLogPath(accessRaw, defaultAccessLogPath)
-	errorPath := cleanLogPath(errorRaw, defaultErrorLogPath)
+	accessPath := s.normalizeManagedLogPath(accessRaw, s.defaultAccessLogPath())
+	errorPath := s.normalizeManagedLogPath(errorRaw, s.defaultErrorLogPath())
 	return map[string]any{
 		"ok":               true,
 		"level":            validLogLevel(fmt.Sprint(logConfig["loglevel"])),
@@ -395,14 +466,14 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 		logConfig = map[string]any{}
 	}
 	level := validLogLevel(fmt.Sprint(payload["level"]))
-	accessPath := cleanLogPath(fmt.Sprint(payload["accessPath"]), defaultAccessLogPath)
-	errorPath := cleanLogPath(fmt.Sprint(payload["errorPath"]), defaultErrorLogPath)
+	accessPath := s.normalizeManagedLogPath(fmt.Sprint(payload["accessPath"]), s.defaultAccessLogPath())
+	errorPath := s.normalizeManagedLogPath(fmt.Sprint(payload["errorPath"]), s.defaultErrorLogPath())
 	accessLog := boolPayload(payload, "accessLog", false)
 	errorLog := boolPayload(payload, "errorLog", false)
 	logConfig["loglevel"] = level
 	if accessLog {
 		logConfig["access"] = accessPath
-		if err := os.MkdirAll(filepath.Dir(accessPath), 0o755); err != nil {
+		if err := ensureLogFileDir(accessPath); err != nil {
 			return map[string]any{"ok": false, "stderr": err.Error()}
 		}
 	} else {
@@ -410,7 +481,7 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 	}
 	if errorLog {
 		logConfig["error"] = errorPath
-		if err := os.MkdirAll(filepath.Dir(errorPath), 0o755); err != nil {
+		if err := ensureLogFileDir(errorPath); err != nil {
 			return map[string]any{"ok": false, "stderr": err.Error()}
 		}
 	} else {
@@ -465,10 +536,12 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 func (s *serverState) configuredLogPaths() []string {
 	settings := s.loggingSettings()
 	paths := []string{
-		cleanLogPath(fmt.Sprint(settings["accessPath"]), defaultAccessLogPath),
-		cleanLogPath(fmt.Sprint(settings["errorPath"]), defaultErrorLogPath),
-		defaultAccessLogPath,
-		defaultErrorLogPath,
+		s.normalizeManagedLogPath(fmt.Sprint(settings["accessPath"]), s.defaultAccessLogPath()),
+		s.normalizeManagedLogPath(fmt.Sprint(settings["errorPath"]), s.defaultErrorLogPath()),
+		s.defaultAccessLogPath(),
+		s.defaultErrorLogPath(),
+		legacyAccessLogPath,
+		legacyErrorLogPath,
 		filepath.Join(s.cfg.DataDir, "access.log"),
 		filepath.Join(s.cfg.DataDir, "error.log"),
 	}
@@ -519,6 +592,9 @@ func (s *serverState) startLogMaintenance() {
 }
 
 func (s *serverState) maintainLogFiles(restart bool) map[string]any {
+	if err := s.prepareActiveLogFiles(); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
 	settings := s.loggingSettings()
 	if settings["ok"] != true {
 		return map[string]any{"ok": false, "stderr": fmt.Sprint(settings["error"])}

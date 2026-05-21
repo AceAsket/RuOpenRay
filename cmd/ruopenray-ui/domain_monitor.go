@@ -219,9 +219,11 @@ func (s *serverState) monitorLogContent() (string, string) {
 	var blocks []string
 	var sourcePaths []string
 	paths := []string{
-		"/var/log/xray/access.log",
+		s.defaultAccessLogPath(),
+		legacyAccessLogPath,
 		filepath.Join(s.cfg.DataDir, "access.log"),
-		"/var/log/xray/error.log",
+		s.defaultErrorLogPath(),
+		legacyErrorLogPath,
 		filepath.Join(s.cfg.DataDir, "error.log"),
 	}
 	if settings := s.loggingSettings(); settings != nil {

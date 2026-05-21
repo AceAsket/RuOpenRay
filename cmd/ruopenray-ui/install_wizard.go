@@ -51,7 +51,7 @@ func (s *serverState) installPlan() map[string]any {
 		"leanOk":          free == 0 || free >= leanRequired,
 		"fullOk":          free == 0 || free >= fullRequired,
 		"recommendedGeo":  "Nidelon",
-		"recommendedMode": "NAND-friendly: без бэкапов, компактный geosite/geoip, удаление лишних dat",
+		"recommendedMode": "Экономный режим: без бэкапов, компактный geosite/geoip, удаление лишних dat",
 	}
 	steps := []map[string]any{
 		{"id": "manager", "title": "Пакетный менеджер", "ok": manager == "apk" || manager == "opkg", "detail": manager},
@@ -60,7 +60,7 @@ func (s *serverState) installPlan() map[string]any {
 		{"id": "xray", "title": "Xray-core", "ok": coreVersion["ok"] == true, "detail": firstLine(fmt.Sprint(coreVersion["stdout"]), "не найден")},
 		{"id": "geo", "title": "Geo-файлы", "ok": geoip["exists"] == true && geosite["exists"] == true, "detail": fmt.Sprintf("geoip.dat: %v · geosite.dat: %v", geoip["exists"], geosite["exists"])},
 		{"id": "tproxy", "title": "TPROXY-модули", "ok": tproxyModules["ok"], "detail": tproxyModules["detail"]},
-		{"id": "nand", "title": "NAND-friendly", "ok": storage["leanOk"], "detail": fmt.Sprintf("экономный режим: %s, полный geo: %s", byteCount(leanRequired), byteCount(fullRequired))},
+		{"id": "nand", "title": "Экономия места", "ok": storage["leanOk"], "detail": fmt.Sprintf("экономный режим: %s, полный geo: %s", byteCount(leanRequired), byteCount(fullRequired))},
 		{"id": "service", "title": "Сервис", "ok": true, "detail": "/etc/init.d/" + s.cfg.ServiceName},
 	}
 	return map[string]any{

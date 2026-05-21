@@ -13,6 +13,7 @@ export function createRuntimeController({
   inferredActiveProxyTag,
   syncLanDnsStatus,
   disabledRouteRulesStorageKey,
+  routeNamesStorageKey,
   syncLoggingSettings,
   syncServiceSettings,
   clearAuth
@@ -196,6 +197,7 @@ export function createRuntimeController({
         status,
         profiles,
         config,
+        configDraft,
         logs,
         leases,
         releases,
@@ -208,11 +210,19 @@ export function createRuntimeController({
         lanDns,
         firewallStatus,
         subscriptions,
-        disabledRoutes
+        disabledRoutes,
+        routeNames
       } = await loadAppSnapshot({ request, text: api.text, logsUrl });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
-      syncConfig(config);
+      const draftConfig = configDraft?.exists && configDraft.config ? configDraft.config : config;
+      syncConfig(draftConfig, {
+        activeConfig: config,
+        fromServer: true,
+        persist: false,
+        forceDraft: Boolean(configDraft?.exists),
+        serverDraft: configDraft
+      });
       if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {
         setActiveServerTag(inferredActiveProxyTag());
       }
@@ -238,9 +248,32 @@ export function createRuntimeController({
         state.disabledRouteRules = disabledRoutes.rules.filter((item) => item && item.rule);
         localStorage.setItem(disabledRouteRulesStorageKey, JSON.stringify(state.disabledRouteRules));
       }
+      if (routeNames?.names && typeof routeNames.names === 'object' && !Array.isArray(routeNames.names)) {
+        const serverNames = Object.fromEntries(Object.entries(routeNames.names).filter(([, value]) => String(value || '').trim()));
+        const legacyNames = state.legacyRouteNames && typeof state.legacyRouteNames === 'object' && !Array.isArray(state.legacyRouteNames) ? state.legacyRouteNames : {};
+        const localNames = Object.keys(legacyNames).length ? legacyNames : {};
+        if (!Object.keys(serverNames).length && Object.keys(localNames).length) {
+          state.routeNames = localNames;
+          request('/api/routing/names', {
+            method: 'POST',
+            body: JSON.stringify({ names: localNames })
+          }).then(() => {
+            if (routeNamesStorageKey) localStorage.removeItem(routeNamesStorageKey);
+            state.legacyRouteNames = {};
+          }).catch(() => {});
+        } else {
+          state.routeNames = serverNames;
+          if (Object.keys(serverNames).length && routeNamesStorageKey) localStorage.removeItem(routeNamesStorageKey);
+          state.legacyRouteNames = {};
+        }
+      } else if (state.legacyRouteNames && Object.keys(state.legacyRouteNames).length) {
+        state.routeNames = state.legacyRouteNames;
+      }
       syncLoggingSettings(logging);
       syncServiceSettings(serviceSettings);
       state.geoCustomSources = Array.isArray(geo?.customSources) ? geo.customSources : state.geoCustomSources;
+      state.geoPresetOverrides = geo?.presetOverrides && typeof geo.presetOverrides === 'object' && !Array.isArray(geo.presetOverrides) ? geo.presetOverrides : state.geoPresetOverrides;
+      state.geoUserLists = Array.isArray(geo?.userLists) ? geo.userLists : state.geoUserLists;
       if (geo?.schedule && !state.geoScheduleLoaded) {
         const schedule = geo.schedule;
         state.geoScheduleLoaded = true;

@@ -13,8 +13,10 @@ export function createFirewallActions({
     firewallBypassModeStorageKey,
     firewallRouterModeStorageKey,
     firewallDeviceModeStorageKey,
+    firewallKillSwitchDeviceModeStorageKey,
     firewallPortModeStorageKey,
     firewallSelectedDevicesStorageKey,
+    firewallKillSwitchSelectedDevicesStorageKey,
     firewallBlockQuicStorageKey,
     firewallKillSwitchEnabledStorageKey,
     firewallKillSwitchDomainModeStorageKey,
@@ -42,32 +44,36 @@ export function createFirewallActions({
     return lastResult || { ok: false, status: state.firewallStatus };
   }
 
-  async function applyFirewall() {
+  async function applyFirewall(options = {}) {
     const safety = typeof firewallSafetyCheck === 'function' ? firewallSafetyCheck() : null;
     if (safety?.hasDanger && !state.firewallSafetyAccepted) {
       state.message = 'Firewall не применен: подтвердите опасные правила в блоке безопасности.';
       render();
       return;
     }
+    const busyAction = options.busyAction || 'applyFirewall';
     state.firewallSaving = true;
+    state.busyAction = busyAction;
+    state.busyLabel = options.busyLabel || '';
     render();
     try {
-      const result = await request('/api/firewall/apply', {
-        method: 'POST',
-        body: JSON.stringify(firewallPayload())
-      });
-      state.firewallStatus = result.status || result;
-      state.message = result.ok
-        ? 'Firewall-правила применены и сохранены для перезапуска firewall'
+      const result = await applyFirewallWithRetry(options.attempts || 3);
+      const ready = firewallReadyStatus(state.firewallStatus);
+      state.message = result.ok && ready
+        ? (options.successMessage || 'Firewall-правила применены и сохранены для перезапуска firewall')
         : (result.error || 'Не удалось применить перехват');
+      return result;
     } finally {
       state.firewallSaving = false;
+      if (state.busyAction === busyAction) state.busyAction = '';
+      state.busyLabel = '';
       render();
     }
   }
 
   async function disableFirewall() {
     state.firewallSaving = true;
+    state.busyAction = 'disableFirewall';
     render();
     try {
       const result = await request('/api/firewall/disable', { method: 'POST' });
@@ -75,17 +81,25 @@ export function createFirewallActions({
       state.message = result.ok ? 'Firewall-правила отключены' : 'Не удалось полностью отключить firewall-правила';
     } finally {
       state.firewallSaving = false;
+      if (state.busyAction === 'disableFirewall') state.busyAction = '';
       render();
     }
   }
 
   async function refreshFirewallStatus() {
-    state.firewallStatus = await request('/api/firewall/status');
+    state.busyAction = 'refreshFirewallStatus';
     render();
+    try {
+      state.firewallStatus = await request('/api/firewall/status');
+    } finally {
+      if (state.busyAction === 'refreshFirewallStatus') state.busyAction = '';
+      render();
+    }
   }
 
   async function downloadFirewallRules() {
     state.firewallSaving = true;
+    state.busyAction = 'downloadFirewallRules';
     render();
     try {
       const payload = firewallPayload();
@@ -127,6 +141,7 @@ export function createFirewallActions({
       state.message = error?.message || 'Не удалось скачать отчет по firewall';
     } finally {
       state.firewallSaving = false;
+      if (state.busyAction === 'downloadFirewallRules') state.busyAction = '';
       render();
     }
   }
@@ -187,6 +202,23 @@ export function createFirewallActions({
     render();
   }
 
+  function setFirewallKillSwitchDeviceMode(mode) {
+    resetFirewallSafetyAccept();
+    state.firewallKillSwitchDeviceMode = ['all', 'selected', 'exclude'].includes(mode) ? mode : 'all';
+    localStorage.setItem(firewallKillSwitchDeviceModeStorageKey, state.firewallKillSwitchDeviceMode);
+    render();
+  }
+
+  function toggleFirewallKillSwitchDevice(ip, enabled) {
+    resetFirewallSafetyAccept();
+    const selected = new Set(state.firewallKillSwitchSelectedDevices || []);
+    if (enabled) selected.add(ip);
+    else selected.delete(ip);
+    state.firewallKillSwitchSelectedDevices = [...selected];
+    localStorage.setItem(firewallKillSwitchSelectedDevicesStorageKey, JSON.stringify(state.firewallKillSwitchSelectedDevices));
+    render();
+  }
+
   function setFirewallKillSwitchDomainMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallKillSwitchDomainMode = mode === 'nftset' ? 'nftset' : 'dns-block';
@@ -215,6 +247,8 @@ export function createFirewallActions({
     setFirewallDeviceMode,
     setFirewallPortMode,
     toggleFirewallDevice,
+    setFirewallKillSwitchDeviceMode,
+    toggleFirewallKillSwitchDevice,
     setFirewallBlockQuic,
     setQuicPolicy,
     setFirewallKillSwitchEnabled,

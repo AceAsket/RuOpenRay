@@ -539,6 +539,16 @@
   background: rgba(49, 210, 189, 0.12);
 }
 
+.preset-check.installed {
+  border-color: rgba(104, 222, 118, 0.42);
+  background: rgba(104, 222, 118, 0.09);
+}
+
+.preset-check.partial {
+  border-color: rgba(242, 189, 82, 0.42);
+  background: rgba(242, 189, 82, 0.07);
+}
+
 .preset-check.bundle {
   border-color: rgba(242, 189, 82, 0.28);
 }
@@ -596,6 +606,29 @@
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
+}
+
+.preset-install-badge {
+  width: max-content;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  padding: 0 9px;
+  border: 1px solid rgba(104, 222, 118, 0.32);
+  border-radius: 999px;
+  color: #0b1b11;
+  background: var(--green);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.preset-check.partial .preset-install-badge {
+  border-color: rgba(242, 189, 82, 0.38);
+  color: #1c1300;
+  background: var(--warning);
 }
 
 .preset-edit {
@@ -1212,6 +1245,26 @@
 
 .route-dialog-dsl {
   min-height: 260px;
+}
+
+.route-default-hint {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(100, 221, 117, 0.34);
+  border-radius: 8px;
+  background: rgba(25, 75, 46, 0.18);
+  color: var(--text);
+}
+
+.route-default-hint strong {
+  font-size: 18px;
+}
+
+.route-default-hint span {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .route-target-switch {

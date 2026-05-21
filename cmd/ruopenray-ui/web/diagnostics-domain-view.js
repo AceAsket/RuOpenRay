@@ -286,7 +286,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
       </div>
       <div class="domain-monitor-device-domains">${(item.topDomains || []).slice(0, 4).map((domain) => `<span>${escapeHtml(domain.host)} <b>${domain.hits}</b></span>`).join('')}</div>
       <div class="domain-monitor-count"><strong>${Number(item.hits || 0).toLocaleString('ru-RU')}</strong><small>событий</small></div>
-      <button class="btn secondary" data-device-ip="${escapeHtml(item.ip || '')}">Устройство</button>
+      <button class="btn secondary" data-domain-device-events="${escapeHtml(item.ip || '')}">События</button>
     </article>`).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи или b4sni-совместимый лог.</p>';
   }
   if (state.domainMonitorMode === 'events') {
@@ -322,6 +322,7 @@ function diagnosticsDomainMonitorView() {
   const topRealDomain = domainMonitorRows()
     .filter((item) => domainMonitorMatchesFilter(item, 'domains'))
     .sort((a, b) => (b.hits || 0) - (a.hits || 0))[0];
+  const filterActive = Boolean(String(state.domainMonitorQuery || '').trim()) || state.domainMonitorFilter !== 'all';
   return `
     <section class="panel">
       <div class="panel-title">
@@ -348,6 +349,7 @@ function diagnosticsDomainMonitorView() {
       ${domainMonitorFilterBar()}
       <div class="domain-monitor-toolbar">
         <input id="domainMonitorQuery" value="${escapeHtml(state.domainMonitorQuery)}" placeholder="Найти домен, устройство или протокол" />
+        <button class="btn secondary compact" data-domain-clear-filter ${filterActive ? '' : 'disabled'}>Очистить фильтр</button>
         <div class="segmented compact">
           ${[
             ['hits', 'По частоте'],

@@ -185,7 +185,7 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 				counts["other"]++
 			}
 		}
-		if fmt.Sprint(rule["port"]) == "0-65535" && len(asArray(rule["domain"])) == 0 && len(asArray(rule["ip"])) == 0 && len(asArray(rule["source"])) == 0 {
+		if isCatchAllRoutingRule(rule) {
 			target := firstNonEmpty(tag, "не задано")
 			if balancerTag != "" {
 				target = "balancer:" + balancerTag
@@ -194,6 +194,9 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 		}
 		for _, value := range asArray(rule["domain"]) {
 			domain := strings.TrimSpace(fmt.Sprint(value))
+			if strings.EqualFold(domain, "default") {
+				warnings = append(warnings, fmt.Sprintf("Правило %d: domain \"default\" не задает поведение по умолчанию. Используйте тип правила \"Остальной трафик\" или строку default: direct.", index+1))
+			}
 			if strings.HasPrefix(domain, "geosite:") && !fileExists(geositePath) {
 				warnings = append(warnings, fmt.Sprintf("Правило %d: geosite требует %s", index+1, geositePath))
 			}
@@ -214,4 +217,29 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 		}
 	}
 	return map[string]any{"ok": len(errors) == 0, "errors": errors, "warnings": warnings, "info": info, "counts": counts}
+}
+
+func isCatchAllRoutingRule(rule map[string]any) bool {
+	if rule == nil {
+		return false
+	}
+	tag := strings.TrimSpace(fmt.Sprint(rule["outboundTag"]))
+	if tag == "<nil>" {
+		tag = ""
+	}
+	balancerTag := strings.TrimSpace(fmt.Sprint(rule["balancerTag"]))
+	if balancerTag == "<nil>" {
+		balancerTag = ""
+	}
+	if tag == "" && balancerTag == "" {
+		return false
+	}
+	if len(asArray(rule["domain"])) > 0 || len(asArray(rule["ip"])) > 0 || len(asArray(rule["source"])) > 0 || len(asArray(rule["inboundTag"])) > 0 {
+		return false
+	}
+	if network := strings.TrimSpace(fmt.Sprint(rule["network"])); network != "" && network != "<nil>" {
+		return false
+	}
+	port := strings.TrimSpace(fmt.Sprint(rule["port"]))
+	return port == "" || port == "<nil>" || port == "0-65535"
 }

@@ -145,6 +145,7 @@ function logsPanel(compact = false) {
           <div><h2>Логи</h2><span>Журнал Xray и RuOpenRay</span></div>
           <div class="split-actions">
             <button class="btn secondary" data-action="refreshLogs">Обновить</button>
+            <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить'}</button>
           </div>
         </div>
         <details class="dashboard-log-details" ${state.dashboardLogsOpen ? 'open' : ''}>
@@ -164,6 +165,7 @@ function logsPanel(compact = false) {
             <span>Live</span>
           </label>
           <button class="btn secondary" data-action="refreshLogs">Обновить</button>
+          <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
         </div>
       </div>
       <div class="log-filters">

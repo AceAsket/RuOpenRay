@@ -30,6 +30,16 @@ export function bindDiagnosticsControls({
       await probeMonitoredDomain(button.dataset.domainProbe || '');
     });
   });
+  document.querySelectorAll('[data-domain-device-events]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const ip = button.dataset.domainDeviceEvents || '';
+      state.domainMonitorMode = 'events';
+      state.domainMonitorFilter = 'all';
+      state.domainMonitorQuery = ip;
+      localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+      render();
+    });
+  });
 
   document.querySelectorAll('[data-sni-map]').forEach((button) => {
     button.addEventListener('click', () => focusSniResult(button.dataset.sniMap));
@@ -52,6 +62,12 @@ export function bindDiagnosticsControls({
       localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
       render();
     });
+  });
+  document.querySelector('[data-domain-clear-filter]')?.addEventListener('click', () => {
+    state.domainMonitorQuery = '';
+    state.domainMonitorFilter = 'all';
+    localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+    render();
   });
 
   document.querySelector('#diagnosticsTestUrl')?.addEventListener('input', (event) => {

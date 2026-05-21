@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -75,6 +76,137 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		result["plan"] = plan
 	}
 	return result
+}
+
+func (s *serverState) dnsDiagnostics() map[string]any {
+	host := "raw.githubusercontent.com"
+	lan := s.lanDNSUpstreamStatus(nil)
+	readiness, _ := lan["readiness"].(map[string]any)
+	systemProbe := dnsProbe("system", host)
+	autoServers := resolvNameservers("/tmp/resolv.conf.d/resolv.conf.auto")
+	resolvServers := resolvNameservers("/etc/resolv.conf")
+	autoProbes := make([]map[string]any, 0, len(autoServers))
+	for _, server := range autoServers {
+		autoProbes = append(autoProbes, dnsProbe(server, host))
+	}
+	xrayProbe := map[string]any{"ok": false, "server": "", "skipped": true}
+	if fmt.Sprint(lan["mode"]) == "xray" {
+		target := dnsTargetToServer(fmt.Sprint(lan["xrayTarget"]))
+		if target != "" {
+			xrayProbe = dnsProbe(target, "example.com")
+			xrayProbe["skipped"] = false
+		}
+	}
+	warnings := []string{}
+	if lan["dnsPortConflict"] == true {
+		owner := strings.TrimSpace(fmt.Sprint(lan["dnsPortConflictOwner"]))
+		if owner == "" || owner == "<nil>" {
+			owner = "другой процесс"
+		}
+		warnings = append(warnings, fmt.Sprintf("Порт DNS для Xray занят: %s. Подготовьте DNS inbound заново, чтобы RuOpenRay выбрал свободный порт.", owner))
+	}
+	if fmt.Sprint(lan["mode"]) == "xray" && readiness["ready"] != true {
+		warnings = append(warnings, "dnsmasq направлен в Xray DNS, но Xray DNS еще не готов. LAN-клиенты могут остаться без DNS.")
+	}
+	if systemProbe["ok"] != true && anyDNSProbeOK(autoProbes) {
+		warnings = append(warnings, "Системный DNS роутера не ответил, но WAN DNS из OpenWrt работает. Это обычно значит, что локальный DNS смотрит в неработающий 127.0.0.1/::1.")
+	}
+	if systemProbe["ok"] != true && !anyDNSProbeOK(autoProbes) {
+		warnings = append(warnings, "Роутер сейчас не может резолвить домены системным DNS. Обновление geo и загрузки с GitHub могут не работать.")
+	}
+	summary := "DNS выглядит рабочим"
+	if len(warnings) > 0 {
+		summary = warnings[0]
+	}
+	return map[string]any{
+		"ok":            len(warnings) == 0,
+		"host":          host,
+		"summary":       summary,
+		"warnings":      warnings,
+		"system":        systemProbe,
+		"autoServers":   autoServers,
+		"autoProbes":    autoProbes,
+		"resolvServers": resolvServers,
+		"lan":           lan,
+		"xrayDns":       xrayProbe,
+	}
+}
+
+func dnsProbe(server, host string) map[string]any {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		server = "system"
+	}
+	start := time.Now()
+	a, aaaa, err := dnsconfig.ResolveViaServer(server, dnsconfig.CleanCheckHost(host))
+	elapsed := time.Since(start).Milliseconds()
+	addresses := append([]string{}, a...)
+	addresses = append(addresses, aaaa...)
+	result := map[string]any{
+		"server":     server,
+		"host":       host,
+		"ok":         err == nil,
+		"durationMs": elapsed,
+		"a":          a,
+		"aaaa":       aaaa,
+		"addresses":  addresses,
+	}
+	if err != nil {
+		result["error"] = err.Error()
+	}
+	return result
+}
+
+func anyDNSProbeOK(probes []map[string]any) bool {
+	for _, probe := range probes {
+		if probe["ok"] == true {
+			return true
+		}
+	}
+	return false
+}
+
+func resolvNameservers(path string) []string {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	servers := []string{}
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "nameserver" {
+			continue
+		}
+		server := strings.TrimSpace(fields[1])
+		if server == "" || seen[server] {
+			continue
+		}
+		seen[server] = true
+		servers = append(servers, server)
+	}
+	return servers
+}
+
+func dnsTargetToServer(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" || target == "<nil>" {
+		return ""
+	}
+	if strings.Contains(target, "#") {
+		parts := strings.Split(target, "#")
+		host := strings.Join(parts[:len(parts)-1], "#")
+		port := parts[len(parts)-1]
+		if host == "" || port == "" {
+			return target
+		}
+		return net.JoinHostPort(strings.Trim(host, "[]"), port)
+	}
+	return target
 }
 
 func dnsmasqServerList() []string {

@@ -362,6 +362,19 @@ button:disabled {
   content: "";
 }
 
+.service-icon.is-busy-label {
+  width: auto;
+  min-width: 78px;
+  padding: 0 13px;
+  color: var(--accent-2);
+  font-size: 12px;
+}
+
+.service-icon.is-busy-label::after {
+  content: none;
+  animation: none;
+}
+
 .service-icon:hover {
   border-color: rgba(126, 230, 216, 0.34);
   color: var(--accent-2);
@@ -452,6 +465,9 @@ button:disabled {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 34px;
   padding: 0 13px;
   border-radius: 8px;
@@ -459,6 +475,8 @@ button:disabled {
   background: var(--accent);
   font-size: 13px;
   font-weight: 750;
+  text-align: center;
+  text-decoration: none;
 }
 
 .btn.secondary {

@@ -1,10 +1,23 @@
-export function createConfigStateHelpers(state) {
-  function syncConfig(config) {
+export function createConfigStateHelpers(state, { onDraftChange } = {}) {
+  function syncConfig(config, options = {}) {
     const nextText = JSON.stringify(config, null, 2);
     const draftWasClean = !state.jsonDraft || state.jsonDraft === state.appliedConfigText || state.configApplying;
+    const activeText = options.activeConfig
+      ? JSON.stringify(options.activeConfig, null, 2)
+      : options.fromServer
+        ? nextText
+        : state.appliedConfigText || nextText;
     state.config = config;
-    if (draftWasClean) state.jsonDraft = nextText;
-    state.appliedConfigText = nextText;
+    if (!options.fromServer || draftWasClean || options.forceDraft) state.jsonDraft = nextText;
+    state.appliedConfigText = activeText;
+    if (options.serverDraft) {
+      state.serverDraftExists = Boolean(options.serverDraft.exists);
+      state.serverDraftSavedAt = options.serverDraft.updatedAt || '';
+      state.serverDraftError = options.serverDraft.error || '';
+    }
+    if (!options.fromServer && options.persist !== false && typeof onDraftChange === 'function') {
+      onDraftChange(config);
+    }
   }
   
   function syncLoggingSettings(settings) {
@@ -12,9 +25,9 @@ export function createConfigStateHelpers(state) {
     state.loggingSettings = settings;
     state.loggingLevel = settings.level || 'warning';
     state.loggingAccessLog = Boolean(settings.accessLog);
-    state.loggingAccessPath = settings.accessPath || '/var/log/xray/access.log';
+    state.loggingAccessPath = settings.accessPath || '/etc/ruopenray-ui/logs/access.log';
     state.loggingErrorLog = Boolean(settings.errorLog);
-    state.loggingErrorPath = settings.errorPath || '/var/log/xray/error.log';
+    state.loggingErrorPath = settings.errorPath || '/etc/ruopenray-ui/logs/error.log';
     state.loggingDnsLog = Boolean(settings.dnsLog);
     state.loggingMaxSizeMb = String(settings.maxSizeMb ?? 2);
     state.loggingRotateCopies = String(settings.rotateCopies ?? 1);

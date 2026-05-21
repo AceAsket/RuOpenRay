@@ -47,8 +47,8 @@ func NormalizeSource(raw map[string]any, index int) map[string]any {
 	if name == "" || name == "<nil>" {
 		name = fmt.Sprintf("Custom source %d", index+1)
 	}
-	kind := strings.TrimSpace(fmt.Sprint(raw["kind"]))
-	if kind != "extra" {
+	kind := strings.ToLower(strings.TrimSpace(fmt.Sprint(raw["kind"])))
+	if kind != "extra" && kind != "separate" {
 		kind = "base"
 	}
 	id := CleanSourceID(firstNonEmpty(fmt.Sprint(raw["id"]), name))
@@ -64,6 +64,9 @@ func NormalizeSource(raw map[string]any, index int) map[string]any {
 		source["url"] = strings.TrimSpace(fmt.Sprint(raw["url"]))
 		source["estimatedBytes"] = 512 * 1024
 		return source
+	}
+	if kind == "separate" {
+		source["target"] = CleanTarget(fmt.Sprint(raw["target"]))
 	}
 	source["geoipUrl"] = strings.TrimSpace(fmt.Sprint(raw["geoipUrl"]))
 	source["geositeUrl"] = strings.TrimSpace(fmt.Sprint(raw["geositeUrl"]))

@@ -33,7 +33,8 @@ export const routeKinds = {
   ip: 'IP или подсеть',
   source: 'Устройство LAN',
   port: 'Порт',
-  inboundTag: 'Входящий поток'
+  inboundTag: 'Входящий поток',
+  default: 'Остальной трафик'
 };
 
 export const managedRouteTags = {
@@ -48,7 +49,8 @@ export const routePlaceholders = {
   ip: '8.8.8.8, 1.1.1.0/24, geoip:telegram',
   source: '192.168.50.157',
   port: '443 или 50000-65535',
-  inboundTag: 'transparent_ipv4'
+  inboundTag: 'transparent_ipv4',
+  default: ''
 };
 
 const discordDomains = [

@@ -90,6 +90,22 @@ func CIDRList(value any) []string {
 	return out
 }
 
+func mergeCIDRLists(lists ...[]string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, list := range lists {
+		for _, item := range list {
+			clean := strings.TrimSpace(item)
+			if clean == "" || seen[clean] {
+				continue
+			}
+			seen[clean] = true
+			out = append(out, clean)
+		}
+	}
+	return out
+}
+
 func NftSet(items []string) string {
 	if len(items) == 0 {
 		return ""
@@ -127,6 +143,13 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	}
 	ports := PortList(payload)
 	devices := IPList(payload["devices"])
+	selectedModeEmpty := deviceMode == "selected" && len(devices) == 0
+	killSwitchDeviceMode := PayloadString(payload, "killSwitchDeviceMode", "all")
+	if killSwitchDeviceMode != "selected" && killSwitchDeviceMode != "exclude" {
+		killSwitchDeviceMode = "all"
+	}
+	killSwitchDevices := IPList(payload["killSwitchDevices"])
+	killSwitchSelectedModeEmpty := killSwitchDeviceMode == "selected" && len(killSwitchDevices) == 0
 	blockQuic := boolPayload(payload, "blockQuic", true)
 	dnsIntercept := DNSIntercept(payload)
 	killSwitch := boolPayload(payload, "killSwitch", false)
@@ -136,6 +159,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	if killSwitchDomainMode != "nftset" {
 		killSwitchDomainMode = "dns-block"
 	}
+	directIPs := CIDRList(payload["directIps"])
+	proxyIPs := CIDRList(payload["proxyIps"])
 	localBypass := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
 	setLines := []string{}
 	chainLines := []string{"  chain prerouting {"}
@@ -154,7 +179,14 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	if deviceMode == "selected" && len(devices) > 0 {
 		targetPrefix += "ip saddr " + NftSet(devices) + " "
 	}
-	if killSwitch && (len(killSwitchIPs) > 0 || (len(killSwitchDomains) > 0 && killSwitchDomainMode == "nftset")) {
+	killSwitchPrefix := fmt.Sprintf("    iifname %q ", lanInterface)
+	if killSwitchDeviceMode == "selected" && len(killSwitchDevices) > 0 {
+		killSwitchPrefix += "ip saddr " + NftSet(killSwitchDevices) + " "
+	}
+	if killSwitchDeviceMode == "exclude" && len(killSwitchDevices) > 0 {
+		killSwitchPrefix += "ip saddr != " + NftSet(killSwitchDevices) + " "
+	}
+	if !killSwitchSelectedModeEmpty && killSwitch && (len(killSwitchIPs) > 0 || (len(killSwitchDomains) > 0 && killSwitchDomainMode == "nftset")) {
 		if len(killSwitchIPs) > 0 {
 			setLines = append(setLines, "  set killswitch4 { type ipv4_addr; flags interval; elements = "+NftSet(killSwitchIPs)+"; }")
 		} else {
@@ -162,15 +194,24 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		}
 		if routerMode == "redirect" {
 			chainLines = append(chainLines,
-				targetPrefix+"ip daddr @killswitch4 meta l4proto tcp redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay Kill Switch\"",
-				targetPrefix+"ip daddr @killswitch4 meta l4proto udp drop comment \"RuOpenRay Kill Switch UDP guard\"",
+				killSwitchPrefix+"ip daddr @killswitch4 meta l4proto tcp redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay Kill Switch\"",
+				killSwitchPrefix+"ip daddr @killswitch4 meta l4proto udp drop comment \"RuOpenRay Kill Switch UDP guard\"",
 			)
 		} else {
-			chainLines = append(chainLines, targetPrefix+"ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay Kill Switch\"")
+			chainLines = append(chainLines, killSwitchPrefix+"ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay Kill Switch\"")
 		}
 	}
+	if selectedModeEmpty {
+		chainLines = append(chainLines, "    return comment \"RuOpenRay selected device list is empty\"")
+	}
 	chainLines = append(chainLines, "    ip daddr "+NftSet(localBypass)+" return")
-	if dnsIntercept && !PortListCovers(ports, 53) {
+	if !selectedModeEmpty && bypassMode == "bypass" {
+		setLines = append(setLines, "  set bypass4 { type ipv4_addr; flags interval; elements = "+NftSet(mergeCIDRLists(localBypass, directIPs))+"; }")
+		chainLines = append(chainLines,
+			"    ip daddr @bypass4 return",
+		)
+	}
+	if !selectedModeEmpty && dnsIntercept && !PortListCovers(ports, 53) {
 		if routerMode == "redirect" {
 			chainLines = append(chainLines,
 				targetPrefix+"meta l4proto tcp tcp dport 53 redirect to :"+strconv.Itoa(transparentPort)+" comment \"RuOpenRay DNS Intercept\"",
@@ -180,27 +221,27 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp } th dport 53 counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay DNS Intercept\"")
 		}
 	}
-	if blockQuic {
+	if !selectedModeEmpty && blockQuic {
 		chainLines = append(chainLines, targetPrefix+"udp dport 443 drop comment \"RuOpenRay Block QUIC\"")
 	}
-	if bypassMode == "bypass" {
-		setLines = append(setLines, "  set bypass4 { type ipv4_addr; flags interval; elements = "+NftSet([]string{"10.0.0.0/8", "127.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})+"; }")
-		chainLines = append(chainLines,
-			"    ip daddr @bypass4 return",
-		)
-	}
-	if bypassMode == "redirect" {
-		setLines = append(setLines, "  set proxy4 { type ipv4_addr; flags interval; }")
+	if !selectedModeEmpty && bypassMode == "redirect" {
+		if len(proxyIPs) > 0 {
+			setLines = append(setLines, "  set proxy4 { type ipv4_addr; flags interval; elements = "+NftSet(proxyIPs)+"; }")
+		} else {
+			setLines = append(setLines, "  set proxy4 { type ipv4_addr; flags interval; }")
+		}
 		targetPrefix += "ip daddr @proxy4 "
 	}
-	if routerMode == "redirect" {
-		redirectMatch := "meta l4proto tcp"
-		if len(ports) > 0 {
-			redirectMatch = "tcp dport " + NftSet(ports)
+	if !selectedModeEmpty {
+		if routerMode == "redirect" {
+			redirectMatch := "meta l4proto tcp"
+			if len(ports) > 0 {
+				redirectMatch = "tcp dport " + NftSet(ports)
+			}
+			chainLines = append(chainLines, targetPrefix+redirectMatch+" redirect to :"+strconv.Itoa(transparentPort))
+		} else {
+			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+DportExpression(ports, "meta")+" counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
 		}
-		chainLines = append(chainLines, targetPrefix+redirectMatch+" redirect to :"+strconv.Itoa(transparentPort))
-	} else {
-		chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+DportExpression(ports, "meta")+" counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
 	}
 	chainLines = append(chainLines, "  }")
 	meta := map[string]any{
@@ -215,16 +256,21 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"lanInterface":         lanInterface,
 		"transparentPort":      transparentPort,
 		"killSwitch":           killSwitch,
+		"killSwitchDeviceMode": killSwitchDeviceMode,
+		"killSwitchDevices":    killSwitchDevices,
 		"killSwitchIps":        killSwitchIPs,
 		"killSwitchDomains":    killSwitchDomains,
 		"killSwitchDomainMode": killSwitchDomainMode,
+		"directIps":            directIPs,
+		"proxyIps":             proxyIPs,
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDomainMode=%s killSwitchDomains=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchDomains=%s directIps=%s proxyIps=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
+		strings.Join(devices, ","),
 		PayloadString(payload, "portMode", "custom"),
 		strings.Join(ports, ","),
 		blockQuic,
@@ -232,8 +278,12 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		transparentPort,
 		lanInterface,
 		killSwitch,
+		killSwitchDeviceMode,
+		strings.Join(killSwitchDevices, ","),
 		killSwitchDomainMode,
 		strings.Join(killSwitchDomains, ","),
+		strings.Join(directIPs, ","),
+		strings.Join(proxyIPs, ","),
 	)
 	lines := []string{metaLine, "table inet ruopenray {"}
 	lines = append(lines, setLines...)

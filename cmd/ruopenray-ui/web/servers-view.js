@@ -27,6 +27,7 @@ function serverCard(outbound, index, activeTag) {
   const usage = outboundUsage(tag);
   const check = checkForTag(tag);
   const active = tag === activeTag;
+  const connecting = state.pendingServerTag === tag;
   const meta = serverMetaChips(outbound, usage, check);
   return `<article class="server-row server-card ${active ? 'is-active' : ''}">
     <div class="server-identity">
@@ -40,7 +41,7 @@ function serverCard(outbound, index, activeTag) {
     ${serverTrafficView(tag)}
     <div class="server-actions">
       ${serverCheckButton(tag)}
-      ${active ? '<span class="tag active-tag">активный</span>' : `<button class="btn warning" data-route-all="${escapeHtml(tag)}">Подключиться</button>`}
+      ${active ? '<span class="tag active-tag">активный</span>' : `<button class="btn warning ${connecting ? 'is-busy' : ''}" data-route-all="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>`}
       <button class="btn danger" data-outbound-delete="${index}">Удалить</button>
     </div>
   </article>`;
@@ -49,6 +50,7 @@ function serverCard(outbound, index, activeTag) {
 function subscriptionPoolCard(pool) {
   const active = pool?.activeCandidate || {};
   const tag = pool?.tag || '';
+  const connecting = state.pendingServerTag === tag;
   return `<article class="server-row subscription-pool-row">
     <div class="server-identity">
       <span class="server-protocol">pool</span>
@@ -63,7 +65,8 @@ function subscriptionPoolCard(pool) {
     </div>
     <div class="server-actions">
       <button class="btn secondary" data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}">Найти доступный</button>
-      <button class="btn warning" data-route-all="${escapeHtml(tag)}">Подключиться</button>
+      <button class="btn warning ${connecting ? 'is-busy' : ''}" data-route-all="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>
+      <button class="btn danger" data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}">Удалить</button>
     </div>
   </article>`;
 }

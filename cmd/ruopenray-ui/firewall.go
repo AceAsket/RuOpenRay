@@ -300,7 +300,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports":
+			case "ports", "devices", "killSwitchDevices", "directIps", "proxyIps":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
@@ -315,6 +315,11 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 			case "killSwitchDomainMode":
 				if value != "nftset" {
 					value = "dns-block"
+				}
+				meta[key] = value
+			case "killSwitchDeviceMode":
+				if value != "selected" && value != "exclude" {
+					value = "all"
 				}
 				meta[key] = value
 			default:

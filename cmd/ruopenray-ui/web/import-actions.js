@@ -70,35 +70,52 @@ export function createImportActions({
     return slugTag(state.subscriptionBalancerTag || state.profileName || state.subscriptionPreview?.items?.[0]?.tag || state.subscriptionUrl, 'subscription-auto');
   }
 
+  function isCatchAllRoute(rule) {
+    if (!rule) return false;
+    const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
+    const hasConditions = Boolean(rule.domain?.length || rule.ip?.length || rule.source?.length || rule.inboundTag?.length || rule.network || (rule.port && rule.port !== '0-65535'));
+    return hasTarget && !hasConditions;
+  }
+
   function setActiveProxyDraft(tag) {
+    const defaultRule = { type: 'field', outboundTag: tag };
     const rules = routeRules();
     if (!rules.length) {
-      setRoutingDraft([{ type: 'field', outboundTag: tag, port: '0-65535' }]);
+      setRoutingDraft([defaultRule]);
     } else {
       const currentTag = activeProxyTag();
       const switchable = new Set(['proxy', currentTag].filter(Boolean));
       let changed = 0;
       const nextRules = rules.map((rule) => {
+        if (isCatchAllRoute(rule)) {
+          changed += 1;
+          return defaultRule;
+        }
         if (rule?.outboundTag && switchable.has(rule.outboundTag)) {
           changed += 1;
           return { ...rule, outboundTag: tag };
         }
         return rule;
       });
-      setRoutingDraft(changed ? nextRules : [{ type: 'field', outboundTag: tag, port: '0-65535' }, ...rules]);
+      setRoutingDraft(changed ? nextRules : [...rules, defaultRule]);
     }
     setActiveServerTag(tag);
   }
 
   function setActiveProxyBalancerDraft(tag) {
+    const defaultRule = { type: 'field', balancerTag: tag };
     const rules = routeRules();
     const currentTag = activeProxyTag();
     const switchable = new Set(['proxy', currentTag].filter(Boolean));
     if (!rules.length) {
-      setRoutingDraft([{ type: 'field', balancerTag: tag, port: '0-65535' }]);
+      setRoutingDraft([defaultRule]);
     } else {
       let changed = 0;
       const nextRules = rules.map((rule) => {
+        if (isCatchAllRoute(rule)) {
+          changed += 1;
+          return defaultRule;
+        }
         if (rule?.balancerTag === tag) return rule;
         if (rule?.outboundTag && switchable.has(rule.outboundTag)) {
           changed += 1;
@@ -108,7 +125,7 @@ export function createImportActions({
         }
         return rule;
       });
-      setRoutingDraft(changed ? nextRules : [{ type: 'field', balancerTag: tag, port: '0-65535' }, ...rules]);
+      setRoutingDraft(changed ? nextRules : [...rules, defaultRule]);
     }
     setActiveServerTag('');
   }

@@ -76,7 +76,7 @@
 
 .scenario-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 14px;
   align-items: center;
   min-height: 0;
@@ -100,6 +100,20 @@
   background:
     linear-gradient(90deg, rgba(49, 210, 189, 0.12), transparent 38%),
     rgba(13, 27, 31, 0.82);
+}
+
+.scenario-card.installed {
+  border-color: rgba(104, 222, 118, 0.46);
+  background:
+    linear-gradient(90deg, rgba(104, 222, 118, 0.11), transparent 38%),
+    rgba(13, 27, 22, 0.84);
+}
+
+.scenario-card.partial {
+  border-color: rgba(242, 189, 82, 0.36);
+  background:
+    linear-gradient(90deg, rgba(242, 189, 82, 0.08), transparent 38%),
+    rgba(21, 22, 17, 0.78);
 }
 
 .scenario-card strong,
@@ -138,10 +152,32 @@
   white-space: nowrap;
 }
 
-.scenario-actions {
+.scenario-card .scenario-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  margin-top: 0;
+}
+
+.scenario-install-badge {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(104, 222, 118, 0.32);
+  border-radius: 999px;
+  color: #0b1b11;
+  background: var(--green);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.scenario-card.partial .scenario-install-badge {
+  border-color: rgba(242, 189, 82, 0.38);
+  color: #1c1300;
+  background: var(--warning);
 }
 
 .icon-btn.danger {
@@ -401,6 +437,28 @@
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.route-preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.route-preset-tags em {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border: 1px solid rgba(104, 222, 118, 0.26);
+  border-radius: 999px;
+  color: #c8ffd0;
+  background: rgba(104, 222, 118, 0.12);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 850;
 }
 
 .route-outbound {
@@ -917,6 +975,63 @@
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   background: rgba(7, 12, 16, 0.38);
+}
+
+.leak-status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.leak-status-strip article,
+.leak-pending-box {
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 12, 16, 0.62);
+}
+
+.leak-status-strip.ok article {
+  border-color: rgba(103, 222, 120, 0.34);
+  background: rgba(103, 222, 120, 0.08);
+}
+
+.leak-status-strip.warn article,
+.leak-pending-box {
+  border-color: rgba(242, 189, 82, 0.34);
+  background: rgba(242, 189, 82, 0.08);
+}
+
+.leak-status-strip span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leak-status-strip strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.leak-pending-box {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.leak-pending-box ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.leak-pending-box small {
+  color: var(--muted);
 }
 
 .leak-scope-panel .panel-title {

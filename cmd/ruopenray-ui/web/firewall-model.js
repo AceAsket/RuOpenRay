@@ -53,6 +53,52 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     return { ips: [...new Set(ips)], domains: [...new Set(domains)], invalid };
   }
 
+  function firewallRouteSets() {
+    const directIps = [];
+    const proxyIps = [];
+    let directDomainCount = 0;
+    let proxyDomainCount = 0;
+    let directDynamicIpCount = 0;
+    let proxyDynamicIpCount = 0;
+    const proxyTags = new Set(['proxy']);
+    for (const outbound of configOutbounds()) {
+      const tag = outbound?.tag || '';
+      const system = ['direct', 'block', 'dns-out', 'ruopenray-api'].includes(tag) ||
+        ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
+      if (tag && !system) proxyTags.add(tag);
+    }
+    const isProxyRule = (rule) => Boolean(rule?.balancerTag || proxyTags.has(rule?.outboundTag || ''));
+    const isDirectRule = (rule) => rule?.outboundTag === 'direct';
+    const isConcreteIp = (value) => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(String(value || '').trim());
+    for (const rule of routeRules()) {
+      const target = isDirectRule(rule) ? 'direct' : isProxyRule(rule) ? 'proxy' : '';
+      if (!target) continue;
+      const domains = Array.isArray(rule.domain) ? rule.domain.filter(Boolean) : [];
+      if (target === 'direct') directDomainCount += domains.length;
+      if (target === 'proxy') proxyDomainCount += domains.length;
+      for (const value of Array.isArray(rule.ip) ? rule.ip : []) {
+        const clean = String(value || '').trim();
+        if (!clean) continue;
+        if (isConcreteIp(clean)) {
+          if (target === 'direct') directIps.push(clean);
+          else proxyIps.push(clean);
+        } else {
+          if (target === 'direct') directDynamicIpCount += 1;
+          else proxyDynamicIpCount += 1;
+        }
+      }
+    }
+    const unique = (items) => [...new Set(items)];
+    return {
+      directIps: unique(directIps),
+      proxyIps: unique(proxyIps),
+      directDomainCount,
+      proxyDomainCount,
+      directDynamicIpCount,
+      proxyDynamicIpCount
+    };
+  }
+
   function firewallDeviceChoices() {
     const map = new Map();
     for (const lease of state.leases || []) {
@@ -72,14 +118,34 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     return firewallDeviceChoices().filter((device) => selected.has(device.ip));
   }
 
+  function firewallSelectedDeviceIps() {
+    return [...new Set((state.firewallSelectedDevices || [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean))];
+  }
+
+  function firewallKillSwitchSelectedDeviceIps() {
+    return [...new Set((state.firewallKillSwitchSelectedDevices || [])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean))];
+  }
+
   function nftList(items) {
     return `{ ${items.join(', ')} }`;
   }
 
   function firewallDeviceExpression() {
-    const selected = firewallSelectedDevices().map((device) => device.ip);
+    const selected = firewallSelectedDeviceIps();
     if (state.firewallDeviceMode === 'selected' && selected.length) return `ip saddr ${nftList(selected)} `;
     if (state.firewallDeviceMode === 'exclude' && selected.length) return `ip saddr ${nftList(selected)} return\n`;
+    return '';
+  }
+
+  function firewallKillSwitchDeviceExpression() {
+    const selected = firewallKillSwitchSelectedDeviceIps();
+    const mode = state.firewallKillSwitchDeviceMode || 'all';
+    if (mode === 'selected' && selected.length) return `ip saddr ${nftList(selected)} `;
+    if (mode === 'exclude' && selected.length) return `ip saddr != ${nftList(selected)} `;
     return '';
   }
 
@@ -101,13 +167,15 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
 
   function firewallPolicyPreview() {
     const info = firewallInfo();
-    const devices = firewallSelectedDevices();
+    const routeSets = firewallRouteSets();
+    const selectedDeviceIps = firewallSelectedDeviceIps();
+    const killSwitchDeviceIps = firewallKillSwitchSelectedDeviceIps();
     const ports = firewallPorts();
     const guard = firewallKillSwitchTargets();
     const traffic = state.firewallDeviceMode === 'selected'
-      ? `только выбранные устройства (${devices.length})`
+      ? `только выбранные устройства (${selectedDeviceIps.length})`
       : state.firewallDeviceMode === 'exclude'
-        ? `все LAN, кроме выбранных устройств (${devices.length})`
+        ? `все LAN, кроме выбранных устройств (${selectedDeviceIps.length})`
         : 'все LAN-устройства';
     const router = state.firewallRouterMode === 'redirect'
       ? 'REDIRECT: проще, только TCP, QUIC лучше блокировать'
@@ -127,14 +195,23 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (info.dnsIn.length && !info.transparent.length) warnings.push('DNS inbound найден, но он обрабатывает только DNS. Для сайтов и приложений LAN-клиентов нужен transparent inbound.');
     if (!info.dnsOut.length) warnings.push('Не найден dns-out: перехват DNS не сможет отправлять запросы через Xray DNS.');
     if (!info.localBypass.length) warnings.push('Не найден local bypass: приватные адреса LAN лучше явно оставить напрямую.');
+    if (state.firewallBypassMode === 'bypass' && (routeSets.directDomainCount || routeSets.directDynamicIpCount)) {
+      warnings.push(`Direct мимо работает на уровне firewall только для IP/подсетей (${routeSets.directIps.length}). Домены/geosite из direct-правил (${routeSets.directDomainCount + routeSets.directDynamicIpCount}) останутся внутри Xray, пока не подключен DNS/nftset.`);
+    }
+    if (state.firewallBypassMode === 'redirect' && !routeSets.proxyIps.length) {
+      warnings.push('Только Proxy сейчас не видит IP/подсетей в proxy-правилах. Домены и geosite требуют DNS/nftset, иначе firewall не сможет понять, какие адреса перехватывать.');
+    } else if (state.firewallBypassMode === 'redirect' && (routeSets.proxyDomainCount || routeSets.proxyDynamicIpCount)) {
+      warnings.push(`Только Proxy перехватит IP/подсети (${routeSets.proxyIps.length}). Домены/geosite из proxy-правил (${routeSets.proxyDomainCount + routeSets.proxyDynamicIpCount}) требуют DNS/nftset для точного перехвата.`);
+    }
     if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
-    if (state.firewallDeviceMode !== 'all' && !devices.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
+    if (state.firewallDeviceMode !== 'all' && !selectedDeviceIps.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
+    if (state.firewallKillSwitchEnabled && state.firewallKillSwitchDeviceMode !== 'all' && !killSwitchDeviceIps.length) warnings.push('В защите от утечек выбран режим по устройствам, но устройства не отмечены.');
     if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
     if (!state.firewallDnsIntercept) warnings.push('Перехват DNS выключен: клиенты смогут отправлять UDP/TCP 53 напрямую наружу, если не используют DNS роутера.');
     if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length) warnings.push('Защита от прямого выхода включена, но цели не указаны.');
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block') warnings.push('Домены будут точно блокироваться через DNS для всех LAN-клиентов, которые используют DNS роутера.');
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') warnings.push('Домены будут защищены через dnsmasq/nftset после применения firewall. Этот режим можно ограничить выбранными LAN-клиентами, но он работает по IP после DNS-резолва.');
-    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block' && state.firewallDeviceMode !== 'all') warnings.push('Точная DNS-блокировка применяется ко всем LAN-клиентам. Для выбранных клиентов используйте режим “для выбранных клиентов”.');
+    if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block' && state.firewallKillSwitchDeviceMode !== 'all') warnings.push('Точная DNS-блокировка применяется ко всем LAN-клиентам. Чтобы ограничить домены выбранными клиентами, используйте режим nftset.');
     if (state.firewallKillSwitchEnabled && guard.invalid.length) warnings.push(`Некоторые цели защиты не распознаны: ${guard.invalid.slice(0, 3).join(', ')}`);
     return {
       router,
@@ -145,21 +222,26 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       quic: state.firewallBlockQuic ? 'UDP/443 будет заблокирован до Xray' : 'UDP/443 не блокируется',
       dns: state.firewallDnsIntercept ? 'DNS/53 перехватывается отдельно' : 'DNS/53 не перехватывается firewall',
       warnings,
-      guard
+      guard,
+      routeSets
     };
   }
 
   function firewallCommands() {
     const info = firewallInfo();
+    const routeSets = firewallRouteSets();
     const port = info.transparentPort || 52345;
     const excludedDeviceReturn = state.firewallDeviceMode === 'exclude' ? firewallDeviceExpression().trim() : '';
     const packageCommand = state.firewallRouterMode === 'tproxy'
       ? 'if command -v apk >/dev/null 2>&1; then apk update && apk add kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; else opkg update && opkg install kmod-nf-tproxy kmod-nft-tproxy kmod-nft-socket; fi'
       : '# REDIRECT-режиму kmod-nft-tproxy не нужен';
     const scopedDeviceExpr = state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : '';
-    const blockQuicRule = state.firewallBlockQuic ? `nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}udp dport 443 drop # Block QUIC/HTTP3` : '';
+    const selectedModeEmpty = state.firewallDeviceMode === 'selected' && !firewallSelectedDeviceIps().length;
+    const killSwitchDeviceExpr = state.firewallKillSwitchDeviceMode !== 'all' ? firewallKillSwitchDeviceExpression() : '';
+    const killSwitchSelectedModeEmpty = state.firewallKillSwitchDeviceMode === 'selected' && !firewallKillSwitchSelectedDeviceIps().length;
+    const blockQuicRule = !selectedModeEmpty && state.firewallBlockQuic ? `nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}udp dport 443 drop # Block QUIC/HTTP3` : '';
     const dnsInterceptRules = [];
-    if (state.firewallDnsIntercept && state.firewallPortMode !== 'all' && !firewallPorts().some((item) => {
+    if (!selectedModeEmpty && state.firewallDnsIntercept && state.firewallPortMode !== 'all' && !firewallPorts().some((item) => {
       const [start, end = start] = String(item).split('-').map((part) => Number(part.trim()));
       return Number.isFinite(start) && Number.isFinite(end) && start <= 53 && 53 <= end;
     })) {
@@ -173,7 +255,8 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const guard = firewallKillSwitchTargets();
     const killSwitchRules = [];
     const domainSetMode = state.firewallKillSwitchDomainMode === 'nftset';
-    if (state.firewallKillSwitchEnabled && (guard.ips.length || (domainSetMode && guard.domains.length))) {
+    const selectedNoopRule = '# Режим "Только выбранные" без клиентов: правила перехвата не создаются.';
+    if (!killSwitchSelectedModeEmpty && state.firewallKillSwitchEnabled && (guard.ips.length || (domainSetMode && guard.domains.length))) {
       killSwitchRules.push(guard.ips.length
         ? `nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; elements = { ${guard.ips.join(', ')} } \\; }`
         : 'nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; }');
@@ -181,10 +264,10 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         killSwitchRules.push('# Домены добавляются в dnsmasq nftset: /domain/4#inet#ruopenray#killswitch4');
       }
       if (state.firewallRouterMode === 'redirect') {
-        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto tcp redirect to :${port} comment "RuOpenRay Kill Switch"`);
-        killSwitchRules.push('nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto udp drop comment "RuOpenRay Kill Switch UDP guard"');
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto tcp redirect to :${port} comment "RuOpenRay Kill Switch"`);
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto udp drop comment "RuOpenRay Kill Switch UDP guard"`);
       } else {
-        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy to :${port} meta mark set 1 comment "RuOpenRay Kill Switch"`);
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy to :${port} meta mark set 1 comment "RuOpenRay Kill Switch"`);
       }
     }
     const common = [
@@ -201,6 +284,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       'nft add rule inet ruopenray prerouting iifname != "br-lan" return',
       excludedDeviceReturn ? `nft add rule inet ruopenray prerouting ${excludedDeviceReturn}` : '',
       ...killSwitchRules,
+      selectedModeEmpty ? 'nft add rule inet ruopenray prerouting return comment "RuOpenRay selected device list is empty"' : '',
       'nft add rule inet ruopenray prerouting ip daddr { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return',
       ...dnsInterceptRules,
       blockQuicRule,
@@ -209,14 +293,15 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       ''
     ].filter(Boolean);
     if (state.firewallBypassMode === 'bypass') {
+      const bypassItems = [...new Set(['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/3', ...routeSets.directIps])];
       return [
         ...common,
         '# BYPASS: direct-сети возвращаются до Xray, остальное уходит в transparent inbound.',
         'nft add set inet ruopenray bypass4 { type ipv4_addr \\; flags interval \\; }',
-        'nft add element inet ruopenray bypass4 { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 }',
+        `nft add element inet ruopenray bypass4 ${nftList(bypassItems)}`,
         'nft add rule inet ruopenray prerouting ip daddr @bypass4 return',
         '# Позже сюда можно подключить dnsmasq/nftset для direct-доменов из правил.',
-        firewallTargetRule(port)
+        selectedModeEmpty ? selectedNoopRule : firewallTargetRule(port)
       ].join('\n');
     }
     if (state.firewallBypassMode === 'redirect') {
@@ -224,8 +309,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         ...common,
         '# REDIRECT: в Xray идут только адреса из proxy4. Direct-трафик не заходит в Xray.',
         'nft add set inet ruopenray proxy4 { type ipv4_addr \\; flags interval \\; }',
+        routeSets.proxyIps.length ? `nft add element inet ruopenray proxy4 ${nftList(routeSets.proxyIps)}` : '# proxy4 is empty: no concrete proxy IP/CIDR rules',
         '# Заполняйте proxy4 из доменов/geo-правил через dnsmasq/nftset или отдельный updater.',
-        state.firewallRouterMode === 'redirect'
+        selectedModeEmpty ? selectedNoopRule : state.firewallRouterMode === 'redirect'
           ? `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto tcp${firewallPortExpression()} redirect to :${port}`
           : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy to :${port} meta mark set 1`
       ].join('\n');
@@ -233,18 +319,21 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     return [
       ...common,
       '# OFF: весь TCP/UDP после локальных исключений попадает в Xray routing.',
-      firewallTargetRule(port)
+      selectedModeEmpty ? selectedNoopRule : firewallTargetRule(port)
     ].join('\n');
   }
 
   function firewallPayload() {
     const info = firewallInfo();
     const guard = firewallKillSwitchTargets();
+    const routeSets = firewallRouteSets();
     return {
       routerMode: state.firewallRouterMode,
       bypassMode: state.firewallBypassMode,
       deviceMode: state.firewallDeviceMode,
-      devices: firewallSelectedDevices().map((device) => device.ip),
+      devices: firewallSelectedDeviceIps(),
+      killSwitchDeviceMode: state.firewallKillSwitchDeviceMode || 'all',
+      killSwitchDevices: firewallKillSwitchSelectedDeviceIps(),
       portMode: state.firewallPortMode,
       ports: firewallPorts(),
       blockQuic: state.firewallBlockQuic,
@@ -253,6 +342,10 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       killSwitchIps: guard.ips,
       killSwitchDomains: guard.domains,
       killSwitchDomainMode: state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block',
+      directIps: routeSets.directIps,
+      proxyIps: routeSets.proxyIps,
+      directDomainCount: routeSets.directDomainCount + routeSets.directDynamicIpCount,
+      proxyDomainCount: routeSets.proxyDomainCount + routeSets.proxyDynamicIpCount,
       transparentPort: Number(info.transparentPort || 52345),
       lanInterface: 'br-lan'
     };
@@ -261,7 +354,8 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
   function firewallSafetyCheck() {
     const info = firewallInfo();
     const guard = firewallKillSwitchTargets();
-    const devices = firewallSelectedDevices();
+    const selectedDeviceIps = firewallSelectedDeviceIps();
+    const killSwitchDeviceIps = firewallKillSwitchSelectedDeviceIps();
     const routerLan = routerLanAddress();
     const items = [];
 
@@ -278,11 +372,38 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       );
     }
 
-    if (state.firewallDeviceMode === 'selected' && devices.some((device) => isRouterAddress(device.ip, routerLan))) {
+    if (state.firewallDeviceMode === 'selected' && !selectedDeviceIps.length) {
+      add(
+        'danger',
+        'Не выбраны LAN-клиенты',
+        'Режим «Только выбранные» включен, но список устройств пустой. RuOpenRay не будет применять перехват и защиту, пока не выбран хотя бы один клиент.',
+        'Выберите устройство из DHCP-списка или переключите область действия на «Весь LAN».'
+      );
+    }
+
+    if (state.firewallDeviceMode === 'selected' && selectedDeviceIps.some((ip) => isRouterAddress(ip, routerLan))) {
       add(
         'danger',
         'Выбран сам роутер',
         'Роутер не должен попадать в список LAN-клиентов для перехвата. Это может сломать доступ к LuCI, SSH или самой панели RuOpenRay.',
+        'Уберите адрес роутера из выбранных клиентов.'
+      );
+    }
+
+    if (state.firewallKillSwitchEnabled && state.firewallKillSwitchDeviceMode === 'selected' && !killSwitchDeviceIps.length) {
+      add(
+        'danger',
+        'Для защиты не выбраны LAN-клиенты',
+        'Защита от утечек ограничена выбранными клиентами, но список пустой. В таком виде правила защиты не будут созданы.',
+        'Выберите клиента из DHCP-списка или переключите область защиты на «Весь LAN».'
+      );
+    }
+
+    if (state.firewallKillSwitchEnabled && state.firewallKillSwitchDeviceMode === 'selected' && killSwitchDeviceIps.some((ip) => isRouterAddress(ip, routerLan))) {
+      add(
+        'danger',
+        'Защита выбрана для адреса роутера',
+        'Не добавляйте IP самого роутера в список клиентов защиты. Такое правило может задеть доступ к LuCI, SSH или RuOpenRay UI.',
         'Уберите адрес роутера из выбранных клиентов.'
       );
     }
@@ -356,11 +477,15 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
 
   function firewallReadyStatus(status) {
     if (!status?.active || !status?.persistent) return false;
+    const routeSets = firewallRouteSets();
     const expectedRouterMode = state.firewallRouterMode || 'tproxy';
     if (status.routerMode && status.routerMode !== expectedRouterMode) return false;
     if (expectedRouterMode === 'tproxy' && (!status.ipRule || !status.ipRoute)) return false;
     if (status.bypassMode && status.bypassMode !== (state.firewallBypassMode || 'off')) return false;
+    if ((state.firewallBypassMode || 'off') === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length) && !sameStringSet(status.directIps || [], routeSets.directIps)) return false;
+    if ((state.firewallBypassMode || 'off') === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length) && !sameStringSet(status.proxyIps || [], routeSets.proxyIps)) return false;
     if (status.deviceMode && status.deviceMode !== (state.firewallDeviceMode || 'all')) return false;
+    if ((Array.isArray(status.devices) || firewallSelectedDeviceIps().length) && !sameStringSet(status.devices || [], firewallSelectedDeviceIps())) return false;
     if (status.portMode && status.portMode !== (state.firewallPortMode || 'custom')) return false;
     if (status.portMode === 'custom' && !sameStringSet(status.ports || [], firewallPorts())) return false;
     if (typeof status.dnsIntercept === 'boolean' && status.dnsIntercept !== Boolean(state.firewallDnsIntercept)) return false;
@@ -368,6 +493,8 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const guard = firewallKillSwitchTargets();
     if (state.firewallKillSwitchEnabled && status.killSwitch !== true) return false;
     if (!state.firewallKillSwitchEnabled && status.killSwitch === true) return false;
+    if (state.firewallKillSwitchEnabled && status.killSwitchDeviceMode && status.killSwitchDeviceMode !== (state.firewallKillSwitchDeviceMode || 'all')) return false;
+    if (state.firewallKillSwitchEnabled && (Array.isArray(status.killSwitchDevices) || firewallKillSwitchSelectedDeviceIps().length) && !sameStringSet(status.killSwitchDevices || [], firewallKillSwitchSelectedDeviceIps())) return false;
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') {
       const nftsetDomains = status.killSwitchNftset?.domains || [];
       if (!sameStringSet(nftsetDomains, guard.domains)) return false;
@@ -381,6 +508,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
 
   function firewallPendingReasons(status = state.firewallStatus || {}) {
     const reasons = [];
+    const routeSets = firewallRouteSets();
     if (!status?.active) reasons.push('nftables-таблица не активна');
     if (!status?.persistent) reasons.push('правила не сохранены для перезапуска firewall');
     const expectedRouterMode = state.firewallRouterMode || 'tproxy';
@@ -396,9 +524,18 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (status.bypassMode && status.bypassMode !== expectedBypassMode) {
       reasons.push(`политика: ${bypassModeLabel(status.bypassMode)} -> ${bypassModeLabel(expectedBypassMode)}`);
     }
+    if (expectedBypassMode === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length) && !sameStringSet(status.directIps || [], routeSets.directIps)) {
+      reasons.push(`direct IP для обхода: ${stringListLabel(status.directIps || [])} -> ${stringListLabel(routeSets.directIps)}`);
+    }
+    if (expectedBypassMode === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length) && !sameStringSet(status.proxyIps || [], routeSets.proxyIps)) {
+      reasons.push(`proxy IP для перехвата: ${stringListLabel(status.proxyIps || [])} -> ${stringListLabel(routeSets.proxyIps)}`);
+    }
     const expectedDeviceMode = state.firewallDeviceMode || 'all';
     if (status.deviceMode && status.deviceMode !== expectedDeviceMode) {
       reasons.push(`клиенты: ${deviceModeLabel(status.deviceMode)} -> ${deviceModeLabel(expectedDeviceMode)}`);
+    }
+    if ((Array.isArray(status.devices) || firewallSelectedDeviceIps().length) && !sameStringSet(status.devices || [], firewallSelectedDeviceIps())) {
+      reasons.push(`клиенты перехвата: ${stringListLabel(status.devices || [])} -> ${stringListLabel(firewallSelectedDeviceIps())}`);
     }
     const expectedPortMode = state.firewallPortMode || 'custom';
     if (status.portMode && status.portMode !== expectedPortMode) {
@@ -415,6 +552,15 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const guard = firewallKillSwitchTargets();
     if (state.firewallKillSwitchEnabled && status.killSwitch !== true) reasons.push('защита от прямого выхода еще не применена');
     if (!state.firewallKillSwitchEnabled && status.killSwitch === true) reasons.push('защита включена в firewall, но выключена в настройках');
+    if (state.firewallKillSwitchEnabled) {
+      const expectedKillSwitchDeviceMode = state.firewallKillSwitchDeviceMode || 'all';
+      if (status.killSwitchDeviceMode && status.killSwitchDeviceMode !== expectedKillSwitchDeviceMode) {
+        reasons.push(`клиенты защиты: ${deviceModeLabel(status.killSwitchDeviceMode)} -> ${deviceModeLabel(expectedKillSwitchDeviceMode)}`);
+      }
+      if ((Array.isArray(status.killSwitchDevices) || firewallKillSwitchSelectedDeviceIps().length) && !sameStringSet(status.killSwitchDevices || [], firewallKillSwitchSelectedDeviceIps())) {
+        reasons.push(`список клиентов защиты: ${stringListLabel(status.killSwitchDevices || [])} -> ${stringListLabel(firewallKillSwitchSelectedDeviceIps())}`);
+      }
+    }
     if (state.firewallKillSwitchEnabled && guard.domains.length) {
       const expectedDomainMode = state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block';
       if (status.killSwitchDomainMode && status.killSwitchDomainMode !== expectedDomainMode) {

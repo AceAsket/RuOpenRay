@@ -1,6 +1,4 @@
-import { routeNamesStorageKey } from './storage.js';
-
-export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds }) {
+export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, persistRouteNames }) {
   function routeRules() {
     if (!state.config.routing || typeof state.config.routing !== 'object') state.config.routing = {};
     if (!Array.isArray(state.config.routing.rules)) state.config.routing.rules = [];
@@ -43,8 +41,23 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       .map((item) => item.trim())
       .filter(Boolean);
   }
+
+  function isDefaultRoute(rule) {
+    if (!rule) return false;
+    const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
+    const hasConditions = Boolean(
+      (Array.isArray(rule.domain) && rule.domain.length) ||
+      (Array.isArray(rule.ip) && rule.ip.length) ||
+      (Array.isArray(rule.source) && rule.source.length) ||
+      (Array.isArray(rule.inboundTag) && rule.inboundTag.length) ||
+      rule.network ||
+      (rule.port && String(rule.port) !== '0-65535')
+    );
+    return hasTarget && !hasConditions;
+  }
   
   function routeTarget(rule) {
+    if (isDefaultRoute(rule)) return { kind: 'default', values: ['все, что не совпало выше'] };
     if (Array.isArray(rule.domain) && rule.domain.length) return { kind: 'domain', values: rule.domain };
     if (Array.isArray(rule.ip) && rule.ip.length) return { kind: 'ip', values: rule.ip };
     if (Array.isArray(rule.source) && rule.source.length) return { kind: 'source', values: rule.source };
@@ -66,7 +79,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function saveRouteNames() {
-    localStorage.setItem(routeNamesStorageKey, JSON.stringify(state.routeNames));
+    if (typeof persistRouteNames === 'function') persistRouteNames(state.routeNames);
   }
   
   function compactRouteValue(value) {
@@ -137,6 +150,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (raw.includes('youtube') || raw.includes('googlevideo') || raw.includes('ytimg')) return 'YouTube';
     if (raw.includes('cloudflare') || raw.includes('104.16.0.0/12') || raw.includes('188.114.96.0/20')) return 'Cloudflare UDP';
     if (raw.includes('66.22.192.0/18')) return 'Discord voice';
+    if (target.kind === 'default') return 'Остальной трафик';
     if (target.kind === 'source') return `Устройство ${first}`;
     if (target.kind === 'port') return `Порты ${first}`;
     if (target.kind === 'inboundTag') return `Входящий поток ${routeTagValue(first)}`;
@@ -173,6 +187,15 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const network = rule.network ? ` · ${rule.network}` : '';
     const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
     const managedDetail = managedRouteDetail(rule || {});
+    if (target.kind === 'default') {
+      return {
+        kind: routeKinds.default || 'Остальной трафик',
+        value: 'если правила выше не совпали',
+        fullValue: 'catch-all правило Xray',
+        outbound,
+        detail: managedDetail || 'default / catch-all'
+      };
+    }
     return {
       kind: routeKinds[target.kind] || 'Другое',
       value: values.length > 96 ? `${values.slice(0, 96)}…` : values,
@@ -255,6 +278,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     readableRouteTag,
     routeTagValue,
     routeHasInbound,
+    isDefaultRoute,
     isRuOpenRayManagedRoute,
     managedRouteName,
     managedRouteDetail,

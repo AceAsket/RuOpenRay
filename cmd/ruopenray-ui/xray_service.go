@@ -23,6 +23,16 @@ func (s *serverState) readActiveConfig() (map[string]any, error) {
 }
 
 func (s *serverState) writeActiveConfig(cfg map[string]any) error {
+	if _, err := s.prepareConfigLogFiles(cfg); err != nil {
+		return err
+	}
+	return s.writeActiveConfigRaw(cfg)
+}
+
+func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
+	if err := os.MkdirAll(filepath.Dir(s.cfg.ActiveConfig), 0o755); err != nil {
+		return err
+	}
 	body, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -146,6 +156,7 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		restart := s.serviceAction("restart")
+		_ = s.clearConfigDraft()
 		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup})
 		return
 	}
@@ -155,6 +166,7 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	restart := s.serviceAction("restart")
+	_ = s.clearConfigDraft()
 	writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "restart": restart})
 }
 

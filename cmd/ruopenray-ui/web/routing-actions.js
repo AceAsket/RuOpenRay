@@ -87,7 +87,7 @@ export function createRoutingActions({
 
   function addRoutingRule() {
     const values = splitRouteValues(state.routeValue);
-    if (!values.length) {
+    if (state.routeKind !== 'default' && !values.length) {
       state.message = 'Укажите сайт, IP, устройство или порт для правила';
       render();
       return;
@@ -102,6 +102,15 @@ export function createRoutingActions({
       rule.balancerTag = state.routeBalancer;
     } else {
       rule.outboundTag = state.routeOutbound;
+    }
+    if (state.routeKind === 'default') {
+      setRoutingDraft([...routeRules(), rule]);
+      state.routeName = '';
+      state.routeValue = '';
+      state.routeRuleDialog = false;
+      state.message = 'Default-правило добавлено в конец черновика. Оно сработает только если правила выше не совпали.';
+      render();
+      return;
     }
     if (state.routeKind === 'port') {
       rule.port = values.join(',');
@@ -130,7 +139,7 @@ export function createRoutingActions({
 
   function routeRuleFromForm(baseRule = {}) {
     const values = splitRouteValues(state.routeValue);
-    if (!values.length) return null;
+    if (state.routeKind !== 'default' && !values.length) return null;
     const rule = { ...baseRule, type: baseRule.type || 'field' };
     delete rule.domain;
     delete rule.ip;
@@ -145,6 +154,7 @@ export function createRoutingActions({
     } else {
       rule.outboundTag = state.routeOutbound || 'proxy';
     }
+    if (state.routeKind === 'default') return rule;
     if (state.routeKind === 'port') rule.port = values.join(',');
     else rule[state.routeKind] = values;
     return rule;
@@ -190,7 +200,9 @@ export function createRoutingActions({
     }
     const nextRule = routeRuleFromForm(oldRule);
     if (!nextRule) {
-      state.message = state.routeTargetType === 'balancer' && !state.routeBalancer
+      state.message = state.routeKind === 'default'
+        ? 'Выберите, куда отправлять остальной трафик'
+        : state.routeTargetType === 'balancer' && !state.routeBalancer
         ? 'Выберите балансировщик или переключите цель на сервер'
         : 'Укажите значение правила';
       render();
@@ -218,6 +230,86 @@ export function createRoutingActions({
     const next = JSON.parse(JSON.stringify(rule));
     if (next.outboundTag === 'proxy') next.outboundTag = activeProxyTag() || 'proxy';
     return next;
+  }
+
+  function normalizedRouteTarget(tag) {
+    const value = String(tag || '').trim();
+    if (!value) return '';
+    const active = activeProxyTag();
+    if (value === 'proxy' || (active && value === active)) return 'proxy';
+    return value;
+  }
+
+  function canonicalRouteRule(rule) {
+    const target = rule?.balancerTag
+      ? `balancer:${rule.balancerTag}`
+      : `outbound:${normalizedRouteTarget(rule?.outboundTag || '')}`;
+    const sorted = (values) => Array.isArray(values) ? [...values].map(String).sort() : [];
+    const port = String(rule?.port || '').trim();
+    const hasConditions = Boolean(
+      sorted(rule?.domain).length ||
+      sorted(rule?.ip).length ||
+      sorted(rule?.source).length ||
+      sorted(rule?.inboundTag).length ||
+      rule?.network ||
+      (port && port !== '0-65535')
+    );
+    return JSON.stringify({
+      target,
+      network: String(rule?.network || ''),
+      domain: sorted(rule?.domain),
+      ip: sorted(rule?.ip),
+      source: sorted(rule?.source),
+      inboundTag: sorted(rule?.inboundTag),
+      port: hasConditions ? port : ''
+    });
+  }
+
+  function routePresetRuleMatches(rule, presetRule) {
+    return canonicalRouteRule(rule) === canonicalRouteRule(presetRule);
+  }
+
+  function allRoutePresetEntries() {
+    return [
+      ...builtinRoutePresetEntries({ includeHidden: true }),
+      ...customRoutePresetEntries()
+    ];
+  }
+
+  function routeRulePresetMatches(rule) {
+    return allRoutePresetEntries()
+      .filter(([key]) => routePresetRules(key).some((presetRule) => routePresetRuleMatches(rule, normalizePresetRule(presetRule))))
+      .map(([key]) => ({ key, title: routePresetTitle(key) }));
+  }
+
+  function routeRuleSourceWithPresets(rule) {
+    if (isRuOpenRayManagedRoute(rule)) return routeRuleSource(rule);
+    const matches = routeRulePresetMatches(rule);
+    if (matches.length) {
+      const titles = matches.map((item) => item.title);
+      return `Подборка: ${titles.slice(0, 2).join(', ')}${titles.length > 2 ? ` +${titles.length - 2}` : ''}`;
+    }
+    return routeRuleSource(rule);
+  }
+
+  function routePresetInstallSummary(key) {
+    const presetRules = routePresetRules(key).map(normalizePresetRule);
+    const currentRules = routeRules();
+    const matched = presetRules.filter((presetRule) => currentRules.some((rule) => routePresetRuleMatches(rule, presetRule))).length;
+    return {
+      matched,
+      total: presetRules.length,
+      installed: Boolean(presetRules.length && matched === presetRules.length),
+      partial: Boolean(matched && matched < presetRules.length)
+    };
+  }
+
+  function routePresetInstallLabel(key) {
+    const summary = routePresetInstallSummary(key);
+    if (!summary.total) return '';
+    if (summary.installed) return 'установлено';
+    if (summary.partial) return `добавлено ${summary.matched}/${summary.total}`;
+    return '';
   }
 
   function applySelectedRoutingPresets() {
@@ -519,7 +611,7 @@ export function createRoutingActions({
     return routeRules()
       .map((rule, index) => {
         const info = describeRouteRule(rule);
-        return { rule, index, info, name: routeRuleName(rule, info), source: routeRuleSource(rule) };
+        return { rule, index, info, name: routeRuleName(rule, info), source: routeRuleSourceWithPresets(rule), presets: routeRulePresetMatches(rule) };
       })
       .filter(({ info, name, source }) => {
         if (!search) return true;
@@ -529,7 +621,7 @@ export function createRoutingActions({
   }
 
   function routeRowHtml(item, options, rulesLength) {
-    const { index, info, name, source } = item;
+    const { index, info, name, source, presets = [] } = item;
     const selectedTarget = encodedRouteTarget(item.rule);
     const category = routeCategoryForRule(item.rule);
     const managed = isRuOpenRayManagedRoute(item.rule);
@@ -549,6 +641,7 @@ export function createRoutingActions({
       <div class="route-title">
         <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
         <span>${escapeHtml(source)} · выше = раньше</span>
+        ${presets.length ? `<div class="route-preset-tags">${presets.slice(0, 3).map((preset) => `<em>${escapeHtml(preset.title)}</em>`).join('')}${presets.length > 3 ? `<em>+${presets.length - 3}</em>` : ''}</div>` : ''}
       </div>
       <div class="route-main">
         <strong title="${escapeHtml(info.fullValue)}">${escapeHtml(info.value)}</strong>
@@ -676,6 +769,8 @@ export function createRoutingActions({
     routePresetDetail,
     routeRuleConditionCount,
     routePresetConditionCount,
+    routePresetInstallSummary,
+    routePresetInstallLabel,
     builtinRoutePresetEntries,
     ruleCountLabel,
     customRoutePreset,

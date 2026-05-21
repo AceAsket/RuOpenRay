@@ -149,7 +149,37 @@ function dnsLeakChecklist(dns, stats) {
           </div>
         </article>`).join('')}
       </div>
+      ${dnsDiagnosticsSection()}
     </section>
+  `;
+}
+
+function dnsDiagnosticsSection() {
+  const diagnostics = state.dnsDiagnostics;
+  const probeText = (probe) => {
+    if (!probe) return 'не проверялся';
+    if (probe.skipped) return 'не требуется';
+    if (probe.ok) {
+      const addresses = Array.isArray(probe.addresses) ? probe.addresses.length : 0;
+      return `отвечает за ${probe.durationMs || 0} мс · ${addresses} адресов`;
+    }
+    return probe.error || 'не отвечает';
+  };
+  const autoProbes = Array.isArray(diagnostics?.autoProbes) ? diagnostics.autoProbes : [];
+  return `
+    <div class="dns-diagnostics-card">
+      <div>
+        <strong>DNS роутера</strong>
+        <span>${diagnostics ? escapeHtml(diagnostics.summary || 'Проверка выполнена') : 'Проверяет системный DNS OpenWrt, WAN DNS и Xray DNS inbound.'}</span>
+      </div>
+      <button class="btn secondary ${state.busyAction === 'checkDnsDiagnostics' ? 'is-busy' : ''}" data-action="checkDnsDiagnostics" ${state.busyAction === 'checkDnsDiagnostics' ? 'disabled' : ''}>${state.busyAction === 'checkDnsDiagnostics' ? 'Проверяю...' : 'Проверить DNS роутера'}</button>
+      ${diagnostics ? `<div class="dns-diagnostics-grid">
+        <article class="${diagnostics.system?.ok ? 'ok' : 'warn'}"><span>Системный DNS</span><strong>${escapeHtml(probeText(diagnostics.system))}</strong></article>
+        <article class="${autoProbes.some((item) => item.ok) ? 'ok' : 'warn'}"><span>WAN DNS OpenWrt</span><strong>${escapeHtml(autoProbes.length ? autoProbes.map((item) => `${item.server}: ${probeText(item)}`).join(' · ') : 'не найден')}</strong></article>
+        <article class="${diagnostics.xrayDns?.ok || diagnostics.xrayDns?.skipped ? 'ok' : 'warn'}"><span>Xray DNS</span><strong>${escapeHtml(probeText(diagnostics.xrayDns))}</strong></article>
+      </div>` : ''}
+      ${(diagnostics?.warnings || []).length ? `<div class="settings-warning"><strong>Что важно</strong><span>${escapeHtml(diagnostics.warnings.join(' '))}</span></div>` : ''}
+    </div>
   `;
 }
 

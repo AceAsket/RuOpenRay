@@ -7,7 +7,8 @@ export function createConfigActions({
   refresh,
   keepOperationVisible,
   recordXrayStatsSample,
-  xrayStatsResetAtStorageKey
+  xrayStatsResetAtStorageKey,
+  cancelServerDraftSave
 }) {
   async function testConfig() {
     const startedAt = Date.now();
@@ -43,9 +44,13 @@ export function createConfigActions({
     render();
     try {
       const parsed = JSON.parse(state.jsonDraft);
+      if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
       const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
       state.appliedConfigText = JSON.stringify(parsed, null, 2);
       state.jsonDraft = state.appliedConfigText;
+      state.serverDraftExists = false;
+      state.serverDraftSavedAt = '';
+      state.serverDraftError = '';
       state.configAnalysis = result.analysis || null;
       state.lastApplyBackup = result.backup || state.lastApplyBackup;
       state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';

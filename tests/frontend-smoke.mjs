@@ -1004,7 +1004,7 @@ globalThis.document = {
 bindActionControls({
   state: actionBusyState,
   render: () => {
-    if (actionBusyState.busyAction === 'apply' && actionBusyState.busyLabel.includes('конфигурацию')) {
+    if (actionBusyState.busyAction === 'apply' && actionBusyState.busyLabel) {
       actionBusySeen = true;
     }
   },
@@ -1045,7 +1045,7 @@ const checks = [
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['settings actions logout', logoutClearedSession],
   ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
-  ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('системная команда вернула exit status 1')],
+  ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],

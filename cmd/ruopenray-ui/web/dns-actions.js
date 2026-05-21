@@ -144,6 +144,13 @@ export function createDnsActions({
     render();
   }
 
+  async function checkDnsDiagnostics() {
+    const result = await request('/api/dns/diagnostics');
+    state.dnsDiagnostics = result;
+    state.message = result.ok ? 'DNS роутера проверен' : (result.summary || 'DNS роутера требует внимания');
+    render();
+  }
+
   async function applyLanDnsUpstream() {
     state.lanDnsSaving = true;
     render();
@@ -203,6 +210,7 @@ export function createDnsActions({
     applyDnsGuardPreset,
     removeDnsServer,
     checkDnsServer,
+    checkDnsDiagnostics,
     applyLanDnsUpstream,
     applyDnsBootstrapHosts,
     previewLanDnsUpstream,

@@ -81,8 +81,8 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
     if (defaultOutbound) {
       rules.push(
         defaultOutbound.startsWith('balancer:')
-          ? { type: 'field', balancerTag: defaultOutbound.slice('balancer:'.length), port: '0-65535' }
-          : { type: 'field', outboundTag: defaultOutbound, port: '0-65535' }
+          ? { type: 'field', balancerTag: defaultOutbound.slice('balancer:'.length) }
+          : { type: 'field', outboundTag: defaultOutbound }
       );
     }
 
@@ -95,14 +95,14 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
   }
 
   function isDslDefaultRule(rule, preview) {
+    const matchesTarget = rule.outboundTag === preview.defaultOutbound ||
+      (preview.defaultOutbound?.startsWith('balancer:') && rule.balancerTag === preview.defaultOutbound.slice('balancer:'.length));
+    const noConditions = !rule.domain && !rule.ip && !rule.source && !rule.inboundTag && !rule.network;
     return Boolean(
       preview.defaultOutbound &&
-        rule.outboundTag === preview.defaultOutbound &&
-        rule.port === '0-65535' &&
-        !rule.domain &&
-        !rule.ip &&
-        !rule.source &&
-        !rule.inboundTag
+        matchesTarget &&
+        noConditions &&
+        (!rule.port || rule.port === '0-65535')
     );
   }
 

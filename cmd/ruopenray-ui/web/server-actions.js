@@ -29,21 +29,29 @@ export function createServerActions({
   async function routeAllToOutbound(tag, { apply = true } = {}) {
     if (state.configApplying) return;
     const before = proxyRuleStrategyStats();
+    state.pendingServerTag = tag;
+    state.message = `Подключаю ${tag}: меняю основное proxy-направление...`;
+    render();
     setActiveProxyDraft(tag);
     const after = proxyRuleStrategyStats(tag);
-    state.pendingServerTag = '';
     const switched = Math.max(before.primary, after.primary);
     const pinned = after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : '';
     if (!apply) {
+      state.pendingServerTag = '';
       state.message = `Основное proxy-направление теперь ведет в ${tag}. Переключено правил: ${switched}${pinned}`;
       render();
       return;
     }
     state.message = `Подключаю ${tag}: меняю proxy-направление, записываю config.json и перезапускаю Xray...`;
     render();
-    await applyConfig({
-      successMessage: `Подключен ${tag}. Переключено правил: ${switched}${pinned}`
-    });
+    try {
+      await applyConfig({
+        successMessage: `Подключен ${tag}. Переключено правил: ${switched}${pinned}`
+      });
+    } finally {
+      state.pendingServerTag = '';
+      render();
+    }
   }
 
   async function checkServers(tags = [], options = {}) {
@@ -106,10 +114,24 @@ export function createServerActions({
     await refresh();
   }
 
+  async function deleteSubscriptionPool(tag) {
+    if (!tag) return;
+    if (!confirm(`Удалить подписку ${tag}? Сервер в профиле и правила маршрутизации останутся на месте.`)) return;
+    const result = await request('/api/subscriptions/delete', {
+      method: 'POST',
+      body: JSON.stringify({ tag })
+    });
+    state.message = result.ok
+      ? `Подписка ${tag} удалена из списка. Сервер в профиле не удалялся.`
+      : `Не удалось удалить подписку ${tag}`;
+    await refresh();
+  }
+
   return {
     removeOutbound,
     routeAllToOutbound,
     checkServers,
-    fallbackSubscriptionPool
+    fallbackSubscriptionPool,
+    deleteSubscriptionPool
   };
 }

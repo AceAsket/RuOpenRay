@@ -86,6 +86,19 @@ func UpsertPool(store Store, pool Pool) Store {
 	return store
 }
 
+func RemovePool(store Store, tag string) (Store, bool) {
+	next := Store{Pools: []Pool{}}
+	removed := false
+	for _, pool := range store.Pools {
+		if pool.Tag == tag {
+			removed = true
+			continue
+		}
+		next.Pools = append(next.Pools, pool)
+	}
+	return next, removed
+}
+
 func NormalizeActive(active int, candidates int) int {
 	if candidates <= 0 || active < 0 || active >= candidates {
 		return 0

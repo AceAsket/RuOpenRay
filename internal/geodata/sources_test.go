@@ -55,3 +55,19 @@ func TestNormalizeSourceExtra(t *testing.T) {
 		t.Fatalf("unexpected source: %#v", source)
 	}
 }
+
+func TestNormalizeSourceSeparate(t *testing.T) {
+	source := NormalizeSource(map[string]any{
+		"name":       "RUNET Freedom",
+		"kind":       "separate",
+		"target":     "runet",
+		"geoipUrl":   "https://example.com/geoip.dat",
+		"geositeUrl": "https://example.com/geosite.dat",
+	}, 0)
+	if source["id"] != "custom-runet-freedom" || source["kind"] != "separate" || source["target"] != "runet.dat" {
+		t.Fatalf("unexpected source: %#v", source)
+	}
+	if source["geoipUrl"] == "" || source["geositeUrl"] == "" {
+		t.Fatalf("expected pair urls, got %#v", source)
+	}
+}

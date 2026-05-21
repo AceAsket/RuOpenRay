@@ -18,6 +18,8 @@ export function bindRoutingControls({
   setFirewallRouterMode,
   setFirewallDeviceMode,
   toggleFirewallDevice,
+  setFirewallKillSwitchDeviceMode,
+  toggleFirewallKillSwitchDevice,
   reorderRoutingRule,
   routeRules,
   describeRouteRule,
@@ -102,6 +104,12 @@ export function bindRoutingControls({
   });
   document.querySelectorAll('[data-firewall-device]').forEach((checkbox) => {
     checkbox.addEventListener('change', (event) => toggleFirewallDevice(checkbox.dataset.firewallDevice, event.target.checked));
+  });
+  document.querySelectorAll('[data-kill-switch-device-mode]').forEach((button) => {
+    button.addEventListener('click', () => setFirewallKillSwitchDeviceMode(button.dataset.killSwitchDeviceMode));
+  });
+  document.querySelectorAll('[data-kill-switch-device]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (event) => toggleFirewallKillSwitchDevice(checkbox.dataset.killSwitchDevice, event.target.checked));
   });
   document.querySelectorAll('[data-route-index]').forEach((row) => {
     row.addEventListener('pointerdown', (event) => {

@@ -21,6 +21,8 @@ export function createRoutingView(deps) {
     customRoutePresetEntries,
     ruleCountLabel,
     routePresetConditionCount,
+    routePresetInstallSummary,
+    routePresetInstallLabel,
     routeBalancers,
     observatoryPanel,
     balancerSelectorMatches,
@@ -31,11 +33,13 @@ export function createRoutingView(deps) {
     tcpFastOpenDraftEnabled,
     firewallInfo,
     firewallReadyStatus,
+    firewallPendingReasons,
     firewallPolicyPreview,
     firewallSafetyCheck,
     firewallDeviceChoices,
     firewallSelectedDevices,
     firewallCommands,
+    geoEditorPanel,
     geoPanel,
   } = deps;
 
@@ -133,29 +137,39 @@ function routingScenariosPanel() {
       ${customEntries.length ? `
         <div class="scenario-section-title">Мои подборки</div>
         <div class="scenario-grid">
-          ${customEntries.map(([key, preset]) => `<article class="scenario-card custom">
+          ${customEntries.map(([key, preset]) => {
+            const install = routePresetInstallSummary(key);
+            const label = routePresetInstallLabel(key);
+            return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
             <div>
               <strong>${escapeHtml(preset.title)}</strong>
               <span>${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
             </div>
             <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
+            ${label ? `<em class="scenario-install-badge">${escapeHtml(label)}</em>` : ''}
             <span class="scenario-actions">
               <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
               <button class="icon-btn danger" type="button" data-route-preset-delete="${escapeHtml(key)}" aria-label="Удалить подборку">×</button>
             </span>
-          </article>`).join('')}
+          </article>`;
+          }).join('')}
         </div>
       ` : ''}
       <div class="scenario-section-title">Подборки</div>
       <div class="scenario-grid">
-        ${presetEntries.map(([key, preset]) => `<article class="scenario-card">
+        ${presetEntries.map(([key, preset]) => {
+          const install = routePresetInstallSummary(key);
+          const label = routePresetInstallLabel(key);
+          return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
           <div>
             <strong>${escapeHtml(preset.title)}</strong>
             <span>${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>
           </div>
           <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
+          ${label ? `<em class="scenario-install-badge">${escapeHtml(label)}</em>` : ''}
           <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
-        </article>`).join('')}
+        </article>`;
+        }).join('')}
       </div>
     </section>
   `;
@@ -296,7 +310,8 @@ function routingPanel() {
     ['scenarios', 'Сценарии'],
     ['intercept', 'Перехват'],
     ['leaks', 'Защита от утечек'],
-    ['geo', 'Geo']
+    ['geo', 'Geo'],
+    ['geo-editor', 'Редактор geo']
   ];
   const view = routingTabs.some(([value]) => value === state.routingView) ? state.routingView : 'rules';
   const views = {
@@ -304,7 +319,8 @@ function routingPanel() {
     scenarios: routingScenariosPanel,
     intercept: firewallPanel,
     leaks: leakProtectionPanel,
-    geo: geoPanel
+    geo: geoPanel,
+    'geo-editor': geoEditorPanel
   };
   return `
     <section class="routing-nav-panel">
@@ -553,16 +569,26 @@ function xrayConfigTestLogView() {
 
 function leakProtectionPanel() {
   const preview = firewallPolicyPreview();
+  const status = state.firewallStatus || {};
   const protectedIps = preview.guard?.ips || [];
   const protectedDomains = preview.guard?.domains || [];
   const invalidTargets = preview.guard?.invalid || [];
   const deviceChoices = firewallDeviceChoices();
-  const selectedDevices = new Set(state.firewallSelectedDevices);
-  const killSwitchNftset = state.firewallStatus?.killSwitchNftset || {};
-  const killSwitchDNSBlock = state.firewallStatus?.killSwitchDNSBlock || {};
+  const selectedDevices = new Set(state.firewallKillSwitchSelectedDevices || []);
+  const killSwitchNftset = status.killSwitchNftset || {};
+  const killSwitchDNSBlock = status.killSwitchDNSBlock || {};
   const nftsetDomains = killSwitchNftset.domains || [];
   const dnsBlockDomains = killSwitchDNSBlock.domains || [];
   const domainMode = state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block';
+  const firewallApplied = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : false;
+  const pendingReasons = typeof firewallPendingReasons === 'function' ? firewallPendingReasons(status) : [];
+  const scopeLabel = state.firewallKillSwitchDeviceMode === 'selected'
+    ? `только выбранные клиенты (${selectedDevices.size || 0})`
+    : state.firewallKillSwitchDeviceMode === 'exclude'
+      ? `весь LAN, кроме выбранных (${selectedDevices.size || 0})`
+      : 'весь LAN';
+  const domainModeTitle = domainMode === 'nftset' ? 'nftset по клиентам' : 'точная DNS-блокировка';
+  const totalTargets = protectedIps.length + protectedDomains.length;
   const domainStatus = protectedDomains.length
     ? domainMode === 'nftset'
       ? killSwitchNftset.active && nftsetDomains.length === protectedDomains.length
@@ -580,19 +606,38 @@ function leakProtectionPanel() {
         <p>Цифровая гигиена для адресов, которые нельзя выпускать напрямую: если Xray остановлен или VPN не работает, firewall не даст им уйти мимо proxy.</p>
       </div>
       <div class="route-score">
-        <strong>${state.firewallKillSwitchEnabled ? protectedIps.length + protectedDomains.length : 'OFF'}</strong>
+        <strong>${state.firewallKillSwitchEnabled ? totalTargets : 'OFF'}</strong>
         <span>${state.firewallKillSwitchEnabled ? 'целей под защитой' : 'защита выключена'}</span>
       </div>
     </section>
 
     <section class="panel intercept-compact-panel">
       <div class="panel-title">
-        <div><h2>Защита от прямого выхода</h2><span>IP и подсети защищаются на уровне nftables. Домены можно блокировать точно через DNS или ограничивать по клиентам через nftset.</span></div>
+        <div><h2>Не выпускать без Xray</h2><span>IP и подсети принудительно идут в Xray. Если Xray остановлен, прямой выход блокируется. Для доменов можно выбрать точную DNS-блокировку или nftset по клиентам.</span></div>
       </div>
+      <div class="leak-status-strip ${firewallApplied ? 'ok' : 'warn'}">
+        <article>
+          <span>Состояние firewall</span>
+          <strong>${firewallApplied ? 'защита соответствует настройкам' : 'есть непримененные изменения'}</strong>
+        </article>
+        <article>
+          <span>Кого защищаем</span>
+          <strong>${escapeHtml(scopeLabel)}</strong>
+        </article>
+        <article>
+          <span>Домены</span>
+          <strong>${escapeHtml(domainModeTitle)}</strong>
+        </article>
+      </div>
+      ${pendingReasons.length ? `<div class="leak-pending-box">
+        <strong>Что еще не применено</strong>
+        <ul>${pendingReasons.slice(0, 6).map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
+        ${pendingReasons.length > 6 ? `<small>Еще ${pendingReasons.length - 6} отличий в firewall-настройках.</small>` : ''}
+      </div>` : ''}
       <div class="intercept-compact-grid">
         <label class="settings-check compact intercept-kill-toggle ${state.firewallKillSwitchEnabled ? 'active' : ''}">
           <input id="firewallKillSwitchEnabled" type="checkbox" ${state.firewallKillSwitchEnabled ? 'checked' : ''} />
-          <span><strong>Не выпускать напрямую</strong><em>${escapeHtml(protectedIps.length ? `${protectedIps.length} IP/подсетей попадут в nftables` : 'Добавьте IP или подсети, которые нельзя выпускать без Xray.')}</em></span>
+          <span><strong>Включить защиту</strong><em>${escapeHtml(protectedIps.length ? `${protectedIps.length} IP/подсетей попадут в nftables` : 'Добавьте IP или подсети, которые нельзя выпускать без Xray.')}</em></span>
         </label>
         <div class="intercept-setting-card wide">
           <span class="intercept-label">Защищенные адреса</span>
@@ -600,10 +645,10 @@ function leakProtectionPanel() {
           <small>Пишите по одному или через запятую: IPv4, IPv4-подсети и домены. Для доменов выберите режим ниже.</small>
         </div>
         <div class="intercept-setting-card wide">
-          <span class="intercept-label">Как защищать домены</span>
+          <span class="intercept-label">Домены без Xray</span>
           <div class="segmented compact intercept-segmented two" role="group" aria-label="Режим защиты доменов">
-            <button type="button" class="${domainMode === 'dns-block' ? 'active' : ''}" data-kill-switch-domain-mode="dns-block">Точно по DNS</button>
-            <button type="button" class="${domainMode === 'nftset' ? 'active' : ''}" data-kill-switch-domain-mode="nftset">Для выбранных клиентов</button>
+            <button type="button" class="${domainMode === 'dns-block' ? 'active' : ''}" data-kill-switch-domain-mode="dns-block">DNS-блокировка</button>
+            <button type="button" class="${domainMode === 'nftset' ? 'active' : ''}" data-kill-switch-domain-mode="nftset">nftset по клиентам</button>
           </div>
           <small>${domainMode === 'dns-block'
             ? 'dnsmasq будет отвечать 0.0.0.0/:: для этих доменов. Это точнее, но действует на всех клиентов, которые используют DNS роутера.'
@@ -613,22 +658,27 @@ function leakProtectionPanel() {
 
       <div class="leak-scope-panel">
         <div class="panel-title inline">
-          <div><h2>Кого защищаем</h2><span>Эта область применяется к IP/подсетям и к доменам в режиме «для выбранных клиентов». Точная DNS-блокировка действует на всех, кто использует DNS роутера.</span></div>
+          <div><h2>Область действия</h2><span>Эта область применяется к IP/подсетям и к доменам в режиме nftset. DNS-блокировка действует на всех, кто использует DNS роутера.</span></div>
         </div>
         <div class="segmented compact intercept-segmented three" role="group" aria-label="Область защиты">
-          <button type="button" class="${state.firewallDeviceMode === 'all' ? 'active' : ''}" data-firewall-device-mode="all">Весь LAN</button>
-          <button type="button" class="${state.firewallDeviceMode === 'selected' ? 'active' : ''}" data-firewall-device-mode="selected">Только выбранные</button>
-          <button type="button" class="${state.firewallDeviceMode === 'exclude' ? 'active' : ''}" data-firewall-device-mode="exclude">Кроме выбранных</button>
+          <button type="button" class="${state.firewallKillSwitchDeviceMode === 'all' ? 'active' : ''}" data-kill-switch-device-mode="all">Весь LAN</button>
+          <button type="button" class="${state.firewallKillSwitchDeviceMode === 'selected' ? 'active' : ''}" data-kill-switch-device-mode="selected">Только выбранные</button>
+          <button type="button" class="${state.firewallKillSwitchDeviceMode === 'exclude' ? 'active' : ''}" data-kill-switch-device-mode="exclude">Кроме выбранных</button>
         </div>
         <div class="firewall-device-list leak-device-list">
           ${deviceChoices.length ? deviceChoices.slice(0, 16).map((device) => `<label class="firewall-device ${selectedDevices.has(device.ip) ? 'active' : ''}">
-            <input type="checkbox" data-firewall-device="${escapeHtml(device.ip)}" ${selectedDevices.has(device.ip) ? 'checked' : ''} />
+            <input type="checkbox" data-kill-switch-device="${escapeHtml(device.ip)}" ${selectedDevices.has(device.ip) ? 'checked' : ''} />
             <span><strong>${escapeHtml(device.name || device.ip)}</strong><em>${escapeHtml([device.ip, device.mac].filter(Boolean).join(' · '))}</em></span>
           </label>`).join('') : '<p class="muted">DHCP leases пока не найдены. Можно сначала открыть LAN-устройства или добавить правило по IP вручную.</p>'}
         </div>
       </div>
 
       <div class="intercept-summary-grid">
+        <article>
+          <span>Что применится</span>
+          <strong>${escapeHtml(state.firewallKillSwitchEnabled ? 'защита включена' : 'защита выключена')}</strong>
+          <small>${escapeHtml(state.firewallKillSwitchEnabled ? `${totalTargets} целей · ${scopeLabel}` : 'Firewall не будет добавлять правила защиты от прямого выхода.')}</small>
+        </article>
         <article>
           <span>Firewall-защита</span>
           <strong>${escapeHtml(protectedIps.length ? `${protectedIps.length} IP/подсетей` : 'нет IP')}</strong>
@@ -651,8 +701,8 @@ function leakProtectionPanel() {
         </article>
       </div>
       ${state.firewallKillSwitchEnabled && protectedDomains.length && domainMode === 'dns-block' ? `<div class="settings-warning"><strong>Точная DNS-блокировка</strong><span>RuOpenRay пропишет ${escapeHtml(protectedDomains.length)} доменов в dnsmasq address и будет блокировать имя без накопления IP. Если клиент использует DoH или внешний DNS в обход роутера, нужен перехват DNS/DoH guard.</span></div>` : ''}
-      ${state.firewallKillSwitchEnabled && protectedDomains.length && domainMode === 'nftset' ? `<div class="settings-warning"><strong>Для выбранных клиентов</strong><span>RuOpenRay пропишет ${escapeHtml(protectedDomains.length)} доменов в dnsmasq nftset. Это можно ограничить выбранными LAN-клиентами в “Перехвате”, но это уже защита по IP после резолва, а не точный DNS-ответ.</span></div>` : ''}
-      ${state.firewallKillSwitchEnabled && protectedDomains.length && domainMode === 'dns-block' && state.firewallDeviceMode !== 'all' ? `<div class="settings-warning"><strong>Область действия</strong><span>Точная DNS-блокировка в dnsmasq действует для всех LAN-клиентов, которые используют DNS роутера. Чтобы ограничить защиту выбранными клиентами, переключите режим доменов на “Для выбранных клиентов”.</span></div>` : ''}
+      ${state.firewallKillSwitchEnabled && protectedDomains.length && domainMode === 'nftset' ? `<div class="settings-warning"><strong>nftset по клиентам</strong><span>RuOpenRay пропишет ${escapeHtml(protectedDomains.length)} доменов в dnsmasq nftset. Это можно ограничить выбранными LAN-клиентами, но это уже защита по IP после резолва, а не точный DNS-ответ.</span></div>` : ''}
+      ${state.firewallKillSwitchEnabled && protectedDomains.length && domainMode === 'dns-block' && state.firewallKillSwitchDeviceMode !== 'all' ? `<div class="settings-warning"><strong>Область действия</strong><span>Точная DNS-блокировка в dnsmasq действует для всех LAN-клиентов, которые используют DNS роутера. Чтобы ограничить защиту выбранными клиентами, переключите режим доменов на nftset.</span></div>` : ''}
       ${state.firewallKillSwitchEnabled && !protectedIps.length && !protectedDomains.length ? `<div class="settings-warning"><strong>Нет целей</strong><span>Защита включена, но firewall пока нечего блокировать. Добавьте IP, подсеть или домен, например 162.159.140.0/24 или openai.com.</span></div>` : ''}
     </section>
 
@@ -683,7 +733,7 @@ function firewallApplyPanel() {
         <div class="split-actions">
           <button class="btn secondary" data-action="refreshFirewallStatus" ${state.firewallSaving ? 'disabled' : ''}>Обновить</button>
           <button class="btn secondary" data-action="downloadFirewallRules" ${state.firewallSaving ? 'disabled' : ''}>Скачать правила</button>
-          <button class="btn warning ${state.firewallSaving ? 'is-busy' : ''}" data-action="applyFirewall" ${state.firewallSaving || !available || blockedBySafety ? 'disabled' : ''}>${state.firewallSaving ? 'Применяю firewall...' : 'Применить firewall'}</button>
+          <button class="btn warning ${state.firewallSaving || state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.firewallSaving || state.configApplying || !available || blockedBySafety ? 'disabled' : ''}>${state.firewallSaving || state.configApplying ? 'Применяю изменения...' : 'Применить изменения'}</button>
           <button class="btn secondary" data-action="disableFirewall" ${state.firewallSaving || (!active && !persistent) ? 'disabled' : ''}>Отключить</button>
         </div>
       </div>

@@ -62,6 +62,25 @@ func (s *serverState) saveSubscriptionPool(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, 200, map[string]any{"ok": true, "pool": rsubscription.PublicPool(pool)})
 }
 
+func (s *serverState) deleteSubscriptionPool(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	if tag == "" || tag == "<nil>" {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Укажите подписку для удаления"})
+		return
+	}
+	store, removed := rsubscription.RemovePool(s.readSubscriptionStore(), tag)
+	if !removed {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Подписка не найдена"})
+		return
+	}
+	if err := s.writeSubscriptionStore(store); err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "tag": tag})
+}
+
 func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
 	payload, _ := readJSON(r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
