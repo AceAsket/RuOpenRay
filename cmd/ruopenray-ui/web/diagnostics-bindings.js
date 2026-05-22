@@ -33,9 +33,9 @@ export function bindDiagnosticsControls({
   document.querySelectorAll('[data-domain-device-events]').forEach((button) => {
     button.addEventListener('click', () => {
       const ip = button.dataset.domainDeviceEvents || '';
+      state.domainMonitorDeviceFilter = ip;
       state.domainMonitorMode = 'events';
       state.domainMonitorFilter = 'all';
-      state.domainMonitorQuery = ip;
       localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
       render();
     });
@@ -65,8 +65,13 @@ export function bindDiagnosticsControls({
   });
   document.querySelector('[data-domain-clear-filter]')?.addEventListener('click', () => {
     state.domainMonitorQuery = '';
+    state.domainMonitorDeviceFilter = '';
     state.domainMonitorFilter = 'all';
     localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+    render();
+  });
+  document.querySelector('[data-domain-clear-device]')?.addEventListener('click', () => {
+    state.domainMonitorDeviceFilter = '';
     render();
   });
 

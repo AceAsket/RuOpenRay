@@ -76,7 +76,7 @@ const busyLabels = {
   restoreLatestBackup: 'Откатываю последний apply'
 };
 
-const passiveActionPattern = /^(open|close|toggle|copy|download|clearSetupSnapshot|selectAll|clearRoutePresets|filterRoutes|appVersionClick|logout)$/i;
+const passiveActionPattern = /^(open|close|toggle|copy|download|clearSetupSnapshot|selectAll|clearRoutePresets|filterRoutes|appVersionClick|logout|setupStepBack|setupStepNext)$/i;
 const activeActionPattern = /^(add|apply|append|backup|change|check|cleanup|disable|enable|finish|import|install|preview|refresh|replace|reset|restore|rollback|run|save|scan|setup|start|stop|test|update)/i;
 
 function buttonText(button) {

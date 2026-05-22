@@ -74,6 +74,12 @@ export function bindNavigationControls({ state, render }) {
       render();
     });
   });
+  document.querySelectorAll('[data-setup-step]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.setupStep = button.dataset.setupStep || state.setupStep || 'environment';
+      render();
+    });
+  });
 }
 
 export function bindModalControls() {

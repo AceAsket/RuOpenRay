@@ -29,6 +29,7 @@ export function createDashboardView(deps) {
     checkForTag,
     checkLabel,
     checkMethodLabel,
+    configHasUnappliedChanges,
   } = deps;
 
 function dashboard() {
@@ -42,6 +43,7 @@ function dashboard() {
   const coreInfo = coreUpdateInfo();
   const activeConfig = s.config?.path || 'config.json';
   const proxyServers = proxyOutbounds();
+  const configDirty = typeof configHasUnappliedChanges === 'function' ? configHasUnappliedChanges() : false;
   return `
     <section class="dash-hero ${serviceRunning ? 'is-ok' : 'is-warn'}">
       <div class="dash-status">
@@ -49,11 +51,9 @@ function dashboard() {
         ${dashboardSystemStats(s.system)}
         ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
       </div>
-      <div class="dash-actions">
-        <button class="btn secondary" data-action="openSetupWizard">Мастер</button>
-        <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить'}</button>
-        <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
-      </div>
+      ${configDirty ? `<div class="dash-actions">
+        <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
+      </div>` : ''}
     </section>
 
     ${xrayCoreDashboard(s, coreReady, coreInfo)}

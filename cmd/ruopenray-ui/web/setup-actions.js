@@ -33,7 +33,9 @@ export function createSetupActions({
       state.firewallRouterMode = state.firewallStatus.routerMode;
       localStorage.setItem(firewallRouterModeStorageKey, state.firewallRouterMode);
     }
-    state.setupWizardOpen = true;
+    state.setupWizardOpen = false;
+    state.tab = 'setup';
+    state.setupStep = state.setupStep || 'environment';
     state.setupResult = null;
     state.setupRollbackResult = null;
     loadSetupSnapshot();
@@ -49,6 +51,12 @@ export function createSetupActions({
 
   function setupPrepareDraft() {
     prepareSetupDraft();
+    state.setupStepNotice = {
+      step: state.setupStep || 'routing',
+      level: 'ok',
+      title: 'Черновик подготовлен',
+      detail: 'Служебные входящие потоки, DNS и базовые правила добавлены в черновик. Перед применением мастер еще раз проверит конфигурацию.'
+    };
     render();
   }
 
@@ -75,6 +83,7 @@ export function createSetupActions({
       return;
     }
     state.setupApplying = true;
+    state.setupStepNotice = null;
     state.setupResult = { ok: true, steps: [] };
     render();
     const steps = [];

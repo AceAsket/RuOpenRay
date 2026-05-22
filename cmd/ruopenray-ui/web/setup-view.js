@@ -134,6 +134,295 @@ function setupFlowGuide(readiness) {
   `;
 }
 
+function setupWizardSteps(readiness) {
+  const xrayReady = Boolean(state.status?.core?.available);
+  const geoReady = Boolean(state.geoStatus?.geoip?.exists && state.geoStatus?.geosite?.exists);
+  const proxyReady = proxyOutboundsSafe().length > 0;
+  const dnsReady = Boolean(state.lanDnsStatus?.mode === 'xray' && state.lanDnsStatus?.readiness?.ready);
+  const fwReady = firewallReadyStatus(state.firewallStatus || {});
+  const transparentReady = Boolean(readiness.items.find((item) => item.key === 'transparent')?.ok);
+  const statsReady = Boolean(state.status?.xrayStats?.enabled);
+  return [
+    { id: 'environment', title: 'Проверка', ok: xrayReady && geoReady },
+    { id: 'mode', title: 'Режим', ok: true },
+    { id: 'dns', title: 'DNS', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
+    { id: 'server', title: 'Сервер', ok: proxyReady },
+    { id: 'routing', title: 'Правила', ok: true },
+    { id: 'firewall', title: 'Перехват', ok: fwReady && transparentReady },
+    { id: 'verify', title: 'Проверка', ok: statsReady || Boolean(state.setupResult?.ok) }
+  ];
+}
+
+function proxyOutboundsSafe() {
+  try {
+    return (state.config?.outbounds || []).filter((item) => item && !['direct', 'block', 'dns-out', 'ruopenray-api'].includes(item.tag));
+  } catch {
+    return [];
+  }
+}
+
+function setupStepIndex(steps) {
+  const index = steps.findIndex((step) => step.id === state.setupStep);
+  return index >= 0 ? index : 0;
+}
+
+function setupWizardStepper(steps) {
+  const activeIndex = setupStepIndex(steps);
+  return `<nav class="setup-stepper" aria-label="Шаги мастера">
+    ${steps.map((step, index) => `<button type="button" class="${index === activeIndex ? 'active' : ''} ${step.ok ? 'ok' : ''}" data-setup-step="${escapeHtml(step.id)}">
+      <span>${step.ok ? '✓' : index + 1}</span>
+      <strong>${escapeHtml(step.title)}</strong>
+    </button>`).join('')}
+  </nav>`;
+}
+
+function setupWizardSummary(steps) {
+  const activeIndex = setupStepIndex(steps);
+  const current = steps[activeIndex] || steps[0];
+  const done = steps.filter((step) => step.ok).length;
+  const left = Math.max(0, steps.length - done);
+  return `<section class="setup-step-summary">
+    <div>
+      <span>Шаг ${activeIndex + 1} из ${steps.length}</span>
+      <strong>${escapeHtml(current?.title || 'Проверка')}</strong>
+    </div>
+    <p>${left ? `Готово ${done} из ${steps.length}. Осталось закрыть ${left} ${left === 1 ? 'пункт' : left < 5 ? 'пункта' : 'пунктов'} перед уверенным применением.` : 'Все ключевые пункты готовы, можно запускать финальную проверку.'}</p>
+  </section>`;
+}
+
+function setupStepNotice() {
+  const notice = state.setupStepNotice;
+  if (!notice || notice.step !== state.setupStep) return '';
+  return `<section class="setup-step-notice ${escapeHtml(notice.level || 'warn')}" role="status">
+    <strong>${escapeHtml(notice.title || 'Проверьте шаг')}</strong>
+    <span>${escapeHtml(notice.detail || '')}</span>
+  </section>`;
+}
+
+function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
+  const step = state.setupStep || 'environment';
+  const proxyCount = proxyOutboundsSafe().length;
+  const fwMode = state.firewallRouterMode || state.firewallStatus?.routerMode || 'off';
+  if (step === 'environment') {
+    return `<section class="setup-step-panel">
+      <h3>Проверка роутера</h3>
+      <p>Сначала мастер смотрит основу: Xray, geo-файлы, серверы, transparent inbound, firewall и LAN DNS. Красные пункты лучше закрыть до применения.</p>
+      <div class="setup-readiness">
+        ${readiness.items.map((item) => `<article class="${item.ok ? 'ok' : item.warn ? 'warn' : 'bad'}">
+          <span>${item.ok ? '✓' : item.warn ? '!' : '×'}</span>
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </div>
+        </article>`).join('')}
+      </div>
+      <div class="setup-choice-grid compact">
+        <article><span>Свободно</span><strong>${escapeHtml(byteSize(diskFree))}</strong><small>Если места мало, используйте компактные geo и обновляйте без бэкапа.</small></article>
+        <article><span>Серверы</span><strong>${proxyCount}</strong><small>Нужен хотя бы один proxy-сервер или подписка.</small></article>
+        <article><span>Firewall</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>Фактический режим сверяется перед финальным применением.</small></article>
+      </div>
+    </section>`;
+  }
+  if (step === 'mode') {
+    return `<section class="setup-step-panel">
+      <h3>Режим работы</h3>
+      <p>Выберите, как RuOpenRay должен работать после мастера. Сейчас мастер готовит самостоятельный режим: DNS, transparent inbound, правила обхода локальной сети и firewall-перехват.</p>
+      <div class="setup-mode-grid">
+        <article class="active">
+          <strong>LAN через Xray</strong>
+          <span>Устройства из LAN попадают в Xray, а маршрутизация решает: proxy, direct или block.</span>
+        </article>
+        <article>
+          <strong>Выбранные клиенты</strong>
+          <span>Настраивается в разделе перехвата: можно ограничить схему конкретными IP/MAC.</span>
+          <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Открыть перехват</button>
+        </article>
+        <article>
+          <strong>Защита от утечек</strong>
+          <span>Для доменов/IP, которые нельзя выпускать наружу без Xray.</span>
+          <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Открыть защиту</button>
+        </article>
+      </div>
+    </section>`;
+  }
+  if (step === 'dns') {
+    return `<section class="setup-step-panel">
+      <h3>DNS для LAN</h3>
+      <p>Можно оставить текущий DNS, направить dnsmasq в Xray DNS или использовать внешний DNS/Pi-hole. Для режима через Xray мастер проверит, что DNS inbound действительно поднялся.</p>
+      ${setupLanDnsBlock()}
+    </section>`;
+  }
+  if (step === 'server') {
+    return `<section class="setup-step-panel">
+      <h3>Proxy-сервер</h3>
+      <p>Добавьте сервер или подписку, затем проверьте доступность. Мастер не продолжит безопасно, если в конфигурации нет ни одного proxy-направления.</p>
+      <div class="setup-choice-grid compact">
+        <article><span>Найдено proxy</span><strong>${proxyCount}</strong><small>${proxyCount ? 'Можно продолжать.' : 'Добавьте VLESS/VMess/Trojan/SS ссылку или подписку.'}</small></article>
+        <article><span>Активный сервер</span><strong>${escapeHtml(activeProxyName())}</strong><small>Основные proxy-правила будут вести сюда, если не выбран балансировщик.</small></article>
+        <article><span>Проверка</span><strong>${escapeHtml(lastServerCheckText())}</strong><small>TCP/HTTP проверку можно запустить в разделе proxy.</small></article>
+      </div>
+      <div class="setup-inline-actions">
+        <button class="btn" type="button" data-tab-jump="servers">Открыть proxy</button>
+        <button class="btn secondary" type="button" data-import-dialog="server">Добавить сервер</button>
+      </div>
+    </section>`;
+  }
+  if (step === 'routing') {
+    return `<section class="setup-step-panel">
+      <h3>Маршрутизация</h3>
+      <p>Добавьте подборки или свои правила до финального применения. Мастер подготовит служебные правила выше пользовательских: локальные сети напрямую, DNS в dns-out, bootstrap-домены серверов напрямую.</p>
+      <div class="setup-choice-grid compact">
+        <article><span>Правила</span><strong>${escapeHtml(String((state.config?.routing?.rules || []).length || 0))}</strong><small>Порядок важен: выше = раньше.</small></article>
+        <article><span>Geo Doctor</span><strong>${escapeHtml(geoDoctorText())}</strong><small>Geo-ссылки проверяются вместе с конфигурацией.</small></article>
+        <article><span>Черновик</span><strong>${state.serverDraftExists ? 'есть' : 'нет'}</strong><small>Перед применением мастер еще раз проверит Xray.</small></article>
+      </div>
+      <div class="setup-inline-actions">
+        <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Открыть правила</button>
+        <button class="btn secondary" type="button" data-action="setupPrepareDraft">Подготовить служебные правила</button>
+      </div>
+    </section>`;
+  }
+  if (step === 'firewall') {
+    return `<section class="setup-step-panel">
+      <h3>Перехват трафика</h3>
+      <p>Firewall-часть решает, какой LAN-трафик попадет в Xray. Перед применением смотрите preview правил nftables, особенно если ограничиваете клиентов или выбираете все порты.</p>
+      <div class="setup-choice-grid compact">
+        <article><span>Политика</span><strong>${escapeHtml(String(state.firewallBypassMode || 'off').toUpperCase())}</strong><small>OFF/BYPASS/REDIRECT определяет раннее отсечение трафика.</small></article>
+        <article><span>Режим</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>TPROXY нужен для TCP/UDP, REDIRECT проще, но TCP-only.</small></article>
+        <article><span>Порты</span><strong>${state.firewallPortMode === 'all' ? 'Все' : escapeHtml(firewallPorts().join(', ') || '80, 443')}</strong><small>${state.firewallBlockQuic ? 'QUIC будет блокироваться.' : 'QUIC не блокируется.'}</small></article>
+      </div>
+      <div class="setup-inline-actions">
+        <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Открыть перехват</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Защита от утечек</button>
+      </div>
+    </section>`;
+  }
+  return `<section class="setup-step-panel">
+    <h3>Финальная проверка и применение</h3>
+    <p>На этом шаге мастер сохранит снимок для отката, подготовит конфигурацию, проверит Xray вместе с Geo Doctor, применит config.json, DNS и firewall.</p>
+    ${setupSnapshotBlock(snapshot)}
+    ${resultBlock(result, rollback)}
+  </section>`;
+}
+
+function setupLanDnsBlock() {
+  return `<section class="setup-lan-dns in-step">
+    <div class="segmented setup-dns-modes">
+      ${[
+        ['keep', 'Не трогать'],
+        ['xray', 'Через Xray'],
+        ['upstream', 'Внешний DNS']
+      ].map(([mode, label]) => `<button type="button" class="${state.setupLanDnsMode === mode ? 'active' : ''}" data-setup-dns-mode="${mode}">${label}</button>`).join('')}
+    </div>
+    ${state.setupLanDnsMode === 'upstream' ? `<div class="form-row">
+      <label>DNS / Pi-hole</label>
+      <input id="setupLanDnsUpstream" value="${escapeHtml(state.setupLanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10:53" />
+    </div>` : ''}
+    <label class="toggle-row">
+      <input id="setupRestartDnsmasq" type="checkbox" ${state.setupRestartDnsmasq ? 'checked' : ''} />
+      <span>Перезапустить dnsmasq после изменения</span>
+    </label>
+  </section>`;
+}
+
+function setupSnapshotBlock(snapshot) {
+  return `<section class="setup-snapshot in-step">
+    <div>
+      <h3>Откат мастера</h3>
+      <p>${snapshot?.createdAt ? `Есть снимок от ${escapeHtml(new Date(snapshot.createdAt).toLocaleString('ru-RU'))}: конфигурация Xray, LAN DNS и nftables.` : 'Перед включением активного режима мастер сохранит снимок текущего состояния.'}</p>
+    </div>
+    <div class="split-actions">
+      <button class="btn secondary" type="button" data-action="rollbackSetupWizard" ${snapshot && !state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>${state.setupRollbacking ? 'Откатываю...' : 'Откатить изменения'}</button>
+      <button class="btn secondary" type="button" data-action="clearSetupSnapshot" ${snapshot && !state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>Забыть снимок</button>
+    </div>
+  </section>`;
+}
+
+function resultBlock(result, rollback) {
+  return `${result ? `<div class="setup-result ${result.ok ? 'ok' : 'bad'}">
+    <strong>${result.ok ? 'Готово' : 'Нужна проверка'}</strong>
+    ${result.error ? `<span>${escapeHtml(result.error)}</span>` : ''}
+    <div class="setup-result-list">
+      ${(result.steps || []).map((step) => `<article class="${step.ok ? 'ok' : 'bad'}">
+        <span>${step.ok ? '✓' : '×'}</span>
+        <div><strong>${escapeHtml(step.title)}</strong><small>${escapeHtml(step.detail || '')}</small></div>
+      </article>`).join('')}
+    </div>
+  </div>` : ''}
+  ${rollback ? `<div class="setup-result ${rollback.ok ? 'ok' : 'bad'}">
+    <strong>${rollback.ok ? 'Откат выполнен' : 'Откат требует внимания'}</strong>
+    ${rollback.error ? `<span>${escapeHtml(rollback.error)}</span>` : ''}
+    <div class="setup-result-list">
+      ${(rollback.steps || []).map((step) => `<article class="${step.ok ? 'ok' : 'bad'}">
+        <span>${step.ok ? '✓' : '×'}</span>
+        <div><strong>${escapeHtml(step.title)}</strong><small>${escapeHtml(step.detail || '')}</small></div>
+      </article>`).join('')}
+    </div>
+  </div>` : ''}`;
+}
+
+function activeProxyName() {
+  const outbounds = proxyOutboundsSafe();
+  const routingRules = state.config?.routing?.rules || [];
+  const firstProxy = routingRules.find((rule) => rule?.outboundTag && outbounds.some((outbound) => outbound.tag === rule.outboundTag));
+  return firstProxy?.outboundTag || outbounds[0]?.tag || 'не выбран';
+}
+
+function lastServerCheckText() {
+  const checks = state.serverChecks || {};
+  const values = Object.values(checks).filter(Boolean);
+  const best = values.find((item) => Number.isFinite(Number(item.latencyMs)));
+  return best ? `${Math.round(Number(best.latencyMs))} мс` : 'не проверялись';
+}
+
+function geoDoctorText() {
+  const audit = state.geoStatus?.audit;
+  const missing = Number(audit?.summary?.missing || 0);
+  if (missing > 0) return `${missing} проблем`;
+  if (audit?.summary) return 'ок';
+  return 'не запускался';
+}
+
+function setupPage() {
+  const readiness = setupReadiness();
+  const result = state.setupResult;
+  const rollback = state.setupRollbackResult;
+  const snapshot = loadSetupSnapshot();
+  const installPlan = state.installPlan;
+  const diskFree = state.geoStatus?.disk?.free || state.status?.system?.disk?.free || installPlan?.disk?.free;
+  const steps = setupWizardSteps(readiness);
+  const activeIndex = setupStepIndex(steps);
+  const isLast = activeIndex >= steps.length - 1;
+  return `
+    <section class="setup-page panel">
+      <div class="setup-page-head">
+        <div>
+          <h2>Мастер настройки RuOpenRay</h2>
+          <p>Пошаговая настройка самостоятельного режима: проверка роутера, DNS, proxy, правила, перехват и финальная проверка.</p>
+        </div>
+        <div class="split-actions">
+          <button class="btn secondary" type="button" data-action="openInstallWizard">Установка Xray</button>
+          <button class="btn secondary" type="button" data-tab-jump="dashboard">На панель</button>
+        </div>
+      </div>
+
+      ${setupWizardStepper(steps)}
+      ${setupWizardSummary(steps)}
+      ${setupStepNotice()}
+      ${setupWizardStepBody(readiness, diskFree, snapshot, result, rollback)}
+
+      <div class="setup-actions setup-step-actions">
+        <button class="btn secondary" type="button" data-action="setupStepBack" ${activeIndex <= 0 || state.setupApplying ? 'disabled' : ''}>Назад</button>
+        <button class="btn secondary" type="button" data-tab-jump="dashboard">На панель</button>
+        <button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>
+        ${isLast
+          ? `<button class="btn warning" type="button" data-action="runSetupWizard" ${state.setupApplying || !readiness.canApply ? 'disabled' : ''}>${state.setupApplying ? 'Применяю...' : 'Проверить и применить'}</button>`
+          : `<button class="btn warning" type="button" data-action="setupStepNext" ${state.setupApplying ? 'disabled' : ''}>Проверить шаг</button>`}
+      </div>
+    </section>
+  `;
+}
+
 function setupWizardDialog() {
   if (!state.setupWizardOpen) return '';
   const readiness = setupReadiness();
@@ -142,6 +431,35 @@ function setupWizardDialog() {
   const snapshot = loadSetupSnapshot();
   const installPlan = state.installPlan;
   const diskFree = state.geoStatus?.disk?.free || state.status?.system?.disk?.free || installPlan?.disk?.free;
+  const steps = setupWizardSteps(readiness);
+  const activeIndex = setupStepIndex(steps);
+  const isLast = activeIndex >= steps.length - 1;
+  return `
+    <div class="modal-backdrop" data-action="closeSetupWizard">
+      <section class="modal setup-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="setupWizardTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="setupWizardTitle">Мастер настройки RuOpenRay</h2>
+            <p>Пройдите шаги по порядку: проверка роутера, режим, DNS, сервер, правила, перехват и финальная проверка.</p>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeSetupWizard" aria-label="Закрыть">×</button>
+        </div>
+
+        ${setupWizardStepper(steps)}
+        ${setupWizardSummary(steps)}
+        ${setupWizardStepBody(readiness, diskFree, snapshot, result, rollback)}
+
+        <div class="setup-actions setup-step-actions">
+          <button class="btn secondary" type="button" data-action="setupStepBack" ${activeIndex <= 0 || state.setupApplying ? 'disabled' : ''}>Назад</button>
+          <button class="btn secondary" type="button" data-action="closeSetupWizard">Закрыть</button>
+          <button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>
+          ${isLast
+            ? `<button class="btn warning" type="button" data-action="runSetupWizard" ${state.setupApplying || !readiness.canApply ? 'disabled' : ''}>${state.setupApplying ? 'Применяю...' : 'Проверить и применить'}</button>`
+            : `<button class="btn warning" type="button" data-action="setupStepNext" ${state.setupApplying ? 'disabled' : ''}>Проверить шаг</button>`}
+        </div>
+      </section>
+    </div>
+  `;
   return `
     <div class="modal-backdrop" data-action="closeSetupWizard">
       <section class="modal setup-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="setupWizardTitle" data-modal>
@@ -419,6 +737,7 @@ function coreUpdateDialog() {
     githubInstallCommand,
     setupFlowStep,
     setupFlowGuide,
+    setupPage,
     setupWizardDialog,
     installWizardDialog,
     coreUpdateDialog,

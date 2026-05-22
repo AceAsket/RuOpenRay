@@ -59,6 +59,10 @@ function dnsLeakChecklist(dns, stats) {
   const dnsConflictOwner = lanDns.dnsPortConflictOwner || readiness.udpOwner || '';
   const xrayDnsTarget = readiness.target || lanDns.xrayTarget || '127.0.0.1#5353';
   const suggestedDnsTarget = lanDns.suggestedXrayTarget || '127.0.0.1#10535';
+  const leakTargets = dnsLeakProtectionTargets();
+  const hasDomainProtection = state.firewallKillSwitchEnabled && leakTargets.domainLike > 0;
+  const lanUsesXrayDns = lanDns.mode === 'xray' || lanDns.plan?.mode === 'xray';
+  const dnsGuardReady = Boolean(state.firewallDnsIntercept || lanUsesXrayDns);
   const items = [
     {
       ok: hasDns,
@@ -100,6 +104,18 @@ function dnsLeakChecklist(dns, stats) {
       detail: udpRule ? 'В маршрутизации есть UDP-правило в proxy или block.' : 'Добавьте правило для UDP/443 или нужных UDP-диапазонов, чтобы трафик не обходил DNS-настройки через QUIC.',
       action: udpRule ? '' : 'dnsWizardStrict',
       actionLabel: 'Добавить UDP/443'
+    },
+    {
+      ok: !hasDomainProtection || dnsGuardReady,
+      warn: hasDomainProtection && !dnsGuardReady,
+      title: hasDomainProtection ? 'Доменная защита зависит от DNS' : 'Защита доменов не включена',
+      detail: hasDomainProtection
+        ? dnsGuardReady
+          ? `В защите от утечек есть ${leakTargets.domainLike} доменных/geo целей, DNS клиентов направляется через контролируемый путь.`
+          : `В защите от утечек есть ${leakTargets.domainLike} доменных/geo целей, но DNS клиентов может идти мимо роутера. Тогда домены не будут надежно блокироваться.`
+        : 'Когда включите защиту доменов в маршрутизации, здесь появится проверка DNS-пути.',
+      action: hasDomainProtection && !dnsGuardReady ? 'previewLanDnsUpstream' : '',
+      actionLabel: 'Настроить LAN DNS'
     }
   ];
   if (items[2]) {
@@ -183,6 +199,22 @@ function dnsDiagnosticsSection() {
   `;
 }
 
+function dnsLeakProtectionTargets() {
+  const raw = String(state.firewallKillSwitchTargets || '');
+  const values = raw.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
+  let domains = 0;
+  let geo = 0;
+  for (const value of values) {
+    const clean = value.replace(/^\*\./, '');
+    if (/^(geosite:|ext:)/i.test(value)) {
+      geo += 1;
+    } else if (/^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$/i.test(clean)) {
+      domains += 1;
+    }
+  }
+  return { domains, geo, domainLike: domains + geo };
+}
+
 function dnsServersSection(dns) {
   const presets = [
     ['Cloudflare DoH', 'https://cloudflare-dns.com/dns-query'],
@@ -236,8 +268,7 @@ function dnsServersSection(dns) {
       <div class="panel-title">
         <div><h2>DNS-серверы</h2><span>Порядок важен: Xray обрабатывает список сверху вниз. Изменения остаются в черновике до применения.</span></div>
         <div class="split-actions">
-          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
-          <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
+          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       <div class="dns-list">
@@ -270,8 +301,7 @@ function dnsHostsSection(dns) {
       <div class="panel-title">
         <div><h2>Hosts</h2><span>Локальные подмены доменов из dns.hosts. Удобно для роутера, NAS, Pi-hole и домашних сервисов.</span></div>
         <div class="split-actions">
-          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
-          <button class="btn warning ${state.configApplying ? 'is-busy' : ''}" data-action="apply" ${state.configApplying || state.configTesting ? 'disabled' : ''}>${state.configApplying ? 'Применяю Xray...' : 'Применить Xray'}</button>
+          <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       <div class="dns-host-form">
@@ -344,7 +374,7 @@ function dnsAdvancedSection() {
         <div><h2>DNS inbound</h2><span>Xray принимает DNS на 127.0.0.1:5353, а dnsmasq можно направить на этот порт.</span></div>
         <div class="split-actions">
           <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить inbound'}</button>
-          <button class="btn warning ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить конфигурацию'}</button>
+          <button class="btn warning ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       <div class="settings-warning">

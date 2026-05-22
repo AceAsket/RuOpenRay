@@ -17,6 +17,7 @@ export function createDiagnosticsDomainView(deps) {
     domainMonitorDomainQuality,
     domainMonitorFilterCounts,
     domainMonitorHost,
+    domainMonitorMatchesDevice,
     domainMonitorMatchesFilter,
     domainMonitorProtocols,
     domainMonitorRows,
@@ -35,6 +36,7 @@ export function createDiagnosticsDomainView(deps) {
     outboundMatchesSelectors,
     proxyOutbounds,
     sniPanel,
+    selectedDomainMonitorDevice,
     stat,
     state,
     strategyObserverType,
@@ -277,8 +279,9 @@ function domainMonitorItemHtml(item, { event = false } = {}) {
 
 function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
   if (state.domainMonitorMode === 'devices') {
+    const selected = selectedDomainMonitorDevice();
     const devices = monitoredDevices();
-    return devices.slice(0, 80).map((item) => `<article class="domain-monitor-device">
+    return devices.slice(0, 80).map((item) => `<article class="domain-monitor-device ${selected?.ip === item.ip ? 'active' : ''}">
       <div class="domain-monitor-kind">LAN</div>
       <div class="domain-monitor-main">
         <strong>${escapeHtml(item.name || item.ip || 'устройство')}</strong>
@@ -286,7 +289,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
       </div>
       <div class="domain-monitor-device-domains">${(item.topDomains || []).slice(0, 4).map((domain) => `<span>${escapeHtml(domain.host)} <b>${domain.hits}</b></span>`).join('')}</div>
       <div class="domain-monitor-count"><strong>${Number(item.hits || 0).toLocaleString('ru-RU')}</strong><small>событий</small></div>
-      <button class="btn secondary" data-domain-device-events="${escapeHtml(item.ip || '')}">События</button>
+      <button class="btn secondary" data-domain-device-events="${escapeHtml(item.ip || '')}">${selected?.ip === item.ip ? 'Выбрано' : 'События устройства'}</button>
     </article>`).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи или b4sni-совместимый лог.</p>';
   }
   if (state.domainMonitorMode === 'events') {
@@ -313,6 +316,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
 function diagnosticsDomainMonitorView() {
   const monitor = state.domainMonitor;
   const monitored = monitoredDomains();
+  const selectedDevice = selectedDomainMonitorDevice();
   const stats = monitor?.stats || {};
   const fallbackRows = aggregateLogDomains();
   const rows = domainDiagnosticRows();
@@ -322,7 +326,7 @@ function diagnosticsDomainMonitorView() {
   const topRealDomain = domainMonitorRows()
     .filter((item) => domainMonitorMatchesFilter(item, 'domains'))
     .sort((a, b) => (b.hits || 0) - (a.hits || 0))[0];
-  const filterActive = Boolean(String(state.domainMonitorQuery || '').trim()) || state.domainMonitorFilter !== 'all';
+  const filterActive = Boolean(String(state.domainMonitorQuery || '').trim()) || state.domainMonitorFilter !== 'all' || Boolean(selectedDevice);
   return `
     <section class="panel">
       <div class="panel-title">
@@ -347,6 +351,14 @@ function diagnosticsDomainMonitorView() {
         ${stat('Домены', filterCounts.domains || monitored.length || 0, topRealDomain ? `топ: ${topRealDomain.host} (${topRealDomain.hits})` : 'ожидаю доменные события')}
       </section>
       ${domainMonitorFilterBar()}
+      ${selectedDevice ? `<div class="domain-monitor-device-filter">
+        <div>
+          <span>События выбранного устройства</span>
+          <strong>${escapeHtml(selectedDevice.name || selectedDevice.ip)}</strong>
+          <small>${escapeHtml(selectedDevice.ip)} · ${Number(monitoredEvents().length || 0).toLocaleString('ru-RU')} событий в текущем фильтре</small>
+        </div>
+        <button class="btn secondary compact" data-domain-clear-device>Показать все устройства</button>
+      </div>` : ''}
       <div class="domain-monitor-toolbar">
         <input id="domainMonitorQuery" value="${escapeHtml(state.domainMonitorQuery)}" placeholder="Найти домен, устройство или протокол" />
         <button class="btn secondary compact" data-domain-clear-filter ${filterActive ? '' : 'disabled'}>Очистить фильтр</button>

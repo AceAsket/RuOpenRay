@@ -37,12 +37,21 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const values = splitRouteValues(state.firewallKillSwitchTargets);
     const ips = [];
     const domains = [];
+    const geoip = [];
+    const geosite = [];
+    const ext = [];
     const invalid = [];
     for (const value of values) {
       const clean = String(value || '').trim();
       if (!clean) continue;
       const domain = clean.replace(/^\*\./, '');
-      if (/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(clean)) {
+      if (/^geoip:[a-z0-9_-]+$/i.test(clean)) {
+        geoip.push(clean.replace(/^geoip:/i, '').toLowerCase());
+      } else if (/^geosite:[a-z0-9_-]+$/i.test(clean)) {
+        geosite.push(clean.replace(/^geosite:/i, '').toLowerCase());
+      } else if (/^ext:/i.test(clean)) {
+        ext.push(clean);
+      } else if (/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(clean)) {
         ips.push(clean);
       } else if (/^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$/i.test(domain)) {
         domains.push(domain);
@@ -50,7 +59,14 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         invalid.push(clean);
       }
     }
-    return { ips: [...new Set(ips)], domains: [...new Set(domains)], invalid };
+    return {
+      ips: [...new Set(ips)],
+      domains: [...new Set(domains)],
+      geoip: [...new Set(geoip)],
+      geosite: [...new Set(geosite)],
+      ext: [...new Set(ext)],
+      invalid
+    };
   }
 
   function firewallRouteSets() {
@@ -208,7 +224,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (state.firewallKillSwitchEnabled && state.firewallKillSwitchDeviceMode !== 'all' && !killSwitchDeviceIps.length) warnings.push('В защите от утечек выбран режим по устройствам, но устройства не отмечены.');
     if (state.firewallPortMode !== 'all' && !ports.length) warnings.push('Выбран режим портов, но порты не заданы.');
     if (!state.firewallDnsIntercept) warnings.push('Перехват DNS выключен: клиенты смогут отправлять UDP/TCP 53 напрямую наружу, если не используют DNS роутера.');
-    if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length) warnings.push('Защита от прямого выхода включена, но цели не указаны.');
+    const geoGuardCount = guard.geoip.length + guard.geosite.length + guard.ext.length;
+    if (state.firewallKillSwitchEnabled && !guard.ips.length && !guard.domains.length && !geoGuardCount) warnings.push('Защита от прямого выхода включена, но цели не указаны.');
+    if (state.firewallKillSwitchEnabled && geoGuardCount) warnings.push(`Geo-цели защиты (${geoGuardCount}) будут проверены через Geo Doctor. RuOpenRay попробует развернуть доступные geoip/geosite/ext категории перед применением firewall; если категории нет в dat, защита по ней не создастся.`);
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block') warnings.push('Домены будут точно блокироваться через DNS для всех LAN-клиентов, которые используют DNS роутера.');
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') warnings.push('Домены будут защищены через dnsmasq/nftset после применения firewall. Этот режим можно ограничить выбранными LAN-клиентами, но он работает по IP после DNS-резолва.');
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'dns-block' && state.firewallKillSwitchDeviceMode !== 'all') warnings.push('Точная DNS-блокировка применяется ко всем LAN-клиентам. Чтобы ограничить домены выбранными клиентами, используйте режим nftset.');
@@ -255,8 +273,16 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const guard = firewallKillSwitchTargets();
     const killSwitchRules = [];
     const domainSetMode = state.firewallKillSwitchDomainMode === 'nftset';
+    const geoGuardCount = guard.geoip.length + guard.geosite.length + guard.ext.length;
     const selectedNoopRule = '# Режим "Только выбранные" без клиентов: правила перехвата не создаются.';
-    if (!killSwitchSelectedModeEmpty && state.firewallKillSwitchEnabled && (guard.ips.length || (domainSetMode && guard.domains.length))) {
+    if (!killSwitchSelectedModeEmpty && state.firewallKillSwitchEnabled && (guard.ips.length || geoGuardCount || (domainSetMode && guard.domains.length))) {
+      if (geoGuardCount) {
+        killSwitchRules.push(`# Geo-цели будут развернуты сервером перед применением: ${[
+          ...guard.geoip.map((item) => `geoip:${item}`),
+          ...guard.geosite.map((item) => `geosite:${item}`),
+          ...guard.ext
+        ].join(', ')}`);
+      }
       killSwitchRules.push(guard.ips.length
         ? `nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; elements = { ${guard.ips.join(', ')} } \\; }`
         : 'nft add set inet ruopenray killswitch4 { type ipv4_addr \\; flags interval \\; }');
@@ -341,6 +367,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       killSwitch: state.firewallKillSwitchEnabled,
       killSwitchIps: guard.ips,
       killSwitchDomains: guard.domains,
+      killSwitchGeoip: guard.geoip,
+      killSwitchGeosite: guard.geosite,
+      killSwitchExt: guard.ext,
       killSwitchDomainMode: state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block',
       directIps: routeSets.directIps,
       proxyIps: routeSets.proxyIps,
@@ -460,7 +489,16 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         'warn',
         'Есть нераспознанные цели',
         `RuOpenRay не понял: ${guard.invalid.slice(0, 4).join(', ')}.`,
-        'Используйте IPv4, IPv4-подсети или домены.'
+        'Используйте IPv4, IPv4-подсети, домены, geoip:code, geosite:code или ext:"file.dat:list".'
+      );
+    }
+
+    if (state.firewallKillSwitchEnabled && (guard.geoip.length || guard.geosite.length || guard.ext.length)) {
+      add(
+        'warn',
+        'Защита использует geo',
+        `Перед применением RuOpenRay развернет ${guard.geoip.length + guard.geosite.length + guard.ext.length} geo-ссылок из установленных DAT-файлов.`,
+        'Если нужной категории нет в DAT, Geo Doctor покажет это при проверке черновика.'
       );
     }
 
@@ -495,13 +533,14 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (!state.firewallKillSwitchEnabled && status.killSwitch === true) return false;
     if (state.firewallKillSwitchEnabled && status.killSwitchDeviceMode && status.killSwitchDeviceMode !== (state.firewallKillSwitchDeviceMode || 'all')) return false;
     if (state.firewallKillSwitchEnabled && (Array.isArray(status.killSwitchDevices) || firewallKillSwitchSelectedDeviceIps().length) && !sameStringSet(status.killSwitchDevices || [], firewallKillSwitchSelectedDeviceIps())) return false;
+    if (state.firewallKillSwitchEnabled && guard.ips.length && !listContainsAll(status.killSwitchIps || [], guard.ips)) return false;
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode === 'nftset') {
       const nftsetDomains = status.killSwitchNftset?.domains || [];
-      if (!sameStringSet(nftsetDomains, guard.domains)) return false;
+      if (!listContainsAll(nftsetDomains, guard.domains)) return false;
     }
     if (state.firewallKillSwitchEnabled && guard.domains.length && state.firewallKillSwitchDomainMode !== 'nftset') {
       const dnsBlockDomains = status.killSwitchDNSBlock?.domains || [];
-      if (!sameStringSet(dnsBlockDomains, guard.domains)) return false;
+      if (!listContainsAll(dnsBlockDomains, guard.domains)) return false;
     }
     return true;
   }
@@ -560,6 +599,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       if ((Array.isArray(status.killSwitchDevices) || firewallKillSwitchSelectedDeviceIps().length) && !sameStringSet(status.killSwitchDevices || [], firewallKillSwitchSelectedDeviceIps())) {
         reasons.push(`список клиентов защиты: ${stringListLabel(status.killSwitchDevices || [])} -> ${stringListLabel(firewallKillSwitchSelectedDeviceIps())}`);
       }
+      if (guard.ips.length && !listContainsAll(status.killSwitchIps || [], guard.ips)) {
+        reasons.push(`IP защиты: ${stringListLabel(status.killSwitchIps || [])} -> ${stringListLabel(guard.ips)}`);
+      }
     }
     if (state.firewallKillSwitchEnabled && guard.domains.length) {
       const expectedDomainMode = state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block';
@@ -569,7 +611,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       const actualDomains = expectedDomainMode === 'nftset'
         ? status.killSwitchNftset?.domains || []
         : status.killSwitchDNSBlock?.domains || [];
-      if (!sameStringSet(actualDomains, guard.domains)) {
+      if (!listContainsAll(actualDomains, guard.domains)) {
         reasons.push(`домены защиты: ${actualDomains.length} -> ${guard.domains.length}`);
       }
     }
@@ -615,6 +657,12 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const a = normalize(left);
     const b = normalize(right);
     return a.length === b.length && a.every((item, index) => item === b[index]);
+  }
+
+  function listContainsAll(left, right) {
+    const normalize = (items) => new Set((Array.isArray(items) ? items : []).map((item) => String(item).trim().toLowerCase()).filter(Boolean));
+    const actual = normalize(left);
+    return (Array.isArray(right) ? right : []).map((item) => String(item).trim().toLowerCase()).filter(Boolean).every((item) => actual.has(item));
   }
 
   function routerLanAddress() {

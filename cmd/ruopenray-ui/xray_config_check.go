@@ -30,6 +30,34 @@ func (s *serverState) validateConfig(cfg map[string]any) map[string]any {
 	return s.runXray("run", "-test", "-config", tmp)
 }
 
+func (s *serverState) validateConfigWithGeoAudit(cfg map[string]any) map[string]any {
+	result := s.validateConfig(cfg)
+	if cfg == nil {
+		var err error
+		cfg, err = s.readActiveConfig()
+		if err != nil {
+			return result
+		}
+	}
+	auditResult := s.checkGeoAudit(map[string]any{"config": cfg})
+	if audit, ok := auditResult["audit"].(map[string]any); ok {
+		result["geoAudit"] = audit
+	}
+	if status, ok := auditResult["status"].(map[string]any); ok {
+		result["geoStatus"] = status
+	}
+	if stdout := strings.TrimSpace(fmt.Sprint(auditResult["stdout"])); stdout != "" && stdout != "<nil>" {
+		result["geoAuditStdout"] = stdout
+	}
+	if auditResult["ok"] == false {
+		result["ok"] = false
+		if strings.TrimSpace(fmt.Sprint(result["message"])) == "" || fmt.Sprint(result["message"]) == "<nil>" {
+			result["message"] = "Geo Doctor нашел проблемы в geo-ссылках конфигурации."
+		}
+	}
+	return result
+}
+
 func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	if cfg == nil {
 		var err error

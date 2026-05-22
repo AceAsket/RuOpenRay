@@ -22,6 +22,11 @@ export function createConfigActions({
       request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
     ]);
     state.configAnalysis = analysis;
+    if (result.geoStatus) {
+      state.geoStatus = result.geoStatus;
+    } else if (result.geoAudit) {
+      state.geoStatus = { ...(state.geoStatus || {}), audit: result.geoAudit };
+    }
     await keepOperationVisible(startedAt);
     state.configTesting = false;
     state.configTestLog = {
@@ -139,6 +144,9 @@ export function createConfigActions({
 function configTestSummary(result = {}, analysis = {}) {
   const errors = Array.isArray(analysis.errors) ? analysis.errors.length : 0;
   const warnings = Array.isArray(analysis.warnings) ? analysis.warnings.length : 0;
+  const geoMissing = Number(result.geoAudit?.summary?.missing || 0);
+  const geoTotal = Number(result.geoAudit?.summary?.total || 0);
+  if (geoMissing > 0) return `Конфигурация не прошла Geo Doctor: проблем ${geoMissing} из ${geoTotal || geoMissing}`;
   if (result.ok) {
     if (warnings > 0) return `Конфигурация корректна, но есть предупреждения: ${warnings}`;
     return 'Конфигурация корректна. Xray принял черновик без ошибок.';

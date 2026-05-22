@@ -82,7 +82,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/config/test" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		cfg, _ := payload["config"].(map[string]any)
-		result := s.validateConfig(cfg)
+		result := s.validateConfigWithGeoAudit(cfg)
 		writeJSON(w, 200, result)
 	case path == "/config/analyze" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)

@@ -300,7 +300,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "directIps", "proxyIps":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
@@ -442,12 +442,14 @@ func (s *serverState) firewallSnapshot() map[string]any {
 }
 
 func (s *serverState) previewFirewall(payload map[string]any) map[string]any {
+	payload = s.expandFirewallGeoPayload(payload)
 	body, meta := rfw.NativeNft(payload)
 	return map[string]any{
-		"ok":     true,
-		"nft":    body,
-		"meta":   meta,
-		"status": s.firewallStatus(),
+		"ok":           true,
+		"nft":          body,
+		"meta":         meta,
+		"geoExpansion": payload["geoExpansion"],
+		"status":       s.firewallStatus(),
 	}
 }
 
@@ -455,6 +457,7 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	if runtime.GOOS == "windows" || !commandExists("nft") {
 		return map[string]any{"ok": false, "available": false, "error": "nftables недоступен на этой системе"}
 	}
+	payload = s.expandFirewallGeoPayload(payload)
 	body, meta := rfw.NativeNft(payload)
 	routerMode := fmt.Sprint(meta["routerMode"])
 	steps := []map[string]any{}
@@ -489,7 +492,7 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	if routerMode == "tproxy" {
 		ok = ok && status["ipRule"] == true && status["ipRoute"] == true
 	}
-	return map[string]any{"ok": ok, "nft": body, "meta": meta, "steps": steps, "status": status}
+	return map[string]any{"ok": ok, "nft": body, "meta": meta, "geoExpansion": payload["geoExpansion"], "steps": steps, "status": status}
 }
 
 func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string]any {

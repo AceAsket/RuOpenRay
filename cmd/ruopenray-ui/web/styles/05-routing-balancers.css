@@ -1034,6 +1034,71 @@
   color: var(--muted);
 }
 
+.leak-check-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.leak-check-list article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 12, 16, 0.58);
+}
+
+.leak-check-list article.ok {
+  border-color: rgba(104, 222, 118, 0.34);
+  background: rgba(104, 222, 118, 0.08);
+}
+
+.leak-check-list article.warn {
+  border-color: rgba(242, 189, 82, 0.34);
+  background: rgba(242, 189, 82, 0.08);
+}
+
+.leak-check-list i {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 7px;
+  color: #08110d;
+  background: var(--green);
+  font-style: normal;
+  font-weight: 950;
+}
+
+.leak-check-list article.warn i {
+  background: var(--warning);
+}
+
+.leak-check-list span,
+.leak-check-list strong,
+.leak-check-list em {
+  display: block;
+  min-width: 0;
+}
+
+.leak-check-list strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.leak-check-list em {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
 .leak-scope-panel .panel-title {
   margin-bottom: 12px;
 }

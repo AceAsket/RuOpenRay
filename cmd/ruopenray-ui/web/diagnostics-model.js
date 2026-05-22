@@ -114,12 +114,36 @@ export function createDiagnosticsModel({
     return [
       domainMonitorHost(item),
       domainMonitorDevicesText(item),
+      item.sourceIp,
+      item.sourceDevice,
+      item.destinationIp,
       ...(domainMonitorProtocols(item)),
       ...(Array.isArray(item.outbounds) ? item.outbounds : []),
       item.outbound,
       item.source,
       item.raw
     ].join(' ').toLowerCase().includes(query);
+  }
+
+  function selectedDomainMonitorDevice() {
+    const ip = String(state.domainMonitorDeviceFilter || '').trim();
+    if (!ip) return null;
+    const devices = Array.isArray(state.domainMonitor?.devices) ? state.domainMonitor.devices : [];
+    const found = devices.find((item) => item?.ip === ip);
+    return {
+      ip,
+      name: found?.name || ip,
+      hits: Number(found?.hits || 0)
+    };
+  }
+
+  function domainMonitorMatchesDevice(item = {}, ip = state.domainMonitorDeviceFilter) {
+    const selected = String(ip || '').trim();
+    if (!selected) return true;
+    if (item.sourceIp === selected) return true;
+    if (Array.isArray(item.devices) && item.devices.some((device) => device?.ip === selected)) return true;
+    if (Array.isArray(item.samples) && item.samples.some((sample) => sample?.sourceIp === selected)) return true;
+    return false;
   }
   
   function domainMonitorRows() {
@@ -128,9 +152,9 @@ export function createDiagnosticsModel({
   
   function domainMonitorFilterCounts() {
     const rows = domainMonitorRows();
-    const count = (filter) => rows.filter((item) => domainMonitorMatchesFilter(item, filter)).length;
+    const count = (filter) => rows.filter((item) => domainMonitorMatchesDevice(item) && domainMonitorMatchesFilter(item, filter)).length;
     return {
-      all: rows.length,
+      all: rows.filter((item) => domainMonitorMatchesDevice(item)).length,
       domains: count('domains'),
       ip: count('ip'),
       dns: count('dns'),
@@ -142,7 +166,7 @@ export function createDiagnosticsModel({
   function monitoredDomains() {
     const rows = domainMonitorRows();
     const query = state.domainMonitorQuery.trim().toLowerCase();
-    const filtered = rows.filter((item) => domainMonitorMatchesFilter(item) && domainMonitorMatchesQuery(item, query));
+    const filtered = rows.filter((item) => domainMonitorMatchesDevice(item) && domainMonitorMatchesFilter(item) && domainMonitorMatchesQuery(item, query));
     if (state.domainMonitorSort === 'last') return filtered.sort((a, b) => (b.lastSeenTs || 0) - (a.lastSeenTs || 0));
     if (state.domainMonitorSort === 'name') return filtered.sort((a, b) => String(a.host).localeCompare(String(b.host)));
     return filtered.sort((a, b) => (b.hits || 0) - (a.hits || 0));
@@ -154,13 +178,16 @@ export function createDiagnosticsModel({
     const filtered = query
       ? rows.filter((item) => `${item.name} ${item.ip} ${(item.topDomains || []).map((domain) => domain.host).join(' ')}`.toLowerCase().includes(query))
       : rows;
-    return filtered.sort((a, b) => (b.hits || 0) - (a.hits || 0));
+    const selected = String(state.domainMonitorDeviceFilter || '').trim();
+    return filtered
+      .filter((item) => !selected || item.ip === selected)
+      .sort((a, b) => (b.hits || 0) - (a.hits || 0));
   }
   
   function monitoredEvents() {
     const rows = Array.isArray(state.domainMonitor?.events) ? [...state.domainMonitor.events] : [];
     const query = state.domainMonitorQuery.trim().toLowerCase();
-    const filtered = rows.filter((item) => domainMonitorMatchesFilter(item) && domainMonitorMatchesQuery(item, query));
+    const filtered = rows.filter((item) => domainMonitorMatchesDevice(item) && domainMonitorMatchesFilter(item) && domainMonitorMatchesQuery(item, query));
     return filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }
   
@@ -195,12 +222,14 @@ export function createDiagnosticsModel({
     domainMonitorHost,
     domainMonitorMatchesFilter,
     domainMonitorMatchesQuery,
+    domainMonitorMatchesDevice,
     domainMonitorRows,
     domainMonitorFilterCounts,
     monitoredDomains,
     monitoredDevices,
     monitoredEvents,
     monitorSourceLabel,
+    selectedDomainMonitorDevice,
     domainMonitorDomainQuality,
   };
 }

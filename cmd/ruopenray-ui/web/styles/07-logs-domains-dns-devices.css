@@ -90,7 +90,10 @@
 }
 
 .diagnostic-switcher {
-  padding: 12px;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 16px;
+  padding: 10px 12px;
 }
 
 .diagnostics-tabs {
@@ -352,6 +355,40 @@
   margin: 0 0 12px;
 }
 
+.domain-monitor-device-filter {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(49, 210, 189, 0.38);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(49, 210, 189, 0.14), rgba(7, 15, 19, 0.76));
+}
+
+.domain-monitor-device-filter div,
+.domain-monitor-device-filter span,
+.domain-monitor-device-filter strong,
+.domain-monitor-device-filter small {
+  display: block;
+  min-width: 0;
+}
+
+.domain-monitor-device-filter span,
+.domain-monitor-device-filter small {
+  color: var(--muted);
+}
+
+.domain-monitor-device-filter strong {
+  margin: 3px 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .domain-monitor-row {
   grid-template-columns: minmax(0, 1fr) 150px 118px;
 }
@@ -378,6 +415,11 @@
 
 .domain-monitor-device {
   grid-template-columns: 96px minmax(220px, 1fr) minmax(220px, 0.8fr) 112px 112px;
+}
+
+.domain-monitor-device.active {
+  border-color: rgba(115, 226, 129, 0.58);
+  background: linear-gradient(135deg, rgba(115, 226, 129, 0.16), rgba(7, 15, 19, 0.74));
 }
 
 .domain-monitor-item.domain {
@@ -1201,6 +1243,7 @@
 
   .intercept-summary-grid,
   .leak-status-strip,
+  .leak-check-list,
   .traffic-outcomes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1409,7 +1452,8 @@
 }
 
 @media (max-width: 720px) {
-  .intercept-summary-grid {
+  .intercept-summary-grid,
+  .leak-check-list {
     grid-template-columns: 1fr;
   }
 

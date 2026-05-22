@@ -266,7 +266,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchDomains=%s directIps=%s proxyIps=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -281,6 +281,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		killSwitchDeviceMode,
 		strings.Join(killSwitchDevices, ","),
 		killSwitchDomainMode,
+		strings.Join(killSwitchIPs, ","),
 		strings.Join(killSwitchDomains, ","),
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),

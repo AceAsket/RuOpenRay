@@ -3,7 +3,9 @@ export function configTestFailureDetails(result = {}, analysis = {}, forMessage 
   const technical = uniqueTextBlocks([result.stdout, result.stderr, result.message]).join('\n').trim();
   const line = primaryConfigErrorLine(result, analysis);
   const explanation = explainConfigError(line, technical);
+  const geoLines = geoAuditLines(result.geoAudit);
   const analysisLines = [
+    ...geoLines,
     ...(Array.isArray(analysis.errors) ? analysis.errors.map((item) => `Ошибка анализа: ${analysisText(item)}`) : []),
     ...(Array.isArray(analysis.warnings) ? analysis.warnings.map((item) => `Предупреждение: ${analysisText(item)}`) : [])
   ];
@@ -22,12 +24,25 @@ export function configTestLogDetails(log = {}, forMessage = '') {
 }
 
 function primaryConfigErrorLine(result = {}, analysis = {}) {
+  const geoProblem = Array.isArray(result.geoAudit?.items)
+    ? result.geoAudit.items.find((item) => item?.severity === 'danger')
+    : null;
+  if (geoProblem) {
+    return `${geoProblem.kind || 'geo'}:${geoProblem.code || ''} ${geoProblem.message || ''}`.trim();
+  }
   const lines = uniqueTextBlocks([result.stdout, result.stderr, result.message]).join('\n').split(/\r?\n/);
   const failed = lines.find((line) => /failed|error|invalid|cannot|no such file|address already in use|bind:|not found/i.test(line));
   if (failed) return failed.trim();
   const firstAnalysisError = Array.isArray(analysis.errors) ? analysis.errors[0] : null;
   if (firstAnalysisError) return analysisText(firstAnalysisError);
   return '';
+}
+
+function geoAuditLines(audit = null) {
+  if (!audit || !Array.isArray(audit.items)) return [];
+  return audit.items
+    .filter((item) => item?.severity === 'danger')
+    .map((item) => `Geo Doctor: ${item.kind || 'geo'}:${item.code || ''} - ${item.message || 'проблема geo-ссылки'}`);
 }
 
 function uniqueTextBlocks(values = []) {

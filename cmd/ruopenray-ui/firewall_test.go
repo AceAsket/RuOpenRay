@@ -1,8 +1,13 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	rfw "github.com/AceAsket/RuOpenRay/internal/firewall"
 )
 
 func TestParseFirewallStatusMeta(t *testing.T) {
@@ -65,5 +70,97 @@ func TestParseFirewallPortsFromLegacyBody(t *testing.T) {
 	ports := parseFirewallPortsFromBody(body)
 	if len(ports) != 2 || ports[0] != "80" || ports[1] != "443" {
 		t.Fatalf("ports = %#v, want [80 443]", ports)
+	}
+}
+
+func TestExpandFirewallGeoPayloadAddsGeoTargets(t *testing.T) {
+	geoDir := t.TempDir()
+	writeFirewallGeoFixture(t, geoDir)
+	state := &serverState{cfg: appConfig{GeoDir: geoDir}}
+
+	payload := map[string]any{
+		"killSwitchIps":     []any{"162.159.140.0/24"},
+		"killSwitchDomains": []any{"openai.com"},
+		"killSwitchGeoip":   []any{"private"},
+		"killSwitchGeosite": []any{"telegram"},
+		"killSwitchExt":     []any{`ext:"LoyalsoldierSite.dat:antifilter-community"`},
+	}
+
+	expanded := state.expandFirewallGeoPayload(payload)
+	gotIPs := stringList(expanded["killSwitchIps"])
+	wantIPs := []string{"162.159.140.0/24", "10.0.0.0/8", "192.168.0.0/16"}
+	if !reflect.DeepEqual(gotIPs, wantIPs) {
+		t.Fatalf("killSwitchIps = %#v, want %#v", gotIPs, wantIPs)
+	}
+	gotDomains := stringList(expanded["killSwitchDomains"])
+	wantDomains := []string{"openai.com", "telegram.org", "t.me", "blocked.example"}
+	if !reflect.DeepEqual(gotDomains, wantDomains) {
+		t.Fatalf("killSwitchDomains = %#v, want %#v", gotDomains, wantDomains)
+	}
+	report, ok := expanded["geoExpansion"].(map[string]any)
+	if !ok {
+		t.Fatalf("geoExpansion missing: %#v", expanded["geoExpansion"])
+	}
+	if report["addedIps"] != 2 || report["addedDomains"] != 3 || report["skipped"] != 1 {
+		t.Fatalf("geoExpansion = %#v", report)
+	}
+}
+
+func TestFirewallPreviewUsesExpandedGeoTargets(t *testing.T) {
+	geoDir := t.TempDir()
+	writeFirewallGeoFixture(t, geoDir)
+	state := &serverState{cfg: appConfig{GeoDir: geoDir}}
+
+	expanded := state.expandFirewallGeoPayload(map[string]any{
+		"routerMode":             "tproxy",
+		"bypassMode":             "redirect",
+		"deviceMode":             "all",
+		"portMode":               "all",
+		"killSwitch":             true,
+		"killSwitchTargetMode":   "all",
+		"killSwitchDomainMode":   "nftset",
+		"killSwitchGeoip":        []any{"private"},
+		"killSwitchGeosite":      []any{"telegram"},
+		"transparentPort":        52345,
+		"dnsIntercept":           true,
+		"dnsInterceptPort":       5353,
+		"dnsInterceptTargetPort": 5353,
+	})
+	body, meta := rfw.NativeNft(expanded)
+	for _, needle := range []string{"10.0.0.0/8", "192.168.0.0/16", "@killswitch4", "meta l4proto { tcp, udp } counter tproxy ip to :52345"} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("nft preview missing %q:\n%s", needle, body)
+		}
+	}
+	if got := meta["killSwitchIps"]; !reflect.DeepEqual(got, []string{"10.0.0.0/8", "192.168.0.0/16"}) {
+		t.Fatalf("metadata killSwitchIps = %#v", got)
+	}
+	if got := meta["killSwitchDomains"]; !reflect.DeepEqual(got, []string{"telegram.org", "t.me"}) {
+		t.Fatalf("metadata killSwitchDomains = %#v", got)
+	}
+}
+
+func writeFirewallGeoFixture(t *testing.T, geoDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(geoDir, "geoip.dat"), protoMessage(1, protoRawMessage(
+		protoStringField(1, "private"),
+		protoMessage(2, protoRawMessage(protoBytesField(1, []byte{10, 0, 0, 0}), protoVarintField(2, 8))),
+		protoMessage(2, protoRawMessage(protoBytesField(1, []byte{192, 168, 0, 0}), protoVarintField(2, 16))),
+	)), 0o600); err != nil {
+		t.Fatalf("write geoip fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(geoDir, "geosite.dat"), protoMessage(1, protoRawMessage(
+		protoStringField(1, "telegram"),
+		protoMessage(2, protoRawMessage(protoVarintField(1, 2), protoStringField(2, "telegram.org"))),
+		protoMessage(2, protoRawMessage(protoVarintField(1, 3), protoStringField(2, "t.me"))),
+		protoMessage(2, protoRawMessage(protoVarintField(1, 1), protoStringField(2, ".*\\.telegram\\.org"))),
+	)), 0o600); err != nil {
+		t.Fatalf("write geosite fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(geoDir, "LoyalsoldierSite.dat"), protoMessage(1, protoRawMessage(
+		protoStringField(1, "antifilter-community"),
+		protoMessage(2, protoRawMessage(protoVarintField(1, 2), protoStringField(2, "blocked.example"))),
+	)), 0o600); err != nil {
+		t.Fatalf("write ext fixture: %v", err)
 	}
 }

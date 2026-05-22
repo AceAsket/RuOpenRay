@@ -242,8 +242,8 @@ function geoAuditPanel(geo) {
     <section class="panel geo-audit-panel">
       <div class="panel-title">
         <div>
-          <h2>Geo Doctor</h2>
-          <span>${description}</span>
+            <h2>Geo-ссылки в текущих правилах</h2>
+            <span>${description} Проверка черновика Xray запускает этот doctor автоматически.</span>
         </div>
         <div class="split-actions">
           <span class="geo-audit-summary ${missing ? 'danger' : 'ok'}">${escapeHtml(title)}</span>
@@ -263,43 +263,39 @@ function geoAuditPanel(geo) {
           <small>geoip.dat и geosite.dat</small>
         </article>
         <article class="${missing ? 'danger' : 'ok'}">
-          <span>Рекомендация</span>
-          <strong>${missing ? 'проверить категории' : total ? 'готово' : 'не используется'}</strong>
-          <small>${missing ? 'запустите глубокую проверку и поставьте нужный источник' : total ? 'текущие geo-ссылки выглядят согласованно' : 'добавьте geo-правила, если они нужны маршрутизации'}</small>
+            <span>Категории</span>
+            <strong>${missing ? 'проверить категории' : total ? 'готово' : 'не используется'}</strong>
+            <small>${missing ? 'поставьте источник с нужной категорией или измените правило' : total ? 'файлы и категории согласованы с текущими правилами' : 'добавьте geo-правила, если они нужны маршрутизации'}</small>
         </article>
       </div>
       ${checkedAt ? `<p class="muted geo-audit-checked">Последняя глубокая проверка: ${escapeHtml(checkedAt)}</p>` : ''}
       ${items.length ? `<div class="geo-audit-list">
-        ${items.map((item) => {
-          const sources = Array.isArray(item.sources) ? item.sources.join(', ') : '';
-          const danger = item.severity === 'danger';
-          const kind = item.kind === 'geoip' ? 'GeoIP' : item.kind === 'geosite' ? 'GeoSite' : 'Ext DAT';
-          const test = item.test || {};
-          const technical = [test.stdout, test.stderr, test.message].filter(Boolean).join('\n').trim();
-          const advice = geoAuditAdvice(item);
-          const status = danger
-            ? item.status === 'missing-code' ? 'нет списка' : 'нужен файл'
-            : item.status === 'ok' ? 'проверен'
-              : item.status === 'dev-skip' ? 'файл есть'
-                : 'файл есть';
-          return `<article class="${danger ? 'danger' : ''}">
-            <span class="geo-audit-kind">${escapeHtml(kind)}</span>
-            <div>
-              <strong>${escapeHtml(item.code || '')}</strong>
-              <small>${escapeHtml(item.message || '')}</small>
-              ${advice ? `<small class="geo-audit-advice">${escapeHtml(advice)}</small>` : ''}
-              <code>${escapeHtml(item.file || '')}${sources ? ` · ${escapeHtml(sources)}` : ''}</code>
-              ${technical ? `<details class="geo-audit-tech"><summary>Технический вывод Xray</summary><pre>${escapeHtml(technical).slice(0, 1600)}</pre></details>` : ''}
-            </div>
-            <em>${escapeHtml(status)}</em>
-          </article>`;
-        }).join('')}
+          ${items.map((item) => {
+            const sources = Array.isArray(item.sources) ? item.sources.join(', ') : '';
+            const statusInfo = geoAuditStatusInfo(item);
+            const danger = statusInfo.level === 'danger';
+            const kind = item.kind === 'geoip' ? 'GeoIP' : item.kind === 'geosite' ? 'GeoSite' : 'Ext DAT';
+            const test = item.test || {};
+            const technical = [test.stdout, test.stderr, test.message].filter(Boolean).join('\n').trim();
+            const advice = geoAuditAdvice(item);
+            return `<article class="${escapeHtml(statusInfo.level)}">
+              <span class="geo-audit-kind">${escapeHtml(kind)}</span>
+              <div>
+                <strong>${escapeHtml(item.code || '')}</strong>
+                <small>${escapeHtml(statusInfo.detail || item.message || '')}</small>
+                ${advice ? `<small class="geo-audit-advice">${escapeHtml(advice)}</small>` : ''}
+                <code>${escapeHtml(item.file || '')}${sources ? ` · ${escapeHtml(sources)}` : ''}</code>
+                ${technical ? `<details class="geo-audit-tech"><summary>Технический вывод Xray</summary><pre>${escapeHtml(technical).slice(0, 1600)}</pre></details>` : ''}
+              </div>
+              <em>${escapeHtml(statusInfo.label)}</em>
+            </article>`;
+          }).join('')}
       </div>` : '<p class="muted">Нет правил, которые требуют geo-файлы.</p>'}
     </section>
   `;
 }
 
-function geoAuditAdvice(item) {
+  function geoAuditAdvice(item) {
   const kind = String(item?.kind || '').toLowerCase();
   const code = String(item?.code || '').toLowerCase();
   const file = String(item?.file || '').toLowerCase();
@@ -319,8 +315,49 @@ function geoAuditAdvice(item) {
   if (kind === 'ext' || file.includes('loyalsoldiersite') || code.includes('antifilter-community')) {
     return 'Это внешний DAT-файл для ext-правила. Добавьте его в разделе Geo как дополнительный DAT и обновите.';
   }
-  return 'Поставьте geodata-источник, который содержит эту категорию, или уберите правило из маршрутизации.';
-}
+    return 'Поставьте geodata-источник, который содержит эту категорию, или уберите правило из маршрутизации.';
+  }
+
+  function geoAuditStatusInfo(item) {
+    const status = String(item?.status || '').toLowerCase();
+    const kind = String(item?.kind || '').toLowerCase();
+    const file = String(item?.file || '').trim();
+    if (item?.severity === 'danger' && status === 'missing-code') {
+      return {
+        level: 'danger',
+        label: 'категории нет',
+        detail: `${file || 'DAT-файл'} найден, но внутри нет категории ${item.code || ''}. Выберите другой источник или измените правило.`
+      };
+    }
+    if (item?.severity === 'danger') {
+      return {
+        level: 'danger',
+        label: 'нужен DAT',
+        detail: item.message || `Для этой ссылки нужен ${file || 'DAT-файл'}, которого нет на роутере.`
+      };
+    }
+    if (status === 'ok') {
+      return {
+        level: 'ok',
+        label: 'найдено',
+        detail: kind === 'ext'
+          ? `Файл ${file} найден, категория проверена Xray.`
+          : `Файл ${file} найден, категория ${item.code || ''} доступна.`
+      };
+    }
+    if (status === 'dev-skip') {
+      return {
+        level: 'warn',
+        label: 'файл есть',
+        detail: `Файл ${file} найден. На этой системе категория будет точно проверена Xray при проверке черновика.`
+      };
+    }
+    return {
+      level: 'warn',
+      label: 'проверить',
+      detail: item?.message || 'Файл найден, но категорию стоит проверить через Geo Doctor.'
+    };
+  }
 
 function geoListTargetLabel(target) {
   if (target === 'direct') return 'напрямую';

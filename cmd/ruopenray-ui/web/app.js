@@ -799,11 +799,25 @@ async function applyConfigAndFirewall() {
     return;
   }
 
+  const steps = [
+    configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray', status: 'pending' } : null,
+    configDirty ? { id: 'apply-xray', label: 'Записываю config.json и перезапускаю Xray', status: 'pending' } : null,
+    firewallDirty ? { id: 'apply-firewall', label: 'Сохраняю nftables и правила перехвата', status: 'pending' } : null,
+    { id: 'refresh', label: 'Обновляю состояние панели', status: 'pending' }
+  ].filter(Boolean);
+  const setStep = (id, status, label = '') => {
+    state.applySteps = (state.applySteps.length ? state.applySteps : steps).map((step) => step.id === id ? { ...step, status, label: label || step.label } : step);
+    const current = state.applySteps.find((step) => step.status === 'running') || state.applySteps.find((step) => step.status === 'pending');
+    state.busyLabel = current?.label || 'Применяю изменения';
+    render();
+  };
+  state.applySteps = steps;
   state.busyAction = 'apply';
-  state.busyLabel = configDirty && firewallDirty ? 'Применяю Xray и firewall' : '';
+  state.busyLabel = steps[0]?.label || 'Применяю изменения';
   render();
   try {
     if (configDirty) {
+      setStep('check-xray', 'running');
       await applyConfig({
         progressMessage: firewallDirty
           ? 'Применяю Xray, затем обновлю правила firewall...'
@@ -812,9 +826,12 @@ async function applyConfigAndFirewall() {
           ? 'Xray применен, применяю firewall...'
           : 'Конфигурация Xray применена'
       });
+      setStep('check-xray', 'done', 'Черновик Xray проверен');
+      setStep('apply-xray', 'done', 'Xray применен');
     }
 
     if (firewallDirty || firewallHasUnappliedChanges()) {
+      setStep('apply-firewall', 'running');
       await applyFirewall({
         busyAction: 'apply',
         busyLabel: configDirty ? 'Применяю firewall' : '',
@@ -822,7 +839,13 @@ async function applyConfigAndFirewall() {
           ? 'Xray и firewall применены'
           : 'Firewall-правила применены и сохранены для перезапуска firewall'
       });
+      setStep('apply-firewall', 'done', 'Firewall применен');
     }
+    setStep('refresh', 'done', 'Состояние обновлено');
+  } catch (error) {
+    const current = state.applySteps.find((step) => step.status === 'running') || state.applySteps.find((step) => step.status === 'pending');
+    if (current) setStep(current.id, 'error', `${current.label}: ошибка`);
+    throw error;
   } finally {
     if (state.busyAction === 'apply') state.busyAction = '';
     state.busyLabel = '';
@@ -1037,6 +1060,7 @@ const {
 const {
   setupFlowStep,
   setupFlowGuide,
+  setupPage,
   setupWizardDialog,
   installWizardDialog,
   coreUpdateDialog
@@ -1069,6 +1093,7 @@ const dashboardView = createDashboardView({
   checkForTag,
   checkLabel,
   checkMethodLabel,
+  configHasUnappliedChanges,
 });
 const {
   checkModeLabel,
@@ -1242,6 +1267,7 @@ const {
   domainMonitorDevicesText,
   domainMonitorHost,
   domainMonitorMatchesFilter,
+  domainMonitorMatchesDevice,
   domainMonitorMatchesQuery,
   domainMonitorRows,
   domainMonitorFilterCounts,
@@ -1249,6 +1275,7 @@ const {
   monitoredDevices,
   monitoredEvents,
   monitorSourceLabel,
+  selectedDomainMonitorDevice,
   domainMonitorDomainQuality
 } = diagnosticsModel;
 
@@ -1288,6 +1315,7 @@ const diagnosticsView = createDiagnosticsView({
   domainMonitorFilterCounts,
   domainMonitorHost,
   domainMonitorMatchesFilter,
+  domainMonitorMatchesDevice,
   domainMonitorProtocols,
   domainMonitorRows,
   escapeHtml,
@@ -1297,6 +1325,7 @@ const diagnosticsView = createDiagnosticsView({
   monitoredDevices,
   monitoredDomains,
   monitoredEvents,
+  selectedDomainMonitorDevice,
   observatoryConfig,
   observatoryMatchedOutbounds,
   observatoryRequiredBalancers,
@@ -1428,6 +1457,34 @@ function firewallHasUnappliedChanges() {
   return !firewallReadyStatus(state.firewallStatus);
 }
 
+function pendingApplyRisks(configDirty, firewallDirty) {
+  const risks = [];
+  if (configDirty) {
+    const missingGeo = Number(state.geoStatus?.audit?.summary?.missing || 0);
+    const warnings = Number(state.geoStatus?.audit?.summary?.warnings || 0);
+    if (missingGeo > 0) {
+      risks.push({ level: 'danger', text: `Geo Doctor: ${missingGeo} ссылок не найдены в текущих dat-файлах` });
+    } else if (warnings > 0) {
+      risks.push({ level: 'warn', text: `Geo Doctor: есть ${warnings} предупреждений перед проверкой Xray` });
+    }
+  }
+  if (firewallDirty && typeof firewallSafetyCheck === 'function') {
+    const safety = firewallSafetyCheck();
+    const items = Array.isArray(safety?.items) ? safety.items : [];
+    items
+      .filter((item) => item?.level === 'danger' || item?.level === 'warn')
+      .slice(0, 3)
+      .forEach((item) => risks.push({
+        level: item.level,
+        text: `${item.title || 'Firewall'}: ${item.detail || 'проверьте правило перед применением'}`
+      }));
+  }
+  if (firewallDirty && state.firewallPortMode === 'all') {
+    risks.push({ level: 'warn', text: 'Перехват всех портов: проверьте исключения роутера и локальной сети' });
+  }
+  return risks;
+}
+
 function pendingChangesBanner() {
   const configDirty = configHasUnappliedChanges();
   const firewallDirty = firewallHasUnappliedChanges();
@@ -1437,22 +1494,28 @@ function pendingChangesBanner() {
     : [];
   const visibleFirewallReasons = firewallReasons.slice(0, 4);
   const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
-  const applyLabel = applying
-    ? 'Применяю изменения...'
-    : configDirty && firewallDirty
-      ? 'Применить Xray и firewall'
-      : configDirty
-        ? 'Применить Xray'
-        : 'Применить firewall';
+  const changeItems = [
+    configDirty ? 'Xray: черновик конфигурации будет проверен, записан и применен через перезапуск сервиса' : '',
+    firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
+  ].filter(Boolean);
+  const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
+  const applySteps = Array.isArray(state.applySteps) && state.applySteps.length && applying ? state.applySteps : [];
+  const risks = pendingApplyRisks(configDirty, firewallDirty);
   return `
     <section class="pending-changes" role="status" aria-live="polite">
       <div>
         <strong>Есть непримененные изменения</strong>
-        <span>${[
-          configDirty ? 'черновик Xray отличается от активного config.json' : '',
-          firewallDirty ? `будет применено в firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки еще не применены'}` : ''
-        ].filter(Boolean).join(' · ')}</span>
+        <span>Ниже показано, что будет применено для Xray и firewall.</span>
+        <ul class="pending-change-list">
+          ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
         ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
+        ${risks.length ? `<div class="pending-risk-list">
+          ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
+        </div>` : ''}
+        ${applySteps.length ? `<ol class="apply-step-list">
+          ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
+        </ol>` : ''}
       </div>
       <div class="pending-actions">
         <button class="btn warning ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
@@ -1461,9 +1524,66 @@ function pendingChangesBanner() {
   `;
 }
 
+function setupStepOrder() {
+  return ['environment', 'mode', 'dns', 'server', 'routing', 'firewall', 'verify'];
+}
+
+function setupStepGate(step) {
+  const readiness = setupReadiness();
+  const byKey = new Map((readiness.items || []).map((item) => [item.key, item]));
+  const proxyCount = proxyOutbounds().length;
+  const transparentReady = Boolean(byKey.get('transparent')?.ok);
+  const firewallReady = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(state.firewallStatus || {}) : false;
+  const notice = (level, title, detail) => ({ ok: false, notice: { step, level, title, detail } });
+  if (step === 'environment') {
+    if (!byKey.get('core')?.ok) return notice('bad', 'Xray не найден', 'Сначала установите xray-core и зависимости OpenWrt. Откройте установку Xray на этом шаге.');
+    if (!byKey.get('geo')?.ok) {
+      return {
+        ok: true,
+        notice: {
+          step,
+          level: 'warn',
+          title: 'Geo-файлы не готовы',
+          detail: 'Для правил geoip/geosite нужны geoip.dat и geosite.dat. Мастер может идти дальше, но финальная проверка покажет ошибку, если правило ссылается на отсутствующую категорию.'
+        }
+      };
+    }
+  }
+  if (step === 'server' && proxyCount < 1) {
+    return notice('bad', 'Нет proxy-сервера', 'Добавьте сервер или подписку в разделе proxy, затем вернитесь в мастер.');
+  }
+  if (step === 'firewall') {
+    if (!transparentReady) {
+      prepareSetupDraft({ message: false });
+      return {
+        ok: true,
+        notice: {
+          step,
+          level: 'warn',
+          title: 'Черновик перехвата подготовлен',
+          detail: 'Мастер добавил transparent inbound и служебные правила в черновик. На финальном шаге он проверит Xray и применит firewall.'
+        }
+      };
+    }
+    if (!firewallReady) {
+      return {
+        ok: true,
+        notice: {
+          step,
+          level: 'warn',
+          title: 'Firewall еще не применен',
+          detail: 'Это нормально перед финальным шагом: мастер покажет, что изменится, и применит nftables вместе с Xray.'
+        }
+      };
+    }
+  }
+  return { ok: true, notice: null };
+}
+
 function content() {
   if (!state.status) return loadingDashboard();
   if (state.tab === 'dashboard') return dashboard();
+  if (state.tab === 'setup') return setupPage();
   if (state.tab === 'servers') return serversPanel();
   if (state.tab === 'diagnostics') return diagnosticsPanel();
   if (state.tab === 'sni') return sniPanel();
@@ -1622,7 +1742,6 @@ function render() {
         ${content()}
       </main>
     </div>
-    ${setupWizardDialog()}
     ${installWizardDialog()}
     ${coreUpdateDialog()}
     ${routePresetDialog()}
@@ -1797,6 +1916,27 @@ function bind() {
       openSetupWizard,
       closeSetupWizard: () => {
         state.setupWizardOpen = false;
+        render();
+      },
+      setupStepBack: () => {
+        const steps = setupStepOrder();
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
+        state.setupStep = steps[Math.max(0, index - 1)] || 'environment';
+        state.setupStepNotice = null;
+        render();
+      },
+      setupStepNext: () => {
+        const gate = setupStepGate(state.setupStep || 'environment');
+        if (!gate.ok) {
+          state.setupStepNotice = gate.notice;
+          render();
+          return;
+        }
+        const steps = setupStepOrder();
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
+        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'verify';
+        state.setupStep = nextStep;
+        state.setupStepNotice = gate.notice ? { ...gate.notice, step: nextStep } : null;
         render();
       },
       setupPrepareDraft,

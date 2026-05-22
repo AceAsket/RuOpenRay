@@ -58,6 +58,7 @@ export function createFirewallActions({
     render();
     try {
       const result = await applyFirewallWithRetry(options.attempts || 3);
+      state.firewallGeoExpansion = result?.geoExpansion || null;
       const ready = firewallReadyStatus(state.firewallStatus);
       state.message = result.ok && ready
         ? (options.successMessage || 'Firewall-правила применены и сохранены для перезапуска firewall')
@@ -107,6 +108,7 @@ export function createFirewallActions({
         method: 'POST',
         body: JSON.stringify(payload)
       });
+      state.firewallGeoExpansion = preview?.geoExpansion || null;
       const status = preview.status || await request('/api/firewall/status').catch(() => null);
       const report = [
         'RuOpenRay UI firewall report',
