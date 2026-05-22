@@ -51,6 +51,19 @@ func TestKillSwitchDomainFromNftsetEntry(t *testing.T) {
 	}
 }
 
+func TestRouteNftsetEntryAndDomain(t *testing.T) {
+	entry := routeNftsetEntry("telegram.org", "proxy4")
+	if entry != "/telegram.org/4#inet#ruopenray#proxy4" {
+		t.Fatalf("entry = %#v", entry)
+	}
+	if got := domainFromNftsetEntry(entry, "proxy4"); got != "telegram.org" {
+		t.Fatalf("domain = %#v, want telegram.org", got)
+	}
+	if got := domainFromNftsetEntry(entry, "bypass4"); got != "" {
+		t.Fatalf("wrong set domain = %#v, want empty", got)
+	}
+}
+
 func TestKillSwitchDNSBlockEntries(t *testing.T) {
 	got := killSwitchDNSBlockEntries([]string{"openai.com", "*.chatgpt.com", "bad value"})
 	want := []string{"/openai.com/0.0.0.0", "/openai.com/::", "/chatgpt.com/0.0.0.0", "/chatgpt.com/::"}
@@ -103,6 +116,31 @@ func TestExpandFirewallGeoPayloadAddsGeoTargets(t *testing.T) {
 	}
 	if report["addedIps"] != 2 || report["addedDomains"] != 3 || report["skipped"] != 1 {
 		t.Fatalf("geoExpansion = %#v", report)
+	}
+}
+
+func TestExpandFirewallGeoPayloadAddsRouteTargets(t *testing.T) {
+	geoDir := t.TempDir()
+	writeFirewallGeoFixture(t, geoDir)
+	state := &serverState{cfg: appConfig{GeoDir: geoDir}}
+
+	expanded := state.expandFirewallGeoPayload(map[string]any{
+		"directIps":     []any{"1.1.1.1"},
+		"directDomains": []any{"router.example"},
+		"directGeoip":   []any{"private"},
+		"directGeosite": []any{"telegram"},
+		"proxyDomains":  []any{"openai.com"},
+		"proxyExt":      []any{`ext:"LoyalsoldierSite.dat:antifilter-community"`},
+	})
+
+	if got := stringList(expanded["directIps"]); !reflect.DeepEqual(got, []string{"1.1.1.1", "10.0.0.0/8", "192.168.0.0/16"}) {
+		t.Fatalf("directIps = %#v", got)
+	}
+	if got := stringList(expanded["directDomains"]); !reflect.DeepEqual(got, []string{"router.example", "telegram.org", "t.me"}) {
+		t.Fatalf("directDomains = %#v", got)
+	}
+	if got := stringList(expanded["proxyDomains"]); !reflect.DeepEqual(got, []string{"openai.com", "blocked.example"}) {
+		t.Fatalf("proxyDomains = %#v", got)
 	}
 }
 

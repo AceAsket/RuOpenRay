@@ -61,23 +61,24 @@ func killSwitchNftsetEntry(domain string) string {
 	return "/" + domain + "/4#inet#ruopenray#killswitch4"
 }
 
-func killSwitchNftsetValues() []string {
+func dnsmasqNftsetValuesForSet(setName string) []string {
 	if runtime.GOOS == "windows" || !commandExists("uci") {
 		return []string{}
 	}
 	out := fmt.Sprint(runTimeout(5*time.Second, "uci", "-q", "get", "dhcp.@dnsmasq[0].nftset")["stdout"])
 	values := []string{}
+	marker := "#inet#ruopenray#" + setName
 	for _, item := range strings.Fields(strings.ReplaceAll(out, "\n", " ")) {
 		clean := strings.TrimSpace(item)
-		if strings.Contains(clean, "#inet#ruopenray#killswitch4") {
+		if strings.Contains(clean, marker) {
 			values = append(values, clean)
 		}
 	}
 	return values
 }
 
-func killSwitchDomainFromNftsetEntry(entry string) string {
-	if !strings.Contains(entry, "#inet#ruopenray#killswitch4") {
+func domainFromNftsetEntry(entry string, setName string) string {
+	if !strings.Contains(entry, "#inet#ruopenray#"+setName) {
 		return ""
 	}
 	if !strings.HasPrefix(entry, "/") {
@@ -88,6 +89,14 @@ func killSwitchDomainFromNftsetEntry(entry string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
+}
+
+func killSwitchNftsetValues() []string {
+	return dnsmasqNftsetValuesForSet("killswitch4")
+}
+
+func killSwitchDomainFromNftsetEntry(entry string) string {
+	return domainFromNftsetEntry(entry, "killswitch4")
 }
 
 func killSwitchNftsetStatus() map[string]any {
@@ -104,6 +113,27 @@ func killSwitchNftsetStatus() map[string]any {
 		"count":     len(values),
 		"domains":   domains,
 		"set":       "inet ruopenray killswitch4",
+	}
+}
+
+func routeNftsetEntry(domain string, setName string) string {
+	return "/" + domain + "/4#inet#ruopenray#" + setName
+}
+
+func routeNftsetStatus(setName string) map[string]any {
+	values := dnsmasqNftsetValuesForSet(setName)
+	domains := []string{}
+	for _, entry := range values {
+		if domain := domainFromNftsetEntry(entry, setName); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+	return map[string]any{
+		"available": runtime.GOOS != "windows" && commandExists("uci"),
+		"active":    len(values) > 0,
+		"count":     len(values),
+		"domains":   domains,
+		"set":       "inet ruopenray " + setName,
 	}
 }
 
@@ -205,6 +235,41 @@ func applyKillSwitchNftsets(domains []string, enabled bool) []map[string]any {
 	return steps
 }
 
+func applyRouteNftsets(setName string, domains []string, enabled bool) []map[string]any {
+	if runtime.GOOS == "windows" || !commandExists("uci") {
+		return []map[string]any{{"ok": true, "skipped": true, "message": "uci unavailable"}}
+	}
+	steps := []map[string]any{}
+	existing := dnsmasqNftsetValuesForSet(setName)
+	desired := []string{}
+	if enabled {
+		for _, domain := range sanitizeKillSwitchDomains(domains) {
+			desired = append(desired, routeNftsetEntry(domain, setName))
+		}
+	}
+	if sameStringSet(existing, desired) {
+		return []map[string]any{{"ok": true, "unchanged": true, "message": "dnsmasq route nftset already matches"}}
+	}
+	for _, entry := range existing {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "del_list", "dhcp.@dnsmasq[0].nftset="+entry))
+	}
+	for _, entry := range desired {
+		steps = append(steps, runTimeout(5*time.Second, "uci", "add_list", "dhcp.@dnsmasq[0].nftset="+entry))
+	}
+	steps = append(steps, runTimeout(5*time.Second, "uci", "commit", "dhcp"))
+	if commandExists("/etc/init.d/dnsmasq") {
+		steps = append(steps, runTimeout(15*time.Second, "/etc/init.d/dnsmasq", "restart"))
+	}
+	return steps
+}
+
+func applyRouteDomainNftsets(payload map[string]any, bypassMode string) []map[string]any {
+	steps := []map[string]any{}
+	steps = append(steps, applyRouteNftsets("bypass4", stringList(payload["directDomains"]), bypassMode == "bypass")...)
+	steps = append(steps, applyRouteNftsets("proxy4", stringList(payload["proxyDomains"]), bypassMode == "redirect")...)
+	return steps
+}
+
 func sameStringSet(left, right []string) bool {
 	if len(left) != len(right) {
 		return false
@@ -273,6 +338,8 @@ func (s *serverState) firewallStatus() map[string]any {
 		}()),
 		"killSwitchNftset":   killSwitchNftsetStatus(),
 		"killSwitchDNSBlock": killSwitchDNSBlockStatus(),
+		"directNftset":       routeNftsetStatus("bypass4"),
+		"proxyNftset":        routeNftsetStatus("proxy4"),
 		"needsPolicyFix":     routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
 	}
 	for key, value := range meta {
@@ -300,7 +367,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "directDomains", "proxyDomains":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
@@ -487,6 +554,7 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 		boolPayload(payload, "killSwitch", false),
 		rfw.PayloadString(payload, "killSwitchDomainMode", "dns-block"),
 	)...)
+	steps = append(steps, applyRouteDomainNftsets(payload, fmt.Sprint(meta["bypassMode"]))...)
 	status := s.firewallStatus()
 	ok := rfw.AllStepsOK(steps) && status["active"] == true
 	if routerMode == "tproxy" {
@@ -539,6 +607,7 @@ func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string
 		meta["killSwitch"] == true,
 		fmt.Sprint(meta["killSwitchDomainMode"]),
 	)...)
+	steps = append(steps, applyRouteDomainNftsets(meta, fmt.Sprint(meta["bypassMode"]))...)
 	status := s.firewallStatus()
 	ok := rfw.AllStepsOK(steps) && status["active"] == true
 	if routerMode == "tproxy" {
@@ -561,6 +630,8 @@ func (s *serverState) disableFirewall() map[string]any {
 	steps = append(steps, applyTProxyPolicyRouting(false)...)
 	steps = append(steps, applyKillSwitchNftsets(nil, false)...)
 	steps = append(steps, applyKillSwitchDNSBlock(nil, false)...)
+	steps = append(steps, applyRouteNftsets("bypass4", nil, false)...)
+	steps = append(steps, applyRouteNftsets("proxy4", nil, false)...)
 	status := s.firewallStatus()
 	return map[string]any{"ok": rfw.AllStepsOK(steps), "steps": steps, "status": status}
 }

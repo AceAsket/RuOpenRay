@@ -24,106 +24,134 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 	next := clonePayloadMap(payload)
 	expansion := firewallGeoExpansion{}
 
-	ips := stringList(next["killSwitchIps"])
-	domains := stringList(next["killSwitchDomains"])
-	seenIPs := stringSet(ips)
-	seenDomains := stringSet(domains)
-
-	addIP := func(value string) {
+	addIP := func(values *[]string, seen map[string]bool, value string) {
 		clean := strings.TrimSpace(value)
-		if clean == "" || seenIPs[clean] || len(ips) >= firewallGeoIPLimit {
-			if clean != "" && len(ips) >= firewallGeoIPLimit {
+		if clean == "" || seen[clean] || len(*values) >= firewallGeoIPLimit {
+			if clean != "" && len(*values) >= firewallGeoIPLimit {
 				expansion.Skipped++
 			}
 			return
 		}
-		seenIPs[clean] = true
-		ips = append(ips, clean)
+		seen[clean] = true
+		*values = append(*values, clean)
 		expansion.AddedIPs++
 	}
-	addDomain := func(value string) {
+	addDomain := func(values *[]string, seen map[string]bool, value string) {
 		clean := strings.ToLower(strings.TrimSpace(value))
 		clean = strings.TrimPrefix(clean, "*.")
 		clean = strings.Trim(clean, ".")
-		if clean == "" || seenDomains[clean] || len(domains) >= firewallGeoDomainLimit {
-			if clean != "" && len(domains) >= firewallGeoDomainLimit {
+		if clean == "" || seen[clean] || len(*values) >= firewallGeoDomainLimit {
+			if clean != "" && len(*values) >= firewallGeoDomainLimit {
 				expansion.Skipped++
 			}
 			return
 		}
-		seenDomains[clean] = true
-		domains = append(domains, clean)
+		seen[clean] = true
+		*values = append(*values, clean)
 		expansion.AddedDomains++
 	}
 
-	for _, code := range stringList(next["killSwitchGeoip"]) {
-		code = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(code, "geoip:")))
-		if code == "" {
-			continue
-		}
-		expansion.GeoIPRefs++
-		report := s.geoCatalogReport("geoip", code, true, "geoip.dat")
-		if !report.OK || report.Stderr != "" {
-			expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("geoip:%s не найден в geoip.dat: %s", code, strings.TrimSpace(report.Stderr)))
-			continue
-		}
-		for _, item := range report.Items {
-			addIP(item)
-		}
-		if report.Truncated {
-			expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("geoip:%s открыт частично", code))
-		}
-	}
-
-	for _, code := range stringList(next["killSwitchGeosite"]) {
-		code = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(code, "geosite:")))
-		if code == "" {
-			continue
-		}
-		expansion.GeoSiteRefs++
-		report := s.geoCatalogReport("geosite", code, true, "geosite.dat")
-		if !report.OK || report.Stderr != "" {
-			expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("geosite:%s не найден в geosite.dat: %s", code, strings.TrimSpace(report.Stderr)))
-			continue
-		}
-		for _, item := range report.Items {
-			if domain, ok := geoSiteFirewallDomain(item); ok {
-				addDomain(domain)
-			} else {
-				expansion.Skipped++
+	expandGeoIP := func(target string, values *[]string, seen map[string]bool, refs []string) {
+		for _, code := range refs {
+			code = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(code, "geoip:")))
+			if code == "" {
+				continue
+			}
+			expansion.GeoIPRefs++
+			report := s.geoCatalogReport("geoip", code, true, "geoip.dat")
+			if !report.OK || report.Stderr != "" {
+				expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("%s geoip:%s не найден в geoip.dat: %s", target, code, strings.TrimSpace(report.Stderr)))
+				continue
+			}
+			for _, item := range report.Items {
+				addIP(values, seen, item)
+			}
+			if report.Truncated {
+				expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("%s geoip:%s открыт частично", target, code))
 			}
 		}
 	}
 
-	for _, ref := range stringList(next["killSwitchExt"]) {
-		file, code, ok := parseFirewallExtRef(ref)
-		if !ok {
-			expansion.Warnings = append(expansion.Warnings, "не удалось разобрать "+ref)
-			continue
-		}
-		expansion.ExtRefs++
-		report := s.geoCatalogReport("geosite", code, true, file)
-		if !report.OK || report.Stderr != "" {
-			expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("%s:%s не найден: %s", file, code, strings.TrimSpace(report.Stderr)))
-			continue
-		}
-		for _, item := range report.Items {
-			if domain, ok := geoSiteFirewallDomain(item); ok {
-				addDomain(domain)
-			} else {
-				expansion.Skipped++
+	expandGeoSite := func(target string, values *[]string, seen map[string]bool, refs []string) {
+		for _, code := range refs {
+			code = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(code, "geosite:")))
+			if code == "" {
+				continue
+			}
+			expansion.GeoSiteRefs++
+			report := s.geoCatalogReport("geosite", code, true, "geosite.dat")
+			if !report.OK || report.Stderr != "" {
+				expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("%s geosite:%s не найден в geosite.dat: %s", target, code, strings.TrimSpace(report.Stderr)))
+				continue
+			}
+			for _, item := range report.Items {
+				if domain, ok := geoSiteFirewallDomain(item); ok {
+					addDomain(values, seen, domain)
+				} else {
+					expansion.Skipped++
+				}
 			}
 		}
 	}
 
-	if len(ips) >= firewallGeoIPLimit {
+	expandExt := func(target string, values *[]string, seen map[string]bool, refs []string) {
+		for _, ref := range refs {
+			file, code, ok := parseFirewallExtRef(ref)
+			if !ok {
+				expansion.Warnings = append(expansion.Warnings, target+" не удалось разобрать "+ref)
+				continue
+			}
+			expansion.ExtRefs++
+			report := s.geoCatalogReport("geosite", code, true, file)
+			if !report.OK || report.Stderr != "" {
+				expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("%s %s:%s не найден: %s", target, file, code, strings.TrimSpace(report.Stderr)))
+				continue
+			}
+			for _, item := range report.Items {
+				if domain, ok := geoSiteFirewallDomain(item); ok {
+					addDomain(values, seen, domain)
+				} else {
+					expansion.Skipped++
+				}
+			}
+		}
+	}
+
+	killSwitchIPs := stringList(next["killSwitchIps"])
+	killSwitchDomains := stringList(next["killSwitchDomains"])
+	directIPs := stringList(next["directIps"])
+	proxyIPs := stringList(next["proxyIps"])
+	directDomains := stringList(next["directDomains"])
+	proxyDomains := stringList(next["proxyDomains"])
+	killSwitchIPSeen := stringSet(killSwitchIPs)
+	killSwitchDomainSeen := stringSet(killSwitchDomains)
+	directIPSeen := stringSet(directIPs)
+	proxyIPSeen := stringSet(proxyIPs)
+	directDomainSeen := stringSet(directDomains)
+	proxyDomainSeen := stringSet(proxyDomains)
+
+	expandGeoIP("защита", &killSwitchIPs, killSwitchIPSeen, stringList(next["killSwitchGeoip"]))
+	expandGeoSite("защита", &killSwitchDomains, killSwitchDomainSeen, stringList(next["killSwitchGeosite"]))
+	expandExt("защита", &killSwitchDomains, killSwitchDomainSeen, stringList(next["killSwitchExt"]))
+	expandGeoIP("direct", &directIPs, directIPSeen, stringList(next["directGeoip"]))
+	expandGeoSite("direct", &directDomains, directDomainSeen, stringList(next["directGeosite"]))
+	expandExt("direct", &directDomains, directDomainSeen, stringList(next["directExt"]))
+	expandGeoIP("proxy", &proxyIPs, proxyIPSeen, stringList(next["proxyGeoip"]))
+	expandGeoSite("proxy", &proxyDomains, proxyDomainSeen, stringList(next["proxyGeosite"]))
+	expandExt("proxy", &proxyDomains, proxyDomainSeen, stringList(next["proxyExt"]))
+
+	if len(killSwitchIPs) >= firewallGeoIPLimit || len(directIPs) >= firewallGeoIPLimit || len(proxyIPs) >= firewallGeoIPLimit {
 		expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("IP-список ограничен %d записями", firewallGeoIPLimit))
 	}
-	if len(domains) >= firewallGeoDomainLimit {
+	if len(killSwitchDomains) >= firewallGeoDomainLimit || len(directDomains) >= firewallGeoDomainLimit || len(proxyDomains) >= firewallGeoDomainLimit {
 		expansion.Warnings = append(expansion.Warnings, fmt.Sprintf("список доменов ограничен %d записями", firewallGeoDomainLimit))
 	}
-	next["killSwitchIps"] = ips
-	next["killSwitchDomains"] = domains
+	next["killSwitchIps"] = killSwitchIPs
+	next["killSwitchDomains"] = killSwitchDomains
+	next["directIps"] = directIPs
+	next["proxyIps"] = proxyIPs
+	next["directDomains"] = directDomains
+	next["proxyDomains"] = proxyDomains
 	next["geoExpansion"] = map[string]any{
 		"geoipRefs":     expansion.GeoIPRefs,
 		"geositeRefs":   expansion.GeoSiteRefs,
@@ -134,8 +162,8 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 		"warnings":      expansion.Warnings,
 		"ipLimit":       firewallGeoIPLimit,
 		"domainLimit":   firewallGeoDomainLimit,
-		"totalIps":      len(ips),
-		"totalDomains":  len(domains),
+		"totalIps":      len(killSwitchIPs) + len(directIPs) + len(proxyIPs),
+		"totalDomains":  len(killSwitchDomains) + len(directDomains) + len(proxyDomains),
 		"domainFormats": "domain/full; regexp/keyword пропускаются для firewall",
 	}
 	return next

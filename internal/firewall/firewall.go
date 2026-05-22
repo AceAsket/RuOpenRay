@@ -161,6 +161,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	}
 	directIPs := CIDRList(payload["directIps"])
 	proxyIPs := CIDRList(payload["proxyIps"])
+	directDomains := stringList(payload["directDomains"])
+	proxyDomains := stringList(payload["proxyDomains"])
 	localBypass := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
 	setLines := []string{}
 	chainLines := []string{"  chain prerouting {"}
@@ -263,10 +265,12 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"killSwitchDomainMode": killSwitchDomainMode,
 		"directIps":            directIPs,
 		"proxyIps":             proxyIPs,
+		"directDomains":        directDomains,
+		"proxyDomains":         proxyDomains,
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s directDomains=%s proxyDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -285,6 +289,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		strings.Join(killSwitchDomains, ","),
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),
+		strings.Join(directDomains, ","),
+		strings.Join(proxyDomains, ","),
 	)
 	lines := []string{metaLine, "table inet ruopenray {"}
 	lines = append(lines, setLines...)

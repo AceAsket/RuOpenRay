@@ -72,10 +72,20 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
   function firewallRouteSets() {
     const directIps = [];
     const proxyIps = [];
+    const directDomains = [];
+    const proxyDomains = [];
+    const directGeoip = [];
+    const proxyGeoip = [];
+    const directGeosite = [];
+    const proxyGeosite = [];
+    const directExt = [];
+    const proxyExt = [];
     let directDomainCount = 0;
     let proxyDomainCount = 0;
     let directDynamicIpCount = 0;
     let proxyDynamicIpCount = 0;
+    let directUnsupportedDomainCount = 0;
+    let proxyUnsupportedDomainCount = 0;
     const proxyTags = new Set(['proxy']);
     for (const outbound of configOutbounds()) {
       const tag = outbound?.tag || '';
@@ -86,18 +96,52 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     const isProxyRule = (rule) => Boolean(rule?.balancerTag || proxyTags.has(rule?.outboundTag || ''));
     const isDirectRule = (rule) => rule?.outboundTag === 'direct';
     const isConcreteIp = (value) => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(String(value || '').trim());
+    const addTarget = (target, bucket, value) => {
+      if (target === 'direct') bucket.direct.push(value);
+      else bucket.proxy.push(value);
+    };
+    const domainTarget = (value) => {
+      const clean = String(value || '').trim();
+      const lower = clean.toLowerCase();
+      if (!clean) return { kind: 'empty' };
+      if (lower.startsWith('geosite:')) return { kind: 'geosite', value: lower.replace(/^geosite:/, '') };
+      if (lower.startsWith('ext:')) return { kind: 'ext', value: clean };
+      for (const prefix of ['domain:', 'full:']) {
+        if (lower.startsWith(prefix)) {
+          const domain = clean.slice(prefix.length).replace(/^\*\./, '').replace(/\.$/, '').toLowerCase();
+          return /^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$/.test(domain) ? { kind: 'domain', value: domain } : { kind: 'unsupported' };
+        }
+      }
+      const plain = clean.replace(/^\*\./, '').replace(/\.$/, '').toLowerCase();
+      if (/^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$/.test(plain)) return { kind: 'domain', value: plain };
+      return { kind: 'unsupported' };
+    };
     for (const rule of routeRules()) {
       const target = isDirectRule(rule) ? 'direct' : isProxyRule(rule) ? 'proxy' : '';
       if (!target) continue;
       const domains = Array.isArray(rule.domain) ? rule.domain.filter(Boolean) : [];
       if (target === 'direct') directDomainCount += domains.length;
       if (target === 'proxy') proxyDomainCount += domains.length;
+      for (const value of domains) {
+        const parsed = domainTarget(value);
+        if (parsed.kind === 'domain') addTarget(target, { direct: directDomains, proxy: proxyDomains }, parsed.value);
+        else if (parsed.kind === 'geosite') addTarget(target, { direct: directGeosite, proxy: proxyGeosite }, parsed.value);
+        else if (parsed.kind === 'ext') addTarget(target, { direct: directExt, proxy: proxyExt }, parsed.value);
+        else if (parsed.kind === 'unsupported') {
+          if (target === 'direct') directUnsupportedDomainCount += 1;
+          else proxyUnsupportedDomainCount += 1;
+        }
+      }
       for (const value of Array.isArray(rule.ip) ? rule.ip : []) {
         const clean = String(value || '').trim();
         if (!clean) continue;
         if (isConcreteIp(clean)) {
           if (target === 'direct') directIps.push(clean);
           else proxyIps.push(clean);
+        } else if (/^geoip:/i.test(clean)) {
+          const code = clean.replace(/^geoip:/i, '').toLowerCase();
+          if (target === 'direct') directGeoip.push(code);
+          else proxyGeoip.push(code);
         } else {
           if (target === 'direct') directDynamicIpCount += 1;
           else proxyDynamicIpCount += 1;
@@ -108,10 +152,20 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     return {
       directIps: unique(directIps),
       proxyIps: unique(proxyIps),
+      directDomains: unique(directDomains),
+      proxyDomains: unique(proxyDomains),
+      directGeoip: unique(directGeoip),
+      proxyGeoip: unique(proxyGeoip),
+      directGeosite: unique(directGeosite),
+      proxyGeosite: unique(proxyGeosite),
+      directExt: unique(directExt),
+      proxyExt: unique(proxyExt),
       directDomainCount,
       proxyDomainCount,
       directDynamicIpCount,
-      proxyDynamicIpCount
+      proxyDynamicIpCount,
+      directUnsupportedDomainCount,
+      proxyUnsupportedDomainCount
     };
   }
 
@@ -211,13 +265,21 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (info.dnsIn.length && !info.transparent.length) warnings.push('DNS inbound найден, но он обрабатывает только DNS. Для сайтов и приложений LAN-клиентов нужен transparent inbound.');
     if (!info.dnsOut.length) warnings.push('Не найден dns-out: перехват DNS не сможет отправлять запросы через Xray DNS.');
     if (!info.localBypass.length) warnings.push('Не найден local bypass: приватные адреса LAN лучше явно оставить напрямую.');
-    if (state.firewallBypassMode === 'bypass' && (routeSets.directDomainCount || routeSets.directDynamicIpCount)) {
-      warnings.push(`Direct мимо работает на уровне firewall только для IP/подсетей (${routeSets.directIps.length}). Домены/geosite из direct-правил (${routeSets.directDomainCount + routeSets.directDynamicIpCount}) останутся внутри Xray, пока не подключен DNS/nftset.`);
+    const directResolvable = routeSets.directDomains.length + routeSets.directGeosite.length + routeSets.directExt.length;
+    const proxyResolvable = routeSets.proxyDomains.length + routeSets.proxyGeosite.length + routeSets.proxyExt.length;
+    if (state.firewallBypassMode === 'bypass' && (directResolvable || routeSets.directGeoip.length)) {
+      warnings.push(`Direct мимо добавит ${routeSets.directIps.length} IP/подсетей и ${routeSets.directGeoip.length} geoip-целей в nftables, а ${directResolvable} доменных/geo-целей в dnsmasq/nftset. Домены сработают после DNS-запроса клиента через роутер.`);
     }
-    if (state.firewallBypassMode === 'redirect' && !routeSets.proxyIps.length) {
-      warnings.push('Только Proxy сейчас не видит IP/подсетей в proxy-правилах. Домены и geosite требуют DNS/nftset, иначе firewall не сможет понять, какие адреса перехватывать.');
-    } else if (state.firewallBypassMode === 'redirect' && (routeSets.proxyDomainCount || routeSets.proxyDynamicIpCount)) {
-      warnings.push(`Только Proxy перехватит IP/подсети (${routeSets.proxyIps.length}). Домены/geosite из proxy-правил (${routeSets.proxyDomainCount + routeSets.proxyDynamicIpCount}) требуют DNS/nftset для точного перехвата.`);
+    if (state.firewallBypassMode === 'bypass' && (routeSets.directDynamicIpCount || routeSets.directUnsupportedDomainCount)) {
+      warnings.push(`В direct-правилах есть цели, которые firewall не сможет развернуть автоматически: ${routeSets.directDynamicIpCount + routeSets.directUnsupportedDomainCount}. Они останутся на уровне Xray routing.`);
+    }
+    if (state.firewallBypassMode === 'redirect' && !routeSets.proxyIps.length && !proxyResolvable && !routeSets.proxyGeoip.length) {
+      warnings.push('Только proxy пока не видит целей для перехвата. Добавьте proxy-правила с IP/подсетями, доменами, geoip/geosite или ext-списками.');
+    } else if (state.firewallBypassMode === 'redirect' && (proxyResolvable || routeSets.proxyGeoip.length)) {
+      warnings.push(`Только proxy добавит ${routeSets.proxyIps.length} IP/подсетей и ${routeSets.proxyGeoip.length} geoip-целей в nftables, а ${proxyResolvable} доменных/geo-целей в dnsmasq/nftset. Остальное будет идти напрямую.`);
+    }
+    if (state.firewallBypassMode === 'redirect' && (routeSets.proxyDynamicIpCount || routeSets.proxyUnsupportedDomainCount)) {
+      warnings.push(`В proxy-правилах есть цели, которые firewall не сможет развернуть автоматически: ${routeSets.proxyDynamicIpCount + routeSets.proxyUnsupportedDomainCount}.`);
     }
     if (state.firewallRouterMode === 'redirect' && !state.firewallBlockQuic) warnings.push('REDIRECT не обрабатывает UDP/QUIC надежно. Лучше включить блокировку QUIC или выбрать TPROXY.');
     if (state.firewallDeviceMode !== 'all' && !selectedDeviceIps.length) warnings.push('Выбран режим по устройствам, но устройства не отмечены.');
@@ -326,7 +388,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         'nft add set inet ruopenray bypass4 { type ipv4_addr \\; flags interval \\; }',
         `nft add element inet ruopenray bypass4 ${nftList(bypassItems)}`,
         'nft add rule inet ruopenray prerouting ip daddr @bypass4 return',
-        '# Позже сюда можно подключить dnsmasq/nftset для direct-доменов из правил.',
+        routeSets.directDomains.length || routeSets.directGeosite.length || routeSets.directExt.length
+          ? `# direct-домены будут добавлены в dnsmasq nftset bypass4: ${routeSets.directDomains.length + routeSets.directGeosite.length + routeSets.directExt.length}`
+          : '# direct-доменов для dnsmasq/nftset нет',
         selectedModeEmpty ? selectedNoopRule : firewallTargetRule(port)
       ].join('\n');
     }
@@ -336,7 +400,9 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         '# REDIRECT: в Xray идут только адреса из proxy4. Direct-трафик не заходит в Xray.',
         'nft add set inet ruopenray proxy4 { type ipv4_addr \\; flags interval \\; }',
         routeSets.proxyIps.length ? `nft add element inet ruopenray proxy4 ${nftList(routeSets.proxyIps)}` : '# proxy4 is empty: no concrete proxy IP/CIDR rules',
-        '# Заполняйте proxy4 из доменов/geo-правил через dnsmasq/nftset или отдельный updater.',
+        routeSets.proxyDomains.length || routeSets.proxyGeosite.length || routeSets.proxyExt.length
+          ? `# proxy-домены будут добавлены в dnsmasq nftset proxy4: ${routeSets.proxyDomains.length + routeSets.proxyGeosite.length + routeSets.proxyExt.length}`
+          : '# proxy-доменов для dnsmasq/nftset нет',
         selectedModeEmpty ? selectedNoopRule : state.firewallRouterMode === 'redirect'
           ? `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto tcp${firewallPortExpression()} redirect to :${port}`
           : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy to :${port} meta mark set 1`
@@ -373,6 +439,14 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       killSwitchDomainMode: state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block',
       directIps: routeSets.directIps,
       proxyIps: routeSets.proxyIps,
+      directDomains: routeSets.directDomains,
+      proxyDomains: routeSets.proxyDomains,
+      directGeoip: routeSets.directGeoip,
+      proxyGeoip: routeSets.proxyGeoip,
+      directGeosite: routeSets.directGeosite,
+      proxyGeosite: routeSets.proxyGeosite,
+      directExt: routeSets.directExt,
+      proxyExt: routeSets.proxyExt,
       directDomainCount: routeSets.directDomainCount + routeSets.directDynamicIpCount,
       proxyDomainCount: routeSets.proxyDomainCount + routeSets.proxyDynamicIpCount,
       transparentPort: Number(info.transparentPort || 52345),
@@ -520,8 +594,26 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (status.routerMode && status.routerMode !== expectedRouterMode) return false;
     if (expectedRouterMode === 'tproxy' && (!status.ipRule || !status.ipRoute)) return false;
     if (status.bypassMode && status.bypassMode !== (state.firewallBypassMode || 'off')) return false;
-    if ((state.firewallBypassMode || 'off') === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length) && !sameStringSet(status.directIps || [], routeSets.directIps)) return false;
-    if ((state.firewallBypassMode || 'off') === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length) && !sameStringSet(status.proxyIps || [], routeSets.proxyIps)) return false;
+    if ((state.firewallBypassMode || 'off') === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length)) {
+      const directIpReady = routeSets.directGeoip.length
+        ? listContainsAll(status.directIps || [], routeSets.directIps)
+        : sameStringSet(status.directIps || [], routeSets.directIps);
+      if (!directIpReady) return false;
+    }
+    if ((state.firewallBypassMode || 'off') === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length)) {
+      const proxyIpReady = routeSets.proxyGeoip.length
+        ? listContainsAll(status.proxyIps || [], routeSets.proxyIps)
+        : sameStringSet(status.proxyIps || [], routeSets.proxyIps);
+      if (!proxyIpReady) return false;
+    }
+    if ((state.firewallBypassMode || 'off') === 'bypass') {
+      const directDomains = status.directNftset?.domains || [];
+      if (routeSets.directDomains.length && !listContainsAll(directDomains, routeSets.directDomains)) return false;
+    }
+    if ((state.firewallBypassMode || 'off') === 'redirect') {
+      const proxyDomains = status.proxyNftset?.domains || [];
+      if (routeSets.proxyDomains.length && !listContainsAll(proxyDomains, routeSets.proxyDomains)) return false;
+    }
     if (status.deviceMode && status.deviceMode !== (state.firewallDeviceMode || 'all')) return false;
     if ((Array.isArray(status.devices) || firewallSelectedDeviceIps().length) && !sameStringSet(status.devices || [], firewallSelectedDeviceIps())) return false;
     if (status.portMode && status.portMode !== (state.firewallPortMode || 'custom')) return false;
@@ -563,11 +655,19 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (status.bypassMode && status.bypassMode !== expectedBypassMode) {
       reasons.push(`политика: ${bypassModeLabel(status.bypassMode)} -> ${bypassModeLabel(expectedBypassMode)}`);
     }
-    if (expectedBypassMode === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length) && !sameStringSet(status.directIps || [], routeSets.directIps)) {
+    if (expectedBypassMode === 'bypass' && (Array.isArray(status.directIps) || routeSets.directIps.length) && !(routeSets.directGeoip.length ? listContainsAll(status.directIps || [], routeSets.directIps) : sameStringSet(status.directIps || [], routeSets.directIps))) {
       reasons.push(`direct IP для обхода: ${stringListLabel(status.directIps || [])} -> ${stringListLabel(routeSets.directIps)}`);
     }
-    if (expectedBypassMode === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length) && !sameStringSet(status.proxyIps || [], routeSets.proxyIps)) {
+    if (expectedBypassMode === 'redirect' && (Array.isArray(status.proxyIps) || routeSets.proxyIps.length) && !(routeSets.proxyGeoip.length ? listContainsAll(status.proxyIps || [], routeSets.proxyIps) : sameStringSet(status.proxyIps || [], routeSets.proxyIps))) {
       reasons.push(`proxy IP для перехвата: ${stringListLabel(status.proxyIps || [])} -> ${stringListLabel(routeSets.proxyIps)}`);
+    }
+    if (expectedBypassMode === 'bypass' && routeSets.directDomains.length) {
+      const actual = status.directNftset?.domains || [];
+      if (!listContainsAll(actual, routeSets.directDomains)) reasons.push(`direct-домены dnsmasq/nftset: ${actual.length} -> ${routeSets.directDomains.length}`);
+    }
+    if (expectedBypassMode === 'redirect' && routeSets.proxyDomains.length) {
+      const actual = status.proxyNftset?.domains || [];
+      if (!listContainsAll(actual, routeSets.proxyDomains)) reasons.push(`proxy-домены dnsmasq/nftset: ${actual.length} -> ${routeSets.proxyDomains.length}`);
     }
     const expectedDeviceMode = state.firewallDeviceMode || 'all';
     if (status.deviceMode && status.deviceMode !== expectedDeviceMode) {
