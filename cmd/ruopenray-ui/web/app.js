@@ -1769,6 +1769,7 @@ function decorateBusyActionButtons() {
   document.querySelectorAll('[data-action]').forEach((button) => {
     if (button.dataset.action !== state.busyAction) return;
     if (!(button instanceof HTMLButtonElement)) return;
+    if (button.dataset.busyInline === '0') return;
     button.classList.add('is-busy');
     if (button.dataset.busyDisabled !== '0') button.disabled = true;
     const label = busyButtonLabel(state.busyAction, state.busyLabel || button.textContent || '');

@@ -140,7 +140,7 @@ function settingsPanel() {
       </div>
       <div class="toolbar">
         <button class="btn secondary ${state.appReleaseChecking ? 'is-busy' : ''}" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
-        <button class="btn warning ${state.appUpdating ? 'is-busy' : ''}" data-action="updateApp" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${state.appUpdating ? 'Обновляю...' : appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
+        <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
         <strong>${state.appUpdate.ok ? 'Готово' : 'Ошибка'}</strong>
