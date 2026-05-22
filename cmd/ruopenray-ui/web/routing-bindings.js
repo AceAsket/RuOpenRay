@@ -277,20 +277,6 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeBalancer').forEach((input) => input.addEventListener('change', (event) => {
     state.routeBalancer = event.target.value;
   }));
-  document.querySelectorAll('[data-route-outbound-choice]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.routeTargetType = 'outbound';
-      state.routeOutbound = button.dataset.routeOutboundChoice || '';
-      render();
-    });
-  });
-  document.querySelectorAll('[data-route-balancer-choice]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.routeTargetType = 'balancer';
-      state.routeBalancer = button.dataset.routeBalancerChoice || '';
-      render();
-    });
-  });
   document.querySelector('#routeBalancerTag')?.addEventListener('input', (event) => {
     state.routeBalancerTag = event.target.value;
   });
@@ -347,6 +333,10 @@ export function bindRoutingControls({
   document.querySelector('#routePresetEditDetail')?.addEventListener('input', (event) => {
     state.routePresetEditDetail = event.target.value;
   });
+  document.querySelector('#routePresetEditIcon')?.addEventListener('input', (event) => {
+    state.routePresetEditIcon = event.target.value;
+  });
+  document.querySelector('#routePresetEditIcon')?.addEventListener('change', render);
   document.querySelector('#routePresetEditDsl')?.addEventListener('input', (event) => {
     state.routePresetEditDsl = event.target.value;
     state.routePresetEditPreview = null;

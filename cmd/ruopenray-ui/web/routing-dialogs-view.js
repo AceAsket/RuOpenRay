@@ -1,4 +1,4 @@
-import { routePresetIconView, routeTargetCard } from './route-visuals.js';
+import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
 
 export function createRoutingDialogsView({
   state,
@@ -149,17 +149,11 @@ function routeRuleDialog() {
           <div class="form-row">
             <label>Куда отправляем</label>
             ${state.routeTargetType === 'balancer' ? `
-              <div class="route-target-card-grid">
-                ${balancers.map((tag) => routeTargetCard(escapeHtml, tag, 'balancer', state.routeBalancer === tag)).join('')}
-              </div>
-              <select id="routeBalancer" class="sr-only" aria-hidden="true" tabindex="-1">
+              <select id="routeBalancer">
                 ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
               </select>
             ` : `
-              <div class="route-target-card-grid">
-                ${options.map((tag) => routeTargetCard(escapeHtml, tag, 'outbound', state.routeOutbound === tag)).join('')}
-              </div>
-              <select id="routeOutbound" class="sr-only" aria-hidden="true" tabindex="-1">
+              <select id="routeOutbound">
                 ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeOutbound === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
               </select>
             `}
@@ -330,6 +324,12 @@ function routePresetDialog() {
   if (!editorOpen) return '';
   const editorPreview = state.routePresetEditPreview;
   const showCheckResult = state.routePresetEditChecked && editorPreview;
+  const iconPreview = routePresetIconView(escapeHtml, state.routePresetEditor, {
+    title: state.routePresetEditTitle,
+    detail: state.routePresetEditDetail,
+    icon: state.routePresetEditIcon
+  }, 'preset-editor-icon-preview');
+  const normalizedIcon = normalizeIconifyIcon(state.routePresetEditIcon);
   return `
     <div class="modal-backdrop" data-action="closeRoutePresetDialog">
       <section class="modal preset-dialog" role="dialog" aria-modal="true" aria-labelledby="routePresetTitle" data-modal>
@@ -350,6 +350,15 @@ function routePresetDialog() {
                 <span>Описание</span>
                 <input id="routePresetEditDetail" value="${escapeHtml(state.routePresetEditDetail)}" placeholder="Коротко, что делает подборка" />
               </label>
+              <label class="preset-icon-field">
+                <span>Иконка Iconify</span>
+                <input id="routePresetEditIcon" value="${escapeHtml(state.routePresetEditIcon)}" placeholder="simple-icons:telegram или ссылка icon-sets.iconify.design" />
+                <small>${normalizedIcon ? `Будет использована ${escapeHtml(normalizedIcon)}` : 'Можно вставить ID iconify или URL страницы иконки.'}</small>
+              </label>
+              <div class="preset-icon-preview">
+                ${iconPreview}
+                <em>Предпросмотр</em>
+              </div>
             </div>
             <label>
               <span>Правила</span>

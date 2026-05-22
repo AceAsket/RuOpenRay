@@ -203,6 +203,7 @@ export function createInitialState() {
   routePresetEditor: '',
   routePresetEditTitle: '',
   routePresetEditDetail: '',
+  routePresetEditIcon: '',
   routePresetEditDsl: '',
   routePresetEditPreview: null,
   routePresetEditChecked: false,

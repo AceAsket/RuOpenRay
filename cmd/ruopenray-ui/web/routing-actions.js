@@ -446,6 +446,7 @@ export function createRoutingActions({
     state.routePresetEditor = '';
     state.routePresetEditTitle = '';
     state.routePresetEditDetail = '';
+    state.routePresetEditIcon = '';
     state.routePresetEditDsl = '';
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
@@ -457,6 +458,7 @@ export function createRoutingActions({
     state.routePresetEditor = 'custom:new';
     state.routePresetEditTitle = '';
     state.routePresetEditDetail = '';
+    state.routePresetEditIcon = '';
     state.routePresetEditDsl = '';
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
@@ -473,6 +475,7 @@ export function createRoutingActions({
     state.routePresetEditor = key;
     state.routePresetEditTitle = title;
     state.routePresetEditDetail = routePresetDetail(key);
+    state.routePresetEditIcon = customRoutePreset(key)?.icon || '';
     state.routePresetEditDsl = [`# ${title}`, ...rules.flatMap(routeRuleToDslLines)].join('\n');
     state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
     state.routePresetEditChecked = false;
@@ -538,6 +541,7 @@ export function createRoutingActions({
     state.customRoutePresets[id] = {
       title,
       detail: state.routePresetEditDetail.trim(),
+      icon: state.routePresetEditIcon.trim(),
       rules: parsed.rules.map((rule) => JSON.parse(JSON.stringify(rule))),
       updatedAt: new Date().toISOString()
     };
