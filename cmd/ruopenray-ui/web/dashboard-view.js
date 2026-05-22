@@ -559,7 +559,7 @@ function isCheckingServer(tag) {
 
 function serverCheckButton(tag, extraClass = '') {
   const busy = isCheckingServer(tag);
-  return `<button class="btn secondary ${extraClass} ${busy ? 'is-busy' : ''}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>${busy ? 'Проверяю...' : 'Проверить'}</button>`;
+  return `<button class="btn secondary ${extraClass}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>Проверить</button>`;
 }
 
 function checkModeLabel(mode) {

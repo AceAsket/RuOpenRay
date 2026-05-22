@@ -78,7 +78,7 @@ function serverAvailabilityPanel() {
     <section class="panel server-check-panel">
       <div class="panel-title">
         <div><h2>Проверка прокси</h2><span>Разовая проверка перед ручным переключением сервера. Результаты сразу видны в списке ниже.</span></div>
-      <button class="btn ${state.serverChecking ? 'is-busy' : ''}" data-action="checkServers" ${state.serverChecking ? 'disabled' : ''}>${state.serverChecking ? 'Проверяю...' : 'Проверить все'}</button>
+      <button class="btn" data-action="checkServers" data-busy="0" ${state.serverChecking ? 'disabled' : ''}>Проверить все</button>
       </div>
       <div class="availability-settings">
         <div class="form-row">
@@ -162,7 +162,7 @@ function serversPanel() {
       <div class="panel-title">
         <div><h2>Прокси</h2><span>Адреса, транспорт${state.status?.xrayStats?.enabled ? ', трафик по outbound' : ''}, ручная проверка и выбор активного proxy-направления.</span></div>
         <div class="split-actions">
-          <button class="btn secondary ${state.serverChecking ? 'is-busy' : ''}" data-action="checkServers" ${state.serverChecking ? 'disabled' : ''}>${state.serverChecking ? 'Проверяю...' : 'Проверить все'}</button>
+          <button class="btn secondary" data-action="checkServers" data-busy="0" ${state.serverChecking ? 'disabled' : ''}>Проверить все</button>
           <button class="btn" data-import-dialog="choose">Добавить прокси</button>
         </div>
       </div>
