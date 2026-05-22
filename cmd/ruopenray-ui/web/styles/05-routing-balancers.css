@@ -1182,16 +1182,18 @@
   display: inline-grid;
   min-height: 28px;
   place-items: center;
+  border: 1px solid rgba(242, 189, 82, 0.56);
   border-radius: 999px;
-  color: #151006;
-  background: var(--yellow);
+  color: #ffe2a0;
+  background: rgba(242, 189, 82, 0.18);
   font-size: 12px;
   font-weight: 950;
 }
 
 .firewall-safety-list article.danger b {
+  border-color: rgba(200, 57, 74, 0.72);
   color: #fff;
-  background: #bd3948;
+  background: rgba(200, 57, 74, 0.72);
 }
 
 .firewall-safety-list span,
