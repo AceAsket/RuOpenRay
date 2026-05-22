@@ -268,7 +268,10 @@
   overflow-wrap: anywhere;
 }
 
-.settings-warning + .toolbar {
+.settings-warning + .toolbar,
+.settings-maintenance + .toolbar,
+.settings-form + .toolbar,
+.settings-info-grid + .toolbar {
   margin-top: 14px;
 }
 
