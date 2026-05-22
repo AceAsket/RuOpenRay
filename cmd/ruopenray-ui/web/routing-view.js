@@ -1,4 +1,5 @@
 import { noticeView } from './notice-view.js';
+import { routePresetIconView } from './route-visuals.js';
 
 export function createRoutingView(deps) {
   const {
@@ -140,6 +141,7 @@ function routingScenariosPanel() {
             const install = routePresetInstallSummary(key);
             const label = routePresetInstallLabel(key);
             return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+            ${routePresetIconView(escapeHtml, key, preset)}
             <div>
               <strong>${escapeHtml(preset.title)}</strong>
               <span>${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
@@ -160,6 +162,7 @@ function routingScenariosPanel() {
           const install = routePresetInstallSummary(key);
           const label = routePresetInstallLabel(key);
           return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+          ${routePresetIconView(escapeHtml, key, preset)}
           <div>
             <strong>${escapeHtml(preset.title)}</strong>
             <span>${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>

@@ -76,7 +76,7 @@
 
 .scenario-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 46px minmax(0, 1fr) auto auto auto;
   gap: 14px;
   align-items: center;
   min-height: 0;
@@ -157,6 +157,17 @@
   align-items: center;
   gap: 8px;
   margin-top: 0;
+}
+
+.scenario-card .route-preset-icon {
+  align-self: center;
+}
+
+.scenario-card .route-preset-icon span {
+  margin: 0;
+  color: #06120f;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .scenario-install-badge {

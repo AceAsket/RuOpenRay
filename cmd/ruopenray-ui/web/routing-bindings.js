@@ -277,6 +277,20 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeBalancer').forEach((input) => input.addEventListener('change', (event) => {
     state.routeBalancer = event.target.value;
   }));
+  document.querySelectorAll('[data-route-outbound-choice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.routeTargetType = 'outbound';
+      state.routeOutbound = button.dataset.routeOutboundChoice || '';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-route-balancer-choice]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.routeTargetType = 'balancer';
+      state.routeBalancer = button.dataset.routeBalancerChoice || '';
+      render();
+    });
+  });
   document.querySelector('#routeBalancerTag')?.addEventListener('input', (event) => {
     state.routeBalancerTag = event.target.value;
   });

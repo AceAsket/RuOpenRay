@@ -1,3 +1,5 @@
+import { routePresetIconView, routeTargetCard } from './route-visuals.js';
+
 export function createRoutingDialogsView({
   state,
   escapeHtml,
@@ -65,7 +67,8 @@ function routeRuleDialog() {
               <label class="preset-check custom ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
                 <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
                 <span class="checkmark"></span>
-                <span>
+                ${routePresetIconView(escapeHtml, key, preset)}
+                <span class="preset-check-copy">
                   <strong>${escapeHtml(preset.title)}</strong>
                   <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
                   ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
@@ -86,7 +89,8 @@ function routeRuleDialog() {
             <label class="preset-check ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
               <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
               <span class="checkmark"></span>
-              <span>
+              ${routePresetIconView(escapeHtml, key, preset)}
+              <span class="preset-check-copy">
                 <strong>${escapeHtml(preset.title)}</strong>
                 <small>${escapeHtml(`${preset.detail || describeRouteRule(preset.rule || routePresetRules(key)[0]).fullValue} · ${ruleCountLabel(routePresetConditionCount(key))}`)}</small>
                 ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
@@ -145,11 +149,17 @@ function routeRuleDialog() {
           <div class="form-row">
             <label>Куда отправляем</label>
             ${state.routeTargetType === 'balancer' ? `
-              <select id="routeBalancer">
+              <div class="route-target-card-grid">
+                ${balancers.map((tag) => routeTargetCard(escapeHtml, tag, 'balancer', state.routeBalancer === tag)).join('')}
+              </div>
+              <select id="routeBalancer" class="sr-only" aria-hidden="true" tabindex="-1">
                 ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
               </select>
             ` : `
-              <select id="routeOutbound">
+              <div class="route-target-card-grid">
+                ${options.map((tag) => routeTargetCard(escapeHtml, tag, 'outbound', state.routeOutbound === tag)).join('')}
+              </div>
+              <select id="routeOutbound" class="sr-only" aria-hidden="true" tabindex="-1">
                 ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeOutbound === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
               </select>
             `}
