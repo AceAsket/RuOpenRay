@@ -39,6 +39,7 @@ func (s *serverState) validateConfigWithGeoAudit(cfg map[string]any) map[string]
 			return result
 		}
 	}
+	result["analysis"] = s.analyzeConfig(cfg)
 	auditResult := s.checkGeoAudit(map[string]any{"config": cfg})
 	if audit, ok := auditResult["audit"].(map[string]any); ok {
 		result["geoAudit"] = audit

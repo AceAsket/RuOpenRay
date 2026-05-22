@@ -321,6 +321,15 @@ function Test-DnsScenario {
   Add-Result -Name 'dnsmasq-plan:upstream' -Mode 'dns-dry-run' -Ok ([bool]$upstreamPlan.ok) -Detail (($upstreamPlan.plan.display -join ' / '))
 }
 
+function Get-NftCounterBytes {
+  param([string]$Text)
+  $sum = [int64]0
+  foreach ($match in [regex]::Matches($Text, 'counter\s+packets\s+\d+\s+bytes\s+(\d+)')) {
+    $sum += [int64]$match.Groups[1].Value
+  }
+  $sum
+}
+
 function Test-CurrentRouterState {
   param([object]$Config)
   $test = Invoke-Api -Path '/config/test' -Method 'POST' -Body @{ config = $Config }
@@ -335,16 +344,18 @@ function Test-CurrentRouterState {
   Add-Result -Name 'lan-dns' -Mode 'dns' -Ok $lanDnsOk -Detail "mode=$($lanDns.mode), servers=$(@($lanDns.servers) -join ',')"
 
   $before = Invoke-Api -Path '/firewall/status'
-  $curl = Invoke-CurlHead -CurlArgs @('-4', '--interface', $LanClientIp, '-I', $HttpsUrl) -TimeoutSeconds $CurlTimeoutSeconds
-  Start-Sleep -Seconds 1
-  $after = Invoke-Api -Path '/firewall/status'
-  $beforeBytes = 0
-  $afterBytes = 0
-  if ($before.nft.stdout -match 'bytes\s+(\d+)') { $beforeBytes = [int64]$Matches[1] }
-  if ($after.nft.stdout -match 'bytes\s+(\d+)') { $afterBytes = [int64]$Matches[1] }
-  $counterGrew = $afterBytes -gt $beforeBytes
-  $curlOk = $curl.exit -eq 0 -and $curl.http -match '^(200|204)$'
-  Add-Result -Name 'transparent-counter' -Mode 'traffic' -Ok ($curlOk -and $counterGrew) -Detail "http=$($curl.http), exit=$($curl.exit), nftBytes=$beforeBytes->$afterBytes"
+  if ($before.routerMode -eq 'tproxy' -and $before.bypassMode -eq 'redirect') {
+    Add-Result -Name 'transparent-counter' -Mode 'traffic-skip' -Ok $true -Detail 'skipped: REDIRECT intercepts only proxy nftset addresses, arbitrary URL may bypass by design'
+  } else {
+    $curl = Invoke-CurlHead -CurlArgs @('-4', '--interface', $LanClientIp, '-I', $HttpsUrl) -TimeoutSeconds $CurlTimeoutSeconds
+    Start-Sleep -Seconds 1
+    $after = Invoke-Api -Path '/firewall/status'
+    $beforeBytes = Get-NftCounterBytes ([string]$before.nft.stdout)
+    $afterBytes = Get-NftCounterBytes ([string]$after.nft.stdout)
+    $counterGrew = $afterBytes -gt $beforeBytes
+    $curlOk = $curl.exit -eq 0 -and $curl.http -match '^(200|204)$'
+    Add-Result -Name 'transparent-counter' -Mode 'traffic' -Ok ($curlOk -and $counterGrew) -Detail "http=$($curl.http), exit=$($curl.exit), nftBytes=$beforeBytes->$afterBytes"
+  }
 
   $stats = Invoke-Api -Path '/xray/stats'
   $proxy = $stats.groups.proxy
