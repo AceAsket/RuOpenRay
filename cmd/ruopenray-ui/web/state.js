@@ -121,6 +121,7 @@ export function createInitialState() {
   serverDraftError: '',
   configTestLog: null,
   activeServerTag: localStorage.getItem('ruopenray_active_server') || '',
+  dashboardSelectedServerTag: '',
   pendingServerTag: '',
   serverCheckTimeout: '2500',
   serverCheckAttempts: '1',

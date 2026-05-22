@@ -190,6 +190,12 @@ export function bindRoutingControls({
       }
     });
   });
+  document.querySelectorAll('[data-dashboard-select]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.dashboardSelectedServerTag = button.dataset.dashboardSelect || '';
+      render();
+    });
+  });
   document.querySelectorAll('[data-server-check]').forEach((button) => {
     button.addEventListener('click', async () => {
       if (state.serverChecking) return;
