@@ -1,3 +1,5 @@
+import { routePresetIconView } from './route-visuals.js';
+
 export function createRoutingActions({
   state,
   render,
@@ -280,6 +282,24 @@ export function createRoutingActions({
     return allRoutePresetEntries()
       .filter(([key]) => routePresetRules(key).some((presetRule) => routePresetRuleMatches(rule, normalizePresetRule(presetRule))))
       .map(([key]) => ({ key, title: routePresetTitle(key) }));
+  }
+
+  function routePresetSequenceAt(rules, startIndex) {
+    const entries = allRoutePresetEntries()
+      .map(([key, preset]) => ({
+        key,
+        preset,
+        title: routePresetTitle(key),
+        rules: routePresetRules(key).map(normalizePresetRule)
+      }))
+      .filter((entry) => entry.rules.length > 1)
+      .sort((left, right) => right.rules.length - left.rules.length);
+    for (const entry of entries) {
+      if (startIndex + entry.rules.length > rules.length) continue;
+      const matched = entry.rules.every((presetRule, offset) => routePresetRuleMatches(rules[startIndex + offset], presetRule));
+      if (matched) return entry;
+    }
+    return null;
   }
 
   function routeRuleSourceWithPresets(rule) {
@@ -610,18 +630,47 @@ export function createRoutingActions({
     render();
   }
 
+  function routeRuleListItem(rule, index) {
+    const info = describeRouteRule(rule);
+    return { kind: 'rule', rule, index, info, name: routeRuleName(rule, info), source: routeRuleSourceWithPresets(rule), presets: routeRulePresetMatches(rule) };
+  }
+
+  function routeItemMatchesSearch(item, search) {
+    if (!search) return true;
+    if (item.kind === 'presetGroup') {
+      const childText = item.items
+        .map(({ info, name, source }) => `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`)
+        .join(' ');
+      return `${item.title} ${routePresetDetail(item.key)} ${childText}`.toLowerCase().includes(search);
+    }
+    const { info, name, source } = item;
+    return `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`.toLowerCase().includes(search);
+  }
+
   function visibleRoutingRuleItems(limit = 80) {
     const search = state.routeSearch.trim().toLowerCase();
-    return routeRules()
-      .map((rule, index) => {
-        const info = describeRouteRule(rule);
-        return { rule, index, info, name: routeRuleName(rule, info), source: routeRuleSourceWithPresets(rule), presets: routeRulePresetMatches(rule) };
-      })
-      .filter(({ info, name, source }) => {
-        if (!search) return true;
-        return `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`.toLowerCase().includes(search);
-      })
-      .slice(0, limit);
+    const rules = routeRules();
+    const items = [];
+    for (let index = 0; index < rules.length;) {
+      const sequence = routePresetSequenceAt(rules, index);
+      if (sequence) {
+        const group = {
+          kind: 'presetGroup',
+          key: sequence.key,
+          preset: sequence.preset,
+          title: sequence.title,
+          index,
+          items: sequence.rules.map((_, offset) => routeRuleListItem(rules[index + offset], index + offset))
+        };
+        if (routeItemMatchesSearch(group, search)) items.push(group);
+        index += sequence.rules.length;
+        continue;
+      }
+      const item = routeRuleListItem(rules[index], index);
+      if (routeItemMatchesSearch(item, search)) items.push(item);
+      index += 1;
+    }
+    return items.slice(0, limit);
   }
 
   function routeRowHtml(item, options, rulesLength) {
@@ -664,6 +713,31 @@ export function createRoutingActions({
     </article>`;
   }
 
+  function routePresetGroupRowHtml(item, options, rulesLength) {
+    const start = item.index + 1;
+    const end = item.index + item.items.length;
+    const icon = routePresetIconView(escapeHtml, item.key, item.preset || {}, 'compact');
+    const detail = routePresetDetail(item.key);
+    const targets = [...new Set(item.items.map(({ rule }) => rule.balancerTag ? `balancer:${rule.balancerTag}` : readableRouteTag(rule.outboundTag || '')))]
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(' · ');
+    return `<details class="route-preset-group-row" data-route-preset-group="${escapeHtml(item.key)}">
+      <summary>
+        <div class="route-preset-group-order">${start === end ? start : `${start}–${end}`}</div>
+        ${icon}
+        <div class="route-preset-group-title">
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(detail || 'Подборка правил')} · ${ruleCountLabel(item.items.length)}${targets ? ` · ${escapeHtml(targets)}` : ''}</span>
+        </div>
+        <span class="route-preset-group-toggle">Состав</span>
+      </summary>
+      <div class="route-preset-group-children">
+        ${item.items.map((child) => routeRowHtml(child, options, rulesLength)).join('')}
+      </div>
+    </details>`;
+  }
+
   function orderedRouteList(items, options, rulesLength) {
     if (!items.length) {
       return `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
@@ -674,7 +748,7 @@ export function createRoutingActions({
         <span>Сверху вниз: правило №1 проверяется первым. Перетаскивание меняет реальный порядок в конфигурации.</span>
       </header>
       <div class="route-section-list">
-        ${items.map((item) => routeRowHtml(item, options, rulesLength)).join('')}
+        ${items.map((item) => item.kind === 'presetGroup' ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
     </section>`;
   }
@@ -683,8 +757,9 @@ export function createRoutingActions({
     const visible = visibleRoutingRuleItems(80);
     if (!visible.length) return;
     const current = routeRules();
-    const disabledIndexes = new Set(visible.map((item) => item.index));
-    const disabled = visible.map(({ rule, name, index }) => ({
+    const visibleRules = visible.flatMap((item) => item.kind === 'presetGroup' ? item.items : [item]);
+    const disabledIndexes = new Set(visibleRules.map((item) => item.index));
+    const disabled = visibleRules.map(({ rule, name, index }) => ({
       id: `disabled-${Date.now()}-${index}`,
       rule: JSON.parse(JSON.stringify(rule)),
       name,

@@ -628,6 +628,18 @@
   height: 30px;
 }
 
+.route-preset-icon.route-preset-icon-brand {
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+}
+
+.route-preset-icon.route-preset-icon-brand svg.brand-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .route-preset-icon svg .cut {
   fill: #06120f;
   stroke: #06120f;
@@ -655,6 +667,9 @@
 .route-preset-icon.tone-runet { background: linear-gradient(135deg, #8ef6df, #f5c350); }
 .route-preset-icon.tone-direct { background: linear-gradient(135deg, #95f0a0, #4fd16a); }
 .route-preset-icon.tone-default { background: linear-gradient(135deg, #a3b9b5, #7ee6d8); }
+.route-preset-icon.route-preset-icon-brand {
+  background: transparent;
+}
 .route-preset-iconify {
   background: linear-gradient(135deg, #92f1e6, #64d8ff);
 }

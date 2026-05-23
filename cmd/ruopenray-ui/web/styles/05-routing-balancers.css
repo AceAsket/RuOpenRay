@@ -318,6 +318,98 @@
   background: rgba(13, 20, 25, 0.75);
 }
 
+.route-preset-group-row {
+  overflow: hidden;
+  border: 1px solid rgba(51, 215, 200, 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(51, 215, 200, 0.11), rgba(13, 20, 25, 0.78)),
+    rgba(13, 20, 25, 0.78);
+}
+
+.route-preset-group-row > summary {
+  display: grid;
+  grid-template-columns: 72px 46px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 66px;
+  padding: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.route-preset-group-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.route-preset-group-order {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.route-preset-group-row .route-preset-icon.compact {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.route-preset-group-title {
+  min-width: 0;
+}
+
+.route-preset-group-title strong,
+.route-preset-group-title span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-preset-group-title strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.route-preset-group-title span {
+  margin-top: 5px;
+  color: var(--soft);
+  font-size: 12px;
+}
+
+.route-preset-group-toggle {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid rgba(126, 230, 216, 0.3);
+  border-radius: 999px;
+  color: var(--accent-2);
+  background: rgba(8, 15, 19, 0.58);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.route-preset-group-row[open] .route-preset-group-toggle {
+  color: #061213;
+  background: var(--accent-2);
+}
+
+.route-preset-group-children {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px 46px;
+}
+
+.route-preset-group-children .route-row {
+  background: rgba(8, 15, 19, 0.66);
+}
+
 .route-row-managed {
   border-style: dashed;
   background: rgba(15, 25, 31, 0.55);
