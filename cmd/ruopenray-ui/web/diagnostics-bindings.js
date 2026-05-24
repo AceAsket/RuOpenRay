@@ -34,6 +34,7 @@ export function bindDiagnosticsControls({
     button.addEventListener('click', () => {
       const ip = button.dataset.domainDeviceEvents || '';
       state.domainMonitorDeviceFilter = ip;
+      state.domainMonitorQuery = '';
       state.domainMonitorMode = 'events';
       state.domainMonitorFilter = 'all';
       localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
@@ -72,6 +73,7 @@ export function bindDiagnosticsControls({
   });
   document.querySelector('[data-domain-clear-device]')?.addEventListener('click', () => {
     state.domainMonitorDeviceFilter = '';
+    state.domainMonitorMode = 'devices';
     render();
   });
 

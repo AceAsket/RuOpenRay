@@ -6,6 +6,33 @@ export function bindImportControls({ state, render }) {
   document.querySelector('#importOutboundTag')?.addEventListener('input', (event) => {
     state.importOutboundTag = event.target.value;
   });
+  document.querySelector('#importCountrySearch')?.addEventListener('input', (event) => {
+    const query = String(event.target.value || '').trim().toLowerCase();
+    state.importCountrySearch = event.target.value;
+    const picker = event.target.closest('.country-picker');
+    let visible = 0;
+    picker?.querySelectorAll('.country-option[data-country-search-text]').forEach((item) => {
+      const match = !query || String(item.dataset.countrySearchText || '').includes(query);
+      item.hidden = !match;
+      if (match) visible += 1;
+    });
+    const counter = picker?.querySelector('[data-country-visible-count]');
+    if (counter) counter.textContent = String(visible);
+    const empty = picker?.querySelector('.country-empty');
+    if (empty) empty.hidden = visible > 0;
+  });
+  document.querySelectorAll('[data-country-pick][data-country-target="import"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.importCountry = button.dataset.countryPick || '';
+      state.importCountrySearch = '';
+      render();
+    });
+  });
+  document.querySelector('[data-country-clear="import"]')?.addEventListener('click', () => {
+    state.importCountry = '';
+    state.importCountrySearch = '';
+    render();
+  });
   document.querySelector('#subscriptionUrl')?.addEventListener('input', (event) => {
     state.subscriptionUrl = event.target.value;
     state.subscriptionPreview = null;

@@ -100,6 +100,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/routing/names" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.saveRouteNames(payload))
+	case path == "/server-meta" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.serverMetaReport())
+	case path == "/server-meta" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveServerMeta(payload))
 	case path == "/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))

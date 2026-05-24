@@ -7,10 +7,13 @@ export function bindRoutingControls({
   editRoutingPreset,
   deleteCustomRoutePreset,
   removeRoutingRule,
+  removeRoutingRuleRange,
   disableRoutingRule,
+  disableRoutingRuleRange,
   restoreDisabledRouteRule,
   deleteDisabledRouteRule,
   moveRoutingRule,
+  moveRoutingRuleRange,
   openRoutingRuleEditor,
   openRouteBalancerDialog,
   removeRouteBalancer,
@@ -21,10 +24,17 @@ export function bindRoutingControls({
   setFirewallKillSwitchDeviceMode,
   toggleFirewallKillSwitchDevice,
   reorderRoutingRule,
+  reorderRoutingRuleRange,
   routeRules,
   describeRouteRule,
+  routeTargetFlagMarkup,
+  routeTargetStatus,
   updateRoutingTarget,
+  updateRoutingTargetRange,
   removeOutbound,
+  openServerEditor,
+  setServerEditCountry,
+  updateServerEditField,
   routeAllToOutbound,
   checkServers,
   setSnifferDraft,
@@ -75,6 +85,28 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-route-disable]').forEach((button) => {
     button.addEventListener('click', () => disableRoutingRule(Number(button.dataset.routeDisable)));
   });
+  document.querySelectorAll('[data-route-group-delete-start]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      removeRoutingRuleRange(
+        Number(button.dataset.routeGroupDeleteStart),
+        Number(button.dataset.routeGroupDeleteEnd),
+        button.dataset.routeGroupTitle || ''
+      );
+    });
+  });
+  document.querySelectorAll('[data-route-group-disable-start]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      disableRoutingRuleRange(
+        Number(button.dataset.routeGroupDisableStart),
+        Number(button.dataset.routeGroupDisableEnd),
+        button.dataset.routeGroupTitle || ''
+      );
+    });
+  });
   document.querySelectorAll('[data-route-restore]').forEach((button) => {
     button.addEventListener('click', () => restoreDisabledRouteRule(button.dataset.routeRestore));
   });
@@ -83,6 +115,17 @@ export function bindRoutingControls({
   });
   document.querySelectorAll('[data-route-move]').forEach((button) => {
     button.addEventListener('click', () => moveRoutingRule(Number(button.dataset.routeMove), Number(button.dataset.direction)));
+  });
+  document.querySelectorAll('[data-route-group-move-start]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      moveRoutingRuleRange(
+        Number(button.dataset.routeGroupMoveStart),
+        Number(button.dataset.routeGroupMoveEnd),
+        Number(button.dataset.direction)
+      );
+    });
   });
   document.querySelectorAll('[data-route-edit]').forEach((button) => {
     button.addEventListener('click', () => openRoutingRuleEditor(Number(button.dataset.routeEdit)));
@@ -111,7 +154,11 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-kill-switch-device]').forEach((checkbox) => {
     checkbox.addEventListener('change', (event) => toggleFirewallKillSwitchDevice(checkbox.dataset.killSwitchDevice, event.target.checked));
   });
-  document.querySelectorAll('[data-route-index]').forEach((row) => {
+  const clearRouteDragState = () => {
+    document.querySelectorAll('.route-row.dragging, .route-row.drag-over, .route-row.drop-before, .route-row.drop-after, .route-preset-group-row.dragging, .route-preset-group-row.drag-over, .route-preset-group-row.drop-before, .route-preset-group-row.drop-after')
+      .forEach((item) => item.classList.remove('dragging', 'drag-over', 'drop-before', 'drop-after'));
+  };
+  document.querySelectorAll('[data-route-range-start]').forEach((row) => {
     row.addEventListener('pointerdown', (event) => {
       row.dataset.dragHandle = event.target.closest('.route-drag-handle') ? '1' : '0';
     });
@@ -122,18 +169,22 @@ export function bindRoutingControls({
       }
       row.classList.add('dragging');
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', row.dataset.routeIndex);
+      const payload = JSON.stringify({
+        start: Number(row.dataset.routeRangeStart),
+        end: Number(row.dataset.routeRangeEnd || Number(row.dataset.routeRangeStart) + 1)
+      });
+      event.dataTransfer.setData('application/x-ruopenray-route-range', payload);
+      event.dataTransfer.setData('text/plain', payload);
     });
     row.addEventListener('dragend', () => {
-      document.querySelectorAll('.route-row.dragging, .route-row.drag-over, .route-row.drop-before, .route-row.drop-after')
-        .forEach((item) => item.classList.remove('dragging', 'drag-over', 'drop-before', 'drop-after'));
+      clearRouteDragState();
     });
     row.addEventListener('dragover', (event) => {
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       const rect = row.getBoundingClientRect();
       const before = event.clientY < rect.top + rect.height / 2;
-      document.querySelectorAll('.route-row.drag-over, .route-row.drop-before, .route-row.drop-after')
+      document.querySelectorAll('.route-row.drag-over, .route-row.drop-before, .route-row.drop-after, .route-preset-group-row.drag-over, .route-preset-group-row.drop-before, .route-preset-group-row.drop-after')
         .forEach((item) => {
           if (item !== row) item.classList.remove('drag-over', 'drop-before', 'drop-after');
         });
@@ -144,12 +195,23 @@ export function bindRoutingControls({
     row.addEventListener('dragleave', () => row.classList.remove('drag-over', 'drop-before', 'drop-after'));
     row.addEventListener('drop', (event) => {
       event.preventDefault();
-      const fromIndex = Number(event.dataTransfer.getData('text/plain'));
-      const toIndex = Number(row.dataset.routeIndex);
+      const rawPayload = event.dataTransfer.getData('application/x-ruopenray-route-range') || event.dataTransfer.getData('text/plain');
+      let payload = null;
+      try {
+        payload = JSON.parse(rawPayload);
+      } catch {
+        const index = Number(rawPayload);
+        payload = { start: index, end: index + 1 };
+      }
+      const fromStart = Number(payload?.start);
+      const fromEnd = Number(payload?.end);
+      const toStart = Number(row.dataset.routeRangeStart);
+      const toEnd = Number(row.dataset.routeRangeEnd || toStart + 1);
       const rect = row.getBoundingClientRect();
       const before = event.clientY < rect.top + rect.height / 2;
       row.classList.remove('drag-over', 'drop-before', 'drop-after');
-      reorderRoutingRule(fromIndex, before ? toIndex : toIndex + 1);
+      const moveRange = reorderRoutingRuleRange || ((start, end, target) => reorderRoutingRule(start, target));
+      moveRange(fromStart, fromEnd, before ? toStart : toEnd);
     });
   });
   document.querySelectorAll('[data-route-focus]').forEach((button) => {
@@ -162,12 +224,202 @@ export function bindRoutingControls({
       render();
     });
   });
-  document.querySelectorAll('[data-route-target]').forEach((select) => {
-    select.addEventListener('change', (event) => updateRoutingTarget(Number(select.dataset.routeTarget), event.target.value));
+  const routeTargetOptionLabel = (option) => String(option?.textContent || '')
+    .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, '')
+    .replace(/^[A-Z]{2}\s+(?=\S)/, '')
+    .trim();
+
+  const routeTargetEncodedValue = (select, value) => {
+    if (select?.dataset?.routeOutboundPicker !== undefined) return `outbound:${value}`;
+    return value;
+  };
+
+  const routeTargetStatusClass = (status) => {
+    if (!status) return '';
+    if (status.tone === 'ok') return 'ok';
+    if (status.tone === 'bad') return 'bad';
+    return 'unknown';
+  };
+
+  const closeRouteTargetPickers = (except = null) => {
+    document.querySelectorAll('.route-target-picker.open').forEach((picker) => {
+      if (picker === except) return;
+      picker.classList.remove('open');
+      picker.querySelector('.route-target-trigger')?.setAttribute('aria-expanded', 'false');
+      const menu = picker.querySelector('.route-target-menu');
+      if (menu) menu.hidden = true;
+    });
+  };
+
+  const decorateRouteTargetSelect = (select, encodedValue) => {
+    const flagMarkup = typeof routeTargetFlagMarkup === 'function' ? routeTargetFlagMarkup(encodedValue) : '';
+    let wrapper = select.closest('.route-target-select');
+    let flag = wrapper?.querySelector('.route-target-flag');
+    if (!wrapper) {
+      wrapper = document.createElement('span');
+      wrapper.className = 'route-target-select route-target-picker';
+      flag = document.createElement('span');
+      flag.className = 'route-target-flag';
+      select.parentNode?.insertBefore(wrapper, select);
+      wrapper.append(flag, select);
+    }
+    if (wrapper) {
+      wrapper.classList.toggle('has-flag', Boolean(flagMarkup));
+      if (flag) flag.innerHTML = flagMarkup;
+    }
+    wrapper?.classList.add('route-target-picker');
+    select.hidden = true;
+    let trigger = wrapper?.querySelector('.route-target-trigger');
+    let menu = wrapper?.querySelector('.route-target-menu');
+    if (!trigger) {
+      trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'route-target-trigger';
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      select.after(trigger);
+    }
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.className = 'route-target-menu';
+      menu.setAttribute('role', 'listbox');
+      menu.hidden = true;
+      trigger.after(menu);
+    }
+    const selectedOption = [...select.options].find((option) => option.selected) || select.options[0];
+    const selectedText = routeTargetOptionLabel(selectedOption);
+    const selectedStatus = typeof routeTargetStatus === 'function' ? routeTargetStatus(encodedValue) : null;
+    const selectedStatusClass = routeTargetStatusClass(selectedStatus);
+    trigger.textContent = '';
+    const triggerFlag = document.createElement('span');
+    triggerFlag.className = 'route-target-trigger-flag';
+    triggerFlag.innerHTML = flagMarkup || '';
+    const triggerStatus = document.createElement('span');
+    triggerStatus.className = `route-target-status ${selectedStatusClass}`;
+    triggerStatus.title = selectedStatus?.label || '';
+    triggerStatus.hidden = !selectedStatusClass;
+    const triggerText = document.createElement('span');
+    triggerText.className = 'route-target-trigger-text';
+    triggerText.textContent = selectedText || selectedOption?.value || '';
+    const triggerCaret = document.createElement('span');
+    triggerCaret.className = 'route-target-trigger-caret';
+    triggerCaret.setAttribute('aria-hidden', 'true');
+    triggerCaret.textContent = '▾';
+    trigger.append(triggerFlag, triggerStatus, triggerText, triggerCaret);
+    trigger.disabled = select.disabled;
+    menu.textContent = '';
+    [...select.options].forEach((option) => {
+      const optionEncoded = routeTargetEncodedValue(select, option.value);
+      const optionFlag = typeof routeTargetFlagMarkup === 'function' ? routeTargetFlagMarkup(optionEncoded) : '';
+      const optionStatus = typeof routeTargetStatus === 'function' ? routeTargetStatus(optionEncoded) : null;
+      const optionStatusClass = routeTargetStatusClass(optionStatus);
+      const active = option.value === select.value;
+      const optionButton = document.createElement('button');
+      optionButton.type = 'button';
+      optionButton.className = `route-target-option ${active ? 'active' : ''}`;
+      optionButton.setAttribute('role', 'option');
+      optionButton.setAttribute('aria-selected', active ? 'true' : 'false');
+      optionButton.dataset.routeTargetChoice = option.value;
+      const optionFlagNode = document.createElement('span');
+      optionFlagNode.className = 'route-target-option-flag';
+      optionFlagNode.innerHTML = optionFlag || '';
+      const optionStatusNode = document.createElement('span');
+      optionStatusNode.className = `route-target-status ${optionStatusClass}`;
+      optionStatusNode.title = optionStatus?.label || '';
+      optionStatusNode.hidden = !optionStatusClass;
+      const optionText = document.createElement('span');
+      optionText.className = 'route-target-option-text';
+      optionText.textContent = routeTargetOptionLabel(option) || option.value;
+      optionButton.append(optionFlagNode, optionStatusNode, optionText);
+      menu.append(optionButton);
+    });
+    trigger.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (trigger.disabled) return;
+      const open = !wrapper.classList.contains('open');
+      closeRouteTargetPickers(open ? wrapper : null);
+      wrapper.classList.toggle('open', open);
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      menu.hidden = !open;
+    };
+    menu.querySelectorAll('[data-route-target-choice]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        select.value = button.dataset.routeTargetChoice || '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        closeRouteTargetPickers();
+      });
+    });
+  };
+  document.querySelectorAll('[data-route-target], [data-route-group-target]').forEach((select) => {
+    decorateRouteTargetSelect(select, select.value);
+    if (select.dataset.routeGroupTarget !== undefined) {
+      const picker = select.closest('.route-target-picker');
+      picker?.addEventListener('click', (event) => event.stopPropagation());
+      picker?.addEventListener('mousedown', (event) => event.stopPropagation());
+      picker?.addEventListener('keydown', (event) => event.stopPropagation());
+    }
+    select.addEventListener('change', (event) => {
+      if (select.dataset.routeGroupTarget !== undefined) {
+        updateRoutingTargetRange(
+          Number(select.dataset.routeGroupTargetStart),
+          Number(select.dataset.routeGroupTargetEnd),
+          event.target.value
+        );
+        return;
+      }
+      updateRoutingTarget(Number(select.dataset.routeTarget), event.target.value);
+    });
   });
+  document.querySelectorAll('[data-route-outbound-picker]').forEach((select) => {
+    decorateRouteTargetSelect(select, `outbound:${select.value}`);
+    select.addEventListener('change', (event) => {
+      state.routeOutbound = event.target.value;
+      decorateRouteTargetSelect(select, `outbound:${event.target.value}`);
+    });
+  });
+  if (typeof document.addEventListener === 'function' && !document.__routeTargetPickerCloseBound) {
+    document.__routeTargetPickerCloseBound = true;
+    document.addEventListener('click', () => closeRouteTargetPickers());
+  }
   document.querySelectorAll('[data-outbound-delete]').forEach((button) => {
     button.addEventListener('click', () => removeOutbound(Number(button.dataset.outboundDelete)));
   });
+  document.querySelectorAll('[data-server-edit]').forEach((button) => {
+    button.addEventListener('click', () => openServerEditor(Number(button.dataset.serverEdit)));
+  });
+  document.querySelector('#serverEditJson')?.addEventListener('input', (event) => {
+    state.serverEditJson = event.target.value;
+  });
+  document.querySelectorAll('[data-server-edit-field]').forEach((field) => {
+    field.addEventListener('input', (event) => {
+      updateServerEditField(field.dataset.serverEditField, event.target.value);
+    });
+    field.addEventListener('change', (event) => {
+      updateServerEditField(field.dataset.serverEditField, event.target.value, { rerender: true });
+    });
+  });
+  document.querySelector('#serverEditCountrySearch')?.addEventListener('input', (event) => {
+    const query = String(event.target.value || '').trim().toLowerCase();
+    state.serverEditCountrySearch = event.target.value;
+    const picker = event.target.closest('.country-picker');
+    let visible = 0;
+    picker?.querySelectorAll('.country-option[data-country-search-text]').forEach((item) => {
+      const match = !query || String(item.dataset.countrySearchText || '').includes(query);
+      item.hidden = !match;
+      if (match) visible += 1;
+    });
+    const counter = picker?.querySelector('[data-country-visible-count]');
+    if (counter) counter.textContent = String(visible);
+    const empty = picker?.querySelector('.country-empty');
+    if (empty) empty.hidden = visible > 0;
+  });
+  document.querySelectorAll('[data-country-pick][data-country-target="serverEdit"]').forEach((button) => {
+    button.addEventListener('click', () => setServerEditCountry(button.dataset.countryPick || ''));
+  });
+  document.querySelector('[data-country-clear="serverEdit"]')?.addEventListener('click', () => setServerEditCountry(''));
   document.querySelectorAll('[data-route-all]').forEach((button) => {
     button.addEventListener('click', async () => {
       try {
@@ -271,9 +523,6 @@ export function bindRoutingControls({
       applyLeaseSearch(input.closest('.route-lease-picker, .panel') || document, event.target.value);
     });
   });
-  document.querySelectorAll('#routeOutbound').forEach((input) => input.addEventListener('change', (event) => {
-    state.routeOutbound = event.target.value;
-  }));
   document.querySelectorAll('#routeBalancer').forEach((input) => input.addEventListener('change', (event) => {
     state.routeBalancer = event.target.value;
   }));

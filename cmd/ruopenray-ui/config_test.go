@@ -71,3 +71,23 @@ func TestAnalyzeConfigWarnsAboutMissingTransparentInbound(t *testing.T) {
 		t.Fatalf("expected transparent inbound warning, got %#v", result["warnings"])
 	}
 }
+
+func TestAnalyzeConfigRejectsMissingOutboundTag(t *testing.T) {
+	state := &serverState{cfg: appConfig{GeoDir: t.TempDir()}}
+	result := state.analyzeConfig(map[string]any{
+		"inbounds": []any{
+			map[string]any{"tag": "transparent_ipv4", "listen": "0.0.0.0", "port": 52345, "protocol": "dokodemo-door", "settings": map[string]any{"followRedirect": true}},
+		},
+		"outbounds": []any{
+			map[string]any{"tag": "direct", "protocol": "freedom"},
+			map[string]any{"tag": "block", "protocol": "blackhole"},
+		},
+		"routing": map[string]any{"rules": []any{
+			map[string]any{"type": "field", "inboundTag": []any{"transparent_ipv4"}, "outboundTag": "proxy"},
+		}},
+	})
+	errors := strings.Join(stringSlice(result["errors"]), "\n")
+	if !strings.Contains(errors, `outboundTag "proxy"`) {
+		t.Fatalf("expected missing proxy outboundTag error, got %#v", result["errors"])
+	}
+}

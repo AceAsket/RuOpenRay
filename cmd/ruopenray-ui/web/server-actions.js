@@ -1,3 +1,5 @@
+import { parseServerEditJson, patchServerEditField, stringifyServerEditOutbound } from './server-edit-model.js';
+
 export function createServerActions({
   state,
   request,
@@ -9,8 +11,129 @@ export function createServerActions({
   proxyOutbounds,
   proxyRuleStrategyStats,
   setActiveProxyDraft,
+  setActiveServerTag,
   applyConfig
 }) {
+  async function persistServerMeta(items = state.serverMeta) {
+    const result = await request('/api/server-meta', {
+      method: 'POST',
+      body: JSON.stringify({ items: items || {} })
+    });
+    if (result?.items && typeof result.items === 'object') state.serverMeta = result.items;
+    return result;
+  }
+
+  function openServerEditor(index) {
+    const outbound = configOutbounds()[index];
+    if (!outbound) return;
+    state.serverEditDialog = true;
+    state.serverEditIndex = index;
+    state.serverEditJson = JSON.stringify(outbound, null, 2);
+    state.serverEditCountry = state.serverMeta?.[outbound.tag]?.country || '';
+    state.serverEditCountrySearch = '';
+    state.serverEditError = '';
+    render();
+  }
+
+  function closeServerEditor() {
+    state.serverEditDialog = false;
+    state.serverEditIndex = -1;
+    state.serverEditJson = '';
+    state.serverEditCountry = '';
+    state.serverEditCountrySearch = '';
+    state.serverEditError = '';
+    render();
+  }
+
+  function setServerEditCountry(country) {
+    state.serverEditCountry = String(country || '').trim().toUpperCase();
+    state.serverEditCountrySearch = '';
+    render();
+  }
+
+  function updateServerEditField(field, value, { rerender = false } = {}) {
+    const parsed = parseServerEditJson(state.serverEditJson || '{}');
+    if (parsed.error) {
+      state.serverEditError = parsed.error;
+      if (rerender) render();
+      return;
+    }
+    const outbound = patchServerEditField(parsed.outbound, field, value);
+    state.serverEditJson = stringifyServerEditOutbound(outbound);
+    state.serverEditError = '';
+    if (rerender) render();
+  }
+
+  function replaceRouteTargetReferences(config, oldTag, newTag) {
+    if (!oldTag || !newTag || oldTag === newTag) return config;
+    const routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
+    if (Array.isArray(routing.rules)) {
+      routing.rules = routing.rules.map((rule) => {
+        if (!rule || typeof rule !== 'object') return rule;
+        const next = { ...rule };
+        if (next.outboundTag === oldTag) next.outboundTag = newTag;
+        return next;
+      });
+    }
+    if (Array.isArray(routing.balancers)) {
+      routing.balancers = routing.balancers.map((balancer) => {
+        if (!balancer || typeof balancer !== 'object') return balancer;
+        const next = { ...balancer };
+        if (next.fallbackTag === oldTag) next.fallbackTag = newTag;
+        if (Array.isArray(next.selector)) {
+          next.selector = next.selector.map((selector) => selector === oldTag ? newTag : selector);
+        }
+        return next;
+      });
+    }
+    config.routing = routing;
+    return config;
+  }
+
+  async function saveServerEdit() {
+    const index = Number(state.serverEditIndex);
+    const current = configOutbounds()[index];
+    if (!current) return;
+    let outbound = null;
+    const parsed = parseServerEditJson(state.serverEditJson || '{}');
+    if (parsed.error) {
+      state.serverEditError = parsed.error;
+      render();
+      return;
+    }
+    outbound = parsed.outbound;
+    const oldTag = String(current.tag || '').trim();
+    const newTag = String(outbound.tag || '').trim();
+    if (!newTag) {
+      state.serverEditError = 'У сервера должен быть outbound tag';
+      render();
+      return;
+    }
+    const duplicate = configOutbounds().some((item, itemIndex) => itemIndex !== index && item?.tag === newTag);
+    if (duplicate) {
+      state.serverEditError = `Тег ${newTag} уже используется другим направлением`;
+      render();
+      return;
+    }
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    if (!Array.isArray(next.outbounds)) next.outbounds = [];
+    next.outbounds[index] = outbound;
+    replaceRouteTargetReferences(next, oldTag, newTag);
+    const nextMeta = { ...(state.serverMeta || {}) };
+    if (oldTag && oldTag !== newTag) delete nextMeta[oldTag];
+    const country = String(state.serverEditCountry || '').trim().toUpperCase();
+    if (country) nextMeta[newTag] = { ...(nextMeta[newTag] || {}), country };
+    else delete nextMeta[newTag];
+    state.serverMeta = nextMeta;
+    syncConfig(next);
+    if (state.activeServerTag === oldTag && oldTag !== newTag && typeof setActiveServerTag === 'function') setActiveServerTag(newTag);
+    await persistServerMeta(nextMeta);
+    state.message = oldTag === newTag
+      ? `Сервер ${newTag} обновлен в черновике`
+      : `Сервер ${oldTag} переименован в ${newTag}, ссылки в правилах обновлены`;
+    closeServerEditor();
+  }
+
   function removeOutbound(index) {
     const outbound = configOutbounds()[index];
     const tag = outbound?.tag || '';
@@ -21,6 +144,12 @@ export function createServerActions({
     }
     const next = JSON.parse(JSON.stringify(state.config || {}));
     next.outbounds = configOutbounds().filter((_, itemIndex) => itemIndex !== index);
+    if (tag && state.serverMeta?.[tag]) {
+      const nextMeta = { ...(state.serverMeta || {}) };
+      delete nextMeta[tag];
+      state.serverMeta = nextMeta;
+      persistServerMeta(nextMeta).catch(() => {});
+    }
     syncConfig(next);
     state.message = `Сервер ${tag || index + 1} удален из черновика`;
     render();
@@ -129,6 +258,12 @@ export function createServerActions({
 
   return {
     removeOutbound,
+    openServerEditor,
+    closeServerEditor,
+    setServerEditCountry,
+    updateServerEditField,
+    saveServerEdit,
+    persistServerMeta,
     routeAllToOutbound,
     checkServers,
     fallbackSubscriptionPool,

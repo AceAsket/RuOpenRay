@@ -835,6 +835,15 @@
   white-space: nowrap;
 }
 
+.server-option-actions .server-action-icon {
+  width: 44px;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+}
+
 .server-state-pill {
   border-radius: 999px;
   color: var(--muted);
@@ -935,6 +944,9 @@
 }
 
 .server-option-main strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
 }
 

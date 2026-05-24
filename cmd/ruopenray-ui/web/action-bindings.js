@@ -66,6 +66,7 @@ const busyLabels = {
   checkDnsDiagnostics: 'Проверяю DNS роутера',
   applyDnsBootstrapHosts: 'Добавляю bootstrap hosts',
   checkServers: 'Проверяю proxy-серверы',
+  saveServerEdit: 'Сохраняю прокси',
   checkObservatoryTargets: 'Проверяю observatory',
   enableObservatoryForProxy: 'Включаю наблюдение proxy',
   fallbackSubscription: 'Ищу доступный сервер подписки',

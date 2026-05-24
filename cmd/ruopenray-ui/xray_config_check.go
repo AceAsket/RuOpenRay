@@ -18,6 +18,7 @@ func (s *serverState) validateConfig(cfg map[string]any) map[string]any {
 			return map[string]any{"ok": false, "stderr": err.Error()}
 		}
 	}
+	normalizeCatchAllRoutingRules(cfg)
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: JSON корректен; бинарник xray на Windows не проверялся"}
 	}
@@ -39,7 +40,14 @@ func (s *serverState) validateConfigWithGeoAudit(cfg map[string]any) map[string]
 			return result
 		}
 	}
-	result["analysis"] = s.analyzeConfig(cfg)
+	analysis := s.analyzeConfig(cfg)
+	result["analysis"] = analysis
+	if errors := stringSlice(analysis["errors"]); len(errors) > 0 {
+		result["ok"] = false
+		if strings.TrimSpace(fmt.Sprint(result["message"])) == "" || fmt.Sprint(result["message"]) == "<nil>" {
+			result["message"] = "RuOpenRay нашел ошибки в маршрутизации. Исправьте их перед применением."
+		}
+	}
 	auditResult := s.checkGeoAudit(map[string]any{"config": cfg})
 	if audit, ok := auditResult["audit"].(map[string]any); ok {
 		result["geoAudit"] = audit
@@ -266,9 +274,62 @@ func isCatchAllRoutingRule(rule map[string]any) bool {
 	if len(asArray(rule["domain"])) > 0 || len(asArray(rule["ip"])) > 0 || len(asArray(rule["source"])) > 0 || len(asArray(rule["inboundTag"])) > 0 {
 		return false
 	}
-	if network := strings.TrimSpace(fmt.Sprint(rule["network"])); network != "" && network != "<nil>" {
+	if network := strings.TrimSpace(fmt.Sprint(rule["network"])); network != "" && network != "<nil>" && !isAllNetworkRule(network) {
 		return false
 	}
 	port := strings.TrimSpace(fmt.Sprint(rule["port"]))
 	return port == "" || port == "<nil>" || port == "0-65535"
+}
+
+func normalizeCatchAllRoutingRules(cfg map[string]any) int {
+	if cfg == nil {
+		return 0
+	}
+	routing, _ := cfg["routing"].(map[string]any)
+	if routing == nil {
+		return 0
+	}
+	normalized := 0
+	for _, item := range asArray(routing["rules"]) {
+		rule, ok := item.(map[string]any)
+		if !ok || !isEmptyCatchAllRoutingRule(rule) {
+			continue
+		}
+		rule["network"] = "tcp,udp"
+		normalized++
+	}
+	return normalized
+}
+
+func isEmptyCatchAllRoutingRule(rule map[string]any) bool {
+	if rule == nil {
+		return false
+	}
+	tag := strings.TrimSpace(fmt.Sprint(rule["outboundTag"]))
+	if tag == "<nil>" {
+		tag = ""
+	}
+	balancerTag := strings.TrimSpace(fmt.Sprint(rule["balancerTag"]))
+	if balancerTag == "<nil>" {
+		balancerTag = ""
+	}
+	if tag == "" && balancerTag == "" {
+		return false
+	}
+	return len(asArray(rule["domain"])) == 0 &&
+		len(asArray(rule["ip"])) == 0 &&
+		len(asArray(rule["source"])) == 0 &&
+		len(asArray(rule["inboundTag"])) == 0 &&
+		emptyRuleScalar(rule["network"]) &&
+		emptyRuleScalar(rule["port"])
+}
+
+func emptyRuleScalar(value any) bool {
+	text := strings.TrimSpace(fmt.Sprint(value))
+	return text == "" || text == "<nil>"
+}
+
+func isAllNetworkRule(network string) bool {
+	clean := strings.ToLower(strings.ReplaceAll(network, " ", ""))
+	return clean == "tcp,udp" || clean == "udp,tcp"
 }

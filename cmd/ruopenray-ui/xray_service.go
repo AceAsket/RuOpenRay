@@ -23,6 +23,7 @@ func (s *serverState) readActiveConfig() (map[string]any, error) {
 }
 
 func (s *serverState) writeActiveConfig(cfg map[string]any) error {
+	normalizeCatchAllRoutingRules(cfg)
 	if _, err := s.prepareConfigLogFiles(cfg); err != nil {
 		return err
 	}
@@ -30,6 +31,7 @@ func (s *serverState) writeActiveConfig(cfg map[string]any) error {
 }
 
 func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
+	normalizeCatchAllRoutingRules(cfg)
 	if err := os.MkdirAll(filepath.Dir(s.cfg.ActiveConfig), 0o755); err != nil {
 		return err
 	}
@@ -140,8 +142,11 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cfg, ok := payload["config"].(map[string]any); ok {
-		test := s.validateConfig(cfg)
-		analysis := s.analyzeConfig(cfg)
+		test := s.validateConfigWithGeoAudit(cfg)
+		analysis, _ := test["analysis"].(map[string]any)
+		if analysis == nil {
+			analysis = s.analyzeConfig(cfg)
+		}
 		if test["ok"] != true {
 			writeJSON(w, 422, map[string]any{"ok": false, "test": test, "analysis": analysis})
 			return

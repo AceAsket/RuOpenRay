@@ -1,3 +1,5 @@
+import { countryPickerView } from './server-location-view.js';
+
 export function createImportDialogView({
   state,
   escapeHtml,
@@ -107,10 +109,10 @@ function importDialog(kind) {
                 </div>
               </div>
             ` : ''}
-            <div class="toolbar">
+            <div class="import-action-bar">
               <button class="btn secondary" data-action="previewSubscription">Проверить подписку</button>
-              <button class="btn" data-action="importSubscriptionToCurrent" ${state.subscriptionPreview?.outbounds?.length ? '' : 'disabled'}>В текущий профиль</button>
-              <button class="btn warning" data-action="importSubscriptionActive" ${state.subscriptionPreview?.outbounds?.length ? '' : 'disabled'}>Добавить и выбрать</button>
+              <button class="btn" data-action="importSubscriptionToCurrent">В текущий профиль</button>
+              <button class="btn warning" data-action="importSubscriptionActive">Добавить и выбрать</button>
               <button class="btn secondary" data-action="importSubscription">Отдельным профилем</button>
             </div>
             ${state.subscriptionPreview?.items?.length ? `<div class="preview-list">${state.subscriptionPreview.items.slice(0, 8).map(previewBox).join('')}</div>` : ''}
@@ -125,10 +127,18 @@ function importDialog(kind) {
               <input id="importOutboundTag" placeholder="Пусто = имя из ссылки" value="${escapeHtml(state.importOutboundTag)}" />
               <small class="muted">Тег используется в правилах, балансировщиках и статистике Xray.</small>
             </div>
-            <div class="toolbar">
+            ${countryPickerView({
+              escapeHtml,
+              selected: state.importCountry,
+              search: state.importCountrySearch,
+              target: 'import',
+              inputId: 'importCountrySearch',
+              title: 'Флаг и страна'
+            })}
+            <div class="import-action-bar">
               <button class="btn secondary" data-action="previewImport">Распознать</button>
-              <button class="btn" data-action="importToCurrent" ${state.importPreview?.outbound ? '' : 'disabled'}>В текущий профиль</button>
-              <button class="btn warning" data-action="importActive" ${state.importPreview?.outbound ? '' : 'disabled'}>Добавить и выбрать</button>
+              <button class="btn" data-action="importToCurrent">В текущий профиль</button>
+              <button class="btn warning" data-action="importActive">Добавить и выбрать</button>
               <button class="btn secondary" data-action="import">Отдельным профилем</button>
             </div>
             ${serverImportPreviewItem() ? previewBox(serverImportPreviewItem()) : ''}

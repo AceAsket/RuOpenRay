@@ -186,6 +186,14 @@ export function createSetupModel({
     const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
     const ips = Array.isArray(rule?.ip) ? rule.ip : [];
     const domains = Array.isArray(rule?.domain) ? rule.domain : [];
+    const sources = Array.isArray(rule?.source) ? rule.source : [];
+    const transparentCatchAll = inbound.includes('transparent_ipv4') &&
+      !ips.length &&
+      !domains.length &&
+      !sources.length &&
+      !rule?.network &&
+      !rule?.port;
+    if (transparentCatchAll) return true;
     if (rule?.outboundTag === 'direct' && inbound.includes('transparent_ipv4') && ips.some((item) => privateBypassCidrs().includes(item) || item === 'geoip:private')) return true;
     if (rule?.outboundTag === 'dns-out' && inbound.includes('ruopenray_dns_in')) return true;
     if (rule?.outboundTag === 'dns-out' && String(rule?.port || '') === '53') return true;

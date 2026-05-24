@@ -1,4 +1,6 @@
-export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, persistRouteNames }) {
+import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
+
+export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, checkForTag, checkLabel, outboundAddress, persistRouteNames }) {
   function routeRules() {
     if (!state.config.routing || typeof state.config.routing !== 'object') state.config.routing = {};
     if (!Array.isArray(state.config.routing.rules)) state.config.routing.rules = [];
@@ -16,18 +18,59 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     for (const outbound of Array.isArray(state.config.outbounds) ? state.config.outbounds : []) {
       if (outbound?.tag) names.add(outbound.tag);
     }
+    names.delete('dns-out');
+    names.delete('ruopenray-api');
     return [...names];
   }
   
   function balancerOptions() {
     return routeBalancers().map((item) => item?.tag).filter(Boolean);
   }
+
+  function outboundByTag(tag) {
+    return (Array.isArray(state.config.outbounds) ? state.config.outbounds : [])
+      .find((outbound) => outbound?.tag === tag) || null;
+  }
+
+  function isProxyTargetTag(tag) {
+    if (['proxy', 'direct', 'block', 'dns-out'].includes(tag)) return false;
+    const outbound = outboundByTag(tag);
+    if (!outbound) return false;
+    return !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
+  }
+
+  function routeTargetOptionLabel(tag) {
+    if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
+    const location = serverLocation(outboundByTag(tag), state.serverMeta?.[tag] || {});
+    const flag = flagForCountry(location.code);
+    return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}`;
+  }
   
   function routeTargetOptions() {
     return [
-      ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: readableRouteTag(tag) })),
+      ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: routeTargetOptionLabel(tag) })),
       ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
     ];
+  }
+  
+  function routeTargetFlagMarkup(encodedTarget) {
+    const [type, ...parts] = String(encodedTarget || '').split(':');
+    if (type !== 'outbound') return '';
+    const tag = parts.join(':');
+    if (!isProxyTargetTag(tag)) return '';
+    const location = serverLocation(outboundByTag(tag), state.serverMeta?.[tag] || {});
+    return countryFlagMarkup(location.code);
+  }
+
+  function routeTargetStatus(encodedTarget) {
+    const [type, ...parts] = String(encodedTarget || '').split(':');
+    if (type !== 'outbound') return null;
+    const tag = parts.join(':');
+    if (!isProxyTargetTag(tag)) return null;
+    const check = checkForTag(tag);
+    if (!check) return { tone: 'unknown', label: 'не проверялся' };
+    if (check.ok) return { tone: 'ok', label: checkLabel(check) || 'работает' };
+    return { tone: 'bad', label: checkLabel(check) || 'нет ответа' };
   }
   
   function encodedRouteTarget(rule) {
@@ -45,12 +88,14 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   function isDefaultRoute(rule) {
     if (!rule) return false;
     const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
+    const network = String(rule.network || '').replace(/\s+/g, '').toLowerCase();
+    const isAllNetwork = !rule.network || network === 'tcp,udp' || network === 'udp,tcp';
     const hasConditions = Boolean(
       (Array.isArray(rule.domain) && rule.domain.length) ||
       (Array.isArray(rule.ip) && rule.ip.length) ||
       (Array.isArray(rule.source) && rule.source.length) ||
       (Array.isArray(rule.inboundTag) && rule.inboundTag.length) ||
-      rule.network ||
+      !isAllNetwork ||
       (rule.port && String(rule.port) !== '0-65535')
     );
     return hasTarget && !hasConditions;
@@ -108,6 +153,18 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   function routeHasInbound(rule, tag) {
     return Array.isArray(rule?.inboundTag) && rule.inboundTag.includes(tag);
   }
+
+  function isTransparentCatchAllRoute(rule) {
+    if (!routeHasInbound(rule, 'transparent_ipv4')) return false;
+    return !(
+      (Array.isArray(rule?.domain) && rule.domain.length) ||
+      (Array.isArray(rule?.ip) && rule.ip.length) ||
+      (Array.isArray(rule?.source) && rule.source.length) ||
+      rule?.network ||
+      rule?.port ||
+      rule?.balancerTag
+    );
+  }
   
   function isRuOpenRayManagedRoute(rule) {
     if (!rule) return false;
@@ -115,6 +172,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return true;
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return true;
     if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return true;
+    if (isTransparentCatchAllRoute(rule)) return true;
     return false;
   }
   
@@ -122,7 +180,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Статистика Xray';
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'DNS через RuOpenRay';
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'DNS-запросы на Xray';
-    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Локальная сеть напрямую';
+    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Локальная сеть и роутер напрямую';
+    if (isTransparentCatchAllRoute(rule)) return 'Лишнее правило перехвата LAN';
     return '';
   }
   
@@ -130,7 +189,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Служебный маршрут для локального Xray StatsService API';
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'Служебный маршрут: DNS с 127.0.0.1:5353 отправляется в DNS-выход Xray';
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'Служебный маршрут для DNS-запросов';
-    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Служебный direct для локальной сети и приватных адресов';
+    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Когда firewall перехватил LAN-пакет и отправил его в transparent_ipv4, это правило пропускает локальные и приватные адреса напрямую, чтобы не ломать доступ к роутеру и домашней сети.';
+    if (isTransparentCatchAllRoute(rule)) return 'Это старое или ручное правило отправляет весь LAN-трафик из transparent inbound сразу в один outbound и мешает обычным правилам Xray. Подготовка черновика перехвата удалит его.';
     return '';
   }
   
@@ -209,6 +269,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
     const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean)]);
     for (const rule of routeRules()) {
+      if (isRuOpenRayManagedRoute(rule)) continue;
       if (rule.balancerTag || proxyTags.has(rule.outboundTag)) stats.proxy += 1;
       else if (rule.outboundTag === 'direct') stats.direct += 1;
       else if (rule.outboundTag === 'block') stats.block += 1;
@@ -269,6 +330,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     outboundOptions,
     balancerOptions,
     routeTargetOptions,
+    routeTargetFlagMarkup,
+    routeTargetStatus,
     encodedRouteTarget,
     splitRouteValues,
     routeTarget,

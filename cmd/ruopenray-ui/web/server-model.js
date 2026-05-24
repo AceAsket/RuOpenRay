@@ -1,3 +1,5 @@
+import { countryFlagMarkup, serverLocation } from './server-location.js';
+
 export function createServerModel({
   state,
   configOutbounds,
@@ -225,18 +227,36 @@ export function createServerModel({
     return labels;
   }
 
+  function serverMetaForTag(tag) {
+    return state.serverMeta?.[tag] || {};
+  }
+
+  function serverLocationForOutbound(outbound) {
+    return serverLocation(outbound, serverMetaForTag(outbound?.tag));
+  }
+
+  function serverLocationChip(outbound) {
+    const location = serverLocationForOutbound(outbound);
+    const tone = location.source === 'unknown' ? 'muted' : 'info';
+    return `<span class="server-location-chip ${tone}" title="${escapeHtml(location.label)}">
+      ${countryFlagMarkup(location.code)}
+    </span>`;
+  }
+
   function serverMetaChips(outbound, usage, check) {
     const tag = outbound?.tag || '';
     const pool = serverSubscriptionPool(tag);
     const balancers = serverBalancerLinks(tag);
     const observers = serverObserverLabels(outbound);
+    const location = serverLocationForOutbound(outbound);
     const chips = [
-      { label: ruleCountLabel(usage), tone: usage ? 'ok' : 'muted' }
+      { label: usage ? `в правилах: ${usage}` : 'без правил', tone: usage ? 'ok' : 'muted' }
     ];
-    if (pool) chips.push({ label: `подписка · ${pool.count || 0}`, tone: 'info' });
-    if (balancers.length) chips.push({ label: `группа · ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
+    if (location.source !== 'unknown') chips.push({ label: `${location.code} · ${location.label}`, tone: 'info' });
+    if (pool) chips.push({ label: `подписка: ${pool.count || 0}`, tone: 'info' });
+    if (balancers.length) chips.push({ label: `группа: ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
     if (observers.length) chips.push({ label: observers.join(' + '), tone: 'ok' });
-    chips.push({ label: check ? `ручная · ${checkLabel(check)}` : 'ручная · не проверен', tone: check?.ok ? 'ok' : check ? 'warn' : 'muted' });
+    chips.push({ label: check ? checkLabel(check) : 'не проверен', tone: check?.ok ? 'ok' : check ? 'warn' : 'muted' });
     return `<div class="server-meta-chips">${chips.map((chip) => `<span class="server-chip ${chip.tone}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
   }
 
@@ -288,6 +308,9 @@ export function createServerModel({
     serverSubscriptionPool,
     serverBalancerLinks,
     serverObserverLabels,
+    serverMetaForTag,
+    serverLocationForOutbound,
+    serverLocationChip,
     serverMetaChips,
     balancerObserverSummary,
     balancerMembersView

@@ -111,6 +111,15 @@ async function request(path, options = {}) {
   return api.request(path, options);
 }
 
+async function persistServerMeta(items = state.serverMeta) {
+  const result = await request('/api/server-meta', {
+    method: 'POST',
+    body: JSON.stringify({ items: items || {} })
+  });
+  if (result?.items && typeof result.items === 'object') state.serverMeta = result.items;
+  return result;
+}
+
 async function upload(path, formData, options = {}) {
   return api.upload(path, formData, options);
 }
@@ -175,6 +184,9 @@ const routingModel = createRoutingModel({
   routeKinds,
   routePresets,
   proxyOutbounds: () => proxyOutbounds(),
+  checkForTag: (tag) => checkForTag(tag),
+  checkLabel: (result) => checkLabel(result),
+  outboundAddress: (outbound) => outboundAddress(outbound),
   persistRouteNames: saveRouteNamesToServer
 });
 const {
@@ -183,6 +195,8 @@ const {
   outboundOptions,
   balancerOptions,
   routeTargetOptions,
+  routeTargetFlagMarkup,
+  routeTargetStatus,
   encodedRouteTarget,
   splitRouteValues,
   routeTarget,
@@ -345,6 +359,8 @@ const routingActions = createRoutingActions({
   copyRouteRuleName,
   saveRouteNames,
   describeRouteRule,
+  routeTargetFlagMarkup,
+  routeTargetStatus,
   routeSectionDefinitions,
   routeCategoryForRule,
   routeRuleSource,
@@ -386,17 +402,23 @@ const {
   saveRoutePresetEdit,
   deleteCustomRoutePreset,
   removeRoutingRule,
+  removeRoutingRuleRange,
   disableRoutingRule,
+  disableRoutingRuleRange,
   restoreDisabledRouteRule,
   deleteDisabledRouteRule,
   visibleRoutingRuleItems,
+  managedRoutingRuleItems,
   routeRowHtml,
   orderedRouteList,
   disableVisibleRoutingRules,
   restoreAllDisabledRouteRules,
   updateRoutingTarget,
+  updateRoutingTargetRange,
   moveRoutingRule,
+  moveRoutingRuleRange,
   reorderRoutingRule,
+  reorderRoutingRuleRange,
   renameRoutingRule
 } = routingActions;
 
@@ -441,6 +463,7 @@ const {
   serverSubscriptionPool,
   serverBalancerLinks,
   serverObserverLabels,
+  serverLocationChip,
   serverMetaChips,
   balancerObserverSummary,
   balancerMembersView
@@ -777,7 +800,8 @@ const configActions = createConfigActions({
   keepOperationVisible,
   recordXrayStatsSample,
   xrayStatsResetAtStorageKey,
-  cancelServerDraftSave
+  cancelServerDraftSave,
+  activeProxyTag
 });
 const {
   testConfig,
@@ -872,7 +896,8 @@ const importActions = createImportActions({
   routeRules,
   activeProxyTag,
   setRoutingDraft,
-  setActiveServerTag
+  setActiveServerTag,
+  persistServerMeta
 });
 const {
   importLink,
@@ -898,10 +923,16 @@ serverActions = createServerActions({
   proxyOutbounds,
   proxyRuleStrategyStats,
   setActiveProxyDraft,
+  setActiveServerTag,
   applyConfig
 });
 const {
   removeOutbound,
+  openServerEditor,
+  closeServerEditor,
+  setServerEditCountry,
+  updateServerEditField,
+  saveServerEdit,
   routeAllToOutbound,
   fallbackSubscriptionPool,
   deleteSubscriptionPool
@@ -1093,6 +1124,7 @@ const dashboardView = createDashboardView({
   checkForTag,
   checkLabel,
   checkMethodLabel,
+  serverLocationChip,
   configHasUnappliedChanges,
 });
 const {
@@ -1159,6 +1191,7 @@ const serversView = createServersView({
   proxyRuleStrategyStats,
   routingBalancersPanel: (...args) => routingBalancersPanel(...args),
   serverCheckButton,
+  serverLocationChip,
   serverMetaChips,
   serverStats,
   serverTrafficView,
@@ -1356,8 +1389,9 @@ const routingView = createRoutingView({
   routeRules,
   routeStats,
   routeTargetOptions,
-  visibleRoutingRuleItems,
-  routeSectionDefinitions,
+    visibleRoutingRuleItems,
+    managedRoutingRuleItems,
+    routeSectionDefinitions,
   orderedRouteList,
   describeRouteRule,
   routeRuleName,
@@ -1452,6 +1486,86 @@ function configHasUnappliedChanges() {
   return Boolean(state.appliedConfigText && normalizedConfigDraftText() !== state.appliedConfigText);
 }
 
+function parseConfigText(text) {
+  try {
+    return JSON.parse(text || '{}');
+  } catch {
+    return null;
+  }
+}
+
+function safeConfigArray(config, path) {
+  let current = config;
+  for (const key of path) current = current && typeof current === 'object' ? current[key] : undefined;
+  return Array.isArray(current) ? current : [];
+}
+
+function sameJsonValue(before, after) {
+  return JSON.stringify(before ?? null) === JSON.stringify(after ?? null);
+}
+
+function compactCountDiff(label, before, after) {
+  return before === after ? `${label} изменены` : `${label}: ${before} -> ${after}`;
+}
+
+function configProxyTags(config) {
+  return safeConfigArray(config, ['outbounds'])
+    .filter((outbound) => outbound?.tag && !['proxy', 'direct', 'block', 'dns-out', 'ruopenray-api'].includes(outbound.tag))
+    .filter((outbound) => !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol))
+    .map((outbound) => outbound.tag);
+}
+
+function configTagDiff(beforeTags, afterTags) {
+  const before = new Set(beforeTags);
+  const after = new Set(afterTags);
+  const added = afterTags.filter((tag) => !before.has(tag));
+  const removed = beforeTags.filter((tag) => !after.has(tag));
+  const parts = [];
+  if (added.length) parts.push(`добавлено ${added.slice(0, 2).join(', ')}${added.length > 2 ? ` +${added.length - 2}` : ''}`);
+  if (removed.length) parts.push(`удалено ${removed.slice(0, 2).join(', ')}${removed.length > 2 ? ` +${removed.length - 2}` : ''}`);
+  return parts.join(' · ');
+}
+
+function pendingXrayChangeItems() {
+  if (!configHasUnappliedChanges()) return [];
+  const before = parseConfigText(state.appliedConfigText);
+  const after = parseConfigText(normalizedConfigDraftText());
+  if (!after) return ['Xray: черновик JSON не читается, сначала исправьте синтаксис'];
+  if (!before) return ['Xray: будет применен новый черновик конфигурации'];
+
+  const items = [];
+  const beforeProxyTags = configProxyTags(before);
+  const afterProxyTags = configProxyTags(after);
+  if (!sameJsonValue(beforeProxyTags, afterProxyTags) || !sameJsonValue(safeConfigArray(before, ['outbounds']), safeConfigArray(after, ['outbounds']))) {
+    const tagDiff = configTagDiff(beforeProxyTags, afterProxyTags);
+    items.push(`Xray: proxy-серверы ${beforeProxyTags.length} -> ${afterProxyTags.length}${tagDiff ? ` · ${tagDiff}` : ''}`);
+  }
+
+  const beforeRules = safeConfigArray(before, ['routing', 'rules']);
+  const afterRules = safeConfigArray(after, ['routing', 'rules']);
+  if (!sameJsonValue(beforeRules, afterRules)) items.push(`Xray: ${compactCountDiff('правила маршрутизации', beforeRules.length, afterRules.length)}`);
+
+  const beforeBalancers = safeConfigArray(before, ['routing', 'balancers']);
+  const afterBalancers = safeConfigArray(after, ['routing', 'balancers']);
+  if (!sameJsonValue(beforeBalancers, afterBalancers)) items.push(`Xray: ${compactCountDiff('группы серверов', beforeBalancers.length, afterBalancers.length)}`);
+
+  const beforeInbounds = safeConfigArray(before, ['inbounds']);
+  const afterInbounds = safeConfigArray(after, ['inbounds']);
+  if (!sameJsonValue(beforeInbounds, afterInbounds)) items.push(`Xray: ${compactCountDiff('входящие потоки', beforeInbounds.length, afterInbounds.length)}`);
+
+  const beforeDnsServers = safeConfigArray(before, ['dns', 'servers']);
+  const afterDnsServers = safeConfigArray(after, ['dns', 'servers']);
+  if (!sameJsonValue(before?.dns, after?.dns)) {
+    items.push(`Xray: DNS ${beforeDnsServers.length} -> ${afterDnsServers.length}${!sameJsonValue(before?.dns?.hosts, after?.dns?.hosts) ? ' · hosts изменены' : ''}`);
+  }
+
+  if (!sameJsonValue(before?.stats, after?.stats) || !sameJsonValue(before?.policy, after?.policy)) items.push('Xray: статистика и policy изменены');
+  if (!sameJsonValue(before?.log, after?.log)) items.push('Xray: настройки логирования изменены');
+  if (!sameJsonValue(before?.observatory, after?.observatory) || !sameJsonValue(before?.burstObservatory, after?.burstObservatory)) items.push('Xray: наблюдение серверов изменено');
+
+  return items.length ? items : ['Xray: черновик config.json отличается от примененной версии'];
+}
+
 function firewallHasUnappliedChanges() {
   if (!state.firewallStatus || typeof firewallReadyStatus !== 'function') return false;
   return !firewallReadyStatus(state.firewallStatus);
@@ -1493,9 +1607,11 @@ function pendingChangesBanner() {
     ? firewallPendingReasons(state.firewallStatus || {})
     : [];
   const visibleFirewallReasons = firewallReasons.slice(0, 4);
+  const xrayReasons = pendingXrayChangeItems();
+  const visibleXrayReasons = xrayReasons.slice(0, 5);
   const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
   const changeItems = [
-    configDirty ? 'Xray: черновик конфигурации будет проверен, записан и применен через перезапуск сервиса' : '',
+    ...visibleXrayReasons,
     firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
   ].filter(Boolean);
   const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
@@ -1509,6 +1625,7 @@ function pendingChangesBanner() {
         <ul class="pending-change-list">
           ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
+        ${xrayReasons.length > visibleXrayReasons.length ? `<small class="pending-more">Еще ${xrayReasons.length - visibleXrayReasons.length} ${xrayReasons.length - visibleXrayReasons.length === 1 ? 'отличие' : 'отличия'} в черновике Xray</small>` : ''}
         ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
         ${risks.length ? `<div class="pending-risk-list">
           ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
@@ -1611,7 +1728,6 @@ const routingDialogsView = createRoutingDialogsView({
   routePresetInstallLabel,
   routeTargetOptions,
   balancerOptions,
-  outboundOptions,
   routeLeasePicker,
   dslPreviewView,
   routeBalancers,
@@ -1683,6 +1799,8 @@ function render() {
       : 'Xray остановлен'
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
+  const hasApplySteps = Array.isArray(state.applySteps) && state.applySteps.length > 0 && state.busyAction === 'apply';
+  const hasLocalOperationProgress = state.configApplying || state.configTesting || state.firewallSaving || state.serverChecking || hasApplySteps;
   const serviceButtons = [
     !statusLoaded
       ? null
@@ -1717,7 +1835,7 @@ function render() {
         </div>
       </aside>
       <main class="main">
-        ${state.busyAction ? `
+        ${state.busyAction && !hasLocalOperationProgress ? `
           <div class="global-action-progress" role="status" aria-live="polite">
             <span>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>
             <i></i>
@@ -1902,7 +2020,10 @@ function bind() {
         render();
       },
       selectAllRoutePresets: () => {
-        state.selectedRoutePresets = [...customRoutePresetEntries().map(([key]) => key), ...builtinRoutePresetEntries().map(([key]) => key)];
+        state.selectedRoutePresets = [
+          ...customRoutePresetEntries().map(([key]) => key),
+          ...builtinRoutePresetEntries().map(([key]) => key)
+        ].filter((key) => !routePresetInstallSummary(key).installed);
         render();
       },
       clearRoutePresets: () => {
@@ -1988,8 +2109,12 @@ function bind() {
       importSubscriptionActive: () => importSubscriptionToCurrent(true),
       closeImport: () => {
         state.importDialog = '';
+        state.importCountry = '';
+        state.importCountrySearch = '';
         render();
       },
+      closeServerEdit: closeServerEditor,
+      saveServerEdit,
       addRoute: addRoutingRule,
       saveRouteEdit: saveRoutingRuleEdit,
       previewRouteDsl: previewRoutingDsl,
@@ -2085,10 +2210,13 @@ function bind() {
     editRoutingPreset,
     deleteCustomRoutePreset,
     removeRoutingRule,
+    removeRoutingRuleRange,
     disableRoutingRule,
+    disableRoutingRuleRange,
     restoreDisabledRouteRule,
     deleteDisabledRouteRule,
     moveRoutingRule,
+    moveRoutingRuleRange,
     openRoutingRuleEditor,
     openRouteBalancerDialog,
     removeRouteBalancer,
@@ -2097,10 +2225,17 @@ function bind() {
     setFirewallDeviceMode,
     toggleFirewallDevice,
     reorderRoutingRule,
+    reorderRoutingRuleRange,
     routeRules,
     describeRouteRule,
+    routeTargetFlagMarkup,
+    routeTargetStatus,
     updateRoutingTarget,
+    updateRoutingTargetRange,
     removeOutbound,
+    openServerEditor,
+    setServerEditCountry,
+    updateServerEditField,
     routeAllToOutbound,
     checkServers,
     setSnifferDraft,

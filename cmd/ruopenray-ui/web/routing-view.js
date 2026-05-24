@@ -11,6 +11,7 @@ export function createRoutingView(deps) {
     routeStats,
     routeTargetOptions,
     visibleRoutingRuleItems,
+    managedRoutingRuleItems,
     routeSectionDefinitions,
     orderedRouteList,
     describeRouteRule,
@@ -49,11 +50,13 @@ function routingRulesPanel() {
   const stats = routeStats();
   const options = routeTargetOptions();
   const visibleRules = visibleRoutingRuleItems(80);
+  const managedRules = managedRoutingRuleItems();
+  const userRulesCount = rules.length - managedRules.length;
 
   return `
     <section class="panel routing-simple-panel">
       <div class="panel-title">
-        <div><h2>Правила маршрутизации</h2><span>${rules.length} правил в текущем профиле. Xray читает их сверху вниз.</span></div>
+        <div><h2>Правила маршрутизации</h2><span>${userRulesCount} пользовательских · ${managedRules.length} служебных скрыто. Xray читает правила сверху вниз.</span></div>
         <div class="split-actions">
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
@@ -70,11 +73,11 @@ function routingRulesPanel() {
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, proxy, direct..." />
         <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
-        <span class="muted">${visibleRules.length} из ${rules.length}</span>
+        <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
       </div>
       ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       <div class="route-table">
-        ${orderedRouteList(visibleRules, options, rules.length)}
+        ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
       </div>
       ${state.disabledRouteRules.length ? `<div class="disabled-routes">
         <div class="disabled-routes-head">

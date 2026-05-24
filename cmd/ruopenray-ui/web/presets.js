@@ -223,6 +223,77 @@ const linkedinDomains = [
   'regexp:.*\\.linkedinstatic\\.com'
 ];
 
+const githubDomains = [
+  'geosite:github',
+  'domain:github.com',
+  'domain:api.github.com',
+  'domain:github.io',
+  'domain:githubassets.com',
+  'domain:githubusercontent.com',
+  'domain:raw.githubusercontent.com',
+  'domain:objects.githubusercontent.com',
+  'regexp:.*\\.github\\.com',
+  'regexp:.*\\.githubusercontent\\.com'
+];
+
+const claudeDomains = [
+  'domain:claude.ai',
+  'domain:anthropic.com',
+  'domain:anthropic.ai',
+  'domain:console.anthropic.com',
+  'domain:api.anthropic.com',
+  'domain:docs.anthropic.com',
+  'regexp:.*\\.claude\\.ai',
+  'regexp:.*\\.anthropic\\.com',
+  'regexp:.*\\.anthropic\\.ai'
+];
+
+const xTwitterDomains = [
+  'geosite:x',
+  'domain:x.com',
+  'domain:twitter.com',
+  'domain:t.co',
+  'domain:twimg.com',
+  'domain:pbs.twimg.com',
+  'domain:video.twimg.com',
+  'regexp:.*\\.twitter\\.com',
+  'regexp:.*\\.x\\.com',
+  'regexp:.*\\.twimg\\.com'
+];
+
+const tiktokDomains = [
+  'geosite:tiktok',
+  'domain:tiktok.com',
+  'domain:tiktokcdn.com',
+  'domain:tiktokv.com',
+  'domain:byteoversea.com',
+  'domain:ibytedtos.com',
+  'regexp:.*\\.tiktok\\.com',
+  'regexp:.*\\.tiktokcdn\\.com',
+  'regexp:.*\\.tiktokv\\.com'
+];
+
+const netflixDomains = [
+  'geosite:netflix',
+  'domain:netflix.com',
+  'domain:nflxext.com',
+  'domain:nflximg.com',
+  'domain:nflxso.net',
+  'domain:nflxvideo.net',
+  'regexp:.*\\.netflix\\.com',
+  'regexp:.*\\.nflxvideo\\.net'
+];
+
+const cloudflareDomains = [
+  'geosite:cloudflare',
+  'domain:cloudflare.com',
+  'domain:cloudflare-dns.com',
+  'domain:cdnjs.cloudflare.com',
+  'domain:workers.dev',
+  'regexp:.*\\.cloudflare\\.com',
+  'regexp:.*\\.workers\\.dev'
+];
+
 const xrayuiBasicDomains = [
   'geosite:google',
   'geosite:meta',
@@ -259,6 +330,11 @@ const nintendoEshopDomains = [
   'domain:idbe-hac.cdn.nintendo.net',
   'domain:gw.hac.lp1.vermillion.srv.nintendo.net',
   'domain:pegasus.hac.lp1.pegasus.srv.nintendo.net'
+];
+
+const openaiDomains = [
+  'domain:chatgpt.com',
+  'domain:openai.com'
 ];
 
 const openaiIps = [
@@ -304,6 +380,25 @@ const kinopubIps = [
   '194.38.21.0/24',
   '194.40.243.0/24',
   '194.67.111.0/24'
+];
+
+const kinopubDomains = [
+  'domain:kino.pub',
+  'regexp:kinopub.*',
+  'domain:gfw.ovh',
+  'domain:gfw.ov',
+  'domain:vjs.zencdn.net',
+  'domain:m.pushbr.com',
+  'domain:mos-gorsud.com',
+  'domain:mos-gorsud.net',
+  'domain:mos-gorsud.co',
+  'domain:zamerka.com',
+  'domain:cdn32.lol',
+  'domain:kpdl.link',
+  'regexp:cdn-service.*',
+  'domain:cdntogo.net',
+  'domain:cdn2cdn.com',
+  'domain:cdn2site.com'
 ];
 
 const geminiAiDomains = [
@@ -471,14 +566,45 @@ export const routePresets = {
     detail: 'LinkedIn, short links, CDN и статические ресурсы.',
     rule: { type: 'field', outboundTag: 'proxy', domain: linkedinDomains }
   },
+  github: {
+    title: 'GitHub через proxy',
+    detail: 'GitHub, API, raw/assets, Pages и githubusercontent.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: githubDomains }
+  },
+  claude: {
+    title: 'Claude через proxy',
+    detail: 'Claude web, Anthropic Console, API и документация через активный сервер.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: claudeDomains }
+  },
+  xTwitter: {
+    title: 'X / Twitter через proxy',
+    detail: 'X, Twitter, t.co, media CDN и twimg.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: xTwitterDomains }
+  },
+  tiktok: {
+    title: 'TikTok через proxy',
+    detail: 'TikTok, CDN, byteoversea и video/static домены.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: tiktokDomains }
+  },
+  netflix: {
+    title: 'Netflix через proxy',
+    detail: 'Netflix, nflxvideo и служебные CDN-домены.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: netflixDomains }
+  },
+  cloudflareCdn: {
+    title: 'Cloudflare / CDN через proxy',
+    detail: 'Cloudflare, workers.dev, cloudflare-dns и CDNJS.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: cloudflareDomains }
+  },
   meta: {
     title: 'Meta через proxy',
     detail: 'Meta, Facebook, Instagram, WhatsApp, Messenger и общие CDN.',
     rule: { type: 'field', outboundTag: 'proxy', domain: metaDomains }
   },
   chatgpt: {
-    title: 'ChatGPT через proxy',
-    rule: { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com', 'domain:openai.com'] }
+    title: 'OpenAI / ChatGPT через proxy',
+    detail: 'ChatGPT/OpenAI домены и Cloudflare/OpenAI IP ranges одной подборкой.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: openaiDomains, ip: openaiIps }
   },
   openaiIps: {
     title: 'OpenAI IP через proxy',
@@ -486,9 +612,9 @@ export const routePresets = {
     rule: { type: 'field', outboundTag: 'proxy', ip: openaiIps }
   },
   kinopubIps: {
-    title: 'KinoPub IP через proxy',
-    detail: '23 IP/subnet правила для KinoPub CDN и backend-адресов.',
-    rule: { type: 'field', outboundTag: 'proxy', ip: kinopubIps }
+    title: 'KinoPub через proxy',
+    detail: 'Домены KinoPub, CDN/зеркала и 23 IP/subnet правила для backend-адресов.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: kinopubDomains, ip: kinopubIps }
   },
   geminiAi: {
     title: 'Google Gemini / AI через proxy',
@@ -599,12 +725,12 @@ export const routeBundles = {
   },
   aiDev: {
     title: 'AI / Dev',
-    detail: 'AI-сервисы, GitHub, OpenAI и Google Gemini через proxy.',
+    detail: 'AI-сервисы, GitHub, Claude, OpenAI и Google Gemini через proxy.',
     rules: [
       routePresets.chatgpt.rule,
-      routePresets.openaiIps.rule,
+      routePresets.claude.rule,
       routePresets.geminiAi.rule,
-      { type: 'field', outboundTag: 'proxy', domain: ['domain:github.com', 'domain:githubusercontent.com'] }
+      routePresets.github.rule
     ]
   },
   familyDirect: {
@@ -627,6 +753,7 @@ export const hiddenBuiltinRoutePresetKeys = new Set([
   'googleWebRtcFallback',
   'googleNetwork',
   'meta',
+  'openaiIps',
   'xrayuiBasic',
   'directLan',
   'mediaComms',

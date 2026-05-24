@@ -129,7 +129,7 @@ export function createDiagnosticsModel({
     const ip = String(state.domainMonitorDeviceFilter || '').trim();
     if (!ip) return null;
     const devices = Array.isArray(state.domainMonitor?.devices) ? state.domainMonitor.devices : [];
-    const found = devices.find((item) => item?.ip === ip);
+    const found = devices.find((item) => (item?.ip || 'router') === ip);
     return {
       ip,
       name: found?.name || ip,
@@ -140,7 +140,15 @@ export function createDiagnosticsModel({
   function domainMonitorMatchesDevice(item = {}, ip = state.domainMonitorDeviceFilter) {
     const selected = String(ip || '').trim();
     if (!selected) return true;
+    if (selected === 'router') {
+      if (!item.sourceIp || item.sourceIp === 'router') return true;
+      if (Array.isArray(item.devices) && item.devices.some((device) => !device?.ip || device?.ip === 'router')) return true;
+      if (Array.isArray(item.samples) && item.samples.some((sample) => !sample?.sourceIp || sample?.sourceIp === 'router')) return true;
+      return false;
+    }
+    if (item.ip === selected) return true;
     if (item.sourceIp === selected) return true;
+    if (item.destinationIp === selected) return true;
     if (Array.isArray(item.devices) && item.devices.some((device) => device?.ip === selected)) return true;
     if (Array.isArray(item.samples) && item.samples.some((sample) => sample?.sourceIp === selected)) return true;
     return false;
@@ -180,7 +188,7 @@ export function createDiagnosticsModel({
       : rows;
     const selected = String(state.domainMonitorDeviceFilter || '').trim();
     return filtered
-      .filter((item) => !selected || item.ip === selected)
+      .filter((item) => !selected || (item.ip || 'router') === selected)
       .sort((a, b) => (b.hits || 0) - (a.hits || 0));
   }
   

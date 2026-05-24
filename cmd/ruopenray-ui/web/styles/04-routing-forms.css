@@ -542,6 +542,7 @@
 .preset-check.installed {
   border-color: rgba(104, 222, 118, 0.42);
   background: rgba(104, 222, 118, 0.09);
+  cursor: default;
 }
 
 .preset-check.partial {
@@ -579,7 +580,19 @@
   background: var(--green);
 }
 
+.preset-check.installed .checkmark {
+  border-color: transparent;
+  background: rgba(104, 222, 118, 0.86);
+}
+
 .preset-check.active .checkmark::after {
+  content: '\2713';
+  color: #101814;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.preset-check.installed .checkmark::after {
   content: '\2713';
   color: #101814;
   font-weight: 900;

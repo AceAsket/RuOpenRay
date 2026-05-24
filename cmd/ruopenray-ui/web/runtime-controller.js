@@ -211,7 +211,8 @@ export function createRuntimeController({
         firewallStatus,
         subscriptions,
         disabledRoutes,
-        routeNames
+        routeNames,
+        serverMeta
       } = await loadAppSnapshot({ request, text: api.text, logsUrl });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
@@ -268,6 +269,16 @@ export function createRuntimeController({
         }
       } else if (state.legacyRouteNames && Object.keys(state.legacyRouteNames).length) {
         state.routeNames = state.legacyRouteNames;
+      }
+      if (serverMeta?.items && typeof serverMeta.items === 'object' && !Array.isArray(serverMeta.items)) {
+        state.serverMeta = Object.fromEntries(
+          Object.entries(serverMeta.items)
+            .filter(([tag, item]) => String(tag || '').trim() && item && typeof item === 'object')
+            .map(([tag, item]) => [String(tag).trim(), {
+              country: String(item.country || '').trim().toUpperCase(),
+              label: String(item.label || '').trim()
+            }])
+        );
       }
       syncLoggingSettings(logging);
       syncServiceSettings(serviceSettings);

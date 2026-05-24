@@ -8,7 +8,8 @@ export function createConfigActions({
   keepOperationVisible,
   recordXrayStatsSample,
   xrayStatsResetAtStorageKey,
-  cancelServerDraftSave
+  cancelServerDraftSave,
+  activeProxyTag
 }) {
   async function testConfig() {
     const startedAt = Date.now();
@@ -16,7 +17,7 @@ export function createConfigActions({
     state.messageDetails = null;
     state.message = 'Проверяю конфигурацию Xray...';
     render();
-    const config = JSON.parse(state.jsonDraft);
+    const config = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
     const [result, analysis] = await Promise.all([
       request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) }),
       request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
@@ -48,7 +49,7 @@ export function createConfigActions({
     state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
     render();
     try {
-      const parsed = JSON.parse(state.jsonDraft);
+      const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
       if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
       const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
       state.appliedConfigText = JSON.stringify(parsed, null, 2);
@@ -95,7 +96,7 @@ export function createConfigActions({
   }
 
   async function analyzeConfig() {
-    const parsed = JSON.parse(state.jsonDraft);
+    const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
     state.configAnalysis = await request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config: parsed }) });
     const errors = state.configAnalysis.errors?.length || 0;
     const warnings = state.configAnalysis.warnings?.length || 0;
@@ -139,6 +140,45 @@ export function createConfigActions({
     downloadConfig,
     downloadAnonymizedConfig: () => downloadConfig({ anonymized: true })
   };
+}
+
+function materializeProxyAliases(config, activeProxyTag) {
+  const next = JSON.parse(JSON.stringify(config || {}));
+  const outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
+  removeTransparentCatchAllRules(next);
+  if (outbounds.some((outbound) => outbound?.tag === 'proxy')) return next;
+  const systemTags = new Set(['direct', 'block', 'dns-out', 'ruopenray-api']);
+  const replacement = typeof activeProxyTag === 'function'
+    ? String(activeProxyTag() || '').trim()
+    : '';
+  const fallback = replacement || String(outbounds.find((outbound) => {
+    const tag = String(outbound?.tag || '').trim();
+    return tag && !systemTags.has(tag) && !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
+  })?.tag || '').trim();
+  if (!fallback) return next;
+  const rules = Array.isArray(next.routing?.rules) ? next.routing.rules : [];
+  for (const rule of rules) {
+    if (rule && rule.outboundTag === 'proxy') rule.outboundTag = fallback;
+  }
+  return next;
+}
+
+function removeTransparentCatchAllRules(config) {
+  const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
+  if (!rules.length) return;
+  config.routing.rules = rules.filter((rule) => !isTransparentCatchAllRoute(rule));
+}
+
+function isTransparentCatchAllRoute(rule) {
+  if (!Array.isArray(rule?.inboundTag) || !rule.inboundTag.includes('transparent_ipv4')) return false;
+  return !(
+    (Array.isArray(rule.domain) && rule.domain.length) ||
+    (Array.isArray(rule.ip) && rule.ip.length) ||
+    (Array.isArray(rule.source) && rule.source.length) ||
+    rule.network ||
+    rule.port ||
+    rule.balancerTag
+  );
 }
 
 function configTestSummary(result = {}, analysis = {}) {

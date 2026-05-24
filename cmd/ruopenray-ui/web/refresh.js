@@ -39,7 +39,8 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     firewallStatus,
     subscriptions,
     disabledRoutes,
-    routeNames
+    routeNames,
+    serverMeta
   ] = await Promise.all([
     request('/api/status'),
     request('/api/profiles'),
@@ -58,7 +59,8 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     request('/api/firewall/status').catch(() => null),
     request('/api/subscriptions').catch(() => ({ pools: [] })),
     request('/api/routing/disabled').catch(() => null),
-    request('/api/routing/names').catch(() => null)
+    request('/api/routing/names').catch(() => null),
+    request('/api/server-meta').catch(() => null)
   ]);
   return {
     status,
@@ -78,7 +80,8 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     firewallStatus,
     subscriptions,
     disabledRoutes,
-    routeNames
+    routeNames,
+    serverMeta
   };
 }
 

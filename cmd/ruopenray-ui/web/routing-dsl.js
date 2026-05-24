@@ -81,8 +81,8 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
     if (defaultOutbound) {
       rules.push(
         defaultOutbound.startsWith('balancer:')
-          ? { type: 'field', balancerTag: defaultOutbound.slice('balancer:'.length) }
-          : { type: 'field', outboundTag: defaultOutbound }
+          ? { type: 'field', balancerTag: defaultOutbound.slice('balancer:'.length), network: 'tcp,udp' }
+          : { type: 'field', outboundTag: defaultOutbound, network: 'tcp,udp' }
       );
     }
 
@@ -97,7 +97,8 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
   function isDslDefaultRule(rule, preview) {
     const matchesTarget = rule.outboundTag === preview.defaultOutbound ||
       (preview.defaultOutbound?.startsWith('balancer:') && rule.balancerTag === preview.defaultOutbound.slice('balancer:'.length));
-    const noConditions = !rule.domain && !rule.ip && !rule.source && !rule.inboundTag && !rule.network;
+    const network = String(rule.network || '').replace(/\s+/g, '').toLowerCase();
+    const noConditions = !rule.domain && !rule.ip && !rule.source && !rule.inboundTag && (!rule.network || network === 'tcp,udp' || network === 'udp,tcp');
     return Boolean(
       preview.defaultOutbound &&
         matchesTarget &&

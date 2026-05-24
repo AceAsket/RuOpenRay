@@ -378,6 +378,40 @@ const importActions = createImportActions({
 await importActions.previewImport();
 await importActions.importToCurrent(true);
 
+const splitRouteSwitchState = {
+  config: {
+    outbounds: [{ tag: 'vpn-a', protocol: 'vless' }, { tag: 'vpn-b', protocol: 'vless' }],
+    routing: {
+      rules: [
+        { type: 'field', outboundTag: 'vpn-a', domain: ['domain:discord.com'] },
+        { type: 'field', outboundTag: 'vpn-a', inboundTag: ['transparent_ipv4'] },
+        { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] },
+        { type: 'field', outboundTag: 'vpn-a' },
+      ]
+    }
+  },
+};
+const splitRouteSwitchActions = createImportActions({
+  state: splitRouteSwitchState,
+  request: async () => ({ ok: true }),
+  render,
+  refresh: async () => {},
+  syncConfig: (config) => { splitRouteSwitchState.config = config; },
+  applyConfig: async () => {},
+  isSystemOutbound: () => false,
+  cloneOutboundWithTag: (outbound, tag) => ({ ...outbound, tag }),
+  routeRules: () => splitRouteSwitchState.config.routing?.rules || [],
+  activeProxyTag: () => 'vpn-a',
+  setRoutingDraft: (rules) => {
+    splitRouteSwitchState.config = {
+      ...splitRouteSwitchState.config,
+      routing: { ...(splitRouteSwitchState.config.routing || {}), rules }
+    };
+  },
+  setActiveServerTag: (tag) => { splitRouteSwitchState.activeServerTag = tag; },
+});
+splitRouteSwitchActions.setActiveProxyDraft('vpn-b');
+
 const serverActionState = {
   config: {
     outbounds: [{ tag: 'proxy-old' }, { tag: 'proxy-new' }],
@@ -562,7 +596,7 @@ const routingDsl = createRoutingDsl({
   resolveRoutingAlias: (tag) => (tag === 'proxy' ? 'cloudone' : tag),
   routeStatsFor: () => ({}),
 });
-const parsedDsl = routingDsl.parseRoutingDsl('domain(domain:discord.com) -> proxy\nnetwork(udp) && ip(104.16.0.0/12) -> proxy');
+const parsedDsl = routingDsl.parseRoutingDsl('domain(domain:discord.com) -> proxy\nnetwork(udp) && ip(104.16.0.0/12) -> proxy\ndefault: direct');
 const routingActionState = {
   config: { routing: { rules: [] } },
   routeKind: 'domain',
@@ -1051,6 +1085,7 @@ const checks = [
   ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
+  ['import actions preserve pinned route targets', splitRouteSwitchState.config.routing.rules[0]?.outboundTag === 'vpn-a' && splitRouteSwitchState.config.routing.rules[1]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[2]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[3]?.outboundTag === 'vpn-b'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
@@ -1063,7 +1098,7 @@ const checks = [
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
-  ['routing dsl parser', parsedDsl.rules.length === 2 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2],
+  ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],

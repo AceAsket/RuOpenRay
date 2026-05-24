@@ -29,6 +29,7 @@ export function createDashboardView(deps) {
     checkForTag,
     checkLabel,
     checkMethodLabel,
+    serverLocationChip = () => '',
     configHasUnappliedChanges,
   } = deps;
 
@@ -557,8 +558,40 @@ function isCheckingServer(tag) {
   return state.serverChecking && (!state.serverCheckingTags.length || state.serverCheckingTags.includes(tag));
 }
 
+function dashboardServerActionIcon(icon) {
+  const icons = {
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
+    connect: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+    active: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+  };
+  return icons[icon] || '';
+}
+
+function dashboardServerActionButton({ label, icon, tone = 'secondary', attrs = '', busy = false, disabled = false }) {
+  const safeLabel = escapeHtml(label);
+  return `<button type="button" class="server-action-icon dashboard-server-action ${tone} ${busy ? 'is-busy' : ''}" ${attrs} ${disabled ? 'disabled' : ''} title="${safeLabel}" aria-label="${safeLabel}">
+    ${dashboardServerActionIcon(icon)}
+  </button>`;
+}
+
+function dashboardServerActionState(label) {
+  const safeLabel = escapeHtml(label);
+  return `<span class="server-action-icon dashboard-server-action active" title="${safeLabel}" aria-label="${safeLabel}" role="status">
+    ${dashboardServerActionIcon('active')}
+  </span>`;
+}
+
 function serverCheckButton(tag, extraClass = '') {
   const busy = isCheckingServer(tag);
+  if ((extraClass || '').includes('compact-action')) {
+    return dashboardServerActionButton({
+      label: busy ? 'Проверяю сервер' : 'Проверить сервер',
+      icon: 'check',
+      attrs: `data-server-check="${escapeHtml(tag)}"`,
+      busy,
+      disabled: busy
+    });
+  }
   return `<button class="btn secondary ${extraClass}" data-server-check="${escapeHtml(tag)}" ${busy ? 'disabled' : ''}>Проверить</button>`;
 }
 
@@ -644,13 +677,13 @@ function dashboardServerSwitch(servers) {
           const connecting = state.pendingServerTag === tag;
           const stateLabel = activeServer ? (direction?.rules ? `${direction.rules} правил` : 'Текущий') : selectedServer ? 'Выбран' : 'Сервер';
           const action = activeServer
-            ? `<span class="server-state-pill active">${summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный'}</span>`
-            : `<button class="btn warning compact-action ${connecting ? 'is-busy' : ''}" data-dashboard-connect="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>`;
+            ? dashboardServerActionState(summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный сервер')
+            : dashboardServerActionButton({ label: connecting ? 'Подключаю сервер' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-dashboard-connect="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting });
           return `<article class="dashboard-server-option ${activeServer ? 'active' : ''} ${selectedServer ? 'selected' : ''}">
             <button type="button" class="server-option-pick" ${activeServer || connecting ? 'disabled' : `data-dashboard-select="${escapeHtml(tag)}"`}>
               <span class="server-option-state ${activeServer ? 'active' : selectedServer ? 'selected' : ''}">${stateLabel}</span>
               <span class="server-option-main">
-                <strong>${escapeHtml(tag || 'server')}</strong>
+                <strong>${serverLocationChip(outbound)}${escapeHtml(tag || 'server')}</strong>
                 <small>${escapeHtml(outboundAddress(outbound))}</small>
               </span>
               ${serverTrafficView(tag, 'dashboard-server-traffic')}

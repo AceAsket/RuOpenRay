@@ -13,7 +13,6 @@ export function createRoutingDialogsView({
   routePresetInstallLabel = () => '',
   routeTargetOptions,
   balancerOptions,
-  outboundOptions,
   routeLeasePicker,
   dslPreviewView,
   routeBalancers,
@@ -30,7 +29,9 @@ export function createRoutingDialogsView({
 }) {
 function routeRuleDialog() {
   if (!state.routeRuleDialog) return '';
-  const options = outboundOptions();
+  const outboundTargetOptions = routeTargetOptions()
+    .filter((option) => String(option.value || '').startsWith('outbound:'))
+    .map((option) => ({ tag: String(option.value).replace(/^outbound:/, ''), label: option.label }));
   const balancers = balancerOptions();
   const editing = state.routeRuleEditingIndex >= 0;
   const listMode = !editing && state.routeRuleMode === 'list';
@@ -65,7 +66,7 @@ function routeRuleDialog() {
               const label = routePresetInstallLabel(key);
               return `
               <label class="preset-check custom ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
-                <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
+                <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} ${install.installed ? 'disabled' : ''} />
                 <span class="checkmark"></span>
                 ${routePresetIconView(escapeHtml, key, preset)}
                 <span class="preset-check-copy">
@@ -87,7 +88,7 @@ function routeRuleDialog() {
             const label = routePresetInstallLabel(key);
             return `
             <label class="preset-check ${selected.has(key) ? 'active' : ''} ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
-              <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} />
+              <input type="checkbox" data-route-preset-check="${key}" ${selected.has(key) ? 'checked' : ''} ${install.installed ? 'disabled' : ''} />
               <span class="checkmark"></span>
               ${routePresetIconView(escapeHtml, key, preset)}
               <span class="preset-check-copy">
@@ -153,8 +154,8 @@ function routeRuleDialog() {
                 ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
               </select>
             ` : `
-              <select id="routeOutbound">
-                ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeOutbound === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
+              <select id="routeOutbound" class="route-outbound" data-route-outbound-picker>
+                ${outboundTargetOptions.map((option) => `<option value="${escapeHtml(option.tag)}" ${state.routeOutbound === option.tag ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
               </select>
             `}
           </div>

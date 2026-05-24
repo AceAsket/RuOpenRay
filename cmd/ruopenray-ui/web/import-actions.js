@@ -10,7 +10,8 @@ export function createImportActions({
   routeRules,
   activeProxyTag,
   setRoutingDraft,
-  setActiveServerTag
+  setActiveServerTag,
+  persistServerMeta
 }) {
   async function importLink() {
     const result = await request('/api/import', {
@@ -20,6 +21,8 @@ export function createImportActions({
     state.message = `Импортирован ${result.outbound.protocol} в профиль ${result.profile}`;
     state.importLink = '';
     state.importOutboundTag = '';
+    state.importCountry = '';
+    state.importCountrySearch = '';
     state.importPreview = null;
     state.importDialog = '';
     await refresh();
@@ -77,21 +80,34 @@ export function createImportActions({
     return hasTarget && !hasConditions;
   }
 
+  function isTransparentMainProxyRoute(rule) {
+    if (!rule || !rule.outboundTag || rule.balancerTag) return false;
+    const inbound = Array.isArray(rule.inboundTag) ? rule.inboundTag : (rule.inboundTag ? [rule.inboundTag] : []);
+    if (!inbound.includes('transparent_ipv4')) return false;
+    return !rule.domain?.length
+      && !rule.ip?.length
+      && !rule.source?.length
+      && !rule.network
+      && !(rule.port && rule.port !== '0-65535');
+  }
+
   function setActiveProxyDraft(tag) {
     const defaultRule = { type: 'field', outboundTag: tag };
     const rules = routeRules();
     if (!rules.length) {
       setRoutingDraft([defaultRule]);
     } else {
-      const currentTag = activeProxyTag();
-      const switchable = new Set(['proxy', currentTag].filter(Boolean));
       let changed = 0;
       const nextRules = rules.map((rule) => {
         if (isCatchAllRoute(rule)) {
           changed += 1;
           return defaultRule;
         }
-        if (rule?.outboundTag && switchable.has(rule.outboundTag)) {
+        if (isTransparentMainProxyRoute(rule)) {
+          changed += 1;
+          return { ...rule, outboundTag: tag };
+        }
+        if (rule?.outboundTag === 'proxy') {
           changed += 1;
           return { ...rule, outboundTag: tag };
         }
@@ -144,10 +160,19 @@ export function createImportActions({
     const outbound = serverImportOutbound();
     if (!outbound) return;
     syncConfig(mergeOutboundsIntoConfig(state.config, [outbound]));
+    if (state.importCountry && outbound.tag && typeof persistServerMeta === 'function') {
+      state.serverMeta = {
+        ...(state.serverMeta || {}),
+        [outbound.tag]: { ...(state.serverMeta?.[outbound.tag] || {}), country: state.importCountry }
+      };
+      await persistServerMeta(state.serverMeta);
+    }
     if (makeActive) setActiveProxyDraft(outbound.tag);
     await saveCurrentProfileConfig();
     state.importLink = '';
     state.importOutboundTag = '';
+    state.importCountry = '';
+    state.importCountrySearch = '';
     state.importPreview = null;
     state.importDialog = '';
     state.message = makeActive

@@ -281,16 +281,19 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
   if (state.domainMonitorMode === 'devices') {
     const selected = selectedDomainMonitorDevice();
     const devices = monitoredDevices();
-    return devices.slice(0, 80).map((item) => `<article class="domain-monitor-device ${selected?.ip === item.ip ? 'active' : ''}">
+    return devices.slice(0, 80).map((item) => {
+      const deviceKey = item.ip || 'router';
+      return `<article class="domain-monitor-device ${selected?.ip === deviceKey ? 'active' : ''}">
       <div class="domain-monitor-kind">LAN</div>
       <div class="domain-monitor-main">
-        <strong>${escapeHtml(item.name || item.ip || 'устройство')}</strong>
+        <strong>${escapeHtml(item.name || item.ip || 'router')}</strong>
         <small>${escapeHtml(item.ip || '')}</small>
       </div>
       <div class="domain-monitor-device-domains">${(item.topDomains || []).slice(0, 4).map((domain) => `<span>${escapeHtml(domain.host)} <b>${domain.hits}</b></span>`).join('')}</div>
       <div class="domain-monitor-count"><strong>${Number(item.hits || 0).toLocaleString('ru-RU')}</strong><small>событий</small></div>
-      <button class="btn secondary" data-domain-device-events="${escapeHtml(item.ip || '')}">${selected?.ip === item.ip ? 'Выбрано' : 'События устройства'}</button>
-    </article>`).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи или b4sni-совместимый лог.</p>';
+      <button class="btn secondary" data-domain-device-events="${escapeHtml(deviceKey)}">${selected?.ip === deviceKey ? 'Выбрано' : 'События устройства'}</button>
+    </article>`;
+    }).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи или b4sni-совместимый лог.</p>';
   }
   if (state.domainMonitorMode === 'events') {
     const events = monitoredEvents();

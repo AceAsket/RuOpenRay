@@ -1,4 +1,6 @@
 import { noticeView } from './notice-view.js';
+import { countryPickerView } from './server-location-view.js';
+import { parseServerEditJson, serverEditFields } from './server-edit-model.js';
 
 export function createServersView(deps) {
   const {
@@ -15,6 +17,7 @@ export function createServersView(deps) {
     proxyRuleStrategyStats,
     routingBalancersPanel,
     serverCheckButton,
+    serverLocationChip,
     serverMetaChips,
     serverStats,
     serverTrafficView,
@@ -22,27 +25,51 @@ export function createServersView(deps) {
     stat,
   } = deps;
 
+function serverActionButton({ label, icon, tone = 'secondary', attrs = '', busy = false, disabled = false }) {
+  const icons = {
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="m16.5 3.5 4 4L8 20l-5 1 1-5Z"/></svg>',
+    connect: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+    active: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+    delete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>',
+    search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>',
+  };
+  const safeLabel = escapeHtml(label);
+  return `<button type="button" class="server-action-icon ${tone} ${busy ? 'is-busy' : ''}" ${attrs} ${disabled ? 'disabled' : ''} title="${safeLabel}" aria-label="${safeLabel}">
+    ${icons[icon] || ''}
+  </button>`;
+}
+
+function serverActionState(label) {
+  const safeLabel = escapeHtml(label);
+  return `<span class="server-action-icon active" title="${safeLabel}" aria-label="${safeLabel}" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+  </span>`;
+}
+
 function serverCard(outbound, index, activeTag) {
   const tag = outbound?.tag || `outbound-${index + 1}`;
   const usage = outboundUsage(tag);
   const check = checkForTag(tag);
   const active = tag === activeTag;
   const connecting = state.pendingServerTag === tag;
+  const checking = state.serverChecking && (!state.serverCheckingTags.length || state.serverCheckingTags.includes(tag));
   const meta = serverMetaChips(outbound, usage, check);
   return `<article class="server-row server-card ${active ? 'is-active' : ''}">
     <div class="server-identity">
       <span class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</span>
       <div class="server-main">
-        <strong>${escapeHtml(tag)}</strong>
+        <strong>${serverLocationChip(outbound)}${escapeHtml(tag)}</strong>
         <span>${escapeHtml(outboundAddress(outbound))}</span>
         ${meta}
       </div>
     </div>
     ${serverTrafficView(tag)}
     <div class="server-actions">
-      ${serverCheckButton(tag)}
-      ${active ? '<span class="tag active-tag">активный</span>' : `<button class="btn warning ${connecting ? 'is-busy' : ''}" data-route-all="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>`}
-      <button class="btn danger" data-outbound-delete="${index}">Удалить</button>
+      ${serverActionButton({ label: checking ? 'Проверяю сервер' : 'Проверить сервер', icon: 'check', attrs: `data-server-check="${escapeHtml(tag)}"`, busy: checking, disabled: checking })}
+      ${serverActionButton({ label: 'Править прокси', icon: 'edit', attrs: `data-server-edit="${index}"` })}
+      ${active ? serverActionState('Основной proxy') : serverActionButton({ label: connecting ? 'Подключаю сервер' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting })}
+      ${serverActionButton({ label: 'Удалить прокси', icon: 'delete', tone: 'danger', attrs: `data-outbound-delete="${index}"` })}
     </div>
   </article>`;
 }
@@ -64,9 +91,9 @@ function subscriptionPoolCard(pool) {
       <small>${escapeHtml(active?.tag ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}` : 'активный сервер не выбран')}</small>
     </div>
     <div class="server-actions">
-      <button class="btn secondary" data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}">Найти доступный</button>
-      <button class="btn warning ${connecting ? 'is-busy' : ''}" data-route-all="${escapeHtml(tag)}" ${connecting ? 'disabled' : ''}>${connecting ? 'Подключаю...' : 'Подключиться'}</button>
-      <button class="btn danger" data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}">Удалить</button>
+      ${serverActionButton({ label: 'Найти доступный сервер', icon: 'search', attrs: `data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}"` })}
+      ${serverActionButton({ label: connecting ? 'Подключаю подписку' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting })}
+      ${serverActionButton({ label: 'Удалить подписку', icon: 'delete', tone: 'danger', attrs: `data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}"` })}
     </div>
   </article>`;
 }
@@ -112,6 +139,106 @@ function serverAvailabilityPanel() {
         </article>`).join('')}
       </div>` : ''}
     </section>
+  `;
+}
+
+function serverEditDialog() {
+  if (!state.serverEditDialog) return '';
+  const outbound = configOutbounds()[state.serverEditIndex] || {};
+  const parsed = parseServerEditJson(state.serverEditJson || '{}');
+  const editable = serverEditFields(parsed.outbound || outbound);
+  const protocol = editable.protocol || 'vless';
+  const streamSecurity = editable.security || 'none';
+  const option = (value, label, selected = editable.protocol) => `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  const field = (name, label, placeholder = '', type = 'text') => `
+    <div class="form-row">
+      <label for="serverEdit_${escapeHtml(name)}">${escapeHtml(label)}</label>
+      <input id="serverEdit_${escapeHtml(name)}" data-server-edit-field="${escapeHtml(name)}" type="${escapeHtml(type)}" value="${escapeHtml(editable[name] ?? '')}" placeholder="${escapeHtml(placeholder)}" />
+    </div>`;
+  return `
+    <div class="modal-backdrop" data-action="closeServerEdit">
+      <section class="modal server-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="serverEditTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="serverEditTitle">Редактировать прокси</h2>
+            <span>Основные параметры меняются полями ниже. JSON оставлен для редких настроек Xray.</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeServerEdit" aria-label="Закрыть">×</button>
+        </div>
+        <div class="server-edit-layout">
+          <div class="server-edit-form">
+            <div class="server-edit-section">
+              <h3>Подключение</h3>
+              <div class="server-edit-fields">
+                ${field('tag', 'Outbound tag', 'cloudone-vless')}
+                <div class="form-row">
+                  <label for="serverEdit_protocol">Протокол</label>
+                  <select id="serverEdit_protocol" data-server-edit-field="protocol">
+                    ${option('vless', 'VLESS')}
+                    ${option('vmess', 'VMess')}
+                    ${option('trojan', 'Trojan')}
+                    ${option('shadowsocks', 'Shadowsocks')}
+                  </select>
+                </div>
+                ${field('address', 'Адрес', 'example.com')}
+                ${field('port', 'Порт', '443', 'number')}
+              </div>
+            </div>
+            <div class="server-edit-section">
+              <h3>${protocol === 'trojan' || protocol === 'shadowsocks' ? 'Доступ' : 'Пользователь'}</h3>
+              <div class="server-edit-fields">
+                ${protocol === 'trojan' || protocol === 'shadowsocks'
+                  ? `${field('password', 'Пароль', 'password')}${field('userSecurity', protocol === 'shadowsocks' ? 'Метод шифрования' : 'Метод', 'chacha20-ietf-poly1305')}`
+                  : `${field('id', 'UUID / ID', 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')}${field('userSecurity', protocol === 'vmess' ? 'Security' : 'Encryption', protocol === 'vmess' ? 'auto' : 'none')}${field('flow', 'Flow', 'xtls-rprx-vision')}`}
+              </div>
+            </div>
+            <div class="server-edit-section">
+              <h3>Транспорт и TLS</h3>
+              <div class="server-edit-fields">
+                <div class="form-row">
+                  <label for="serverEdit_network">Transport</label>
+                  <select id="serverEdit_network" data-server-edit-field="network">
+                    ${['tcp', 'ws', 'grpc', 'http', 'httpupgrade', 'splithttp', 'kcp'].map((value) => `<option value="${value}" ${editable.network === value ? 'selected' : ''}>${value}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label for="serverEdit_security">Security</label>
+                  <select id="serverEdit_security" data-server-edit-field="security">
+                    ${['none', 'reality', 'tls'].map((value) => `<option value="${value}" ${streamSecurity === value ? 'selected' : ''}>${value}</option>`).join('')}
+                  </select>
+                </div>
+                ${field('sni', 'SNI / serverName', 'cloudone.example.com')}
+                ${field('fingerprint', 'Fingerprint', 'chrome')}
+                ${streamSecurity === 'reality' ? `${field('publicKey', 'Reality public key', 'base64url key')}${field('shortId', 'Short ID', '2fb9438cd4858c37')}${field('spiderX', 'SpiderX', '/')}` : ''}
+                ${editable.network && editable.network !== 'tcp' ? field('path', editable.network === 'grpc' ? 'gRPC serviceName' : 'Path', '/') : ''}
+              </div>
+            </div>
+            <details class="server-json-details">
+              <summary>Расширенный JSON</summary>
+              <div class="form-row">
+                <label>Параметры outbound</label>
+                <textarea id="serverEditJson" class="code-textarea server-json-editor" spellcheck="false">${escapeHtml(state.serverEditJson)}</textarea>
+                <small class="muted">Если меняете tag, RuOpenRay обновит ссылки в правилах и балансировщиках.</small>
+              </div>
+            </details>
+          </div>
+          ${countryPickerView({
+            escapeHtml,
+            selected: state.serverEditCountry,
+            search: state.serverEditCountrySearch,
+            target: 'serverEdit',
+            inputId: 'serverEditCountrySearch',
+            title: 'Флаг и страна'
+          })}
+        </div>
+        ${state.serverEditError ? `<p class="notice danger">${escapeHtml(state.serverEditError)}</p>` : ''}
+        <div class="modal-actions">
+          <button class="btn secondary" type="button" data-action="closeServerEdit">Отмена</button>
+          <span class="muted">${escapeHtml(outbound?.tag || '')}</span>
+          <button class="btn warning" type="button" data-action="saveServerEdit">Сохранить прокси</button>
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -214,12 +341,14 @@ function serversPanel() {
         }).join('') : '<p class="muted">Системные выходы не найдены.</p>'}
       </div>
     </section>` : ''}
+    ${serverEditDialog()}
   `;
 }
 
   return {
     serverAvailabilityPanel,
     serverCard,
+    serverEditDialog,
     serversPanel,
     subscriptionPoolCard,
   };
