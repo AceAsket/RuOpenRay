@@ -32,6 +32,8 @@ const presetIcons = {
   telegramFull: ['TG', 'telegram'],
   telegramMtproto: ['MT', 'telegram'],
   tiktok: ['TT', 'media'],
+  tuya: ['TY', 'tuya'],
+  tuyaSmartLife: ['TY', 'tuya'],
   whatsapp: ['WA', 'meta'],
   xTwitter: ['X', 'media'],
   xrayuiBasic: ['XR', 'runet'],
@@ -52,6 +54,7 @@ const titleIconHints = [
   [/github/i, ['GH', 'dev']],
   [/twitter|\bx\b/i, ['X', 'media']],
   [/tiktok/i, ['TT', 'media']],
+  [/tuya|smart life/i, ['TY', 'tuya']],
   [/netflix/i, ['NF', 'media']],
   [/cloudflare|cdn/i, ['CF', 'media']],
   [/claude|anthropic/i, ['CL', 'ai']],
@@ -113,6 +116,7 @@ function presetIconSvg(key, tone) {
   if (group.includes('github')) return iconGitHub();
   if (group.includes('xtwitter')) return iconX();
   if (group.includes('tiktok')) return iconTikTok();
+  if (group.includes('tuya')) return iconTuya();
   if (group.includes('netflix')) return iconNetflix();
   if (group.includes('cloudflare')) return iconCloudflare();
   if (group.includes('google') || group.includes('gemini')) return iconGoogle();
@@ -149,6 +153,10 @@ function iconX() {
 
 function iconTikTok() {
   return brandSvg('0 0 24 24', '<rect width="24" height="24" rx="6" fill="#050505"></rect><path fill="#25f4ee" d="M14.6 2.2c.35 2.42 1.7 3.86 4.05 4.01v2.75a7.1 7.1 0 0 1-4.01-1.24v6.64c0 8.43-9.2 8.05-10.83 3.66c-1.05-2.8.4-6.97 5.37-7.14v2.9c-.82.13-1.7.43-2.17 1.02c-1.03 1.27-.72 3.55 1.1 4.02c3.28.85 3.77-2.6 3.77-4.44V2.2z"></path><path fill="#fe2c55" d="M15.35 2.2c.35 2.42 1.7 3.86 4.05 4.01v2.75a7.1 7.1 0 0 1-4.01-1.24v6.64c0 8.43-9.2 8.05-10.83 3.66c-.27-.72-.34-1.52-.2-2.28c.36 1.22 1.25 2.21 2.5 2.54c3.28.85 3.77-2.6 3.77-4.44V2.2z"></path>');
+}
+
+function iconTuya() {
+  return brandSvg('0 0 24 24', '<circle cx="12" cy="12" r="12" fill="#22c7a6"></circle><path fill="#031010" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2m2.611 14.365a1.7 1.7 0 0 1-.626.059a6.7 6.7 0 0 1-1.187-.051a3.17 3.17 0 0 1-2.003-1.241a3.3 3.3 0 0 1-.632-2.05c.02-.603.045-1.206.066-1.808h-.887a.81.81 0 0 1-.766-.72a.884.884 0 0 1 .813-.964h.897c.014-.384.022-.768.041-1.151a.884.884 0 0 1 .941-.795a.813.813 0 0 1 .749.803c-.008.382-.025.764-.037 1.147h2.4a.81.81 0 0 1 .782.721a.884.884 0 0 1-.835.97h-2.41l-.067 1.758a1.65 1.65 0 0 0 .429 1.205a1.56 1.56 0 0 0 1.105.494c.342.006.685 0 1.027 0a.81.81 0 0 1 .746.717a.88.88 0 0 1-.546.906m1.479-6.427a.33.33 0 0 1-.274-.059a.34.34 0 0 1-.144-.22a.8.8 0 0 0-.081-.502a.63.63 0 0 0-.542-.321h-.036a.7.7 0 0 0-.233.052a.4.4 0 0 1-.217.034a.33.33 0 0 1-.248-.181a.33.33 0 0 1-.014-.301c.077-.183.301-.241.526-.284a1.34 1.34 0 0 1 1.082.309a1.36 1.36 0 0 1 .455 1.174a.35.35 0 0 1-.277.298Zm1.847-.324a.345.345 0 0 1-.414.277a.35.35 0 0 1-.277-.383a2.11 2.11 0 0 0-2.093-2.382a2 2 0 0 0-.589.086a2 2 0 0 0-.201.073a.45.45 0 0 1-.375.051a.35.35 0 0 1-.089-.597a2.5 2.5 0 0 1 .883-.282a2.802 2.802 0 0 1 3.152 3.158Z"></path>');
 }
 
 function iconNetflix() {

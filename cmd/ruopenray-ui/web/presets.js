@@ -211,6 +211,27 @@ const metaDomains = [
   ...whatsappDomains
 ];
 
+const tuyaDomains = [
+  'domain:tuya.com',
+  'domain:tuyaeu.com',
+  'domain:tuyacn.com',
+  'domain:tuyaus.com',
+  'domain:tuyaaf.com',
+  'domain:iotbing.com',
+  'domain:tuya-inc.cn',
+  'domain:smartapp.tuya.com',
+  'domain:smartlife.app.tuya.com',
+  'domain:app.tuya.com',
+  'domain:openapi.tuyaus.com',
+  'domain:openapi.tuyacn.com',
+  'domain:openapi.tuyaeu.com',
+  'domain:openapi.tuyain.com',
+  'domain:openapi-sg.iotbing.com',
+  'domain:openapi-ueaz.tuyaus.com',
+  'domain:openapi-weaz.tuyaeu.com',
+  'full:nlb-vuyt41vm4ajpnwwimz.cn-shanghai.nlb.aliyuncs.com'
+];
+
 const linkedinDomains = [
   'geosite:linkedin',
   'domain:linkedin.com',
@@ -601,6 +622,11 @@ export const routePresets = {
     detail: 'Meta, Facebook, Instagram, WhatsApp, Messenger и общие CDN.',
     rule: { type: 'field', outboundTag: 'proxy', domain: metaDomains }
   },
+  tuya: {
+    title: 'Tuya / Smart Life через proxy',
+    detail: 'Tuya, Smart Life, OpenAPI и региональные облака Tuya.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: tuyaDomains }
+  },
   chatgpt: {
     title: 'OpenAI / ChatGPT через proxy',
     detail: 'ChatGPT/OpenAI домены и Cloudflare/OpenAI IP ranges одной подборкой.',
@@ -678,6 +704,13 @@ export const routeBundles = {
       { type: 'field', outboundTag: 'proxy', domain: metaDomains }
     ]
   },
+  tuyaSmartLife: {
+    title: 'Tuya / Smart Life',
+    detail: 'Tuya, Smart Life, региональные OpenAPI endpoints и облачный NLB из практического списка.',
+    rules: [
+      routePresets.tuya.rule
+    ]
+  },
   xrayuiBasic: {
     title: 'Базовый набор xrayui',
     detail: 'Google, Meta, Telegram, X, Discord, RuTracker, TikTok, Netflix, GitHub, Cloudflare, media-ru, KinoPub и Akamai.',
@@ -753,6 +786,7 @@ export const hiddenBuiltinRoutePresetKeys = new Set([
   'googleWebRtcFallback',
   'googleNetwork',
   'meta',
+  'tuya',
   'openaiIps',
   'xrayuiBasic',
   'directLan',
