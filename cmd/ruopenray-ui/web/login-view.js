@@ -26,7 +26,6 @@ export function createLoginView({
             <input id="rememberPassword" type="checkbox" ${state.rememberPassword ? 'checked' : ''} />
             <span>
               <strong>Запомнить вход</strong>
-              <small>Пароль не сохраняется, только токен панели на этом устройстве.</small>
             </span>
           </label>
           <button class="btn" type="submit" style="width: 100%; height: 42px">Войти</button>
