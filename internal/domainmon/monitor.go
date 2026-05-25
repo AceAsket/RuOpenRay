@@ -123,7 +123,7 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 		}
 		outbound := ""
 		for _, match := range outboundPattern.FindAllStringSubmatch(line, -1) {
-			if len(match) <= 1 || isXrayLogLevel(match[1]) {
+			if len(match) <= 1 || isXrayLogLevel(match[1]) || isXrayConnectionID(match[1]) {
 				continue
 			}
 			outbound = match[1]
@@ -407,6 +407,19 @@ func isXrayLogLevel(value string) bool {
 	default:
 		return false
 	}
+}
+
+func isXrayConnectionID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func splitHostPortLast(value string) (string, string) {

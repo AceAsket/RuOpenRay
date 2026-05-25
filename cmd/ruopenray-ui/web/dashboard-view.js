@@ -596,7 +596,7 @@ function serverCheckButton(tag, extraClass = '') {
 }
 
 function checkModeLabel(mode) {
-  return mode === 'endpoint' ? 'TCP-порт' : 'HTTP через прокси';
+  return mode === 'endpoint' ? 'порт сервера' : 'HTTP через прокси';
 }
 
 function rulesCountLabel(count) {
@@ -610,9 +610,9 @@ function rulesCountLabel(count) {
 
 function dashboardCheckBadge(check) {
   if (!check) return { label: 'не проверен', tone: 'warn' };
-  if (check.httpOk === false) return { label: check.endpointOk ? 'TCP открыт · HTTP нет' : 'HTTP нет', tone: 'bad' };
+  if (check.httpOk === false) return { label: check.endpointOk ? 'порт открыт · HTTP нет' : 'HTTP нет', tone: 'bad' };
   if (check.ok) return { label: checkLabel(check), tone: 'ok' };
-  if (check.endpointOk) return { label: 'TCP открыт', tone: 'warn' };
+  if (check.endpointOk) return { label: 'порт открыт', tone: 'warn' };
   if (check.pingOk) return { label: 'ping есть', tone: 'warn' };
   return { label: 'нет ответа', tone: 'bad' };
 }
@@ -620,7 +620,7 @@ function dashboardCheckBadge(check) {
 function dashboardCheckDetail(check, outbound) {
   const parts = [outboundTransport(outbound)];
   if (check) {
-    if (check.endpointOk && check.httpOk === false) parts.push('TCP открыт');
+    if (check.endpointOk && check.httpOk === false) parts.push('порт открыт');
     else parts.push(checkMethodLabel(check));
   }
   return parts.filter(Boolean).join(' · ');
@@ -629,7 +629,7 @@ function dashboardCheckDetail(check, outbound) {
 function dashboardCheckSummary(check) {
   if (!check) {
     return {
-      label: 'ping не проверен · TCP не проверен · HTTP не проверен',
+      label: 'ping не проверен · порт не проверен · HTTP не проверен',
       tone: 'warn'
     };
   }
@@ -637,8 +637,8 @@ function dashboardCheckSummary(check) {
     ? `ping ${check.pingLatencyMs || 0} мс`
     : check.pingOk === false ? 'ping нет' : 'ping не проверен';
   const tcp = check.endpointOk === true
-    ? `TCP ${check.endpointLatencyMs || 0} мс`
-    : check.endpointOk === false ? 'TCP нет' : 'TCP не проверен';
+    ? 'порт открыт'
+    : check.endpointOk === false ? 'порт закрыт' : 'порт не проверен';
   const http = check.httpOk === true
     ? `HTTP ${check.httpLatencyMs || check.latencyMs || 0} мс`
     : check.httpOk === false || check.method === 'http' ? 'HTTP нет' : 'HTTP не проверен';

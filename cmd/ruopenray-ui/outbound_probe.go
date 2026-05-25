@@ -48,7 +48,12 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	_ = file.Close()
 	defer os.Remove(path)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(attempts+2))*time.Millisecond+5*time.Second)
+	samples := attempts
+	if samples < 3 {
+		samples = 3
+	}
+	totalSamples := samples + 1
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(totalSamples+2))*time.Millisecond+5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
 	cmd.Env = s.xrayEnv()
@@ -82,13 +87,11 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 			},
 		},
 	}
-	samples := attempts
-	if samples < 1 {
-		samples = 1
-	}
 	var best int64
+	var warmBest int64
 	var lastErr error
-	for attempt := 0; attempt < samples; attempt++ {
+	for attempt := 0; attempt < totalSamples; attempt++ {
+		measured := attempt > 0
 		req, err := newProbeHTTPRequest(probeURL)
 		if err != nil {
 			return 0, false, err
@@ -100,6 +103,13 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 			_ = resp.Body.Close()
 			if resp.StatusCode < 500 {
+				if !measured {
+					if warmBest == 0 || latency < warmBest {
+						warmBest = latency
+					}
+					lastErr = nil
+					continue
+				}
 				if best == 0 || latency < best {
 					best = latency
 				}
@@ -113,6 +123,9 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	}
 	if best > 0 {
 		return best, true, nil
+	}
+	if warmBest > 0 {
+		return warmBest, true, nil
 	}
 	if lastErr != nil {
 		if detail := strings.TrimSpace(stderr.String()); detail != "" {
@@ -188,13 +201,16 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 	}
 
 	samples := attempts
-	if samples < 1 {
-		samples = 1
+	if samples < 3 {
+		samples = 3
 	}
+	totalSamples := samples + 1
 	target := net.JoinHostPort(host, targetPort)
 	var best int64
+	var warmBest int64
 	var lastErr error
-	for attempt := 0; attempt < samples; attempt++ {
+	for attempt := 0; attempt < totalSamples; attempt++ {
+		measured := attempt > 0
 		started := time.Now()
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)), time.Duration(timeoutMs)*time.Millisecond)
 		if err != nil {
@@ -221,6 +237,13 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 		_ = conn.Close()
 		latency := time.Since(started).Milliseconds()
 		if readErr == nil && connectOK {
+			if !measured {
+				if warmBest == 0 || latency < warmBest {
+					warmBest = latency
+				}
+				lastErr = nil
+				continue
+			}
 			if best == 0 || latency < best {
 				best = latency
 			}
@@ -236,7 +259,62 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 	if best > 0 {
 		return best, true, nil
 	}
+	if warmBest > 0 {
+		return warmBest, true, nil
+	}
 	return 0, false, lastErr
+}
+
+func directEndpointTCPProbe(address string, portValue int, timeoutMs int, attempts int) (int64, bool, error) {
+	samples := attempts
+	if samples < 3 {
+		samples = 3
+	}
+	totalSamples := samples + 1
+	target := net.JoinHostPort(address, fmt.Sprint(portValue))
+	var best int64
+	var warmBest int64
+	var lastErr error
+	for attempt := 0; attempt < totalSamples; attempt++ {
+		measured := attempt > 0
+		started := time.Now()
+		conn, err := dialTCPPreferIPv4(target, time.Duration(timeoutMs)*time.Millisecond)
+		latency := time.Since(started).Milliseconds()
+		if err == nil {
+			_ = conn.Close()
+			if !measured {
+				if warmBest == 0 || latency < warmBest {
+					warmBest = latency
+				}
+				lastErr = nil
+				continue
+			}
+			if best == 0 || latency < best {
+				best = latency
+			}
+			lastErr = nil
+			continue
+		}
+		lastErr = err
+	}
+	if best > 0 {
+		return best, true, nil
+	}
+	if warmBest > 0 {
+		return warmBest, true, nil
+	}
+	return 0, false, lastErr
+}
+
+func dialTCPPreferIPv4(address string, timeout time.Duration) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		return net.DialTimeout("tcp", address, timeout)
+	}
+	return net.DialTimeout("tcp4", address, timeout)
 }
 
 func freeLocalPort() (int, error) {

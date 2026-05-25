@@ -1,3 +1,5 @@
+import { serverLocation } from './server-location.js';
+
 export function createDiagnosticsDomainView(deps) {
   const {
     accessLogRows,
@@ -11,6 +13,7 @@ export function createDiagnosticsDomainView(deps) {
     checkForTag,
     checkLabel,
     configInbounds,
+    currentDomainMonitor,
     deviceRules,
     domainDiagnosticRows,
     domainMonitorDevicesText,
@@ -47,7 +50,7 @@ export function createDiagnosticsDomainView(deps) {
   } = deps;
 
 function domainMonitorStatusItems() {
-  const monitor = state.domainMonitor || {};
+  const monitor = (typeof currentDomainMonitor === 'function' ? currentDomainMonitor() : state.domainMonitor) || {};
   const sourcePath = String(monitor.sourcePath || '');
   const quality = domainMonitorDomainQuality();
   const transparent = configInbounds().find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy);
@@ -60,8 +63,8 @@ function domainMonitorStatusItems() {
   const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const lanDns = state.lanDnsStatus || {};
   const lanDnsXray = Boolean(lanDns.mode === 'xray' && lanDns.readiness?.ready);
-  const dnsmasq = state.domainMonitor?.dnsmasq || {};
-  const dnsmasqParser = Boolean(String(state.domainMonitor?.source || '').includes('dnsmasq') || String(state.domainMonitor?.sourcePath || '').includes('dnsmasq'));
+  const dnsmasq = monitor?.dnsmasq || {};
+  const dnsmasqParser = Boolean(String(monitor?.source || '').includes('dnsmasq') || String(monitor?.sourcePath || '').includes('dnsmasq'));
   const dnsmasqLogqueries = dnsmasq.logqueries === true;
   const hasEvents = Number(monitor.stats?.total || 0) > 0 || quality.total > 0;
   const hasDomains = quality.hasDomains || Number(monitor.stats?.uniqueDomains || 0) > 0;
@@ -131,7 +134,8 @@ function domainMonitorStatusPanel() {
   const monitor = cards[0] || {};
   const source = cards[1] || {};
   const dns = cards[2] || {};
-  const dnsmasq = state.domainMonitor?.dnsmasq || {};
+  const frozenMonitor = (typeof currentDomainMonitor === 'function' ? currentDomainMonitor() : state.domainMonitor) || {};
+  const dnsmasq = frozenMonitor?.dnsmasq || {};
   const dnsmasqLogqueries = dnsmasq.logqueries === true;
   const dnsmasqAction = dnsmasqLogqueries ? 'disableDnsmasqLogqueries' : 'enableDnsmasqLogqueries';
   const dnsmasqBusy = state.busyAction === dnsmasqAction;
@@ -328,6 +332,13 @@ function domainProbeKey(host) {
 
 function domainProbeTargetSelectHtml() {
   const selected = domainProbeSelectedTag();
+  const statusIcon = (check) => {
+    if (!check) return '🟡';
+    if (check.ok || check.httpOk) return '🟢';
+    if (check.httpOk === false) return '🔴';
+    if (check.endpointOk || check.pingOk) return '🟡';
+    return '🔴';
+  };
   const proxies = proxyOutbounds()
     .filter((item) => item && item.tag)
     .map((item) => {
@@ -335,7 +346,9 @@ function domainProbeTargetSelectHtml() {
       const address = outboundAddress(item);
       const check = checkForTag(tag);
       const status = check ? checkLabel(check) : 'не проверялся';
-      const label = [tag, status, address].filter(Boolean).join(' · ');
+      const location = serverLocation(item, state.serverMeta?.[tag] || {});
+      const flag = location.flag || '🌐';
+      const label = [flag, tag, status, address, statusIcon(check)].filter(Boolean).join(' · ');
       return `<option value="${escapeHtml(tag)}" ${tag === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
   return `<label class="domain-probe-target">
@@ -520,7 +533,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
 }
 
 function diagnosticsDomainMonitorView() {
-  const monitor = state.domainMonitor;
+  const monitor = (typeof currentDomainMonitor === 'function' ? currentDomainMonitor() : state.domainMonitor) || null;
   const monitored = monitoredDomains();
   const selectedDevice = selectedDomainMonitorDevice();
   const stats = monitor?.stats || {};

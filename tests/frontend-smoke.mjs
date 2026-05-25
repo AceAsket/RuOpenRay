@@ -112,6 +112,18 @@ const model = createDiagnosticsModel({
   describeRouteRule: (rule) => (rule.domain ? { kind: 'domain' } : { kind: 'other' }),
   isIpLiteral: (value) => /^\d{1,3}(\.\d{1,3}){3}$/.test(String(value || '')),
 });
+state.domainMonitorPaused = true;
+state.domainMonitorPausedSnapshot = {
+  domains: [{ host: 'paused.example', hits: 1, protocols: ['DNS'], lastSeenTs: 1 }],
+  devices: [{ name: 'paused-phone', ip: '192.168.1.50', hits: 1 }],
+  events: [{ host: 'paused.example', protocol: 'DNS', timestamp: 1 }],
+  source: 'b4sni',
+};
+const pausedMonitorFrozen = model.monitoredEvents()[0]?.host === 'paused.example'
+  && model.monitoredDomains()[0]?.host === 'paused.example'
+  && model.monitoredDevices()[0]?.ip === '192.168.1.50';
+state.domainMonitorPaused = false;
+state.domainMonitorPausedSnapshot = null;
 const devicesModel = createDevicesModel({
   state: {
     routeKind: 'source',
@@ -1112,6 +1124,7 @@ const checks = [
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
+  ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],

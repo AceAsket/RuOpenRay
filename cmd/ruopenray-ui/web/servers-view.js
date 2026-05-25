@@ -120,7 +120,7 @@ function serverAvailabilityPanel() {
           <label>Метод</label>
           <select id="serverCheckMode">
             <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP-порт</option>
+            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Порт сервера</option>
           </select>
         </div>
         <div class="form-row check-url-row">
@@ -275,7 +275,7 @@ function serversPanel() {
       ${stat('Прокси', stats.proxy, 'Пользовательские подключения')}
       ${stat('Служебные', stats.system, 'direct, block, DNS')}
       ${stat('В правилах', stats.used, 'Используются маршрутизацией')}
-      ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'TCP-порт'}`)}
+      ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'порт сервера'}`)}
     </section>
 
     <section class="servers-nav-panel">

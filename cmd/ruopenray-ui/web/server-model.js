@@ -258,7 +258,7 @@ export function createServerModel({
     if (observers.length) chips.push({ label: observers.join(' + '), tone: 'ok' });
     if (check) {
       const ping = check.pingOk ? `ping ${check.pingLatencyMs || 0} мс` : 'ping нет';
-      const tcp = check.endpointOk ? `TCP ${check.endpointLatencyMs || 0} мс` : 'TCP нет';
+      const tcp = check.endpointOk ? 'порт открыт' : 'порт закрыт';
       const http = check.httpOk === true ? `HTTP ${check.httpLatencyMs || check.latencyMs || 0} мс` : check.method === 'http' ? 'HTTP нет' : '';
       chips.push({ label: [ping, tcp, http].filter(Boolean).join(' · '), tone: check.ok ? 'ok' : check.endpointOk ? 'warn' : 'bad' });
     } else {

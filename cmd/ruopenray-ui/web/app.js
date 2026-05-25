@@ -497,15 +497,16 @@ function checkForTag(tag) {
 
 function checkLabel(result) {
   if (!result) return 'не проверен';
-  if (result.skipped) return 'нет TCP-цели';
+  if (result.skipped) return 'нет адреса для проверки';
   if (result.httpOk === false && result.endpointOk) {
     const error = String(result.error || '').toLowerCase();
-    if (error.includes('timeout') || error.includes('deadline')) return 'TCP открыт, HTTP таймаут';
-    return 'TCP открыт, HTTP не прошел';
+    if (error.includes('timeout') || error.includes('deadline')) return 'порт открыт, HTTP таймаут';
+    return 'порт открыт, HTTP не прошел';
   }
   if (result.httpOk === false) return 'HTTP не прошел';
-  if (result.ok) return `${result.latencyMs || result.httpLatencyMs || result.endpointLatencyMs || 0} мс`;
-  if (result.endpointOk) return 'TCP открыт';
+  if (result.ok && result.httpOk === true) return `${result.httpLatencyMs || result.latencyMs || 0} мс`;
+  if (result.ok && result.method === 'http') return `${result.latencyMs || 0} мс`;
+  if (result.endpointOk) return 'порт открыт';
   if (result.pingOk) return 'ping есть';
   return 'нет ответа';
 }
@@ -513,7 +514,7 @@ function checkLabel(result) {
 function checkMethodLabel(result) {
   if (!result) return 'не проверен';
   if (result.method === 'http') return 'HTTP';
-  return 'TCP-порт';
+  return 'порт сервера';
 }
 
 function proxyInboundTags() {
@@ -1312,6 +1313,7 @@ const {
   domainMonitorMatchesQuery,
   domainMonitorRows,
   domainMonitorFilterCounts,
+  currentDomainMonitor,
   monitoredDomains,
   monitoredDevices,
   monitoredEvents,
@@ -1359,6 +1361,7 @@ const diagnosticsView = createDiagnosticsView({
   domainMonitorMatchesDevice,
   domainMonitorProtocols,
   domainMonitorRows,
+  currentDomainMonitor,
   escapeHtml,
   isIpLiteral,
   logsPanel,

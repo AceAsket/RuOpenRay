@@ -90,7 +90,7 @@ function observatoryPanel() {
             <label>Метод</label>
             <select id="serverCheckMode">
               <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-              <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>TCP-порт</option>
+              <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Порт сервера</option>
             </select>
           </div>
           <div class="form-row">

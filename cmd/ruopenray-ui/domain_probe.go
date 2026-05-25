@@ -40,51 +40,108 @@ func domainProbeURL(rawHost string, rawURL string) (string, string, string, stri
 	return value, parsed.Hostname(), port, parsed.Scheme, nil
 }
 
-func directHTTPProbe(rawURL string, timeoutMs int) map[string]any {
+func directHTTPProbe(rawURL string, timeoutMs int, attempts int) map[string]any {
 	if timeoutMs < 500 {
 		timeoutMs = 500
 	}
 	if timeoutMs > 15000 {
 		timeoutMs = 15000
 	}
+	if attempts < 1 {
+		attempts = 1
+	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	client := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond, Transport: transport}
-	req, err := newProbeHTTPRequest(rawURL)
-	if err != nil {
-		return map[string]any{"ok": false, "latencyMs": int64(0), "error": err.Error()}
+	var best int64
+	var lastLatency int64
+	var lastStatus int
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		req, err := newProbeHTTPRequest(rawURL)
+		if err != nil {
+			return map[string]any{"ok": false, "latencyMs": int64(0), "attempts": attempts, "error": err.Error()}
+		}
+		started := time.Now()
+		resp, err := client.Do(req)
+		latency := time.Since(started).Milliseconds()
+		lastLatency = latency
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		_ = resp.Body.Close()
+		lastStatus = resp.StatusCode
+		if resp.StatusCode < 500 {
+			if best == 0 || latency < best {
+				best = latency
+			}
+			lastErr = nil
+			continue
+		}
+		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	started := time.Now()
-	resp, err := client.Do(req)
-	latency := time.Since(started).Milliseconds()
-	if err != nil {
-		return map[string]any{"ok": false, "latencyMs": latency, "error": err.Error()}
+	if best > 0 {
+		return map[string]any{"ok": true, "status": lastStatus, "latencyMs": best, "attempts": attempts}
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
-	ok := resp.StatusCode < 500
-	result := map[string]any{"ok": ok, "status": resp.StatusCode, "latencyMs": latency}
-	if !ok {
-		result["error"] = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	result := map[string]any{"ok": false, "status": lastStatus, "latencyMs": lastLatency, "attempts": attempts}
+	if lastErr != nil {
+		result["error"] = lastErr.Error()
+	} else if lastStatus > 0 {
+		result["error"] = fmt.Sprintf("HTTP %d", lastStatus)
 	}
 	return result
 }
 
-func directTCPProbe(host string, port string, timeoutMs int) map[string]any {
+func directTCPProbe(host string, port string, timeoutMs int, attempts int) map[string]any {
 	if timeoutMs < 500 {
 		timeoutMs = 500
 	}
 	if timeoutMs > 15000 {
 		timeoutMs = 15000
 	}
-	address := net.JoinHostPort(host, port)
-	started := time.Now()
-	conn, err := net.DialTimeout("tcp", address, time.Duration(timeoutMs)*time.Millisecond)
-	latency := time.Since(started).Milliseconds()
-	if err != nil {
-		return map[string]any{"ok": false, "latencyMs": latency, "address": address, "error": err.Error()}
+	if attempts < 3 {
+		attempts = 3
 	}
-	_ = conn.Close()
-	return map[string]any{"ok": true, "latencyMs": latency, "address": address}
+	address := net.JoinHostPort(host, port)
+	var best int64
+	var warmBest int64
+	var lastLatency int64
+	var lastErr error
+	for attempt := 0; attempt < attempts+1; attempt++ {
+		measured := attempt > 0
+		started := time.Now()
+		conn, err := dialTCPPreferIPv4(address, time.Duration(timeoutMs)*time.Millisecond)
+		latency := time.Since(started).Milliseconds()
+		lastLatency = latency
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		_ = conn.Close()
+		if !measured {
+			if warmBest == 0 || latency < warmBest {
+				warmBest = latency
+			}
+			lastErr = nil
+			continue
+		}
+		if best == 0 || latency < best {
+			best = latency
+		}
+		lastErr = nil
+	}
+	if best > 0 {
+		return map[string]any{"ok": true, "latencyMs": best, "address": address, "attempts": attempts}
+	}
+	if warmBest > 0 {
+		return map[string]any{"ok": true, "latencyMs": warmBest, "address": address, "attempts": attempts}
+	}
+	result := map[string]any{"ok": false, "latencyMs": lastLatency, "address": address, "attempts": attempts}
+	if lastErr != nil {
+		result["error"] = lastErr.Error()
+	}
+	return result
 }
 
 func directPingProbe(host string, timeoutMs int) map[string]any {
@@ -198,8 +255,9 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 		timeoutMs = 15000
 	}
 	ping := directPingProbe(host, timeoutMs)
-	directTCP := directTCPProbe(host, port, timeoutMs)
-	direct := directHTTPProbe(rawURL, timeoutMs)
+	directAttempts := 3
+	directTCP := directTCPProbe(host, port, timeoutMs, directAttempts)
+	direct := directHTTPProbe(rawURL, timeoutMs, directAttempts)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	outbound := map[string]any(nil)
 	if tag != "" && tag != "<nil>" {
@@ -210,16 +268,16 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 	proxyTCP := map[string]any{"ok": false, "error": "proxy outbound не найден"}
 	proxy := map[string]any{"ok": false, "error": "proxy outbound не найден"}
 	if outbound != nil {
-		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, 2)
-		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port), "attempts": 2}
+		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, directAttempts)
+		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port), "attempts": directAttempts}
 		if tcpLatency > 0 {
 			proxyTCP["latencyMs"] = tcpLatency
 		}
 		if tcpErr != nil {
 			proxyTCP["error"] = tcpErr.Error()
 		}
-		latency, ok, probeErr := s.httpOutboundProbe(outbound, rawURL, timeoutMs, 2)
-		proxy = map[string]any{"ok": ok, "tag": tag, "attempts": 2}
+		latency, ok, probeErr := s.httpOutboundProbe(outbound, rawURL, timeoutMs, directAttempts)
+		proxy = map[string]any{"ok": ok, "tag": tag, "attempts": directAttempts}
 		if latency > 0 {
 			proxy["latencyMs"] = latency
 		}

@@ -50,6 +50,18 @@ func TestParseXrayDomainLinesPrefersFromSource(t *testing.T) {
 	}
 }
 
+func TestParseXrayDomainLinesIgnoresConnectionIDs(t *testing.T) {
+	content := "2026/05/18 12:00:02.123456 [Info] [112379243] proxy: tunneling request to tcp:chatgpt.com:443 from tcp:192.168.1.165:51234\n"
+
+	events := ParseXrayDomainLines(content, nil)
+	if len(events) != 1 {
+		t.Fatalf("expected one event, got %d: %#v", len(events), events)
+	}
+	if events[0].Outbound != "" {
+		t.Fatalf("numeric xray connection id should not be treated as outbound: %#v", events[0])
+	}
+}
+
 func TestParseDnsmasqLines(t *testing.T) {
 	content := "Sun May 24 13:30:01 2026 daemon.info dnsmasq[1234]: query[A] telegram.org from 192.168.1.165\n" +
 		"Sun May 24 13:30:02 2026 daemon.info dnsmasq[1234]: query[PTR] 1.1.168.192.in-addr.arpa from 192.168.1.165\n"

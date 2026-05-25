@@ -27,6 +27,19 @@ function openDomainRouteDialog(deps, value) {
   render();
 }
 
+function cloneDomainMonitorSnapshot(value) {
+  if (!value) return null;
+  try {
+    return structuredClone(value);
+  } catch {
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return null;
+    }
+  }
+}
+
 function handleDiagnosticsDelegatedClick(event) {
   const deps = delegatedDiagnosticsDeps;
   const target = event.target;
@@ -105,7 +118,13 @@ function handleDiagnosticsDelegatedClick(event) {
   const domainPause = target.closest('[data-domain-pause]');
   if (domainPause) {
     event.preventDefault();
-    state.domainMonitorPaused = !state.domainMonitorPaused;
+    if (state.domainMonitorPaused) {
+      state.domainMonitorPaused = false;
+      state.domainMonitorPausedSnapshot = null;
+    } else {
+      state.domainMonitorPausedSnapshot = cloneDomainMonitorSnapshot(state.domainMonitor);
+      state.domainMonitorPaused = true;
+    }
     if (typeof configureLogTimer === 'function') configureLogTimer();
     render();
     return;

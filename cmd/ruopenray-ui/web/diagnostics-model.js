@@ -36,7 +36,10 @@ export function createDiagnosticsModel({
       const domain = targets.reverse().find((host) => /[a-zа-яё-]/i.test(host) && !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) || '';
       const ipTarget = targets.find((host) => /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) || '';
       const protocol = line.match(/\b(udp|tcp):/i)?.[1]?.toLowerCase() || '';
-      const outbound = line.match(/\[(proxy|direct|block|[A-Za-z0-9_.:-]+)\](?:\s|$)/)?.[1] || '';
+      const outboundMatches = [...line.matchAll(/\[(proxy|direct|block|[A-Za-z0-9_.:-]+)\](?:\s|$)/g)]
+        .map((match) => match[1])
+        .filter((value) => value && !/^\d+$/.test(value) && !/^(debug|info|warning|error)$/i.test(value));
+      const outbound = outboundMatches.at(-1) || '';
       return { line, deviceIp: privateIp?.[0] || '', domain, ipTarget, protocol, outbound };
     }).filter((event) => event.deviceIp || event.domain || event.ipTarget);
   }
@@ -97,6 +100,11 @@ export function createDiagnosticsModel({
   function domainMonitorHost(item = {}) {
     return item.host || item.domain || item.destinationIp || '';
   }
+
+  function currentDomainMonitor() {
+    if (state.domainMonitorPaused && state.domainMonitorPausedSnapshot) return state.domainMonitorPausedSnapshot;
+    return state.domainMonitor || null;
+  }
   
   function domainMonitorMatchesFilter(item = {}, filter = state.domainMonitorFilter) {
     const host = domainMonitorHost(item);
@@ -128,7 +136,8 @@ export function createDiagnosticsModel({
   function selectedDomainMonitorDevice() {
     const ip = String(state.domainMonitorDeviceFilter || '').trim();
     if (!ip) return null;
-    const devices = Array.isArray(state.domainMonitor?.devices) ? state.domainMonitor.devices : [];
+    const monitor = currentDomainMonitor();
+    const devices = Array.isArray(monitor?.devices) ? monitor.devices : [];
     const found = devices.find((item) => (item?.ip || 'router') === ip);
     return {
       ip,
@@ -155,7 +164,8 @@ export function createDiagnosticsModel({
   }
   
   function domainMonitorRows() {
-    return Array.isArray(state.domainMonitor?.domains) ? [...state.domainMonitor.domains] : [];
+    const monitor = currentDomainMonitor();
+    return Array.isArray(monitor?.domains) ? [...monitor.domains] : [];
   }
   
   function domainMonitorFilterCounts() {
@@ -181,7 +191,8 @@ export function createDiagnosticsModel({
   }
   
   function monitoredDevices() {
-    const rows = Array.isArray(state.domainMonitor?.devices) ? [...state.domainMonitor.devices] : [];
+    const monitor = currentDomainMonitor();
+    const rows = Array.isArray(monitor?.devices) ? [...monitor.devices] : [];
     const query = state.domainMonitorQuery.trim().toLowerCase();
     const filtered = query
       ? rows.filter((item) => `${item.name} ${item.ip} ${(item.topDomains || []).map((domain) => domain.host).join(' ')}`.toLowerCase().includes(query))
@@ -193,20 +204,23 @@ export function createDiagnosticsModel({
   }
   
   function monitoredEvents() {
-    const rows = Array.isArray(state.domainMonitor?.events) ? [...state.domainMonitor.events] : [];
+    const monitor = currentDomainMonitor();
+    const rows = Array.isArray(monitor?.events) ? [...monitor.events] : [];
     const query = state.domainMonitorQuery.trim().toLowerCase();
     const filtered = rows.filter((item) => domainMonitorMatchesDevice(item) && domainMonitorMatchesFilter(item) && domainMonitorMatchesQuery(item, query));
     return filtered.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }
   
   function monitorSourceLabel() {
-    if (!state.domainMonitor) return 'нет данных';
-    if (state.domainMonitor.source === 'b4sni') return 'B4SNI';
+    const monitor = currentDomainMonitor();
+    if (!monitor) return 'нет данных';
+    if (monitor.source === 'b4sni') return 'B4SNI';
     return 'Xray access';
   }
   
   function domainMonitorDomainQuality() {
-    const events = Array.isArray(state.domainMonitor?.events) ? state.domainMonitor.events : [];
+    const monitor = currentDomainMonitor();
+    const events = Array.isArray(monitor?.events) ? monitor.events : [];
     const domains = events.filter((item) => item?.host && !isIpLiteral(item.host));
     const ips = events.filter((item) => item?.host && isIpLiteral(item.host));
     return {
@@ -228,6 +242,7 @@ export function createDiagnosticsModel({
     domainMonitorProtocols,
     domainMonitorDevicesText,
     domainMonitorHost,
+    currentDomainMonitor,
     domainMonitorMatchesFilter,
     domainMonitorMatchesQuery,
     domainMonitorMatchesDevice,

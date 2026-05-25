@@ -179,6 +179,7 @@ export function createInitialState() {
   logTimer: null,
   statusTimer: null,
   domainMonitor: null,
+  domainMonitorPausedSnapshot: null,
   domainMonitorQuery: '',
   domainMonitorSort: 'hits',
   domainMonitorMode: 'domains',

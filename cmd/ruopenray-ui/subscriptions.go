@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -111,7 +110,7 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 	if attempts < 1 {
 		attempts = 1
 	}
-	if checkMode == "http" && attempts < 3 {
+	if (checkMode == "http" || checkMode == "endpoint") && attempts < 3 {
 		attempts = 3
 	}
 	if attempts > 5 {
@@ -130,14 +129,14 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 		if checkMode == "endpoint" {
 			address := fmt.Sprint(summary["address"])
 			portValue := number(summary["port"], 0)
-			started := time.Now()
-			conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(address, fmt.Sprint(portValue)), time.Duration(timeoutMs)*time.Millisecond)
-			if dialErr == nil {
-				_ = conn.Close()
+			latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, timeoutMs, attempts)
+			if endpointOK {
 				ok = true
-				result["latencyMs"] = time.Since(started).Milliseconds()
+				if latency > 0 {
+					result["latencyMs"] = latency
+				}
 			} else {
-				err = dialErr
+				err = endpointErr
 			}
 		} else {
 			latency, httpOK, httpErr := s.httpOutboundProbe(candidate, probeURL, timeoutMs, attempts)
@@ -210,7 +209,7 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 	if attempts < 1 {
 		attempts = 1
 	}
-	if checkMode == "http" && attempts < 3 {
+	if (checkMode == "http" || checkMode == "endpoint") && attempts < 3 {
 		attempts = 3
 	}
 	if attempts > 5 {
@@ -260,28 +259,7 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 		if latency := number(ping["latencyMs"], 0); latency > 0 {
 			result["pingLatencyMs"] = latency
 		}
-		samples := attempts
-		if samples < 2 {
-			samples = 2
-		}
-		best := int64(0)
-		checkOK := false
-		var lastErr error
-		for attempt := 0; attempt < samples; attempt++ {
-			started := time.Now()
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(address, fmt.Sprint(portValue)), time.Duration(timeoutMs)*time.Millisecond)
-			latency := time.Since(started).Milliseconds()
-			if err == nil {
-				_ = conn.Close()
-				if best == 0 || latency < best {
-					best = latency
-				}
-				checkOK = true
-				lastErr = nil
-				continue
-			}
-			lastErr = err
-		}
+		best, checkOK, lastErr := directEndpointTCPProbe(address, portValue, timeoutMs, attempts)
 		if best > 0 {
 			result["endpointLatencyMs"] = best
 		}
