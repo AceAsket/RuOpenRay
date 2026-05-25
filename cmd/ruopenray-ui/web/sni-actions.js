@@ -6,7 +6,8 @@ export function createSniActions({
   activeProxyOutbound
 }) {
   async function scanSni() {
-    const target = state.sniTarget.trim();
+    const activeTarget = String(outboundAddress(activeProxyOutbound?.() || {}) || '').split(':')[0].trim();
+    const target = state.sniTarget.trim() || activeTarget;
     if (!target) {
       state.message = 'Укажите IP или домен для SNI-поиска';
       render();

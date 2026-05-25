@@ -13,6 +13,12 @@ export function createSniView({
     const parts = String(ip).split('.').map((part) => Number(part));
     return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? parts : null;
   }
+
+  function activeProxySniTarget() {
+    const outbound = activeProxyOutbound?.();
+    const address = outboundAddress(outbound || {});
+    return String(address || '').split(':')[0].trim();
+  }
   
   function sniRadar(results, scan) {
     const targetIp = scan?.targetIp || '';
@@ -56,7 +62,8 @@ export function createSniView({
     const targetIp = state.sniScan?.targetIp || '';
     const results = (state.sniScan?.results || []).filter((item) => item.ip !== targetIp);
     const best = results[0];
-    const targetHint = 'example.com или 1.1.1.1';
+    const activeTarget = activeProxySniTarget();
+    const targetHint = activeTarget || 'example.com или 1.1.1.1';
     return `
       <section class="route-hero">
         <div>
@@ -109,7 +116,7 @@ export function createSniView({
         ${stat('Цель', state.sniScan.targetIp || '-', state.sniScan.target || '')}
       </section>` : ''}
   
-      ${sniRadar(results, state.sniScan || { target: state.sniTarget || 'цель поиска' })}
+      ${sniRadar(results, state.sniScan || { target: state.sniTarget || activeTarget || 'цель поиска' })}
   
       <section class="panel">
         <div class="panel-title">
@@ -133,6 +140,7 @@ export function createSniView({
   return {
     clamp,
     ipParts,
+    activeProxySniTarget,
     sniRadar,
     sniPanel,
   };

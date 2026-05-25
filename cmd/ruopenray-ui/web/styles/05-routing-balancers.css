@@ -455,6 +455,8 @@
 
 .route-preset-group-row .route-preset-icon.compact {
   grid-column: 2;
+  justify-self: center;
+  align-self: center;
   width: 42px;
   height: 42px;
   border-radius: 8px;
