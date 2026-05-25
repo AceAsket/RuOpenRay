@@ -678,6 +678,10 @@ function coreUpdateDialog() {
           <strong>Архитектура</strong>
           <span>${escapeHtml(coreArchitectureText())}</span>
         </div>
+        <div class="toolbar core-update-toolbar">
+          <button class="btn secondary ${state.coreReleaseChecking ? 'is-busy' : ''}" type="button" data-action="checkCoreUpdates" ${state.coreReleaseChecking || state.coreUpdating ? 'disabled' : ''}>${state.coreReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
+          ${state.coreReleasesError ? `<span class="form-error">${escapeHtml(state.coreReleasesError)}</span>` : `<span class="muted">${state.coreReleases.length ? `Загружено релизов: ${state.coreReleases.length}` : 'Список релизов еще не загружен'}</span>`}
+        </div>
         ${missing ? `<div class="core-install-card">
           <div>
             <strong>Пакет OpenWrt</strong>

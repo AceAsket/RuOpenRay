@@ -56,7 +56,7 @@ export function createSniView({
     const targetIp = state.sniScan?.targetIp || '';
     const results = (state.sniScan?.results || []).filter((item) => item.ip !== targetIp);
     const best = results[0];
-    const targetHint = outboundAddress(activeProxyOutbound() || {}).split(':')[0] || 'example-sni.test';
+    const targetHint = 'example.com или 1.1.1.1';
     return `
       <section class="route-hero">
         <div>
@@ -109,7 +109,7 @@ export function createSniView({
         ${stat('Цель', state.sniScan.targetIp || '-', state.sniScan.target || '')}
       </section>` : ''}
   
-      ${sniRadar(results, state.sniScan || { target: state.sniTarget || targetHint })}
+      ${sniRadar(results, state.sniScan || { target: state.sniTarget || 'цель поиска' })}
   
       <section class="panel">
         <div class="panel-title">

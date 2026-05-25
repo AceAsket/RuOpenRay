@@ -1189,6 +1189,24 @@ select {
   white-space: nowrap;
 }
 
+.core-update-toolbar {
+  align-items: center;
+  margin: 0 0 14px;
+}
+
+.core-update-toolbar .muted,
+.core-update-toolbar .form-error {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.core-update-toolbar .form-error {
+  color: #ffb3b8;
+}
+
 .core-dialog-list {
   display: grid;
   gap: 8px;

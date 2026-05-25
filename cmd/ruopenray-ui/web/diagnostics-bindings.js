@@ -40,6 +40,21 @@ function cloneDomainMonitorSnapshot(value) {
   }
 }
 
+function setDomainMonitorMode(deps, mode) {
+  const { state, render } = deps;
+  if (!['domains', 'devices', 'events'].includes(mode)) return;
+  state.domainMonitorMode = mode;
+  if (mode === 'devices') state.domainMonitorDeviceFilter = '';
+  render();
+}
+
+function clearDomainMonitorDevice(deps) {
+  const { state, render } = deps;
+  state.domainMonitorDeviceFilter = '';
+  state.domainMonitorMode = 'devices';
+  render();
+}
+
 function handleDiagnosticsDelegatedClick(event) {
   const deps = delegatedDiagnosticsDeps;
   const target = event.target;
@@ -87,11 +102,7 @@ function handleDiagnosticsDelegatedClick(event) {
   if (domainMode) {
     event.preventDefault();
     event.stopPropagation();
-    const mode = domainMode.dataset.domainMode;
-    if (!['domains', 'devices', 'events'].includes(mode)) return;
-    state.domainMonitorMode = mode;
-    if (mode === 'devices') state.domainMonitorDeviceFilter = '';
-    render();
+    setDomainMonitorMode(deps, domainMode.dataset.domainMode);
     return;
   }
 
@@ -153,9 +164,8 @@ function handleDiagnosticsDelegatedClick(event) {
   const clearDevice = target.closest('[data-domain-clear-device]');
   if (clearDevice) {
     event.preventDefault();
-    state.domainMonitorDeviceFilter = '';
-    state.domainMonitorMode = 'devices';
-    render();
+    event.stopPropagation();
+    clearDomainMonitorDevice(deps);
     return;
   }
 
@@ -192,8 +202,23 @@ export function bindDiagnosticsControls(deps) {
     delegatedDiagnosticsBound = true;
   }
 
-  document.querySelectorAll('[data-domain-probe], [data-domain-to-route], [data-domain-device-events], [data-domain-device-card], [data-domain-device-toggle], [data-domain-mode], [data-domain-event-window], [data-domain-list-window], [data-domain-sort], [data-domain-filter], [data-domain-pause]').forEach((node) => {
+  document.querySelectorAll('[data-domain-probe], [data-domain-to-route], [data-domain-device-events], [data-domain-device-card], [data-domain-device-toggle], [data-domain-mode], [data-domain-clear-device], [data-domain-event-window], [data-domain-list-window], [data-domain-sort], [data-domain-filter], [data-domain-pause]').forEach((node) => {
     node.dataset.delegated = '1';
+  });
+
+  document.querySelectorAll('[data-domain-mode]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDomainMonitorMode(deps, button.dataset.domainMode);
+    });
+  });
+  document.querySelectorAll('[data-domain-clear-device]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      clearDomainMonitorDevice(deps);
+    });
   });
 
   document.querySelectorAll('[data-sni-map]').forEach((button) => {

@@ -1359,6 +1359,7 @@ const diagnosticsView = createDiagnosticsView({
   domainMonitorHost,
   domainMonitorMatchesFilter,
   domainMonitorMatchesDevice,
+  domainMonitorMatchesQuery,
   domainMonitorProtocols,
   domainMonitorRows,
   currentDomainMonitor,
@@ -1962,6 +1963,41 @@ function openRoutePresetPicker() {
   render();
 }
 
+async function loadCoreReleases({ force = false } = {}) {
+  if (state.coreReleaseChecking) return;
+  if (!force && state.coreReleases.length) return;
+  state.coreReleaseChecking = true;
+  state.coreReleasesError = '';
+  if (force) state.message = 'Проверяю обновления Xray-core...';
+  render();
+  try {
+    const result = await request('/api/core/releases');
+    const loaded = Array.isArray(result?.releases) ? result.releases : [];
+    state.coreReleases = loaded;
+    state.coreAsset = result?.asset || state.coreAsset || '';
+    state.coreArch = result?.arch || state.coreArch || null;
+    state.coreReleasesError = loaded.length ? '' : 'GitHub вернул пустой список релизов Xray-core.';
+    const selectedStillExists = state.selectedCoreVersion && loaded.some((release) => release.tag === state.selectedCoreVersion);
+    if (!selectedStillExists) {
+      const latestStable = loaded.find((release) => release.assetUrl && !release.prerelease);
+      const latestInstallable = loaded.find((release) => release.assetUrl);
+      state.selectedCoreVersion = latestStable?.tag || latestInstallable?.tag || loaded[0]?.tag || '';
+    }
+    if (force) {
+      const info = coreUpdateInfo();
+      state.message = info.hasUpdate
+        ? `Доступно обновление Xray-core: ${info.current || 'текущая'} → ${info.target?.tag || state.selectedCoreVersion}`
+        : state.coreReleasesError || 'Список релизов Xray-core обновлен';
+    }
+  } catch (error) {
+    state.coreReleasesError = error.message || 'Не удалось загрузить список релизов Xray-core.';
+    if (force) state.message = state.coreReleasesError;
+  } finally {
+    state.coreReleaseChecking = false;
+    render();
+  }
+}
+
 function bind() {
   bindNavigationControls({ state, render, configureLogTimer });
   bindModalControls();
@@ -1995,22 +2031,12 @@ function bind() {
       openCoreDialog: async () => {
         state.coreDialogOpen = true;
         render();
-        if (!state.coreReleases.length) {
-          try {
-            const result = await request('/api/core/releases');
-            const loaded = Array.isArray(result?.releases) ? result.releases : [];
-            state.coreReleases = loaded;
-            state.coreAsset = result?.asset || state.coreAsset || '';
-            state.coreArch = result?.arch || state.coreArch || null;
-            state.coreReleasesError = loaded.length ? '' : 'GitHub вернул пустой список релизов Xray-core.';
-          } catch (error) {
-            state.coreReleasesError = error.message || 'Не удалось загрузить список релизов Xray-core.';
-          }
-        }
+        await loadCoreReleases();
         const info = coreUpdateInfo();
         state.selectedCoreVersion = state.selectedCoreVersion || info.target?.tag || filteredCoreReleases().find((release) => release.assetUrl)?.tag || '';
         render();
       },
+      checkCoreUpdates: () => loadCoreReleases({ force: true }),
       closeCoreDialog: () => {
         state.coreDialogOpen = false;
         render();

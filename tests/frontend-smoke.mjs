@@ -508,7 +508,7 @@ await configActions.analyzeConfig();
 await configActions.applyConfig();
 
 const sniActionState = {
-  sniTarget: '',
+  sniTarget: 'cloudone.example',
   sniCidr: '24',
   sniTimeout: '1500',
   sniThreads: '16',

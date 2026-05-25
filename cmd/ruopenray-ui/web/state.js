@@ -38,6 +38,7 @@ export function createInitialState() {
   busyLabel: '',
   coreUpdate: null,
   coreUpdating: false,
+  coreReleaseChecking: false,
   coreReleases: [],
   coreReleasesError: '',
   coreAsset: '',

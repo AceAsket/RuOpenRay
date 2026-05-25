@@ -22,6 +22,7 @@ export function createDiagnosticsDomainView(deps) {
     domainMonitorHost,
     domainMonitorMatchesDevice,
     domainMonitorMatchesFilter,
+    domainMonitorMatchesQuery,
     domainMonitorProtocols,
     domainMonitorRows,
     escapeHtml,
