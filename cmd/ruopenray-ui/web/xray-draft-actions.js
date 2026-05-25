@@ -155,7 +155,10 @@ export function createXrayDraftActions({
     next.routing.rules = Array.isArray(next.routing.rules) ? next.routing.rules : [];
     next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
     next.dns.servers = Array.isArray(next.dns.servers) && next.dns.servers.length ? next.dns.servers : ['https://dns.google/dns-query'];
-    const dnsPort = Number(state.lanDnsStatus?.dnsPortConflict ? state.lanDnsStatus?.suggestedXrayPort : 5353) || 5353;
+    const manualPort = Number(state.dnsInboundPort);
+    const suggestedPort = Number(state.lanDnsStatus?.suggestedXrayPort || 10535) || 10535;
+    const dnsPort = manualPort > 0 && manualPort < 65536 ? manualPort : suggestedPort;
+    state.dnsInboundPort = String(dnsPort);
     const dnsInbound = next.inbounds.find((item) => item?.tag === 'ruopenray_dns_in');
 
     if (!dnsInbound) {
@@ -166,7 +169,7 @@ export function createXrayDraftActions({
         protocol: 'dokodemo-door',
         settings: { address: '8.8.8.8', port: 53, network: 'tcp,udp' }
       });
-    } else if (state.lanDnsStatus?.dnsPortConflict && Number(dnsInbound.port) === 5353) {
+    } else if (Number(dnsInbound.port) !== dnsPort) {
       dnsInbound.port = dnsPort;
     }
     if (!next.outbounds.some((item) => item?.tag === 'dns-out')) {

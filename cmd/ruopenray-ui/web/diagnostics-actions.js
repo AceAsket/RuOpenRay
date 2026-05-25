@@ -50,7 +50,8 @@ export function createDiagnosticsActions({
       const dnsReady = Boolean(lanDns.ok && (lanDns.mode !== 'xray' || lanDns.readiness?.ready));
       pushStep(dnsReady, 'LAN DNS / dnsmasq', `${lanDns.mode || 'unknown'} · ${(lanDns.servers || []).join(', ') || 'серверы не заданы'}`);
   
-      const dnsServer = lanDns.mode === 'xray' ? '127.0.0.1:5353' : ((lanDns.servers || [])[0] || '127.0.0.1:53');
+      const xrayDnsServer = String(lanDns.xrayTarget || lanDns.suggestedXrayTarget || '127.0.0.1#10535').replace('#', ':');
+      const dnsServer = lanDns.mode === 'xray' ? xrayDnsServer : ((lanDns.servers || [])[0] || '127.0.0.1:53');
       const dnsCheck = await request('/api/dns/check', { method: 'POST', body: JSON.stringify({ server: dnsServer, host: 'example.com' }) });
       const addresses = [...(dnsCheck.addresses || []), ...(dnsCheck.a || [])];
       pushStep(Boolean(dnsCheck.ok && addresses.length), 'Проверка DNS-ответа', addresses.length ? addresses.join(', ') : (dnsCheck.error || 'нет A-записей'));

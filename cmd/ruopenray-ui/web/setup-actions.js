@@ -109,7 +109,7 @@ export function createSetupActions({
       if (state.setupLanDnsMode !== 'keep') {
         const readiness = await waitForLanDnsReadiness();
         if (state.setupLanDnsMode === 'xray' && !readiness?.readiness?.ready) {
-          pushStep(false, 'LAN DNS / dnsmasq', 'DNS inbound Xray еще не слушает 127.0.0.1:5353. Повторите после перезапуска Xray.');
+          pushStep(false, 'LAN DNS / dnsmasq', 'DNS inbound Xray еще не слушает 127.0.0.1:10535. Повторите после перезапуска Xray.');
           throw new Error('DNS inbound Xray еще не готов');
         }
         const lanDns = await request('/api/dns/lan-upstream', {

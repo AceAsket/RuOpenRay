@@ -71,9 +71,20 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	}
 	var logMaintenance map[string]any
 	var xrayEnable map[string]any
+	var dnsPortGuard map[string]any
 	if action == "start" || action == "restart" {
 		logMaintenance = s.maintainLogFiles(true)
 		if s.cfg.ServiceName == "xray" {
+			dnsPortGuard = s.guardXrayDNSPortBeforeStart()
+			if dnsPortGuard["ok"] == false {
+				return map[string]any{
+					"ok":             false,
+					"stderr":         firstNonEmpty(fmt.Sprint(dnsPortGuard["stderr"]), fmt.Sprint(dnsPortGuard["message"])),
+					"message":        firstNonEmpty(fmt.Sprint(dnsPortGuard["message"]), fmt.Sprint(dnsPortGuard["stderr"])),
+					"logMaintenance": logMaintenance,
+					"dnsPortGuard":   dnsPortGuard,
+				}
+			}
 			xrayEnable = s.enableXrayServiceConfig()
 		}
 	}
@@ -88,6 +99,10 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	if xrayEnable != nil {
 		result["xrayEnable"] = xrayEnable
 		result["stdout"] = concatCommandOutput(xrayEnable, result)
+	}
+	if dnsPortGuard != nil {
+		result["dnsPortGuard"] = dnsPortGuard
+		result["stdout"] = concatCommandOutput(dnsPortGuard, result)
 	}
 	if delay != nil {
 		result["delay"] = delay

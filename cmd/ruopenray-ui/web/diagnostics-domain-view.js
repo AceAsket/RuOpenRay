@@ -116,7 +116,7 @@ function domainMonitorStatusItems() {
   const tips = [];
   if (!monitor.running) tips.push('Запустите монитор кнопкой сверху.');
   if (!accessConfigured || !sourceSeesAccess) tips.push('Включите access-log Xray и убедитесь, что путь логов совпадает с активным config.');
-  if (!lanDnsXray) tips.push('В DNS → LAN DNS направьте dnsmasq на Xray: 127.0.0.1#5353.');
+  if (!lanDnsXray) tips.push(`В DNS → LAN DNS направьте dnsmasq на Xray: ${lanDns.xrayTarget || lanDns.suggestedXrayTarget || '127.0.0.1#10535'}.`);
   if (lanDnsXray && !dnsmasqParser) tips.push('DNS через dnsmasq не сохраняет IP телефона для Xray: включите logqueries в dnsmasq, тогда RuOpenRay будет парсить logread:dnsmasq и привязывать DNS-домены к LAN-клиентам.');
   if (lanDnsXray && dnsmasqParser) tips.push('DNS-запросы dnsmasq уже читаются из logread и могут показываться в устройстве по IP клиента.');
   if (!dnsLog) tips.push('В настройках логирования включите DNS-лог, иначе DNS-запросы не попадут в монитор.');

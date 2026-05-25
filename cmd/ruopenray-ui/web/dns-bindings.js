@@ -52,6 +52,10 @@ export function bindDnsControls({
     state.lanDnsUpstream = event.target.value;
     state.lanDnsPreview = null;
   });
+  document.querySelector('#dnsInboundPort')?.addEventListener('input', (event) => {
+    state.dnsInboundPort = event.target.value;
+    state.lanDnsPreview = null;
+  });
   document.querySelector('#lanDnsRestart')?.addEventListener('change', (event) => {
     state.lanDnsRestart = event.target.checked;
     state.lanDnsPreview = null;

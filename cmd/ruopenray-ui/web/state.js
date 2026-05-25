@@ -242,6 +242,7 @@ export function createInitialState() {
   lanDnsStatus: null,
   lanDnsMode: 'xray',
   lanDnsUpstream: '',
+  dnsInboundPort: '10535',
   lanDnsRestart: true,
   lanDnsSaving: false,
   lanDnsPreview: null,

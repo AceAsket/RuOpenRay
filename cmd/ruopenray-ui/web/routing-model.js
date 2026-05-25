@@ -187,7 +187,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function managedRouteDetail(rule) {
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Служебный маршрут для локального Xray StatsService API';
-    if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'Служебный маршрут: DNS с 127.0.0.1:5353 отправляется в DNS-выход Xray';
+    if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'Служебный маршрут: DNS с 127.0.0.1:10535 отправляется в DNS-выход Xray';
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'Служебный маршрут для DNS-запросов';
     if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Когда firewall перехватил LAN-пакет и отправил его в transparent_ipv4, это правило пропускает локальные и приватные адреса напрямую, чтобы не ломать доступ к роутеру и домашней сети.';
     if (isTransparentCatchAllRoute(rule)) return 'Это старое или ручное правило отправляет весь LAN-трафик из transparent inbound сразу в один outbound и мешает обычным правилам Xray. Подготовка черновика перехвата удалит его.';

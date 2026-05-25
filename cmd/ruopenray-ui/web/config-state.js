@@ -54,6 +54,9 @@ export function createConfigStateHelpers(state, { onDraftChange } = {}) {
     if (Array.isArray(status.servers) && status.servers.length && status.mode === 'upstream') {
       state.lanDnsUpstream = status.servers[0];
     }
+    const target = String(status.xrayTarget || status.suggestedXrayTarget || '');
+    const targetPort = target.includes('#') ? target.split('#').pop() : '';
+    if (!state.dnsInboundPort && targetPort) state.dnsInboundPort = targetPort;
     if (status.plan) {
       state.lanDnsPreview = status.plan;
     }

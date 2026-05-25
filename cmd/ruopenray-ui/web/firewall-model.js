@@ -540,7 +540,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     }
 
     if (state.firewallDnsIntercept && state.lanDnsStatus?.dnsPortConflict) {
-      const port = state.lanDnsStatus?.xrayDnsPort || state.lanDnsStatus?.dnsPort || 5353;
+      const port = state.lanDnsStatus?.xrayDnsPort || state.lanDnsStatus?.dnsPort || 10535;
       add(
         'warn',
         'DNS-порт занят',

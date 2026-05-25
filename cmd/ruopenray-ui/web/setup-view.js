@@ -125,7 +125,7 @@ function setupFlowGuide(readiness) {
       </div>
       <div class="setup-flow-grid">
         ${setupFlowStep('1', 'Установить основу', xrayReady ? 'Xray найден. Можно продолжать.' : 'Поставьте Xray и зависимости OpenWrt 24/25.', xrayReady, 'Открыть установку', 'data-action="openInstallWizard"')}
-        ${setupFlowStep('2', 'Настроить DNS', dnsReady ? 'dnsmasq → Xray DNS.' : 'Подготовьте DNS inbound и направьте LAN DNS в 127.0.0.1#5353 или внешний Pi-hole.', dnsReady, 'DNS', 'data-tab-jump="dns"')}
+        ${setupFlowStep('2', 'Настроить DNS', dnsReady ? 'dnsmasq → Xray DNS.' : 'Подготовьте DNS inbound и направьте LAN DNS в 127.0.0.1#10535 или внешний Pi-hole.', dnsReady, 'DNS', 'data-tab-jump="dns"')}
         ${setupFlowStep('3', 'Включить перехват', interceptReady ? 'transparent inbound, nftables и policy routing активны.' : transparentReady ? 'Выберите TPROXY/REDIRECT, устройства и порты, затем примените firewall.' : 'Сначала подготовьте transparent inbound, иначе LAN-трафик не попадет в Xray.', interceptReady, 'Перехват', 'data-tab-jump="routing" data-routing-view-jump="intercept"')}
         ${setupFlowStep('4', 'Проверить трафик', statsReady ? 'Статистика Xray включена.' : 'Включите статистику Xray и проверьте рост счетчиков с LAN-устройства.', statsReady, 'Диагностика', 'data-tab-jump="diagnostics" data-diagnostics-jump="chain"')}
       </div>

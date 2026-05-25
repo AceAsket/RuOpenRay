@@ -57,7 +57,7 @@ function dnsLeakChecklist(dns, stats) {
   const readiness = lanDns.readiness || {};
   const dnsPortConflict = Boolean(lanDns.dnsPortConflict || readiness.udpConflict);
   const dnsConflictOwner = lanDns.dnsPortConflictOwner || readiness.udpOwner || '';
-  const xrayDnsTarget = readiness.target || lanDns.xrayTarget || '127.0.0.1#5353';
+  const xrayDnsTarget = readiness.target || lanDns.xrayTarget || lanDns.suggestedXrayTarget || '127.0.0.1#10535';
   const suggestedDnsTarget = lanDns.suggestedXrayTarget || '127.0.0.1#10535';
   const leakTargets = dnsLeakProtectionTargets();
   const hasDomainProtection = state.firewallKillSwitchEnabled && leakTargets.domainLike > 0;
@@ -92,7 +92,7 @@ function dnsLeakChecklist(dns, stats) {
       warn: dnsInbound || dnsRouting,
       title: 'DNS устройств перехватывается',
       detail: dnsInbound && dnsRouting
-        ? 'Есть DNS inbound и правило на dns-out. Осталось направить dnsmasq на 127.0.0.1#5353.'
+        ? `Есть DNS inbound и правило на dns-out. Осталось направить dnsmasq на ${xrayDnsTarget}.`
         : 'Для LAN-устройств нужен DNS inbound и маршрут на dns-out, иначе часть клиентов может обходить Xray DNS.',
       action: dnsInbound && dnsRouting ? '' : 'prepareDnsInbound',
       actionLabel: 'Подготовить inbound'
@@ -133,7 +133,7 @@ function dnsLeakChecklist(dns, stats) {
     items[4].actionLabel = 'Перевыбрать порт';
   }
   if (items[4] && dnsInbound && dnsRouting && !dnsPortConflict) {
-    items[4].detail = 'Xray готов принимать DNS на 127.0.0.1:5353. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.';
+    items[4].detail = `Xray готов принимать DNS на ${xrayDnsTarget.replace('#', ':')}. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.`;
   }
   return `
     <section class="panel dns-guard-panel">
@@ -367,11 +367,13 @@ function dnsCheckSection() {
 }
 
 function dnsAdvancedSection() {
+  const target = state.lanDnsStatus?.xrayTarget || state.lanDnsStatus?.suggestedXrayTarget || `127.0.0.1#${state.dnsInboundPort || '10535'}`;
+  const targetTcp = String(target).replace('#', ':');
   return `
     ${dnsModeSection()}
     <section class="panel dns-inbound-panel">
       <div class="panel-title">
-        <div><h2>DNS inbound</h2><span>Xray принимает DNS на 127.0.0.1:5353, а dnsmasq можно направить на этот порт.</span></div>
+        <div><h2>DNS inbound</h2><span>Xray принимает DNS на ${escapeHtml(targetTcp)}, а dnsmasq можно направить на этот порт.</span></div>
         <div class="split-actions">
           <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить inbound'}</button>
           <button class="btn warning ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
@@ -401,8 +403,8 @@ function lanDnsSection() {
       ? servers.join(', ')
       : (status.noresolv ? 'серверы не заданы' : 'системный resolv.conf');
   const routerLan = status.routerLan || '192.168.1.1';
-  const xrayTarget = status.xrayTarget || '127.0.0.1#5353';
-  const xrayPort = String(xrayTarget).split('#').pop() || '5353';
+  const xrayTarget = status.xrayTarget || status.suggestedXrayTarget || '127.0.0.1#10535';
+  const xrayPort = String(xrayTarget).split('#').pop() || '10535';
   const dnsPortConflict = status.dnsPortConflict || readiness.udpConflict;
   const conflictOwner = status.dnsPortConflictOwner || readiness.udpOwner || '';
   const suggestedTarget = status.suggestedXrayTarget || '127.0.0.1#10535';
@@ -436,6 +438,11 @@ function lanDnsSection() {
       </div>
       <div class="lan-dns-form">
         <div class="form-row">
+          <label>Порт DNS inbound Xray</label>
+          <input id="dnsInboundPort" type="number" min="1024" max="65535" value="${escapeHtml(state.dnsInboundPort || xrayPort || '10535')}" placeholder="10535" />
+          <small>По умолчанию 10535. Порт 5353 на OpenWrt часто занят mDNS/umdns, из-за этого Xray не стартует.</small>
+        </div>
+        <div class="form-row">
           <label>Адрес внешнего DNS или Pi-hole</label>
           <input id="lanDnsUpstream" value="${escapeHtml(state.lanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10#53" ${state.lanDnsMode === 'upstream' ? '' : 'disabled'} />
         </div>
@@ -459,7 +466,7 @@ function lanDnsSection() {
       ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт ${escapeHtml(readiness.targetTCP || xrayTarget.replace('#', ':'))} слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
       <div class="settings-warning">
         <strong>Если Pi-hole главный DNS</strong>
-        <span>DHCP может выдавать клиентам Pi-hole напрямую. Тогда в Pi-hole upstream укажите ${escapeHtml(routerLan)}#5353, а Xray DNS inbound должен быть доступен с LAN-адреса роутера. Не делайте цепочку Pi-hole → роутер → Pi-hole.</span>
+        <span>DHCP может выдавать клиентам Pi-hole напрямую. Тогда в Pi-hole upstream укажите ${escapeHtml(routerLan)}#${escapeHtml(xrayPort)}, а Xray DNS inbound должен быть доступен с LAN-адреса роутера. Не делайте цепочку Pi-hole → роутер → Pi-hole.</span>
       </div>
       <div class="toolbar">
         <button class="btn secondary ${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'is-busy' : ''}" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'Проверяю...' : 'Проверить и показать команды'}</button>

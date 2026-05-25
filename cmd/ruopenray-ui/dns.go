@@ -17,9 +17,11 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	xrayTarget := s.xrayDNSUpstreamTarget()
 	targetOwner := ""
 	targetConflict := false
+	targetFound := false
 	if cfg, err := s.readActiveConfig(); err == nil {
 		host, port, found := xrayDNSInboundEndpoint(cfg)
 		if found {
+			targetFound = true
 			xrayTarget = fmt.Sprintf("%s#%d", host, port)
 			targetOwner = udpPortOwner(host, port)
 			targetConflict = targetOwner != "" && !strings.Contains(targetOwner, "/xray")
@@ -29,6 +31,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	if targetConflict {
 		conflictOwner = targetOwner
 	}
+	dnsPortConflict := targetConflict || (!targetFound && conflictOwner != "")
 	result := map[string]any{
 		"ok":                   true,
 		"available":            available,
@@ -39,7 +42,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		"xrayTarget":           xrayTarget,
 		"suggestedXrayPort":    suggestedPort,
 		"suggestedXrayTarget":  fmt.Sprintf("127.0.0.1#%d", suggestedPort),
-		"dnsPortConflict":      conflictOwner != "" || targetConflict,
+		"dnsPortConflict":      dnsPortConflict,
 		"dnsPortConflictOwner": conflictOwner,
 		"xrayPortConflict":     targetConflict,
 		"xrayPortOwner":        targetOwner,
@@ -338,7 +341,7 @@ func (s *serverState) xrayDNSUpstreamTarget() string {
 
 func xrayDNSInboundEndpoint(cfg map[string]any) (string, int, bool) {
 	host := "127.0.0.1"
-	port := 5353
+	port := defaultXrayDNSPort()
 	for _, item := range anySlice(cfg["inbounds"]) {
 		inbound, ok := item.(map[string]any)
 		if !ok || fmt.Sprint(inbound["tag"]) != "ruopenray_dns_in" {
@@ -359,19 +362,127 @@ func xrayDNSInboundEndpoint(cfg map[string]any) (string, int, bool) {
 	return host, port, false
 }
 
+func defaultXrayDNSPort() int {
+	return dnsPortFromTarget(dnsconfig.DefaultXrayDnsmasqTarget, 10535)
+}
+
 func suggestedXrayDNSPort() (int, string) {
-	candidates := []int{5353, 10535, 15353, 53530}
+	candidates := []int{defaultXrayDNSPort(), 15353, 53530, 5353}
+	seen := map[int]bool{}
 	var conflictOwner string
-	for index, port := range candidates {
+	checked := []int{}
+	for _, port := range candidates {
+		if port <= 0 || port > 65535 || seen[port] {
+			continue
+		}
+		seen[port] = true
+		checked = append(checked, port)
 		owner := udpPortOwner("127.0.0.1", port)
-		if index == 0 && owner != "" && !strings.Contains(owner, "/xray") {
+		if len(checked) == 1 && owner != "" && !strings.Contains(owner, "/xray") {
 			conflictOwner = owner
 		}
 		if owner == "" || strings.Contains(owner, "/xray") {
 			return port, conflictOwner
 		}
 	}
-	return candidates[len(candidates)-1], conflictOwner
+	return checked[len(checked)-1], conflictOwner
+}
+
+func setXrayDNSInboundPort(cfg map[string]any, port int) bool {
+	if port <= 0 || port > 65535 {
+		return false
+	}
+	for _, item := range anySlice(cfg["inbounds"]) {
+		inbound, ok := item.(map[string]any)
+		if ok && fmt.Sprint(inbound["tag"]) == "ruopenray_dns_in" {
+			inbound["port"] = port
+			return true
+		}
+	}
+	return false
+}
+
+func (s *serverState) guardXrayDNSPortBeforeStart() map[string]any {
+	if runtime.GOOS == "windows" || s.cfg.ServiceName != "xray" {
+		return map[string]any{"ok": true, "skipped": true}
+	}
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		return map[string]any{"ok": true, "skipped": true, "message": err.Error()}
+	}
+	host, port, found := xrayDNSInboundEndpoint(cfg)
+	if !found {
+		return map[string]any{"ok": true, "skipped": true}
+	}
+	owner := udpPortOwner(host, port)
+	if owner == "" || strings.Contains(owner, "/xray") {
+		return map[string]any{"ok": true, "port": port, "owner": owner}
+	}
+	nextPort, _ := suggestedXrayDNSPort()
+	if nextPort == port || nextPort <= 0 || nextPort > 65535 {
+		message := fmt.Sprintf("DNS inbound Xray не сможет стартовать: UDP %s:%d занят процессом %s, свободный порт не найден.", host, port, owner)
+		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
+	}
+	if !setXrayDNSInboundPort(cfg, nextPort) {
+		message := "DNS inbound Xray найден, но RuOpenRay не смог изменить его порт."
+		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
+	}
+	if err := s.writeActiveConfig(cfg); err != nil {
+		message := "Не удалось сохранить новый порт DNS inbound Xray: " + err.Error()
+		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
+	}
+	oldTarget := fmt.Sprintf("%s#%d", host, port)
+	newTarget := fmt.Sprintf("%s#%d", host, nextPort)
+	dnsmasq := s.repointDnsmasqTarget(oldTarget, newTarget)
+	dnsmasqOK := dnsmasq["ok"] == true
+	message := fmt.Sprintf("DNS inbound Xray перенесен с %s на %s: старый порт занят процессом %s.", oldTarget, newTarget, owner)
+	if !dnsmasqOK {
+		message += " dnsmasq не удалось перенастроить автоматически: " + fmt.Sprint(dnsmasq["stderr"])
+	}
+	return map[string]any{
+		"ok":        true,
+		"migrated":  true,
+		"from":      oldTarget,
+		"to":        newTarget,
+		"port":      nextPort,
+		"owner":     owner,
+		"dnsmasqOk": dnsmasqOK,
+		"dnsmasq":   dnsmasq,
+		"stdout":    message,
+		"message":   message,
+	}
+}
+
+func (s *serverState) repointDnsmasqTarget(oldTarget, newTarget string) map[string]any {
+	if runtime.GOOS == "windows" || !commandExists("uci") {
+		return map[string]any{"ok": true, "skipped": true}
+	}
+	servers := dnsmasqServerList()
+	usesOldTarget := false
+	for _, server := range servers {
+		if server == oldTarget {
+			usesOldTarget = true
+			break
+		}
+	}
+	if !usesOldTarget {
+		return map[string]any{"ok": true, "skipped": true, "message": "dnsmasq не был направлен на старый DNS inbound"}
+	}
+	steps := []map[string]any{
+		run("uci", "-q", "del_list", "dhcp.@dnsmasq[0].server="+oldTarget),
+		run("uci", "add_list", "dhcp.@dnsmasq[0].server="+newTarget),
+		run("uci", "commit", "dhcp"),
+	}
+	if _, err := os.Stat("/etc/init.d/dnsmasq"); err == nil {
+		steps = append(steps, runTimeout(15*time.Second, "/etc/init.d/dnsmasq", "restart"))
+	}
+	ok := true
+	for _, step := range steps {
+		if step["ok"] != true {
+			ok = false
+		}
+	}
+	return map[string]any{"ok": ok, "from": oldTarget, "to": newTarget, "steps": steps, "stdout": concatCommandOutput(steps...)}
 }
 
 func dnsPortFromTarget(target string, fallback int) int {

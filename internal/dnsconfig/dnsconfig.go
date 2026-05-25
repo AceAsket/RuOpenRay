@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const DefaultXrayDnsmasqTarget = "127.0.0.1#5353"
+const DefaultXrayDnsmasqTarget = "127.0.0.1#10535"
 
 func NormalizeDnsmasqServer(value string) string {
 	raw := strings.TrimSpace(value)
