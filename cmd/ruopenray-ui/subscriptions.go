@@ -97,16 +97,22 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 	}
 	checkMode := strings.ToLower(firstNonEmpty(fmt.Sprint(payload["mode"]), "http"))
 	probeURL := firstNonEmpty(fmt.Sprint(payload["url"]), "https://www.gstatic.com/generate_204")
-	timeoutMs := number(payload["timeoutMs"], 2500)
+	timeoutMs := number(payload["timeoutMs"], 5000)
 	attempts := number(payload["attempts"], 1)
 	if timeoutMs < 300 {
 		timeoutMs = 300
+	}
+	if checkMode == "http" && timeoutMs < 5000 {
+		timeoutMs = 5000
 	}
 	if timeoutMs > 15000 {
 		timeoutMs = 15000
 	}
 	if attempts < 1 {
 		attempts = 1
+	}
+	if checkMode == "http" && attempts < 3 {
+		attempts = 3
 	}
 	if attempts > 5 {
 		attempts = 5
@@ -190,9 +196,12 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 		checkMode = "http"
 	}
 	probeURL := firstNonEmpty(fmt.Sprint(payload["url"]), "https://www.gstatic.com/generate_204")
-	timeoutMs := number(payload["timeoutMs"], 2500)
+	timeoutMs := number(payload["timeoutMs"], 5000)
 	if timeoutMs < 300 {
 		timeoutMs = 300
+	}
+	if checkMode == "http" && timeoutMs < 5000 {
+		timeoutMs = 5000
 	}
 	if timeoutMs > 15000 {
 		timeoutMs = 15000
@@ -200,6 +209,9 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 	attempts := number(payload["attempts"], 1)
 	if attempts < 1 {
 		attempts = 1
+	}
+	if checkMode == "http" && attempts < 3 {
+		attempts = 3
 	}
 	if attempts > 5 {
 		attempts = 5
@@ -237,6 +249,16 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 			result["error"] = "Нет endpoint для проверки"
 			results = append(results, result)
 			continue
+		}
+		pingTimeoutMs := timeoutMs
+		if pingTimeoutMs > 2000 {
+			pingTimeoutMs = 2000
+		}
+		ping := directPingProbe(address, pingTimeoutMs)
+		result["ping"] = ping
+		result["pingOk"] = ping["ok"] == true
+		if latency := number(ping["latencyMs"], 0); latency > 0 {
+			result["pingLatencyMs"] = latency
 		}
 		samples := attempts
 		if samples < 2 {
@@ -294,5 +316,10 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, result)
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "timeoutMs": timeoutMs, "attempts": attempts, "mode": checkMode, "url": probeURL, "results": results})
+	response := map[string]any{"ok": true, "timeoutMs": timeoutMs, "attempts": attempts, "mode": checkMode, "url": probeURL, "results": results, "saved": true}
+	if err := s.saveOutboundCheckResults(results); err != nil {
+		response["saved"] = false
+		response["saveError"] = err.Error()
+	}
+	writeJSON(w, 200, response)
 }

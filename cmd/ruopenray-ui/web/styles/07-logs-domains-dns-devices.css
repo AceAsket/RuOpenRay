@@ -215,11 +215,93 @@
   text-align: right;
 }
 
+.domain-monitor-health-details {
+  margin-bottom: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 15, 19, 0.64);
+}
+
+.domain-monitor-health-details summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.domain-monitor-health-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.domain-monitor-health-title {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.domain-monitor-health-title::before {
+  content: '+';
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  border-radius: 50%;
+  color: #071015;
+  background: var(--accent);
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.domain-monitor-health-details[open] .domain-monitor-health-title::before {
+  content: '-';
+}
+
+.domain-monitor-health-summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.domain-monitor-health-summary b {
+  overflow: hidden;
+  max-width: 220px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: rgba(13, 20, 25, 0.78);
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-monitor-health-summary b.ok {
+  border-color: rgba(98, 210, 111, 0.34);
+  color: var(--ok);
+}
+
+.domain-monitor-health-summary b.warn {
+  border-color: rgba(242, 189, 82, 0.38);
+  color: var(--warning);
+}
+
+.domain-monitor-health-summary b.bad {
+  border-color: rgba(193, 59, 75, 0.38);
+  color: var(--danger);
+}
+
 .domain-monitor-health {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  margin-bottom: 12px;
+  margin: 0;
+  padding: 0 12px 12px;
 }
 
 .domain-monitor-health-grid {
@@ -285,6 +367,84 @@
   align-content: start;
 }
 
+.domain-monitor-help-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid rgba(118, 255, 236, 0.18);
+  border-radius: 8px;
+  background: rgba(118, 255, 236, 0.06);
+}
+
+.domain-monitor-help-actions div {
+  display: grid;
+  gap: 4px;
+}
+
+.domain-monitor-help-actions strong {
+  color: var(--text);
+  font-size: 15px;
+  text-transform: none;
+}
+
+.domain-monitor-help-actions span,
+.domain-monitor-help-actions small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.domain-monitor-help-actions .btn {
+  min-width: 210px;
+  white-space: nowrap;
+}
+
+.domain-monitor-device-filter-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.domain-monitor-device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  max-width: 170px;
+  min-height: 24px;
+  border: 1px solid rgba(118, 255, 236, 0.2);
+  border-radius: 999px;
+  padding: 4px 9px;
+  overflow: hidden;
+  background: rgba(12, 29, 34, 0.72);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.domain-monitor-device-chip:hover,
+.domain-monitor-device-chip:focus-visible {
+  border-color: rgba(118, 255, 236, 0.5);
+  color: var(--accent-2);
+  outline: none;
+}
+
+.domain-monitor-device-chip b {
+  color: var(--accent-2);
+}
+
 .domain-monitor-help ol {
   display: grid;
   gap: 7px;
@@ -297,12 +457,14 @@
 
 .domain-monitor-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(260px, 420px);
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 360px) auto auto;
   gap: 10px;
   margin-bottom: 12px;
+  align-items: end;
 }
 
-.domain-monitor-toolbar input {
+.domain-monitor-toolbar input,
+.domain-probe-target select {
   min-width: 0;
   height: 46px;
   border: 1px solid var(--line);
@@ -310,6 +472,20 @@
   padding: 0 14px;
   color: var(--text);
   background: rgba(4, 11, 15, 0.82);
+}
+
+.domain-probe-target {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.domain-probe-target span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .domain-monitor-filters {
@@ -353,6 +529,84 @@
 .domain-monitor-mode {
   width: min(100%, 460px);
   margin: 0 0 12px;
+}
+
+.domain-monitor-events-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(7, 15, 19, 0.58);
+}
+
+.domain-monitor-events-controls > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.domain-monitor-events-controls strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.domain-monitor-events-controls span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.domain-monitor-events-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.domain-monitor-events-actions > .btn {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.domain-monitor-events-actions > .btn.active {
+  border-color: rgba(242, 189, 82, 0.52);
+  color: #ffe7a6;
+  background: rgba(242, 189, 82, 0.13);
+}
+
+.domain-monitor-scroll-window,
+.domain-monitor-events-window {
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid rgba(49, 210, 189, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(7, 15, 19, 0.84), rgba(7, 15, 19, 0.64));
+  scrollbar-gutter: stable;
+}
+
+.domain-monitor-scroll-window.compact,
+.domain-monitor-events-window.compact {
+  max-height: 340px;
+}
+
+.domain-monitor-scroll-window.medium,
+.domain-monitor-events-window.medium {
+  max-height: 520px;
+}
+
+.domain-monitor-scroll-window.large,
+.domain-monitor-events-window.large {
+  max-height: min(760px, 72vh);
+}
+
+.domain-monitor-scroll-window .muted,
+.domain-monitor-events-window .muted {
+  margin: 8px;
 }
 
 .domain-monitor-device-filter {
@@ -410,16 +664,49 @@
 }
 
 .domain-monitor-item {
-  grid-template-columns: 86px minmax(220px, 1fr) minmax(150px, 0.55fr) 96px minmax(260px, 0.9fr) 108px;
+  grid-template-columns: 108px minmax(260px, 1.25fr) minmax(150px, 0.55fr) 88px minmax(220px, 0.82fr) 104px;
+  min-height: 90px;
+  padding: 12px 14px;
+  align-items: center;
 }
 
 .domain-monitor-device {
-  grid-template-columns: 96px minmax(220px, 1fr) minmax(220px, 0.8fr) 112px 112px;
+  grid-template-columns: 42px 72px minmax(180px, 0.85fr) minmax(240px, 1fr) minmax(140px, 0.4fr) 150px;
+  cursor: pointer;
 }
 
 .domain-monitor-device.active {
   border-color: rgba(115, 226, 129, 0.58);
   background: linear-gradient(135deg, rgba(115, 226, 129, 0.16), rgba(7, 15, 19, 0.74));
+}
+
+.domain-monitor-device.expanded {
+  align-items: start;
+  border-color: rgba(49, 210, 189, 0.46);
+}
+
+.domain-monitor-device:focus-visible {
+  outline: 2px solid rgba(126, 230, 216, 0.72);
+  outline-offset: 2px;
+}
+
+.domain-monitor-device-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  color: var(--accent-2);
+  font-size: 18px;
+  font-weight: 900;
+  background: rgba(13, 20, 25, 0.82);
+  cursor: pointer;
+}
+
+.domain-monitor-device-toggle:hover {
+  border-color: rgba(49, 210, 189, 0.55);
+  background: rgba(49, 210, 189, 0.12);
 }
 
 .domain-monitor-item.domain {
@@ -435,7 +722,7 @@
   align-items: center;
   justify-content: center;
   min-width: 72px;
-  max-width: 96px;
+  max-width: 100%;
   min-height: 32px;
   border: 1px solid rgba(49, 210, 189, 0.38);
   border-radius: 999px;
@@ -444,6 +731,11 @@
   font-weight: 900;
   text-align: center;
   background: rgba(49, 210, 189, 0.1);
+}
+
+.domain-monitor-item .domain-monitor-kind {
+  justify-self: start;
+  width: 96px;
 }
 
 .domain-monitor-item.ip .domain-monitor-kind {
@@ -460,7 +752,7 @@
 
 .domain-monitor-main {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -485,6 +777,11 @@
   min-width: 0;
 }
 
+.domain-monitor-item .domain-monitor-chips {
+  max-height: 58px;
+  overflow: hidden;
+}
+
 .domain-monitor-chips span,
 .domain-monitor-device-domains span {
   min-width: 0;
@@ -505,11 +802,86 @@
   color: var(--accent-2);
 }
 
+.domain-monitor-device-details {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(49, 210, 189, 0.16);
+  border-radius: 8px;
+  background: rgba(4, 10, 13, 0.44);
+  overflow: hidden;
+}
+
+.domain-monitor-device-empty {
+  padding: 14px;
+  color: var(--muted);
+}
+
+.domain-monitor-device-table {
+  display: grid;
+}
+
+.domain-monitor-device-table-head,
+.domain-monitor-device-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) 92px 130px minmax(220px, 1fr) 130px 104px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.domain-monitor-device-table-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: rgba(49, 210, 189, 0.08);
+}
+
+.domain-monitor-device-row {
+  border-top: 1px solid rgba(165, 183, 176, 0.1);
+}
+
+.domain-monitor-device-row strong,
+.domain-monitor-device-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-monitor-mini-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.domain-monitor-mini-chips b {
+  border: 1px solid rgba(49, 210, 189, 0.28);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--accent-2);
+  font-size: 10px;
+  background: rgba(49, 210, 189, 0.08);
+}
+
+.domain-monitor-flow {
+  color: var(--text);
+  font-weight: 800;
+}
+
 .domain-monitor-count {
   display: grid;
   gap: 2px;
   justify-items: end;
+  align-self: center;
   min-width: 0;
+}
+
+.domain-monitor-item > .btn {
+  align-self: center;
+  justify-self: stretch;
+  min-height: 44px;
 }
 
 .domain-monitor-count strong {
@@ -522,6 +894,14 @@
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.domain-monitor-device-count {
+  justify-items: start;
+}
+
+.domain-monitor-device-count small {
+  white-space: normal;
 }
 
 .domain-probe {
@@ -582,6 +962,35 @@
 
 .domain-probe.pending {
   border-style: dashed;
+}
+
+.domain-probe.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 7px;
+}
+
+.domain-probe.compact.pending {
+  grid-template-columns: 1fr;
+}
+
+.domain-probe.compact span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-probe.compact .btn {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 11px;
 }
 
 .guard-list {
@@ -1340,6 +1749,29 @@
     white-space: normal;
   }
 
+  .domain-monitor-device-table-head {
+    display: none;
+  }
+
+  .domain-monitor-device-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .domain-monitor-help-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .domain-monitor-help-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .domain-monitor-device-row .btn {
+    width: 100%;
+  }
+
   .intercept-choice-list button {
     grid-template-columns: 1fr;
   }
@@ -1411,10 +1843,37 @@
 
   .dashboard-current-server,
   .dashboard-selected-server,
-  .domain-monitor-state {
+  .domain-monitor-state,
+  .domain-monitor-health-details summary {
     grid-template-columns: 1fr;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .domain-monitor-health-summary {
+    flex-wrap: wrap;
+  }
+
+  .domain-monitor-events-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .domain-monitor-events-controls .segmented {
+    width: 100%;
+  }
+
+  .domain-monitor-scroll-window.compact,
+  .domain-monitor-scroll-window.medium,
+  .domain-monitor-scroll-window.large,
+  .domain-monitor-events-window.compact,
+  .domain-monitor-events-window.medium,
+  .domain-monitor-events-window.large {
+    max-height: 62vh;
+  }
+
+  .domain-monitor-health-summary b {
+    max-width: 100%;
   }
 
   .domain-monitor-state span {
@@ -1427,7 +1886,8 @@
     text-align: left;
   }
 
-  .server-option-side .check-badge {
+  .server-option-side .check-badge,
+  .server-option-side .server-check-pill {
     margin-left: 0;
   }
 

@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -525,12 +526,14 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 	}
 	maintenance := s.maintainLogFiles(false)
 	var restart map[string]any
+	stdout := "Логирование сохранено и применено через перезапуск Xray"
 	if boolPayload(payload, "restart", true) {
 		restart = s.serviceAction("restart")
 	} else {
-		restart = map[string]any{"ok": true, "stdout": "Настройки сохранены без перезапуска Xray"}
+		stdout = "Логирование сохранено в config.json. Работающий Xray применит его после перезапуска."
+		restart = map[string]any{"ok": true, "stdout": "Xray не перезапускался"}
 	}
-	return map[string]any{"ok": restart["ok"], "test": test, "backup": backup, "restart": restart, "maintenance": maintenance, "settings": s.loggingSettings(), "stdout": "Настройки логирования сохранены"}
+	return map[string]any{"ok": restart["ok"], "test": test, "backup": backup, "restart": restart, "maintenance": maintenance, "settings": s.loggingSettings(), "stdout": stdout}
 }
 
 func (s *serverState) configuredLogPaths() []string {
@@ -562,14 +565,24 @@ func (s *serverState) clearLogFiles() map[string]any {
 	errors := []string{}
 	for _, path := range s.configuredLogPaths() {
 		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			continue
+		if err == nil && !info.IsDir() {
+			if err := os.Truncate(path, 0); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
+			} else {
+				cleared = append(cleared, map[string]any{"path": path, "previousSize": info.Size()})
+			}
 		}
-		if err := os.Truncate(path, 0); err != nil {
-			errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
-			continue
+		for _, rotated := range rotatedLogPaths(path, 5) {
+			info, err := os.Stat(rotated)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			if err := os.Remove(rotated); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %s", rotated, err.Error()))
+				continue
+			}
+			cleared = append(cleared, map[string]any{"path": rotated, "previousSize": info.Size(), "removed": true})
 		}
-		cleared = append(cleared, map[string]any{"path": path, "previousSize": info.Size()})
 	}
 	return map[string]any{
 		"ok":       len(errors) == 0,
@@ -585,6 +598,7 @@ func (s *serverState) startLogMaintenance() {
 	go func() {
 		ticker := time.NewTicker(15 * time.Minute)
 		defer ticker.Stop()
+		s.maintainLogFiles(false)
 		for range ticker.C {
 			s.maintainLogFiles(false)
 		}
@@ -617,16 +631,24 @@ func (s *serverState) maintainLogFiles(restart bool) map[string]any {
 		if err != nil || info.IsDir() || info.Size() <= maxBytes {
 			continue
 		}
-		if err := rotateLogFile(path, rotateCopies); err != nil {
+		if err := rotateLogFile(path, rotateCopies, maxBytes); err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
 			continue
 		}
 		rotated = append(rotated, map[string]any{"path": path, "previousSize": info.Size()})
+		if err := maintainRotatedLogCopies(path, rotateCopies, maxBytes); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
+		}
+	}
+	for _, path := range s.configuredLogPaths() {
+		if err := maintainRotatedLogCopies(path, rotateCopies, maxBytes); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
+		}
 	}
 	return map[string]any{"ok": len(errors) == 0, "rotated": rotated, "errors": errors, "stderr": strings.Join(errors, "\n")}
 }
 
-func rotateLogFile(logPath string, copies int) error {
+func rotateLogFile(logPath string, copies int, maxBytes int64) error {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		return err
 	}
@@ -634,11 +656,96 @@ func rotateLogFile(logPath string, copies int) error {
 		return os.Truncate(logPath, 0)
 	}
 	_ = os.Remove(fmt.Sprintf("%s.%d", logPath, copies))
+	_ = os.Remove(fmt.Sprintf("%s.%d.gz", logPath, copies))
 	for i := copies - 1; i >= 1; i-- {
-		_ = os.Rename(fmt.Sprintf("%s.%d", logPath, i), fmt.Sprintf("%s.%d", logPath, i+1))
+		fromPlain := fmt.Sprintf("%s.%d", logPath, i)
+		toPlain := fmt.Sprintf("%s.%d", logPath, i+1)
+		fromGzip := fromPlain + ".gz"
+		toGzip := toPlain + ".gz"
+		if fileExists(fromGzip) {
+			_ = os.Rename(fromGzip, toGzip)
+			continue
+		}
+		_ = os.Rename(fromPlain, toPlain)
 	}
 	if err := os.Rename(logPath, logPath+".1"); err != nil {
 		return err
 	}
+	if maxBytes > 0 {
+		_ = trimFileTail(logPath+".1", maxBytes)
+	}
+	compressLogIfPossible(logPath + ".1")
 	return os.WriteFile(logPath, []byte{}, 0o644)
+}
+
+func maintainRotatedLogCopies(logPath string, copies int, maxBytes int64) error {
+	var firstErr error
+	for _, path := range rotatedLogPaths(logPath, copies) {
+		if !strings.HasSuffix(path, ".gz") && fileExists(path) {
+			if maxBytes > 0 {
+				if err := trimFileTail(path, maxBytes); err != nil && firstErr == nil {
+					firstErr = err
+				}
+			}
+			compressLogIfPossible(path)
+		}
+	}
+	for _, path := range rotatedLogPaths(logPath, 10) {
+		index := rotatedLogIndex(logPath, path)
+		if index <= copies {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func rotatedLogPaths(logPath string, copies int) []string {
+	paths := []string{}
+	if copies < 1 {
+		return paths
+	}
+	for i := 1; i <= copies; i++ {
+		plain := fmt.Sprintf("%s.%d", logPath, i)
+		paths = append(paths, plain, plain+".gz")
+	}
+	return paths
+}
+
+func rotatedLogIndex(logPath string, path string) int {
+	rest := strings.TrimPrefix(path, logPath+".")
+	rest = strings.TrimSuffix(rest, ".gz")
+	return number(rest, 0)
+}
+
+func compressLogIfPossible(path string) {
+	if !commandExists("gzip") || !fileExists(path) {
+		return
+	}
+	result := run("gzip", "-f", path)
+	if result["ok"] != true {
+		return
+	}
+}
+
+func trimFileTail(path string, maxBytes int64) error {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() <= maxBytes {
+		return err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Seek(-maxBytes, io.SeekEnd); err != nil {
+		return err
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }

@@ -1,4 +1,9 @@
-export function bindNavigationControls({ state, render }) {
+export function bindNavigationControls({ state, render, configureLogTimer }) {
+  function finishNavigation() {
+    render();
+    if (typeof configureLogTimer === 'function') configureLogTimer();
+  }
+
   function closeDialogsForNavigation() {
     state.coreDialogOpen = false;
     state.installWizardOpen = false;
@@ -12,7 +17,7 @@ export function bindNavigationControls({ state, render }) {
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       state.tab = button.dataset.tab;
-      render();
+      finishNavigation();
     });
   });
   document.querySelectorAll('[data-tab-jump]').forEach((button) => {
@@ -21,13 +26,13 @@ export function bindNavigationControls({ state, render }) {
       if (button.dataset.routingViewJump) state.routingView = button.dataset.routingViewJump;
       if (button.dataset.diagnosticsJump) state.diagnosticsView = button.dataset.diagnosticsJump;
       closeDialogsForNavigation();
-      render();
+      finishNavigation();
     });
   });
   document.querySelectorAll('[data-diagnostics-view]').forEach((button) => {
     button.addEventListener('click', () => {
       state.diagnosticsView = button.dataset.diagnosticsView;
-      render();
+      finishNavigation();
     });
   });
   document.querySelectorAll('[data-import-dialog]').forEach((button) => {

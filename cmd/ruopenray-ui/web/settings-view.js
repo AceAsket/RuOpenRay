@@ -18,6 +18,9 @@ function settingsPanel() {
     ['updates', 'Обновление']
   ];
   const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'logging';
+  const loggingApplyHint = state.loggingRestart
+    ? 'Сохранение проверит config.json и перезапустит Xray, новые параметры начнут работать сразу.'
+    : 'Сохранение изменит config.json и настройки ротации. Работающий Xray применит новые пути, уровень и dnsLog после следующего перезапуска.';
   const loggingSections = `
     <section class="panel settings-section">
       <div class="panel-title">
@@ -44,7 +47,7 @@ function settingsPanel() {
         </label>
         <label class="settings-check ${state.loggingDnsLog ? 'active' : ''}">
           <input id="loggingDnsLog" type="checkbox" ${state.loggingDnsLog ? 'checked' : ''} />
-          <span><strong>DNS-логи Xray</strong><em>Запросы встроенного DNS. Полезно для поиска DNS leak.</em></span>
+          <span><strong>DNS-логи Xray</strong><em>Подробные ответы встроенного DNS. При уровне info часть DNS-событий всё равно может попадать в error-log; для тихого режима выберите warning или error.</em></span>
           <b>dnsLog</b>
         </label>
 
@@ -78,9 +81,10 @@ function settingsPanel() {
         </label>
         <label class="settings-check compact ${state.loggingRestart ? 'active' : ''}">
           <input id="loggingRestart" type="checkbox" ${state.loggingRestart ? 'checked' : ''} />
-          <span><strong>Перезапустить Xray после сохранения</strong><em>Новые пути и уровень применятся сразу.</em></span>
+          <span><strong>Применить сразу через перезапуск Xray</strong><em>Без перезапуска изменения сохраняются в config.json и ждут следующего старта Xray.</em></span>
         </label>
       </div>
+      <p class="settings-hint">${escapeHtml(loggingApplyHint)}</p>
       <div class="settings-warning">
         <strong>Flash-память</strong>
         <span>Access-логи при активном трафике создают много записей. Для постоянного мониторинга лучше использовать временный каталог или внешний накопитель.</span>

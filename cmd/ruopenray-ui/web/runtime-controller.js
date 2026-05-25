@@ -53,24 +53,31 @@ export function createRuntimeController({
     render();
   }
   
-  async function refreshDomainMonitor(renderAfter = true) {
+  async function refreshDomainMonitor(renderAfter = true, options = {}) {
+    if (state.domainMonitorPaused && !options.force) {
+      if (renderAfter) render();
+      return state.domainMonitor;
+    }
     state.domainMonitor = await request('/api/domain-monitor?limit=1200');
     if (renderAfter) render();
+    return state.domainMonitor;
   }
   
-  async function controlDomainMonitor(action) {
+  async function controlDomainMonitor(action, extra = {}) {
     const result = await request('/api/domain-monitor', {
       method: 'POST',
-      body: JSON.stringify({ action })
+      body: JSON.stringify({ action, ...extra })
     });
     state.message = result.stdout || result.stderr || 'SNI-монитор обновлен';
-    await refreshDomainMonitor(true);
+    await refreshDomainMonitor(true, { force: true });
   }
   
   async function probeMonitoredDomain(host) {
     const cleanHost = String(host || '').trim();
     if (!cleanHost) return;
-    state.domainProbeChecking = cleanHost;
+    const tag = String(state.domainProbeTag || activeProxyTag() || '').trim();
+    const probeKey = `${cleanHost}\u0000${tag}`;
+    state.domainProbeChecking = probeKey;
     state.message = `Проверяю ${cleanHost}: напрямую и через proxy...`;
     render();
     try {
@@ -78,16 +85,16 @@ export function createRuntimeController({
         method: 'POST',
         body: JSON.stringify({
           host: cleanHost,
-          tag: activeProxyTag() || '',
+          tag,
           timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
         })
       });
-      state.domainProbeResults = { ...state.domainProbeResults, [cleanHost]: result };
+      state.domainProbeResults = { ...state.domainProbeResults, [probeKey]: result };
       state.message = `${cleanHost}: ${result.verdict?.label || 'проверено'}`;
     } catch (error) {
       state.domainProbeResults = {
         ...state.domainProbeResults,
-        [cleanHost]: { ok: false, stderr: error.message, host: cleanHost }
+        [probeKey]: { ok: false, stderr: error.message, host: cleanHost, tag }
       };
       state.message = error.message;
     } finally {
@@ -164,6 +171,9 @@ export function createRuntimeController({
   
   function recordStatusSnapshot(status) {
     state.status = status;
+    if (status?.serverChecks?.results && typeof status.serverChecks.results === 'object' && !Array.isArray(status.serverChecks.results)) {
+      state.serverChecks = { ...state.serverChecks, ...status.serverChecks.results };
+    }
     recordTrafficSample(status);
     recordXrayStatsSample(status);
   }
@@ -230,9 +240,13 @@ export function createRuntimeController({
       state.logs = displayLogText(logs);
       state.leases = leases.leases || [];
       state.leasesSource = leases.source || '';
-      state.coreReleases = releases.releases || [];
-      state.coreAsset = releases.asset || '';
-      state.coreArch = releases.arch || null;
+      const loadedCoreReleases = Array.isArray(releases?.releases) ? releases.releases : [];
+      state.coreReleasesError = releases?.error ? 'Не удалось загрузить список релизов Xray-core с GitHub. Попробуйте открыть выбор версии еще раз.' : '';
+      if (loadedCoreReleases.length || !state.coreReleases.length) {
+        state.coreReleases = loadedCoreReleases;
+      }
+      state.coreAsset = releases?.asset || state.coreAsset || '';
+      state.coreArch = releases?.arch || state.coreArch || null;
       state.appRelease = appRelease?.release || null;
       if (!state.selectedCoreVersion) {
         const latestStable = state.coreReleases.find((release) => release.assetUrl && !release.prerelease);
@@ -240,7 +254,9 @@ export function createRuntimeController({
         state.selectedCoreVersion = latestStable?.tag || latestInstallable?.tag || state.coreReleases[0]?.tag || '';
       }
       state.geoStatus = geo;
-      state.domainMonitor = domainMonitor;
+      if (!state.domainMonitorPaused || !state.domainMonitor) {
+        state.domainMonitor = domainMonitor;
+      }
       state.tcpFastOpen = tcpFastOpen;
       syncLanDnsStatus(lanDns);
       state.firewallStatus = firewallStatus;

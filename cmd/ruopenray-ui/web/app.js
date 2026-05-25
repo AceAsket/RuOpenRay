@@ -496,9 +496,17 @@ function checkForTag(tag) {
 }
 
 function checkLabel(result) {
-  if (!result) return 'не проверялся';
+  if (!result) return 'не проверен';
   if (result.skipped) return 'нет TCP-цели';
-  if (result.ok) return `${result.latencyMs || 0} мс`;
+  if (result.httpOk === false && result.endpointOk) {
+    const error = String(result.error || '').toLowerCase();
+    if (error.includes('timeout') || error.includes('deadline')) return 'TCP открыт, HTTP таймаут';
+    return 'TCP открыт, HTTP не прошел';
+  }
+  if (result.httpOk === false) return 'HTTP не прошел';
+  if (result.ok) return `${result.latencyMs || result.httpLatencyMs || result.endpointLatencyMs || 0} мс`;
+  if (result.endpointOk) return 'TCP открыт';
+  if (result.pingOk) return 'ping есть';
   return 'нет ответа';
 }
 
@@ -824,9 +832,9 @@ async function applyConfigAndFirewall() {
   }
 
   const steps = [
-    configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray', status: 'pending' } : null,
+    configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray перед перезапуском', status: 'pending' } : null,
     configDirty ? { id: 'apply-xray', label: 'Записываю config.json и перезапускаю Xray', status: 'pending' } : null,
-    firewallDirty ? { id: 'apply-firewall', label: 'Сохраняю nftables и правила перехвата', status: 'pending' } : null,
+    firewallDirty ? { id: 'apply-firewall', label: 'Применяю nftables без перезапуска Xray', status: 'pending' } : null,
     { id: 'refresh', label: 'Обновляю состояние панели', status: 'pending' }
   ].filter(Boolean);
   const setStep = (id, status, label = '') => {
@@ -844,24 +852,24 @@ async function applyConfigAndFirewall() {
       setStep('check-xray', 'running');
       await applyConfig({
         progressMessage: firewallDirty
-          ? 'Применяю Xray, затем обновлю правила firewall...'
-          : 'Применяю конфигурацию Xray...',
+          ? 'Проверяю config.json, перезапускаю Xray, затем обновлю firewall...'
+          : 'Проверяю config.json и перезапускаю Xray...',
         successMessage: firewallDirty
           ? 'Xray применен, применяю firewall...'
           : 'Конфигурация Xray применена'
       });
       setStep('check-xray', 'done', 'Черновик Xray проверен');
-      setStep('apply-xray', 'done', 'Xray применен');
+      setStep('apply-xray', 'done', 'Xray перезапущен с новым config.json');
     }
 
     if (firewallDirty || firewallHasUnappliedChanges()) {
       setStep('apply-firewall', 'running');
       await applyFirewall({
         busyAction: 'apply',
-        busyLabel: configDirty ? 'Применяю firewall' : '',
+        busyLabel: configDirty ? 'Применяю firewall без перезапуска Xray' : '',
         successMessage: configDirty
           ? 'Xray и firewall применены'
-          : 'Firewall-правила применены и сохранены для перезапуска firewall'
+          : 'Firewall-правила применены и сохранены для автозагрузки'
       });
       setStep('apply-firewall', 'done', 'Firewall применен');
     }
@@ -1611,6 +1619,8 @@ function pendingChangesBanner() {
   const visibleXrayReasons = xrayReasons.slice(0, 5);
   const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
   const changeItems = [
+    configDirty ? 'Xray: будет проверен config.json и выполнен перезапуск сервиса' : '',
+    firewallDirty ? 'Firewall: nftables и policy routing применятся без перезапуска Xray' : '',
     ...visibleXrayReasons,
     firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
   ].filter(Boolean);
@@ -1621,7 +1631,7 @@ function pendingChangesBanner() {
     <section class="pending-changes" role="status" aria-live="polite">
       <div>
         <strong>Есть непримененные изменения</strong>
-        <span>Ниже показано, что будет применено для Xray и firewall.</span>
+        <span>Ниже показано, что будет изменено и где потребуется перезапуск.</span>
         <ul class="pending-change-list">
           ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
         </ul>
@@ -1950,7 +1960,7 @@ function openRoutePresetPicker() {
 }
 
 function bind() {
-  bindNavigationControls({ state, render });
+  bindNavigationControls({ state, render, configureLogTimer });
   bindModalControls();
   bindActionControls({
     state,
@@ -1979,9 +1989,22 @@ function bind() {
       disableXrayStats: () => setXrayStats(false),
       resetXrayStats,
       analyzeConfig,
-      openCoreDialog: () => {
-        const info = coreUpdateInfo();
+      openCoreDialog: async () => {
         state.coreDialogOpen = true;
+        render();
+        if (!state.coreReleases.length) {
+          try {
+            const result = await request('/api/core/releases');
+            const loaded = Array.isArray(result?.releases) ? result.releases : [];
+            state.coreReleases = loaded;
+            state.coreAsset = result?.asset || state.coreAsset || '';
+            state.coreArch = result?.arch || state.coreArch || null;
+            state.coreReleasesError = loaded.length ? '' : 'GitHub вернул пустой список релизов Xray-core.';
+          } catch (error) {
+            state.coreReleasesError = error.message || 'Не удалось загрузить список релизов Xray-core.';
+          }
+        }
+        const info = coreUpdateInfo();
         state.selectedCoreVersion = state.selectedCoreVersion || info.target?.tag || filteredCoreReleases().find((release) => release.assetUrl)?.tag || '';
         render();
       },
@@ -2089,10 +2112,12 @@ function bind() {
       saveGeoCatalogCategory,
       refreshLogs: () => refreshLogs(true, true),
       runConnectivityDiagnostics,
-      refreshDomainMonitor: () => refreshDomainMonitor(true),
+      refreshDomainMonitor: () => refreshDomainMonitor(true, { force: true }),
       startDomainMonitor: () => controlDomainMonitor('start'),
       stopDomainMonitor: () => controlDomainMonitor('stop'),
       clearDomainMonitor: () => controlDomainMonitor('clear'),
+      enableDnsmasqLogqueries: () => controlDomainMonitor('dnsmasq-logqueries', { enabled: true }),
+      disableDnsmasqLogqueries: () => controlDomainMonitor('dnsmasq-logqueries', { enabled: false }),
       toggleConfig: () => {
         state.configExpanded = !state.configExpanded;
         render();

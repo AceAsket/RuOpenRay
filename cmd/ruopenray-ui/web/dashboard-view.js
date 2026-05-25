@@ -599,6 +599,74 @@ function checkModeLabel(mode) {
   return mode === 'endpoint' ? 'TCP-порт' : 'HTTP через прокси';
 }
 
+function rulesCountLabel(count) {
+  const value = Number(count) || 0;
+  const mod10 = Math.abs(value) % 10;
+  const mod100 = Math.abs(value) % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${value} правило`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${value} правила`;
+  return `${value} правил`;
+}
+
+function dashboardCheckBadge(check) {
+  if (!check) return { label: 'не проверен', tone: 'warn' };
+  if (check.httpOk === false) return { label: check.endpointOk ? 'TCP открыт · HTTP нет' : 'HTTP нет', tone: 'bad' };
+  if (check.ok) return { label: checkLabel(check), tone: 'ok' };
+  if (check.endpointOk) return { label: 'TCP открыт', tone: 'warn' };
+  if (check.pingOk) return { label: 'ping есть', tone: 'warn' };
+  return { label: 'нет ответа', tone: 'bad' };
+}
+
+function dashboardCheckDetail(check, outbound) {
+  const parts = [outboundTransport(outbound)];
+  if (check) {
+    if (check.endpointOk && check.httpOk === false) parts.push('TCP открыт');
+    else parts.push(checkMethodLabel(check));
+  }
+  return parts.filter(Boolean).join(' · ');
+}
+
+function dashboardCheckSummary(check) {
+  if (!check) {
+    return {
+      label: 'ping не проверен · TCP не проверен · HTTP не проверен',
+      tone: 'warn'
+    };
+  }
+  const ping = check.pingOk === true
+    ? `ping ${check.pingLatencyMs || 0} мс`
+    : check.pingOk === false ? 'ping нет' : 'ping не проверен';
+  const tcp = check.endpointOk === true
+    ? `TCP ${check.endpointLatencyMs || 0} мс`
+    : check.endpointOk === false ? 'TCP нет' : 'TCP не проверен';
+  const http = check.httpOk === true
+    ? `HTTP ${check.httpLatencyMs || check.latencyMs || 0} мс`
+    : check.httpOk === false || check.method === 'http' ? 'HTTP нет' : 'HTTP не проверен';
+  return {
+    label: [ping, tcp, http].join(' · '),
+    tone: check.httpOk === false ? 'bad' : (check.ok ? 'ok' : (check.endpointOk || check.pingOk ? 'warn' : 'bad'))
+  };
+}
+
+function dashboardOutboundFlow(outbound) {
+  const protocol = outbound?.protocol;
+  if (protocol === 'vless' || protocol === 'vmess') {
+    return outbound?.settings?.vnext?.[0]?.users?.[0]?.flow || '';
+  }
+  if (protocol === 'trojan' || protocol === 'shadowsocks') {
+    return outbound?.settings?.servers?.[0]?.flow || '';
+  }
+  return '';
+}
+
+function dashboardServerTech(outbound) {
+  const protocol = outbound?.protocol || 'xray';
+  const parts = [protocol.toUpperCase(), outboundTransport(outbound)];
+  const flow = dashboardOutboundFlow(outbound);
+  if (flow) parts.push(`flow ${flow}`);
+  return parts.filter(Boolean).join(' · ');
+}
+
 function operationProgressView() {
   if (state.configApplying) {
     return `
@@ -673,9 +741,9 @@ function dashboardServerSwitch(servers) {
           const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
           const selectedServer = state.dashboardSelectedServerTag === tag && !activeServer;
           const check = checkForTag(tag);
-          const ping = check?.ok ? checkLabel(check) : '';
+          const checkSummary = dashboardCheckSummary(check);
           const connecting = state.pendingServerTag === tag;
-          const stateLabel = activeServer ? (direction?.rules ? `${direction.rules} правил` : 'Текущий') : selectedServer ? 'Выбран' : 'Сервер';
+          const stateLabel = activeServer ? (direction?.rules ? rulesCountLabel(direction.rules) : 'Текущий') : selectedServer ? 'Выбран' : 'Сервер';
           const action = activeServer
             ? dashboardServerActionState(summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный сервер')
             : dashboardServerActionButton({ label: connecting ? 'Подключаю сервер' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-dashboard-connect="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting });
@@ -688,8 +756,8 @@ function dashboardServerSwitch(servers) {
               </span>
               ${serverTrafficView(tag, 'dashboard-server-traffic')}
               <span class="server-option-side">
-                ${ping ? `<span class="server-ping ok">${escapeHtml(ping)}</span>` : `<span class="server-ping ${check ? 'bad' : ''}">${escapeHtml(check ? checkLabel(check) : 'не проверен')}</span>`}
-                <small>${escapeHtml([outboundTransport(outbound), check ? checkMethodLabel(check) : ''].filter(Boolean).join(' · '))}</small>
+                <span class="server-check-pill ${checkSummary.tone}">${escapeHtml(checkSummary.label)}</span>
+                <small class="server-option-tech">${escapeHtml(dashboardServerTech(outbound))}</small>
               </span>
             </button>
             <span class="server-option-actions">

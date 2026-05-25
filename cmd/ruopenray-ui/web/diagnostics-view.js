@@ -25,7 +25,7 @@ export function createDiagnosticsView(deps) {
     return `
       <section class="stats route-stats">
         ${stat('Проверки', checks.length || '—', checks.length ? `${checks.filter((item) => item?.ok).length} доступно` : 'серверы еще не проверялись')}
-        ${stat('Логи', state.logLive ? 'Live' : 'Пауза', `${state.logLines} строк · ${state.logSort === 'desc' ? 'новые сверху' : 'новые снизу'}`)}
+        ${stat('Live-Xray', state.logLive ? 'Live' : 'Пауза', `${state.logLines} строк · ${state.logSort === 'desc' ? 'новые сверху' : 'новые снизу'}`)}
         ${stat('Устройства', deviceRules().length, 'source-правила LAN')}
         ${stat('Домены', domainDiagnosticRows().length, 'доменные правила')}
       </section>
@@ -59,7 +59,7 @@ export function createDiagnosticsView(deps) {
       <section class="panel diagnostic-switcher">
         <div class="segmented diagnostics-tabs" aria-label="Режим диагностики">
           ${[
-            ['live', 'Live'],
+            ['live', 'Live-Xray'],
             ['chain', 'Цепочка'],
             ['traffic', 'Трафик'],
             ['sni', 'SNI'],

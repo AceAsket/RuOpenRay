@@ -799,7 +799,8 @@
   opacity: 0.9;
 }
 
-.dashboard-server-option.active .server-ping {
+.dashboard-server-option.active .server-ping,
+.dashboard-server-option.active .server-check-pill.muted {
   color: var(--soft);
   background: rgba(255, 255, 255, 0.09);
 }
@@ -807,7 +808,7 @@
 .server-option-pick {
   min-width: 0;
   display: grid;
-  grid-template-columns: 84px minmax(220px, 1fr) minmax(150px, 190px) 126px;
+  grid-template-columns: 84px minmax(220px, 1fr) minmax(150px, 190px) minmax(240px, 320px);
   gap: 14px;
   align-items: center;
   padding: 0;
@@ -958,13 +959,15 @@
 }
 
 .server-option-side {
-  width: 126px;
+  width: min(100%, 320px);
+  justify-self: end;
   text-align: right;
 }
 
-.server-ping {
+.server-ping,
+.server-check-pill {
   min-width: 0;
-  max-width: 112px;
+  max-width: 100%;
   display: inline-flex;
   justify-content: center;
   margin-left: auto;
@@ -974,16 +977,43 @@
   background: rgba(255, 255, 255, 0.06);
   font-size: 12px;
   font-weight: 850;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.server-ping.ok {
+.server-check-pill {
+  border: 1px solid rgba(151, 180, 178, 0.18);
+}
+
+.server-ping.ok,
+.server-check-pill.ok {
   color: #06120c;
   background: #73e281;
 }
 
-.server-ping.bad {
-  color: #0a1014;
-  background: var(--danger);
+.server-ping.bad,
+.server-check-pill.bad {
+  border-color: rgba(255, 107, 107, 0.68);
+  color: #ffe8e8;
+  background: linear-gradient(180deg, #9f2f3a, #7b202e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.server-ping.warn,
+.server-check-pill.warn {
+  color: #12120a;
+  background: var(--yellow);
+}
+
+.server-check-pill.muted {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.server-option-tech {
+  font-family: var(--mono);
 }
 
 .dashboard-inline-actions {

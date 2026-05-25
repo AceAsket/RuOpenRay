@@ -249,7 +249,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.domainMonitor(w, r)
 	case path == "/domain-monitor" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
-		writeJSON(w, 200, s.controlDomainMonitor(strings.TrimSpace(fmt.Sprint(payload["action"]))))
+		writeJSON(w, 200, s.controlDomainMonitor(payload))
 	case path == "/logs" && r.Method == http.MethodGet:
 		w.Header().Set("content-type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte(s.readLogs(r.URL.Query())))

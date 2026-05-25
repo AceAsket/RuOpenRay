@@ -157,7 +157,7 @@ function logsPanel(compact = false) {
   return `
     <section class="panel log-panel">
       <div class="panel-title">
-        <div><h2>Логи</h2><span>Обновляются в реальном времени, можно фильтровать и менять порядок записей.</span></div>
+        <div><h2>Live-Xray</h2><span>Живой журнал Xray: system, access и error-логи с фильтрами.</span></div>
         <div class="split-actions">
           <label class="toggle-row log-toggle">
             <input id="logLive" type="checkbox" ${state.logLive ? 'checked' : ''} />

@@ -11,10 +11,27 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
+var xrayCoreReleasesCache = struct {
+	sync.Mutex
+	loadedAt time.Time
+	items    []map[string]any
+}{
+	items: []map[string]any{},
+}
+
 func xrayCoreReleases() ([]map[string]any, error) {
+	xrayCoreReleasesCache.Lock()
+	if len(xrayCoreReleasesCache.items) > 0 && time.Since(xrayCoreReleasesCache.loadedAt) < 10*time.Minute {
+		cached := append([]map[string]any(nil), xrayCoreReleasesCache.items...)
+		xrayCoreReleasesCache.Unlock()
+		return cached, nil
+	}
+	xrayCoreReleasesCache.Unlock()
+
 	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/repos/XTLS/Xray-core/releases?per_page=50", nil)
 	req.Header.Set("accept", "application/vnd.github+json")
 	req.Header.Set("user-agent", "RuOpenRay UI")
@@ -48,6 +65,10 @@ func xrayCoreReleases() ([]map[string]any, error) {
 			"prerelease": item["prerelease"],
 		})
 	}
+	xrayCoreReleasesCache.Lock()
+	xrayCoreReleasesCache.items = append([]map[string]any(nil), releases...)
+	xrayCoreReleasesCache.loadedAt = time.Now()
+	xrayCoreReleasesCache.Unlock()
 	return releases, nil
 }
 

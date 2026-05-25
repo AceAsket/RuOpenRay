@@ -89,8 +89,12 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	var best int64
 	var lastErr error
 	for attempt := 0; attempt < samples; attempt++ {
+		req, err := newProbeHTTPRequest(probeURL)
+		if err != nil {
+			return 0, false, err
+		}
 		started := time.Now()
-		resp, err := client.Get(probeURL)
+		resp, err := client.Do(req)
 		latency := time.Since(started).Milliseconds()
 		if err == nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
@@ -110,7 +114,24 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	if best > 0 {
 		return best, true, nil
 	}
+	if lastErr != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			return 0, false, fmt.Errorf("%w: %s", lastErr, lastLine(detail))
+		}
+	}
 	return 0, false, lastErr
+}
+
+func newProbeHTTPRequest(rawURL string) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; RuOpenRay/"+appVersion+"; +https://github.com/AceAsket/RuOpenRay)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "ru,en;q=0.8")
+	req.Header.Set("Cache-Control", "no-cache")
+	return req, nil
 }
 
 func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, targetPort string, timeoutMs int, attempts int) (int64, bool, error) {

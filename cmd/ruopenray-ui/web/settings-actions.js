@@ -89,7 +89,9 @@ export function createSettingsActions({
 
   async function saveLoggingSettings() {
     state.loggingSaving = true;
-    state.message = 'Сохраняю настройки логирования...';
+    state.message = state.loggingRestart
+      ? 'Проверяю config.json и перезапускаю Xray для применения логирования...'
+      : 'Сохраняю логирование в config.json без перезапуска Xray...';
     render();
     try {
       const result = await request('/api/settings/logging', {
@@ -108,7 +110,11 @@ export function createSettingsActions({
         })
       });
       syncLoggingSettings(result.settings);
-      state.message = result.stdout || result.restart?.stdout || 'Настройки логирования сохранены';
+      state.message = result.stdout || result.restart?.stdout || (
+        state.loggingRestart
+          ? 'Логирование сохранено и применено через перезапуск Xray'
+          : 'Логирование сохранено в config.json и применится после перезапуска Xray'
+      );
       await refreshLogs(true, true).catch(() => {});
     } finally {
       state.loggingSaving = false;

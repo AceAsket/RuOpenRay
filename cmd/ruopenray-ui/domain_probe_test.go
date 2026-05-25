@@ -82,6 +82,14 @@ func TestDomainProbeVerdict(t *testing.T) {
 			wantCode:   "proxy-tcp",
 		},
 		{
+			name:       "site returns http error but tcp paths are open",
+			directTCP:  map[string]any{"ok": true},
+			proxyTCP:   map[string]any{"ok": true},
+			directHTTP: map[string]any{"ok": false, "status": 503},
+			proxyHTTP:  map[string]any{"ok": false, "error": "HTTP 503"},
+			wantCode:   "http-target-error",
+		},
+		{
 			name:       "ping only fallback",
 			ping:       map[string]any{"ok": true},
 			directTCP:  map[string]any{"ok": false},

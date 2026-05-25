@@ -377,9 +377,6 @@ function flagSvgBody(code) {
 export function countryFlagSvg(code) {
   const normalized = String(code || '').trim().toUpperCase();
   const label = normalized || 'LOC';
-  if (countryNames[normalized]) {
-    return `<img class="flag-svg" src="assets/flags/${normalized.toLowerCase()}.svg" alt="${label}" loading="lazy" decoding="async" />`;
-  }
   return `<svg class="flag-svg" viewBox="0 0 24 18" role="img" aria-label="${label}" focusable="false">${flagSvgBody(normalized)}<rect width="24" height="18" rx="2" fill="none" stroke="rgba(255,255,255,.3)"/></svg>`;
 }
 

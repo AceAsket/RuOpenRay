@@ -1,87 +1,194 @@
-export function bindDiagnosticsControls({
-  state,
-  render,
-  domainMonitorFilterStorageKey,
-  activeProxyTag,
-  probeMonitoredDomain,
-  focusSniResult,
-  refreshLogs,
-  configureLogTimer,
-  scrollLogsToBottom,
-}) {
-  document.querySelectorAll('[data-domain-to-route]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const value = button.dataset.domainToRoute || '';
-      const ip = /^\d{1,3}(\.\d{1,3}){3}$/.test(value);
-      state.routeKind = ip ? 'ip' : 'domain';
-      state.routeValue = ip ? value : `domain:${value}`;
-      state.routeName = ip ? `IP ${value}` : value;
-      state.routeTargetType = 'outbound';
-      state.routeOutbound = activeProxyTag() || 'proxy';
-      state.routeRuleEditingIndex = -1;
-      state.routeRuleMode = 'single';
-      state.routeRuleDialog = true;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-domain-probe]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      if (state.domainProbeChecking) return;
-      await probeMonitoredDomain(button.dataset.domainProbe || '');
-    });
-  });
-  document.querySelectorAll('[data-domain-device-events]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const ip = button.dataset.domainDeviceEvents || '';
-      state.domainMonitorDeviceFilter = ip;
-      state.domainMonitorQuery = '';
-      state.domainMonitorMode = 'events';
-      state.domainMonitorFilter = 'all';
-      localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
-      render();
-    });
-  });
+let delegatedDiagnosticsDeps = null;
+let delegatedDiagnosticsBound = false;
 
-  document.querySelectorAll('[data-sni-map]').forEach((button) => {
-    button.addEventListener('click', () => focusSniResult(button.dataset.sniMap));
-  });
-  document.querySelectorAll('[data-domain-sort]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.domainMonitorSort = button.dataset.domainSort;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-domain-mode]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.domainMonitorMode = button.dataset.domainMode;
-      render();
-    });
-  });
-  document.querySelectorAll('[data-domain-filter]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.domainMonitorFilter = button.dataset.domainFilter;
-      localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
-      render();
-    });
-  });
-  document.querySelector('[data-domain-clear-filter]')?.addEventListener('click', () => {
+function openDeviceEvents(deps, ip) {
+  const { state, render, domainMonitorFilterStorageKey } = deps;
+  state.domainMonitorDeviceFilter = ip || '';
+  state.domainMonitorQuery = '';
+  state.domainMonitorMode = 'events';
+  state.domainMonitorFilter = 'all';
+  localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+  render();
+}
+
+function openDomainRouteDialog(deps, value) {
+  const { state, render, activeProxyTag } = deps;
+  const cleanValue = String(value || '').trim();
+  if (!cleanValue) return;
+  const ip = /^\d{1,3}(\.\d{1,3}){3}$/.test(cleanValue);
+  state.routeKind = ip ? 'ip' : 'domain';
+  state.routeValue = ip ? cleanValue : `domain:${cleanValue}`;
+  state.routeName = ip ? `IP ${cleanValue}` : cleanValue;
+  state.routeTargetType = 'outbound';
+  state.routeOutbound = activeProxyTag() || 'proxy';
+  state.routeRuleEditingIndex = -1;
+  state.routeRuleMode = 'single';
+  state.routeRuleDialog = true;
+  render();
+}
+
+function handleDiagnosticsDelegatedClick(event) {
+  const deps = delegatedDiagnosticsDeps;
+  const target = event.target;
+  if (!deps || !target?.closest) return;
+  const { state, render, domainMonitorFilterStorageKey, probeMonitoredDomain, configureLogTimer } = deps;
+
+  const routeButton = target.closest('[data-domain-to-route]');
+  if (routeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    openDomainRouteDialog(deps, routeButton.dataset.domainToRoute || '');
+    return;
+  }
+
+  const probeButton = target.closest('[data-domain-probe]');
+  if (probeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!state.domainProbeChecking) void probeMonitoredDomain(probeButton.dataset.domainProbe || '');
+    return;
+  }
+
+  const deviceToggle = target.closest('[data-domain-device-toggle]');
+  if (deviceToggle) {
+    event.preventDefault();
+    event.stopPropagation();
+    const ip = deviceToggle.dataset.domainDeviceToggle || 'router';
+    state.domainMonitorExpandedDevices = {
+      ...(state.domainMonitorExpandedDevices || {}),
+      [ip]: !state.domainMonitorExpandedDevices?.[ip],
+    };
+    render();
+    return;
+  }
+
+  const deviceEvents = target.closest('[data-domain-device-events]');
+  if (deviceEvents) {
+    event.preventDefault();
+    event.stopPropagation();
+    openDeviceEvents(deps, deviceEvents.dataset.domainDeviceEvents || '');
+    return;
+  }
+
+  const domainMode = target.closest('[data-domain-mode]');
+  if (domainMode) {
+    event.preventDefault();
+    event.stopPropagation();
+    const mode = domainMode.dataset.domainMode;
+    if (!['domains', 'devices', 'events'].includes(mode)) return;
+    state.domainMonitorMode = mode;
+    if (mode === 'devices') state.domainMonitorDeviceFilter = '';
+    render();
+    return;
+  }
+
+  const domainEventWindow = target.closest('[data-domain-event-window], [data-domain-list-window]');
+  if (domainEventWindow) {
+    event.preventDefault();
+    event.stopPropagation();
+    const size = domainEventWindow.dataset.domainEventWindow || domainEventWindow.dataset.domainListWindow;
+    if (!['compact', 'medium', 'large'].includes(size)) return;
+    state.domainMonitorEventWindow = size;
+    state.domainMonitorListWindow = size;
+    render();
+    return;
+  }
+
+  const domainSort = target.closest('[data-domain-sort]');
+  if (domainSort) {
+    event.preventDefault();
+    state.domainMonitorSort = domainSort.dataset.domainSort;
+    render();
+    return;
+  }
+
+  const domainPause = target.closest('[data-domain-pause]');
+  if (domainPause) {
+    event.preventDefault();
+    state.domainMonitorPaused = !state.domainMonitorPaused;
+    if (typeof configureLogTimer === 'function') configureLogTimer();
+    render();
+    return;
+  }
+
+  const domainFilter = target.closest('[data-domain-filter]');
+  if (domainFilter) {
+    event.preventDefault();
+    state.domainMonitorFilter = domainFilter.dataset.domainFilter;
+    localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+    render();
+    return;
+  }
+
+  const clearFilter = target.closest('[data-domain-clear-filter]');
+  if (clearFilter) {
+    event.preventDefault();
     state.domainMonitorQuery = '';
     state.domainMonitorDeviceFilter = '';
     state.domainMonitorFilter = 'all';
     localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
     render();
-  });
-  document.querySelector('[data-domain-clear-device]')?.addEventListener('click', () => {
+    return;
+  }
+
+  const clearDevice = target.closest('[data-domain-clear-device]');
+  if (clearDevice) {
+    event.preventDefault();
     state.domainMonitorDeviceFilter = '';
     state.domainMonitorMode = 'devices';
     render();
+    return;
+  }
+
+  const deviceCard = target.closest('[data-domain-device-card]');
+  if (deviceCard && !target.closest('button, a, input, select, textarea')) {
+    event.preventDefault();
+    openDeviceEvents(deps, deviceCard.dataset.domainDeviceCard || '');
+  }
+}
+
+function handleDiagnosticsDelegatedKeydown(event) {
+  const deps = delegatedDiagnosticsDeps;
+  const target = event.target;
+  if (!deps || !target?.closest || (event.key !== 'Enter' && event.key !== ' ')) return;
+  const deviceCard = target.closest('[data-domain-device-card]');
+  if (!deviceCard) return;
+  event.preventDefault();
+  openDeviceEvents(deps, deviceCard.dataset.domainDeviceCard || '');
+}
+
+export function bindDiagnosticsControls(deps) {
+  const {
+    state,
+    render,
+    refreshLogs,
+    configureLogTimer,
+    scrollLogsToBottom,
+  } = deps;
+
+  delegatedDiagnosticsDeps = deps;
+  if (!delegatedDiagnosticsBound && typeof document?.addEventListener === 'function') {
+    document.addEventListener('click', handleDiagnosticsDelegatedClick);
+    document.addEventListener('keydown', handleDiagnosticsDelegatedKeydown);
+    delegatedDiagnosticsBound = true;
+  }
+
+  document.querySelectorAll('[data-domain-probe], [data-domain-to-route], [data-domain-device-events], [data-domain-device-card], [data-domain-device-toggle], [data-domain-mode], [data-domain-event-window], [data-domain-list-window], [data-domain-sort], [data-domain-filter], [data-domain-pause]').forEach((node) => {
+    node.dataset.delegated = '1';
   });
 
+  document.querySelectorAll('[data-sni-map]').forEach((button) => {
+    button.addEventListener('click', () => focusSniResult(button.dataset.sniMap));
+  });
   document.querySelector('#diagnosticsTestUrl')?.addEventListener('input', (event) => {
     state.diagnosticsTestUrl = event.target.value;
   });
   document.querySelector('#clientTrafficUrl')?.addEventListener('input', (event) => {
     state.clientTrafficUrl = event.target.value;
+  });
+  document.querySelector('#domainProbeTag')?.addEventListener('change', (event) => {
+    state.domainProbeTag = event.target.value;
+    render();
   });
 
   document.querySelector('#logKind')?.addEventListener('change', async (event) => {

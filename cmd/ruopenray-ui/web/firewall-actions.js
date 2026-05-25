@@ -61,7 +61,7 @@ export function createFirewallActions({
       state.firewallGeoExpansion = result?.geoExpansion || null;
       const ready = firewallReadyStatus(state.firewallStatus);
       state.message = result.ok && ready
-        ? (options.successMessage || 'Firewall-правила применены и сохранены для перезапуска firewall')
+        ? (options.successMessage || 'Firewall-правила применены и сохранены для автозагрузки')
         : (result.error || 'Не удалось применить перехват');
       return result;
     } finally {

@@ -48,7 +48,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     request('/api/config/draft').catch(() => ({ ok: false, exists: false })),
     text(logsUrl()),
     request('/api/dhcp/leases').catch(() => ({ leases: [] })),
-    optionalRequest(request, '/api/core/releases', { releases: [], asset: '' }),
+    optionalRequest(request, '/api/core/releases', { releases: [], asset: '', error: true }, 15000),
     optionalRequest(request, '/api/app/releases', null),
     optionalRequest(request, '/api/geo/status', null),
     request('/api/domain-monitor?limit=1200').catch(() => null),
@@ -102,14 +102,14 @@ export function createRefreshTimers({
     }
     const liveLogs = state.tab === 'diagnostics' && state.diagnosticsView === 'live';
     const liveDomainMonitor = state.tab === 'diagnostics' && ['domains', 'devices'].includes(state.diagnosticsView);
-    if (!state.logLive || !state.token || (!liveLogs && !liveDomainMonitor)) return;
+    if (!state.token || (!liveLogs && !liveDomainMonitor)) return;
     const interval = Math.max(1, Number(state.logIntervalSec) || 2) * 1000;
     state.logTimer = setInterval(async () => {
       try {
-        if (liveLogs) {
+        if (liveLogs && state.logLive) {
           await refreshLogs(true, true);
         }
-        if (liveDomainMonitor) {
+        if (liveDomainMonitor && !state.domainMonitorPaused) {
           await refreshDomainMonitor(false);
           backgroundRender();
         }

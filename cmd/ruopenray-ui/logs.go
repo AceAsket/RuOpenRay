@@ -83,14 +83,27 @@ func (s *serverState) readLogsUncached(query url.Values) string {
 		}
 		seen[path] = true
 		body, err := logview.TailFile(path, maxLines)
-		if err == nil {
+		if err == nil && strings.TrimSpace(body) != "" {
 			blocks = append(blocks, body)
 		}
 	}
 	if len(blocks) == 0 {
-		return "Лог " + kind + " пока не найден."
+		return emptyLogMessage(kind)
 	}
 	return filterLogLines(strings.Join(blocks, "\n"), search, level, sortOrder, limit)
+}
+
+func emptyLogMessage(kind string) string {
+	switch kind {
+	case "access":
+		return "Access-лог Xray пока пуст. Откройте сайт через LAN-клиент или проверьте, что access-логирование включено."
+	case "error":
+		return "Error-лог Xray пока пуст. Ошибок запуска или работы сейчас нет."
+	case "system":
+		return "Системный лог Xray пока пуст. Проверьте, запущен ли сервис Xray."
+	default:
+		return "Live-Xray лог пока пуст. Откройте сайт через LAN-клиент или включите access/error-логирование Xray."
+	}
 }
 
 func readLogTailLines(path string, maxLines int) (string, error) {

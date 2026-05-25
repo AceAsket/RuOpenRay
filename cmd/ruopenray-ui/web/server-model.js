@@ -256,7 +256,14 @@ export function createServerModel({
     if (pool) chips.push({ label: `подписка: ${pool.count || 0}`, tone: 'info' });
     if (balancers.length) chips.push({ label: `группа: ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
     if (observers.length) chips.push({ label: observers.join(' + '), tone: 'ok' });
-    chips.push({ label: check ? checkLabel(check) : 'не проверен', tone: check?.ok ? 'ok' : check ? 'warn' : 'muted' });
+    if (check) {
+      const ping = check.pingOk ? `ping ${check.pingLatencyMs || 0} мс` : 'ping нет';
+      const tcp = check.endpointOk ? `TCP ${check.endpointLatencyMs || 0} мс` : 'TCP нет';
+      const http = check.httpOk === true ? `HTTP ${check.httpLatencyMs || check.latencyMs || 0} мс` : check.method === 'http' ? 'HTTP нет' : '';
+      chips.push({ label: [ping, tcp, http].filter(Boolean).join(' · '), tone: check.ok ? 'ok' : check.endpointOk ? 'warn' : 'bad' });
+    } else {
+      chips.push({ label: 'не проверен', tone: 'muted' });
+    }
     return `<div class="server-meta-chips">${chips.map((chip) => `<span class="server-chip ${chip.tone}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
   }
 

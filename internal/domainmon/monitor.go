@@ -10,13 +10,15 @@ import (
 )
 
 var (
-	b4sniTimePattern   = regexp.MustCompile(`^\d{1,2}:\d{2}:\d{2}\.\d{3}$`)
-	privateIPPattern   = regexp.MustCompile(`\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::(\d+))?\b`)
-	targetPattern      = regexp.MustCompile(`(?i)\b(tcp|udp):([^:/\s,\[\]\(\)]+)(?::(\d+))?`)
-	domainPattern      = regexp.MustCompile(`(?i)(?:sniffed domain[:\s]+|querying(?: DNS for)?[:\s]+|got answer[:\s]+|domain\s+)([a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?)\.?`)
-	outboundPattern    = regexp.MustCompile(`\[([A-Za-z0-9_.:-]+)\](?:\s|$)`)
-	private172Pattern  = regexp.MustCompile(`^172\.(1[6-9]|2\d|3[01])\.`)
-	logLineTimePattern = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?`)
+	b4sniTimePattern      = regexp.MustCompile(`^\d{1,2}:\d{2}:\d{2}\.\d{3}$`)
+	privateIPPattern      = regexp.MustCompile(`\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::(\d+))?\b`)
+	sourceEndpointPattern = regexp.MustCompile(`(?i)\bfrom\s+(?:tcp|udp):((?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::\d+)?)\b`)
+	dnsmasqQueryPattern   = regexp.MustCompile(`(?i)\bquery\[[^\]]+\]\s+([^\s]+)\s+from\s+((?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}))\b`)
+	targetPattern         = regexp.MustCompile(`(?i)\b(tcp|udp):([^:/\s,\[\]\(\)]+)(?::(\d+))?`)
+	domainPattern         = regexp.MustCompile(`(?i)(?:sniffed domain[:\s]+|querying(?: DNS for)?[:\s]+|got answer[:\s]+|domain\s+)([a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?)\.?`)
+	outboundPattern       = regexp.MustCompile(`\[([A-Za-z0-9_.:-]+)\](?:\s|$)`)
+	private172Pattern     = regexp.MustCompile(`^172\.(1[6-9]|2\d|3[01])\.`)
+	logLineTimePattern    = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?`)
 )
 
 type Event struct {
@@ -114,7 +116,9 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 			continue
 		}
 		sourceIP, sourcePort := "", ""
-		if match := privateIPPattern.FindStringSubmatch(line); len(match) > 0 {
+		if match := sourceEndpointPattern.FindStringSubmatch(line); len(match) > 1 {
+			sourceIP, sourcePort = splitHostPortLast(match[1])
+		} else if match := privateIPPattern.FindStringSubmatch(line); len(match) > 0 {
 			sourceIP, sourcePort = splitHostPortLast(match[0])
 		}
 		outbound := ""
@@ -179,6 +183,40 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 			Outbound:        outbound,
 			Source:          "xray",
 			Raw:             line,
+		})
+	}
+	return events
+}
+
+func ParseDnsmasqLines(content string, devices map[string]string) []Event {
+	var events []Event
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		match := dnsmasqQueryPattern.FindStringSubmatch(line)
+		if len(match) != 3 {
+			continue
+		}
+		host := normalizeHost(match[1])
+		if host == "" || net.ParseIP(host) != nil || strings.HasSuffix(host, ".arpa") {
+			continue
+		}
+		sourceIP := strings.TrimSpace(match[2])
+		timestamp := parseLogLineTime(line)
+		if timestamp == 0 {
+			timestamp = time.Now().UnixNano()
+		}
+		events = append(events, Event{
+			Time:         formatTime(time.Unix(0, timestamp), ""),
+			Timestamp:    timestamp,
+			Protocol:     "DNS",
+			SourceIP:     sourceIP,
+			SourceDevice: devices[sourceIP],
+			Host:         host,
+			Source:       "dnsmasq",
+			Raw:          line,
 		})
 	}
 	return events
@@ -263,6 +301,10 @@ func AggregateDomainEvents(events []Event) []Aggregate {
 }
 
 func AggregateDevices(events []Event) []map[string]any {
+	return AggregateDevicesWithKnown(events, nil)
+}
+
+func AggregateDevicesWithKnown(events []Event, known []Device) []map[string]any {
 	type deviceAgg struct {
 		ip        string
 		name      string
@@ -271,12 +313,21 @@ func AggregateDevices(events []Event) []map[string]any {
 		protocols map[string]bool
 	}
 	byDevice := map[string]*deviceAgg{}
+	for _, device := range known {
+		key := firstNonEmpty(device.IP, "router")
+		if byDevice[key] != nil {
+			continue
+		}
+		byDevice[key] = &deviceAgg{ip: device.IP, name: firstNonEmpty(device.Name, device.IP, "router"), domains: map[string]int{}, protocols: map[string]bool{}}
+	}
 	for _, event := range events {
 		key := firstNonEmpty(event.SourceIP, "router")
 		item := byDevice[key]
 		if item == nil {
 			item = &deviceAgg{ip: event.SourceIP, name: firstNonEmpty(event.SourceDevice, event.SourceIP, "router"), domains: map[string]int{}, protocols: map[string]bool{}}
 			byDevice[key] = item
+		} else if item.name == "" || item.name == item.ip {
+			item.name = firstNonEmpty(event.SourceDevice, item.name, item.ip, "router")
 		}
 		item.hits++
 		if event.Host != "" {

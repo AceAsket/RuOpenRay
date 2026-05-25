@@ -49,8 +49,12 @@ func directHTTPProbe(rawURL string, timeoutMs int) map[string]any {
 	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	client := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond, Transport: transport}
+	req, err := newProbeHTTPRequest(rawURL)
+	if err != nil {
+		return map[string]any{"ok": false, "latencyMs": int64(0), "error": err.Error()}
+	}
 	started := time.Now()
-	resp, err := client.Get(rawURL)
+	resp, err := client.Do(req)
 	latency := time.Since(started).Milliseconds()
 	if err != nil {
 		return map[string]any{"ok": false, "latencyMs": latency, "error": err.Error()}
@@ -142,11 +146,18 @@ func domainProbeVerdict(ping map[string]any, directTCP map[string]any, proxyTCP 
 	directTCPOK := boolPayload(directTCP, "ok", false)
 	proxyTCPOK := boolPayload(proxyTCP, "ok", false)
 	pingOK := boolPayload(ping, "ok", false)
+	directHTTPStatus := number(directHTTP["status"], 0)
+	proxyHTTPStatus := number(proxyHTTP["status"], 0)
+	if proxyHTTPStatus == 0 {
+		proxyHTTPStatus = httpStatusFromError(fmt.Sprint(proxyHTTP["error"]))
+	}
 	switch {
 	case proxyHTTPOK && !directHTTPOK:
 		return map[string]any{"code": "proxy-needed", "label": "нужен proxy", "detail": "HTTP напрямую не открылся, через proxy работает"}
 	case proxyHTTPOK && directHTTPOK:
 		return map[string]any{"code": "both-ok", "label": "доступен", "detail": "HTTP открывается и напрямую, и через proxy"}
+	case directTCPOK && proxyTCPOK && !directHTTPOK && !proxyHTTPOK && (directHTTPStatus >= 500 || proxyHTTPStatus >= 500):
+		return map[string]any{"code": "http-target-error", "label": "TCP открыт", "detail": "Порт открыт напрямую и через proxy, но сайт вернул HTTP-ошибку на проверочный запрос. Для проверки маршрута лучше использовать стабильный URL вроде https://www.gstatic.com/generate_204"}
 	case directHTTPOK && !proxyHTTPOK:
 		return map[string]any{"code": "direct-only", "label": "напрямую", "detail": "HTTP напрямую работает, через выбранный proxy нет"}
 	case proxyTCPOK && !directTCPOK:
@@ -160,6 +171,14 @@ func domainProbeVerdict(ping map[string]any, directTCP map[string]any, proxyTCP 
 	default:
 		return map[string]any{"code": "down", "label": "не открылся", "detail": "ping, TCP и HTTP не подтвердили доступность"}
 	}
+}
+
+func httpStatusFromError(value string) int {
+	match := regexp.MustCompile(`HTTP\s+([0-9]{3})`).FindStringSubmatch(value)
+	if len(match) != 2 {
+		return 0
+	}
+	return number(match[1], 0)
 }
 
 func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
@@ -191,21 +210,24 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 	proxyTCP := map[string]any{"ok": false, "error": "proxy outbound не найден"}
 	proxy := map[string]any{"ok": false, "error": "proxy outbound не найден"}
 	if outbound != nil {
-		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, 1)
-		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port)}
+		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, 2)
+		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port), "attempts": 2}
 		if tcpLatency > 0 {
 			proxyTCP["latencyMs"] = tcpLatency
 		}
 		if tcpErr != nil {
 			proxyTCP["error"] = tcpErr.Error()
 		}
-		latency, ok, probeErr := s.httpOutboundProbe(outbound, rawURL, timeoutMs, 1)
-		proxy = map[string]any{"ok": ok, "tag": tag}
+		latency, ok, probeErr := s.httpOutboundProbe(outbound, rawURL, timeoutMs, 2)
+		proxy = map[string]any{"ok": ok, "tag": tag, "attempts": 2}
 		if latency > 0 {
 			proxy["latencyMs"] = latency
 		}
 		if probeErr != nil {
 			proxy["error"] = probeErr.Error()
+			if status := httpStatusFromError(probeErr.Error()); status > 0 {
+				proxy["status"] = status
+			}
 		}
 	}
 	checks := map[string]any{

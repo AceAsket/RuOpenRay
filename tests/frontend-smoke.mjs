@@ -1058,6 +1058,45 @@ bindActionControls({
 await actionClickHandler({ target: actionButton });
 await actionErrorClickHandler({ target: actionErrorButton });
 
+let domainModeClickHandler = null;
+globalThis.document = {
+  ...globalThis.document,
+  addEventListener: (event, handler) => {
+    if (event === 'click') domainModeClickHandler = handler;
+  },
+  querySelector: () => null,
+  querySelectorAll: () => [],
+};
+state.domainMonitorMode = 'domains';
+state.domainMonitorDeviceFilter = '192.168.1.2';
+bindDiagnosticsControls({
+  state,
+  render,
+  domainMonitorFilterStorageKey: 'ruopenray:test',
+  activeProxyTag: () => 'proxy',
+  probeMonitoredDomain: async () => {},
+  focusSniResult: () => {},
+  refreshLogs: async () => {},
+  configureLogTimer: () => {},
+  scrollLogsToBottom: () => {},
+});
+domainModeClickHandler?.({
+  preventDefault: () => {},
+  stopPropagation: () => {},
+  target: {
+    closest: (selector) => selector === '[data-domain-mode]' ? { dataset: { domainMode: 'devices' } } : null,
+  },
+});
+const domainModeSwitchWorks = state.domainMonitorMode === 'devices' && state.domainMonitorDeviceFilter === '';
+domainModeClickHandler?.({
+  preventDefault: () => {},
+  stopPropagation: () => {},
+  target: {
+    closest: (selector) => selector.includes('data-domain-event-window') ? { dataset: { domainEventWindow: 'large' } } : null,
+  },
+});
+const domainEventWindowSwitchWorks = state.domainMonitorEventWindow === 'large' && state.domainMonitorListWindow === 'large';
+
 const anonymizedConfig = anonymizeConfig({
   outbounds: [{
     tag: 'cloudone-private',
@@ -1083,6 +1122,8 @@ const checks = [
   ['settings actions logout', logoutClearedSession],
   ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
   ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
+  ['diagnostics domain mode switch', domainModeSwitchWorks],
+  ['diagnostics domain event window switch', domainEventWindowSwitchWorks],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['import actions preserve pinned route targets', splitRouteSwitchState.config.routing.rules[0]?.outboundTag === 'vpn-a' && splitRouteSwitchState.config.routing.rules[1]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[2]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[3]?.outboundTag === 'vpn-b'],

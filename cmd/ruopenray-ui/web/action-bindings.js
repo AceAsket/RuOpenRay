@@ -32,6 +32,8 @@ const busyLabels = {
   startDomainMonitor: 'Запускаю монитор доменов',
   stopDomainMonitor: 'Останавливаю монитор доменов',
   clearDomainMonitor: 'Очищаю монитор доменов',
+  enableDnsmasqLogqueries: 'Включаю dnsmasq parser',
+  disableDnsmasqLogqueries: 'Выключаю dnsmasq parser',
   previewImport: 'Распознаю ссылку сервера',
   importToCurrent: 'Добавляю сервер',
   importActive: 'Добавляю и выбираю сервер',

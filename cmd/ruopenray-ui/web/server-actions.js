@@ -197,8 +197,8 @@ export function createServerActions({
       method: 'POST',
       body: JSON.stringify({
         tags: requestedTags,
-        timeoutMs: Number(state.serverCheckTimeout) || 2500,
-        attempts: Number(state.serverCheckAttempts) || 1,
+        timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+        attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
         mode: state.serverCheckMode,
         url: state.serverCheckUrl
       })
@@ -232,8 +232,8 @@ export function createServerActions({
         tag,
         mode: state.serverCheckMode,
         url: state.serverCheckUrl,
-        timeoutMs: Number(state.serverCheckTimeout) || 2500,
-        attempts: Number(state.serverCheckAttempts) || 1,
+        timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+        attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
         restart: true
       })
     });

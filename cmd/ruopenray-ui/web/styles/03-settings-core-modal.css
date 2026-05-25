@@ -201,6 +201,16 @@
   white-space: nowrap;
 }
 
+.settings-hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(49, 210, 189, 0.28);
+  border-radius: 8px;
+  color: var(--soft);
+  background: rgba(49, 210, 189, 0.08);
+  line-height: 1.45;
+}
+
 .advanced-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
