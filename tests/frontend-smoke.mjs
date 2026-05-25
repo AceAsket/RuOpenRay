@@ -291,9 +291,7 @@ const firewallHydrateOk = firewallHydrated
   && firewallHydrateState.firewallPorts === ''
   && firewallHydrateState.firewallKillSwitchTargets.includes('chatgpt.com')
   && firewallHydrateState.firewallKillSwitchTargets.includes('1.1.1.1');
-const firewallHydratePreservesLocal = !hydrateFirewallDraftFromStatus({ firewallHydratedFromStatus: false }, firewallHydrateStatus, {
-  storage: { getItem: () => 'local', setItem: () => {} }
-});
+const firewallHydratePreservesDraft = !hydrateFirewallDraftFromStatus({ firewallHydratedFromStatus: true }, firewallHydrateStatus);
 const setupActions = createSetupActions({
   state: setupState,
   request: async (path) => {
@@ -1209,7 +1207,7 @@ const checks = [
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
-  ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesLocal],
+  ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],
   ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],
   ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all' && firewallState.firewallKillSwitchTargets.includes('chatgpt.com')],

@@ -1,24 +1,3 @@
-import {
-  firewallBlockQuicStorageKey,
-  firewallBypassModeStorageKey,
-  firewallDeviceModeStorageKey,
-  firewallDnsInterceptStorageKey,
-  firewallKillSwitchDeviceModeStorageKey,
-  firewallKillSwitchDomainModeStorageKey,
-  firewallKillSwitchEnabledStorageKey,
-  firewallKillSwitchSelectedDevicesStorageKey,
-  firewallKillSwitchTargetsStorageKey,
-  firewallPortModeStorageKey,
-  firewallPortsStorageKey,
-  firewallRouterModeStorageKey,
-  firewallSelectedDevicesStorageKey,
-  firewallStorageKeys
-} from './storage.js';
-
-export function hasStoredFirewallDraft(storage = localStorage) {
-  return firewallStorageKeys.some((key) => storage.getItem(key) !== null);
-}
-
 export function firewallDraftFromStatus(status) {
   if (!status || typeof status !== 'object' || !status.persistent) return null;
   const routerMode = normalizeChoice(status.routerMode, ['tproxy', 'redirect'], 'tproxy');
@@ -49,12 +28,10 @@ export function firewallDraftFromStatus(status) {
 }
 
 export function hydrateFirewallDraftFromStatus(state, status, options = {}) {
-  const storage = options.storage || localStorage;
-  if (!options.force && (state.firewallHydratedFromStatus || hasStoredFirewallDraft(storage))) return false;
+  if (!options.force && state.firewallHydratedFromStatus) return false;
   const draft = firewallDraftFromStatus(status);
   if (!draft) return false;
   applyFirewallDraftToState(state, draft);
-  if (options.persist !== false) persistFirewallDraft(draft, storage);
   state.firewallHydratedFromStatus = true;
   return true;
 }
@@ -76,22 +53,6 @@ export function applyFirewallDraftToState(state, draft) {
     firewallKillSwitchDomainMode: draft.firewallKillSwitchDomainMode,
     firewallSafetyAccepted: false
   });
-}
-
-function persistFirewallDraft(draft, storage) {
-  storage.setItem(firewallBypassModeStorageKey, draft.firewallBypassMode);
-  storage.setItem(firewallRouterModeStorageKey, draft.firewallRouterMode);
-  storage.setItem(firewallDeviceModeStorageKey, draft.firewallDeviceMode);
-  storage.setItem(firewallSelectedDevicesStorageKey, JSON.stringify(draft.firewallSelectedDevices));
-  storage.setItem(firewallKillSwitchDeviceModeStorageKey, draft.firewallKillSwitchDeviceMode);
-  storage.setItem(firewallKillSwitchSelectedDevicesStorageKey, JSON.stringify(draft.firewallKillSwitchSelectedDevices));
-  storage.setItem(firewallPortModeStorageKey, draft.firewallPortMode);
-  storage.setItem(firewallPortsStorageKey, draft.firewallPorts);
-  storage.setItem(firewallBlockQuicStorageKey, draft.firewallBlockQuic ? '1' : '0');
-  storage.setItem(firewallDnsInterceptStorageKey, draft.firewallDnsIntercept ? '1' : '0');
-  storage.setItem(firewallKillSwitchEnabledStorageKey, draft.firewallKillSwitchEnabled ? '1' : '0');
-  storage.setItem(firewallKillSwitchTargetsStorageKey, draft.firewallKillSwitchTargets);
-  storage.setItem(firewallKillSwitchDomainModeStorageKey, draft.firewallKillSwitchDomainMode);
 }
 
 function normalizeChoice(value, choices, fallback) {

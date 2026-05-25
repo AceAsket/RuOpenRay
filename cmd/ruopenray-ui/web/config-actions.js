@@ -88,7 +88,7 @@ export function createConfigActions({
     const result = await request('/api/xray/stats/reset', { method: 'POST', body: JSON.stringify({}) });
     state.xrayTrafficHistory = [];
     state.xrayStatsResetAt = new Date().toISOString();
-    localStorage.setItem(xrayStatsResetAtStorageKey, state.xrayStatsResetAt);
+    globalThis.localStorage?.setItem(xrayStatsResetAtStorageKey, state.xrayStatsResetAt);
     state.status = { ...(state.status || {}), xrayStats: result };
     recordXrayStatsSample(state.status);
     state.message = result.ok ? 'Счетчики Xray сброшены' : (result.stderr || 'Не удалось сбросить счетчики Xray');

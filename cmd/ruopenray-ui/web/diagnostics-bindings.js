@@ -7,7 +7,7 @@ function openDeviceEvents(deps, ip) {
   state.domainMonitorQuery = '';
   state.domainMonitorMode = 'events';
   state.domainMonitorFilter = 'all';
-  localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+  globalThis.localStorage?.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
   render();
 }
 
@@ -145,7 +145,7 @@ function handleDiagnosticsDelegatedClick(event) {
   if (domainFilter) {
     event.preventDefault();
     state.domainMonitorFilter = domainFilter.dataset.domainFilter;
-    localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+    globalThis.localStorage?.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
     render();
     return;
   }
@@ -156,7 +156,7 @@ function handleDiagnosticsDelegatedClick(event) {
     state.domainMonitorQuery = '';
     state.domainMonitorDeviceFilter = '';
     state.domainMonitorFilter = 'all';
-    localStorage.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
+    globalThis.localStorage?.setItem(domainMonitorFilterStorageKey, state.domainMonitorFilter);
     render();
     return;
   }

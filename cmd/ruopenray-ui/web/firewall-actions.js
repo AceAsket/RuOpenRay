@@ -8,23 +8,8 @@ export function createFirewallActions({
   firewallPayload,
   firewallCommands,
   firewallSafetyCheck,
-  firewallReadyStatus,
-  storageKeys
+  firewallReadyStatus
 }) {
-  const {
-    firewallBypassModeStorageKey,
-    firewallRouterModeStorageKey,
-    firewallDeviceModeStorageKey,
-    firewallKillSwitchDeviceModeStorageKey,
-    firewallPortModeStorageKey,
-    firewallSelectedDevicesStorageKey,
-    firewallKillSwitchSelectedDevicesStorageKey,
-    firewallBlockQuicStorageKey,
-    firewallKillSwitchEnabledStorageKey,
-    firewallKillSwitchDomainModeStorageKey,
-    firewallKillSwitchTargetsStorageKey
-  } = storageKeys;
-
   async function applyFirewallWithRetry(attempts = 2) {
     let lastResult = null;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -154,28 +139,24 @@ export function createFirewallActions({
   function setFirewallBypassMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallBypassMode = ['off', 'bypass', 'redirect'].includes(mode) ? mode : 'off';
-    localStorage.setItem(firewallBypassModeStorageKey, state.firewallBypassMode);
     render();
   }
 
   function setFirewallRouterMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallRouterMode = ['tproxy', 'redirect'].includes(mode) ? mode : 'tproxy';
-    localStorage.setItem(firewallRouterModeStorageKey, state.firewallRouterMode);
     render();
   }
 
   function setFirewallDeviceMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallDeviceMode = ['all', 'selected', 'exclude'].includes(mode) ? mode : 'all';
-    localStorage.setItem(firewallDeviceModeStorageKey, state.firewallDeviceMode);
     render();
   }
 
   function setFirewallPortMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallPortMode = mode === 'all' ? 'all' : 'custom';
-    localStorage.setItem(firewallPortModeStorageKey, state.firewallPortMode);
     render();
   }
 
@@ -185,14 +166,12 @@ export function createFirewallActions({
     if (enabled) selected.add(ip);
     else selected.delete(ip);
     state.firewallSelectedDevices = [...selected];
-    localStorage.setItem(firewallSelectedDevicesStorageKey, JSON.stringify(state.firewallSelectedDevices));
     render();
   }
 
   function setFirewallBlockQuic(enabled) {
     resetFirewallSafetyAccept();
     state.firewallBlockQuic = Boolean(enabled);
-    localStorage.setItem(firewallBlockQuicStorageKey, state.firewallBlockQuic ? '1' : '0');
     render();
   }
 
@@ -203,14 +182,12 @@ export function createFirewallActions({
   function setFirewallKillSwitchEnabled(enabled) {
     resetFirewallSafetyAccept();
     state.firewallKillSwitchEnabled = Boolean(enabled);
-    localStorage.setItem(firewallKillSwitchEnabledStorageKey, state.firewallKillSwitchEnabled ? '1' : '0');
     render();
   }
 
   function setFirewallKillSwitchDeviceMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallKillSwitchDeviceMode = ['all', 'selected', 'exclude'].includes(mode) ? mode : 'all';
-    localStorage.setItem(firewallKillSwitchDeviceModeStorageKey, state.firewallKillSwitchDeviceMode);
     render();
   }
 
@@ -220,21 +197,18 @@ export function createFirewallActions({
     if (enabled) selected.add(ip);
     else selected.delete(ip);
     state.firewallKillSwitchSelectedDevices = [...selected];
-    localStorage.setItem(firewallKillSwitchSelectedDevicesStorageKey, JSON.stringify(state.firewallKillSwitchSelectedDevices));
     render();
   }
 
   function setFirewallKillSwitchDomainMode(mode) {
     resetFirewallSafetyAccept();
     state.firewallKillSwitchDomainMode = mode === 'nftset' ? 'nftset' : 'dns-block';
-    localStorage.setItem(firewallKillSwitchDomainModeStorageKey, state.firewallKillSwitchDomainMode);
     render();
   }
 
   function setFirewallKillSwitchTargets(value) {
     resetFirewallSafetyAccept();
     state.firewallKillSwitchTargets = value;
-    localStorage.setItem(firewallKillSwitchTargetsStorageKey, state.firewallKillSwitchTargets);
   }
 
   function resetFirewallSafetyAccept() {

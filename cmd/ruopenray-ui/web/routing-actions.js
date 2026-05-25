@@ -3,12 +3,12 @@ import { routePresetIconView } from './route-visuals.js';
 export function createRoutingActions({
   state,
   render,
+  request,
   escapeHtml,
   routeKinds,
   routePresets,
   routeBundles,
   hiddenBuiltinRoutePresetKeys,
-  customRoutePresetsStorageKey,
   parseRoutingDsl,
   isDslDefaultRule,
   dslPreviewStats,
@@ -453,7 +453,14 @@ export function createRoutingActions({
   }
 
   function saveCustomRoutePresets() {
-    localStorage.setItem(customRoutePresetsStorageKey, JSON.stringify(state.customRoutePresets));
+    if (!state.token) return;
+    request('/api/routing/presets', {
+      method: 'POST',
+      body: JSON.stringify({ presets: state.customRoutePresets })
+    }).catch((error) => {
+      state.message = error.message || 'Не удалось сохранить подборки правил на роутере';
+      render();
+    });
   }
 
   function scenarioIdFromTitle(title) {

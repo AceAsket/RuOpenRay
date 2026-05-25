@@ -32,7 +32,8 @@ export function bindSettingsControls({
   });
   document.querySelector('#installPassword')?.addEventListener('input', (event) => {
     state.installPassword = event.target.value;
-    localStorage.setItem(installPasswordStorageKey, state.installPassword);
+    globalThis.sessionStorage?.setItem(installPasswordStorageKey, state.installPassword);
+    globalThis.localStorage?.removeItem(installPasswordStorageKey);
     const basic = document.querySelector('#installCommandBasic');
     const withXray = document.querySelector('#installCommandWithXray');
     if (basic) basic.textContent = githubInstallCommand(false);

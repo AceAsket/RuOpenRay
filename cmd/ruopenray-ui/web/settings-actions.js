@@ -7,24 +7,21 @@ export function createSettingsActions({
   configureLogTimer,
   configureStatusTimer,
   syncLoggingSettings,
-  syncServiceSettings,
-  savedPasswordStorageKey
+  syncServiceSettings
 }) {
   async function login(event) {
     event.preventDefault();
     const passwordInput = document.querySelector('#password');
-    const rememberInput = document.querySelector('#rememberPassword');
     state.password = passwordInput?.value || state.password;
-    state.rememberPassword = Boolean(rememberInput?.checked);
+    state.rememberPassword = false;
     try {
       const result = await request('/api/login', {
         method: 'POST',
         body: JSON.stringify({ password: state.password })
       });
       state.token = result.token;
-      localStorage.setItem('openray_token', result.token);
-      if (state.rememberPassword) localStorage.setItem(savedPasswordStorageKey, state.password);
-      else localStorage.removeItem(savedPasswordStorageKey);
+      globalThis.sessionStorage?.setItem('openray_token', result.token);
+      globalThis.localStorage?.removeItem('openray_token');
       state.message = '';
       configureLogTimer();
       configureStatusTimer();
@@ -41,7 +38,8 @@ export function createSettingsActions({
 
   function logout() {
     state.token = '';
-    localStorage.removeItem('openray_token');
+    globalThis.sessionStorage?.removeItem('openray_token');
+    globalThis.localStorage?.removeItem('openray_token');
     state.message = '';
     state.tab = 'dashboard';
     render();
@@ -74,7 +72,8 @@ export function createSettingsActions({
         state.message = result.stderr || 'Не удалось изменить пароль';
       } else {
         state.token = '';
-        localStorage.removeItem('openray_token');
+        globalThis.sessionStorage?.removeItem('openray_token');
+        globalThis.localStorage?.removeItem('openray_token');
         state.password = '';
         state.settingsCurrentPassword = '';
         state.settingsNewPassword = '';

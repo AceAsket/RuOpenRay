@@ -4,7 +4,6 @@ export function createSetupModel({
   firewallInfo,
   firewallReadyStatus,
   proxyOutbounds,
-  setupSnapshotStorageKey,
   request,
   syncConfig,
   ensureDnsServer
@@ -84,27 +83,16 @@ export function createSetupModel({
 
   function loadSetupSnapshot() {
     if (state.setupSnapshot) return state.setupSnapshot;
-    try {
-      const snapshot = JSON.parse(localStorage.getItem(setupSnapshotStorageKey) || 'null');
-      if (snapshot && snapshot.config) {
-        state.setupSnapshot = snapshot;
-        return snapshot;
-      }
-    } catch {}
     return null;
   }
 
   function saveSetupSnapshot(snapshot) {
     state.setupSnapshot = snapshot;
-    try {
-      localStorage.setItem(setupSnapshotStorageKey, JSON.stringify(snapshot));
-    } catch {}
   }
 
   function clearSetupSnapshot() {
     state.setupSnapshot = null;
     state.setupRollbackResult = null;
-    localStorage.removeItem(setupSnapshotStorageKey);
   }
 
   async function captureSetupSnapshot() {

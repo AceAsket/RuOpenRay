@@ -57,38 +57,21 @@ import { createInitialState } from './state.js';
 import { createXrayDraftActions } from './xray-draft-actions.js';
 import { createXrayConfigModel } from './xray-config-model.js';
 import {
-  customRoutePresetsStorageKey,
-  disabledRouteRulesStorageKey,
+  cleanupSensitiveBrowserStorage,
   domainMonitorFilterStorageKey,
-  firewallBlockQuicStorageKey,
-  firewallBypassModeStorageKey,
-  firewallDeviceModeStorageKey,
-  firewallDnsInterceptStorageKey,
-  firewallKillSwitchDeviceModeStorageKey,
-  firewallKillSwitchEnabledStorageKey,
-  firewallKillSwitchDomainModeStorageKey,
-  firewallKillSwitchSelectedDevicesStorageKey,
-  firewallKillSwitchTargetsStorageKey,
-  firewallPortModeStorageKey,
-  firewallPortsStorageKey,
-  firewallRouterModeStorageKey,
-  firewallSelectedDevicesStorageKey,
-  installPasswordStorageKey,
-  loadDisabledRouteRules,
   routeNamesStorageKey,
-  savedPasswordStorageKey,
-  setupSnapshotStorageKey,
   shellQuote,
   xrayStatsResetAtStorageKey
 } from './storage.js';
 
 const app = document.querySelector('#app');
-
 const state = createInitialState();
+cleanupSensitiveBrowserStorage();
 
 function clearAuth() {
   state.token = '';
-  localStorage.removeItem('openray_token');
+  globalThis.sessionStorage?.removeItem('openray_token');
+  globalThis.localStorage?.removeItem('openray_token');
   state.message = 'Сессия устарела. Войдите заново.';
   render();
 }
@@ -242,7 +225,6 @@ function cloneOutboundWithTag(outbound, tag) {
 }
 
 function saveDisabledRouteRules() {
-  localStorage.setItem(disabledRouteRulesStorageKey, JSON.stringify(state.disabledRouteRules));
   if (!state.token) return;
   request('/api/routing/disabled', {
     method: 'POST',
@@ -258,10 +240,9 @@ async function refreshDisabledRouteRules() {
     const result = await request('/api/routing/disabled');
     if (Array.isArray(result.rules)) {
       state.disabledRouteRules = result.rules.filter((item) => item && item.rule);
-      localStorage.setItem(disabledRouteRulesStorageKey, JSON.stringify(state.disabledRouteRules));
     }
   } catch {
-    state.disabledRouteRules = loadDisabledRouteRules();
+    state.disabledRouteRules = [];
   }
 }
 
@@ -339,7 +320,7 @@ const routingActions = createRoutingActions({
   routePresets,
   routeBundles,
   hiddenBuiltinRoutePresetKeys,
-  customRoutePresetsStorageKey,
+  request,
   parseRoutingDsl,
   isDslDefaultRule,
   dslPreviewStats,
@@ -584,21 +565,7 @@ const firewallActions = createFirewallActions({
   firewallPayload,
   firewallCommands,
   firewallSafetyCheck,
-  firewallReadyStatus,
-  storageKeys: {
-    firewallBypassModeStorageKey,
-    firewallRouterModeStorageKey,
-    firewallDeviceModeStorageKey,
-    firewallKillSwitchDeviceModeStorageKey,
-    firewallPortModeStorageKey,
-    firewallSelectedDevicesStorageKey,
-    firewallKillSwitchSelectedDevicesStorageKey,
-    firewallBlockQuicStorageKey,
-    firewallDnsInterceptStorageKey,
-    firewallKillSwitchEnabledStorageKey,
-    firewallKillSwitchDomainModeStorageKey,
-    firewallKillSwitchTargetsStorageKey
-  }
+  firewallReadyStatus
 });
 const {
   applyFirewallWithRetry,
@@ -632,7 +599,6 @@ const runtimeController = createRuntimeController({
   setActiveServerTag,
   inferredActiveProxyTag,
   syncLanDnsStatus,
-  disabledRouteRulesStorageKey,
   routeNamesStorageKey,
   syncLoggingSettings,
   syncServiceSettings,
@@ -663,7 +629,6 @@ const setupModel = createSetupModel({
   firewallInfo,
   firewallReadyStatus,
   proxyOutbounds,
-  setupSnapshotStorageKey,
   request,
   syncConfig,
   ensureDnsServer
@@ -699,8 +664,7 @@ const setupActions = createSetupActions({
   lanDnsRestorePayload,
   prepareSetupDraft,
   applyFirewallWithRetry,
-  firewallReadyStatus,
-  firewallRouterModeStorageKey
+  firewallReadyStatus
 });
 const {
   openInstallWizard,
@@ -720,8 +684,7 @@ const settingsActions = createSettingsActions({
   configureLogTimer,
   configureStatusTimer,
   syncLoggingSettings,
-  syncServiceSettings,
-  savedPasswordStorageKey
+  syncServiceSettings
 });
 const {
   login,
@@ -739,7 +702,6 @@ const loginViewController = createLoginView({
   state,
   app,
   escapeHtml,
-  savedPasswordStorageKey,
   login
 });
 const { loginView } = loginViewController;
@@ -2258,8 +2220,6 @@ function bind() {
   bindRoutingControls({
     state,
     render,
-    firewallPortsStorageKey,
-    firewallDnsInterceptStorageKey,
     addRoutingPreset,
     editRoutingPreset,
     deleteCustomRoutePreset,

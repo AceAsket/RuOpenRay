@@ -1,8 +1,6 @@
 export function bindRoutingControls({
   state,
   render,
-  firewallPortsStorageKey,
-  firewallDnsInterceptStorageKey,
   addRoutingPreset,
   editRoutingPreset,
   deleteCustomRoutePreset,
@@ -477,7 +475,6 @@ export function bindRoutingControls({
   document.querySelector('#firewallPorts')?.addEventListener('input', (event) => {
     state.firewallSafetyAccepted = false;
     state.firewallPorts = event.target.value;
-    localStorage.setItem(firewallPortsStorageKey, state.firewallPorts);
   });
   document.querySelectorAll('[data-firewall-port-mode]').forEach((button) => {
     button.addEventListener('click', () => setFirewallPortMode(button.dataset.firewallPortMode));
@@ -486,7 +483,6 @@ export function bindRoutingControls({
   document.querySelector('#firewallDnsIntercept')?.addEventListener('change', (event) => {
     state.firewallSafetyAccepted = false;
     state.firewallDnsIntercept = event.target.checked;
-    localStorage.setItem(firewallDnsInterceptStorageKey, state.firewallDnsIntercept ? '1' : '0');
     render();
   });
   document.querySelector('#firewallSafetyAccepted')?.addEventListener('change', (event) => {

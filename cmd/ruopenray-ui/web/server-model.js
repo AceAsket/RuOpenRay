@@ -70,8 +70,9 @@ export function createServerModel({
 
   function setActiveServerTag(tag) {
     state.activeServerTag = tag || '';
-    if (state.activeServerTag) localStorage.setItem('ruopenray_active_server', state.activeServerTag);
-    else localStorage.removeItem('ruopenray_active_server');
+    if (state.activeServerTag) globalThis.sessionStorage?.setItem('ruopenray_active_server', state.activeServerTag);
+    else globalThis.sessionStorage?.removeItem('ruopenray_active_server');
+    globalThis.localStorage?.removeItem('ruopenray_active_server');
   }
 
   function proxyRuleStrategyStats(activeTag = activeProxyTag()) {

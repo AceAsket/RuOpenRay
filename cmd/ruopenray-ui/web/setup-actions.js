@@ -12,8 +12,7 @@ export function createSetupActions({
   lanDnsRestorePayload,
   prepareSetupDraft,
   applyFirewallWithRetry,
-  firewallReadyStatus,
-  firewallRouterModeStorageKey
+  firewallReadyStatus
 }) {
   async function openInstallWizard() {
     state.installWizardOpen = true;
@@ -31,7 +30,6 @@ export function createSetupActions({
   async function openSetupWizard() {
     if (['tproxy', 'redirect'].includes(state.firewallStatus?.routerMode)) {
       state.firewallRouterMode = state.firewallStatus.routerMode;
-      localStorage.setItem(firewallRouterModeStorageKey, state.firewallRouterMode);
     }
     state.setupWizardOpen = false;
     state.tab = 'setup';

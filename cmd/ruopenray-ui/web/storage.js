@@ -2,6 +2,7 @@ export const routeNamesStorageKey = 'ruopenray_route_names';
 export const disabledRouteRulesStorageKey = 'ruopenray_disabled_route_rules';
 export const customRoutePresetsStorageKey = 'ruopenray_custom_route_presets';
 export const savedPasswordStorageKey = 'ruopenray_saved_password';
+export const authTokenStorageKey = 'openray_token';
 export const firewallBypassModeStorageKey = 'ruopenray_firewall_bypass_mode';
 export const firewallRouterModeStorageKey = 'ruopenray_firewall_router_mode';
 export const firewallDeviceModeStorageKey = 'ruopenray_firewall_device_mode';
@@ -35,6 +36,25 @@ export const setupSnapshotStorageKey = 'ruopenray_setup_snapshot';
 export const domainMonitorFilterStorageKey = 'ruopenray_domain_monitor_filter';
 export const installPasswordStorageKey = 'ruopenray_install_password';
 
+export const sensitiveBrowserStorageKeys = [
+  authTokenStorageKey,
+  'ruopenray_active_server',
+  savedPasswordStorageKey,
+  installPasswordStorageKey,
+  disabledRouteRulesStorageKey,
+  customRoutePresetsStorageKey,
+  setupSnapshotStorageKey,
+  ...firewallStorageKeys
+];
+
+export function cleanupSensitiveBrowserStorage() {
+  for (const key of sensitiveBrowserStorageKeys) {
+    try {
+      globalThis.localStorage?.removeItem(key);
+    } catch {}
+  }
+}
+
 export function randomPanelPassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   const bytes = new Uint8Array(16);
@@ -47,10 +67,10 @@ export function randomPanelPassword() {
 }
 
 export function initialInstallPassword() {
-  const saved = localStorage.getItem(installPasswordStorageKey);
+  const saved = globalThis.sessionStorage?.getItem(installPasswordStorageKey);
   if (saved) return saved;
   const generated = randomPanelPassword();
-  localStorage.setItem(installPasswordStorageKey, generated);
+  globalThis.sessionStorage?.setItem(installPasswordStorageKey, generated);
   return generated;
 }
 
@@ -60,25 +80,16 @@ export function shellQuote(value) {
 
 export function loadRouteNames() {
   try {
-    const names = JSON.parse(localStorage.getItem(routeNamesStorageKey) || '{}');
+    const names = JSON.parse(globalThis.localStorage?.getItem(routeNamesStorageKey) || '{}');
     return names && typeof names === 'object' && !Array.isArray(names) ? names : {};
   } catch {
     return {};
   }
 }
 
-export function loadDisabledRouteRules() {
-  try {
-    const items = JSON.parse(localStorage.getItem(disabledRouteRulesStorageKey) || '[]');
-    return Array.isArray(items) ? items.filter((item) => item && item.rule) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function loadCustomRoutePresets() {
   try {
-    const items = JSON.parse(localStorage.getItem(customRoutePresetsStorageKey) || '{}');
+    const items = JSON.parse(globalThis.localStorage?.getItem(customRoutePresetsStorageKey) || '{}');
     if (!items || typeof items !== 'object' || Array.isArray(items)) return {};
     return Object.fromEntries(Object.entries(items).filter(([, preset]) => {
       return preset
@@ -89,14 +100,5 @@ export function loadCustomRoutePresets() {
     }));
   } catch {
     return {};
-  }
-}
-
-export function loadStringListStorage(key) {
-  try {
-    const items = JSON.parse(localStorage.getItem(key) || '[]');
-    return Array.isArray(items) ? items.map((item) => String(item || '').trim()).filter(Boolean) : [];
-  } catch {
-    return [];
   }
 }
