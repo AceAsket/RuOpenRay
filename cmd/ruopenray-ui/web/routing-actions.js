@@ -254,6 +254,13 @@ export function createRoutingActions({
     const target = rule?.balancerTag
       ? `balancer:${rule.balancerTag}`
       : `outbound:${normalizedRouteTarget(rule?.outboundTag || '')}`;
+    return JSON.stringify({
+      target,
+      ...routeRuleConditionSignature(rule)
+    });
+  }
+
+  function routeRuleConditionSignature(rule) {
     const sorted = (values) => Array.isArray(values) ? [...values].map(String).sort() : [];
     const port = String(rule?.port || '').trim();
     const hasConditions = Boolean(
@@ -264,19 +271,22 @@ export function createRoutingActions({
       rule?.network ||
       (port && port !== '0-65535')
     );
-    return JSON.stringify({
-      target,
+    return {
       network: String(rule?.network || ''),
       domain: sorted(rule?.domain),
       ip: sorted(rule?.ip),
       source: sorted(rule?.source),
       inboundTag: sorted(rule?.inboundTag),
       port: hasConditions ? port : ''
-    });
+    };
+  }
+
+  function routeRuleConditionKey(rule) {
+    return JSON.stringify(routeRuleConditionSignature(rule));
   }
 
   function routePresetRuleMatches(rule, presetRule) {
-    return canonicalRouteRule(rule) === canonicalRouteRule(presetRule);
+    return routeRuleConditionKey(rule) === routeRuleConditionKey(presetRule);
   }
 
   function allRoutePresetEntries() {
@@ -322,8 +332,8 @@ export function createRoutingActions({
 
   function routePresetInstallSummary(key) {
     const presetRules = routePresetRules(key).map(normalizePresetRule);
-    const currentKeys = new Set(routeRules().map(canonicalRouteRule));
-    const presetKeys = [...new Set(presetRules.map(canonicalRouteRule))];
+    const currentKeys = new Set(routeRules().map(routeRuleConditionKey));
+    const presetKeys = [...new Set(presetRules.map(routeRuleConditionKey))];
     const matched = presetKeys.filter((key) => currentKeys.has(key)).length;
     return {
       matched,
@@ -355,10 +365,10 @@ export function createRoutingActions({
       ...selectedCustom.flatMap((key) => routePresetRules(key).map(normalizePresetRule))
     ];
     const currentRules = routeRules();
-    const seen = new Set(currentRules.map(canonicalRouteRule));
+    const seen = new Set(currentRules.map(routeRuleConditionKey));
     const rules = [];
     for (const rule of requestedRules) {
-      const key = canonicalRouteRule(rule);
+      const key = routeRuleConditionKey(rule);
       if (seen.has(key)) continue;
       seen.add(key);
       rules.push(rule);
@@ -571,10 +581,10 @@ export function createRoutingActions({
       return;
     }
     const currentRules = routeRules();
-    const seen = new Set(currentRules.map(canonicalRouteRule));
+    const seen = new Set(currentRules.map(routeRuleConditionKey));
     const rules = [];
     for (const rule of parsed.rules.map(normalizePresetRule)) {
-      const key = canonicalRouteRule(rule);
+      const key = routeRuleConditionKey(rule);
       if (seen.has(key)) continue;
       seen.add(key);
       rules.push(rule);

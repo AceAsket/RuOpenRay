@@ -721,6 +721,81 @@ const routingActions = createRoutingActions({
   saveDisabledRouteRules: () => {},
 });
 routingActions.addRoutingRule();
+const routeGroupState = {
+  config: { routing: { rules: [
+    { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org'] },
+    { type: 'field', outboundTag: 'vpn-a', network: 'udp', ip: ['91.108.4.0/22'] },
+  ] } },
+  routeNames: {},
+  disabledRouteRules: [],
+  customRoutePresets: {},
+  selectedRoutePresets: [],
+  routeSearch: '',
+  message: '',
+};
+const routeGroupBundles = {
+  telegramFull: {
+    title: 'Telegram полный',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: ['domain:telegram.org'] },
+      { type: 'field', outboundTag: 'proxy', network: 'udp', ip: ['91.108.4.0/22'] },
+    ],
+  },
+};
+const routeGroupModel = createRoutingModel({
+  state: routeGroupState,
+  managedRouteTags: { proxy: 'proxy' },
+  routeBundles: routeGroupBundles,
+  routeKinds: { domain: 'РЎР°Р№С‚ РёР»Рё РґРѕРјРµРЅ', ip: 'IP РёР»Рё РїРѕРґСЃРµС‚СЊ' },
+  routePresets: {},
+  proxyOutbounds: () => [{ tag: 'vpn-a' }, { tag: 'vpn-b' }],
+  persistRouteNames: () => {},
+});
+const routeGroupActions = createRoutingActions({
+  state: routeGroupState,
+  render,
+  request: async () => ({ ok: true }),
+  escapeHtml,
+  routeKinds: { domain: 'РЎР°Р№С‚ РёР»Рё РґРѕРјРµРЅ', ip: 'IP РёР»Рё РїРѕРґСЃРµС‚СЊ' },
+  routePresets: {},
+  routeBundles: routeGroupBundles,
+  hiddenBuiltinRoutePresetKeys: new Set(),
+  parseRoutingDsl: routingDsl.parseRoutingDsl,
+  isDslDefaultRule: routingDsl.isDslDefaultRule,
+  dslPreviewStats: routingDsl.dslPreviewStats,
+  dslPreviewView: routingDsl.dslPreviewView,
+  routeRules: routeGroupModel.routeRules,
+  setRoutingDraft: (rules) => {
+    routeGroupState.config.routing = { ...(routeGroupState.config.routing || {}), rules };
+  },
+  activeProxyTag: () => 'vpn-a',
+  balancerOptions: () => [],
+  splitRouteValues: routeGroupModel.splitRouteValues,
+  routeTarget: routeGroupModel.routeTarget,
+  routeRuleKey: routeGroupModel.routeRuleKey,
+  readableRouteTag: routeGroupModel.readableRouteTag,
+  encodedRouteTarget: routeGroupModel.encodedRouteTarget,
+  isRuOpenRayManagedRoute: routeGroupModel.isRuOpenRayManagedRoute,
+  routeRuleName: routeGroupModel.routeRuleName,
+  setRouteRuleName: routeGroupModel.setRouteRuleName,
+  copyRouteRuleName: routeGroupModel.copyRouteRuleName,
+  describeRouteRule: routeGroupModel.describeRouteRule,
+  routeTargetFlagMarkup: routeGroupModel.routeTargetFlagMarkup,
+  routeTargetStatus: routeGroupModel.routeTargetStatus,
+  routeSectionDefinitions: routeGroupModel.routeSectionDefinitions,
+  routeCategoryForRule: routeGroupModel.routeCategoryForRule,
+  routeRuleSource: routeGroupModel.routeRuleSource,
+  routeTargetOptions: routeGroupModel.routeTargetOptions,
+  saveRouteNames: routeGroupModel.saveRouteNames,
+  saveDisabledRouteRules: () => {},
+});
+const routeGroupBefore = routeGroupActions.visibleRoutingRuleItems(80);
+routeGroupActions.updateRoutingTargetRange(0, 2, 'outbound:vpn-b');
+const routeGroupAfter = routeGroupActions.visibleRoutingRuleItems(80);
+const routePresetGroupStableAcrossTarget = routeGroupBefore[0]?.kind === 'presetGroup'
+  && routeGroupAfter[0]?.kind === 'presetGroup'
+  && routeGroupAfter[0]?.items?.length === 2
+  && routeGroupState.config.routing.rules.every((rule) => rule.outboundTag === 'vpn-b');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -1203,6 +1278,7 @@ const checks = [
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
+  ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
