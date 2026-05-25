@@ -1,4 +1,5 @@
 import { createRefreshTimers, isAuthError, loadAppSnapshot } from './refresh.js';
+import { hydrateFirewallDraftFromStatus } from './firewall-state.js';
 
 export function createRuntimeController({
   state,
@@ -260,6 +261,7 @@ export function createRuntimeController({
       state.tcpFastOpen = tcpFastOpen;
       syncLanDnsStatus(lanDns);
       state.firewallStatus = firewallStatus;
+      hydrateFirewallDraftFromStatus(state, firewallStatus);
       state.subscriptionPools = Array.isArray(subscriptions?.pools) ? subscriptions.pools : [];
       if (Array.isArray(disabledRoutes?.rules)) {
         state.disabledRouteRules = disabledRoutes.rules.filter((item) => item && item.rule);

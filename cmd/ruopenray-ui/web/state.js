@@ -290,6 +290,7 @@ export function createInitialState() {
   firewallKillSwitchEnabled: localStorage.getItem(firewallKillSwitchEnabledStorageKey) === '1',
   firewallKillSwitchTargets: localStorage.getItem(firewallKillSwitchTargetsStorageKey) || '',
   firewallKillSwitchDomainMode: localStorage.getItem(firewallKillSwitchDomainModeStorageKey) || 'dns-block',
+  firewallHydratedFromStatus: false,
   firewallStatus: null,
   firewallGeoExpansion: null,
   firewallSaving: false,

@@ -15,6 +15,7 @@ import { createDnsModel } from '../cmd/ruopenray-ui/web/dns-model.js';
 import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { createFirewallActions } from '../cmd/ruopenray-ui/web/firewall-actions.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
+import { firewallDraftFromStatus, hydrateFirewallDraftFromStatus } from '../cmd/ruopenray-ui/web/firewall-state.js';
 import { createImportActions } from '../cmd/ruopenray-ui/web/import-actions.js';
 import { bindImportControls } from '../cmd/ruopenray-ui/web/import-bindings.js';
 import { bindModalControls, bindNavigationControls } from '../cmd/ruopenray-ui/web/navigation-bindings.js';
@@ -242,6 +243,57 @@ globalThis.localStorage = globalThis.localStorage || {
   setItem(key, value) { this.data.set(key, String(value)); },
   removeItem(key) { this.data.delete(key); },
 };
+const firewallHydrateStorage = {
+  data: new Map(),
+  getItem(key) { return this.data.get(key) || null; },
+  setItem(key, value) { this.data.set(key, String(value)); },
+  removeItem(key) { this.data.delete(key); },
+};
+const firewallHydrateState = {
+  firewallBypassMode: 'off',
+  firewallRouterMode: 'tproxy',
+  firewallDeviceMode: 'all',
+  firewallSelectedDevices: [],
+  firewallPortMode: 'custom',
+  firewallPorts: '80,443',
+  firewallBlockQuic: true,
+  firewallDnsIntercept: true,
+  firewallKillSwitchEnabled: false,
+  firewallKillSwitchTargets: '',
+  firewallKillSwitchDomainMode: 'dns-block',
+};
+const firewallHydrateStatus = {
+  persistent: true,
+  routerMode: 'redirect',
+  bypassMode: 'bypass',
+  deviceMode: 'selected',
+  devices: ['192.168.1.50'],
+  portMode: 'all',
+  ports: [],
+  blockQuic: false,
+  dnsIntercept: false,
+  killSwitch: true,
+  killSwitchDeviceMode: 'exclude',
+  killSwitchDevices: ['192.168.1.10'],
+  killSwitchDomainMode: 'nftset',
+  killSwitchDomains: ['chatgpt.com'],
+  killSwitchIps: ['1.1.1.1'],
+};
+const firewallHydrateDraft = firewallDraftFromStatus(firewallHydrateStatus);
+const firewallHydrated = hydrateFirewallDraftFromStatus(firewallHydrateState, firewallHydrateStatus, {
+  storage: firewallHydrateStorage
+});
+const firewallHydrateOk = firewallHydrated
+  && firewallHydrateDraft.firewallBypassMode === 'bypass'
+  && firewallHydrateState.firewallRouterMode === 'redirect'
+  && firewallHydrateState.firewallDeviceMode === 'selected'
+  && firewallHydrateState.firewallPortMode === 'all'
+  && firewallHydrateState.firewallPorts === ''
+  && firewallHydrateState.firewallKillSwitchTargets.includes('chatgpt.com')
+  && firewallHydrateState.firewallKillSwitchTargets.includes('1.1.1.1');
+const firewallHydratePreservesLocal = !hydrateFirewallDraftFromStatus({ firewallHydratedFromStatus: false }, firewallHydrateStatus, {
+  storage: { getItem: () => 'local', setItem: () => {} }
+});
 const setupActions = createSetupActions({
   state: setupState,
   request: async (path) => {
@@ -1157,6 +1209,7 @@ const checks = [
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
+  ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesLocal],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],
   ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],
   ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all' && firewallState.firewallKillSwitchTargets.includes('chatgpt.com')],

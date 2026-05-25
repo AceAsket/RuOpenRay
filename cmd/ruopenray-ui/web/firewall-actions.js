@@ -1,3 +1,5 @@
+import { hydrateFirewallDraftFromStatus } from './firewall-state.js';
+
 export function createFirewallActions({
   state,
   request,
@@ -92,6 +94,7 @@ export function createFirewallActions({
     render();
     try {
       state.firewallStatus = await request('/api/firewall/status');
+      hydrateFirewallDraftFromStatus(state, state.firewallStatus);
     } finally {
       if (state.busyAction === 'refreshFirewallStatus') state.busyAction = '';
       render();

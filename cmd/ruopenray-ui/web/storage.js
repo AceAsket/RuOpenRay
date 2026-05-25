@@ -15,6 +15,21 @@ export const firewallDnsInterceptStorageKey = 'ruopenray_firewall_dns_intercept'
 export const firewallKillSwitchEnabledStorageKey = 'ruopenray_firewall_kill_switch_enabled';
 export const firewallKillSwitchTargetsStorageKey = 'ruopenray_firewall_kill_switch_targets';
 export const firewallKillSwitchDomainModeStorageKey = 'ruopenray_firewall_kill_switch_domain_mode';
+export const firewallStorageKeys = [
+  firewallBypassModeStorageKey,
+  firewallRouterModeStorageKey,
+  firewallDeviceModeStorageKey,
+  firewallSelectedDevicesStorageKey,
+  firewallKillSwitchDeviceModeStorageKey,
+  firewallKillSwitchSelectedDevicesStorageKey,
+  firewallPortModeStorageKey,
+  firewallPortsStorageKey,
+  firewallBlockQuicStorageKey,
+  firewallDnsInterceptStorageKey,
+  firewallKillSwitchEnabledStorageKey,
+  firewallKillSwitchTargetsStorageKey,
+  firewallKillSwitchDomainModeStorageKey
+];
 export const xrayStatsResetAtStorageKey = 'ruopenray_xray_stats_reset_at';
 export const setupSnapshotStorageKey = 'ruopenray_setup_snapshot';
 export const domainMonitorFilterStorageKey = 'ruopenray_domain_monitor_filter';
