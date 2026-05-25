@@ -1,15 +1,16 @@
 import {
-  authTokenStorageKey,
   domainMonitorFilterStorageKey,
   initialInstallPassword,
+  loadAuthToken,
   loadCustomRoutePresets,
   loadRouteNames,
   xrayStatsResetAtStorageKey
 } from './storage.js';
 
 export function createInitialState() {
+  const auth = loadAuthToken();
   return {
-  token: globalThis.sessionStorage?.getItem(authTokenStorageKey) || '',
+  token: auth.token,
   tab: 'dashboard',
   status: null,
   profiles: [],
@@ -236,7 +237,7 @@ export function createInitialState() {
   leasesSource: '',
   password: '',
   passwordVisible: false,
-  rememberPassword: false,
+  rememberPassword: auth.remembered,
   settingsCurrentPassword: '',
   settingsNewPassword: '',
   settingsConfirmPassword: '',

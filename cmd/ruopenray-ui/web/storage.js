@@ -37,7 +37,6 @@ export const domainMonitorFilterStorageKey = 'ruopenray_domain_monitor_filter';
 export const installPasswordStorageKey = 'ruopenray_install_password';
 
 export const sensitiveBrowserStorageKeys = [
-  authTokenStorageKey,
   'ruopenray_active_server',
   savedPasswordStorageKey,
   installPasswordStorageKey,
@@ -53,6 +52,34 @@ export function cleanupSensitiveBrowserStorage() {
       globalThis.localStorage?.removeItem(key);
     } catch {}
   }
+}
+
+export function loadAuthToken() {
+  const remembered = globalThis.localStorage?.getItem(authTokenStorageKey) || '';
+  if (remembered) return { token: remembered, remembered: true };
+  return {
+    token: globalThis.sessionStorage?.getItem(authTokenStorageKey) || '',
+    remembered: false
+  };
+}
+
+export function saveAuthToken(token, remember = false) {
+  if (!token) {
+    clearAuthToken();
+    return;
+  }
+  if (remember) {
+    globalThis.localStorage?.setItem(authTokenStorageKey, token);
+    globalThis.sessionStorage?.removeItem(authTokenStorageKey);
+    return;
+  }
+  globalThis.sessionStorage?.setItem(authTokenStorageKey, token);
+  globalThis.localStorage?.removeItem(authTokenStorageKey);
+}
+
+export function clearAuthToken() {
+  globalThis.sessionStorage?.removeItem(authTokenStorageKey);
+  globalThis.localStorage?.removeItem(authTokenStorageKey);
 }
 
 export function randomPanelPassword() {

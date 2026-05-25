@@ -237,12 +237,18 @@ const setupModel = createSetupModel({
     if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
   },
 });
-globalThis.localStorage = globalThis.localStorage || {
-  data: new Map(),
-  getItem(key) { return this.data.get(key) || null; },
-  setItem(key, value) { this.data.set(key, String(value)); },
-  removeItem(key) { this.data.delete(key); },
-};
+function createMemoryStorage() {
+  return {
+    data: new Map(),
+    getItem(key) { return this.data.get(key) || null; },
+    setItem(key, value) { this.data.set(key, String(value)); },
+    removeItem(key) { this.data.delete(key); },
+    clear() { this.data.clear(); },
+  };
+}
+
+globalThis.localStorage = globalThis.localStorage || createMemoryStorage();
+globalThis.sessionStorage = globalThis.sessionStorage || createMemoryStorage();
 const firewallHydrateStorage = {
   data: new Map(),
   getItem(key) { return this.data.get(key) || null; },
@@ -347,8 +353,12 @@ await settingsActions.saveServiceSettings();
 await settingsActions.service('restart');
 settingsActionState.token = 'test-token';
 localStorage.setItem('openray_token', 'test-token');
+sessionStorage.setItem('openray_token', 'test-token');
 settingsActions.logout();
-const logoutClearedSession = !settingsActionState.token && !localStorage.getItem('openray_token') && settingsActionState.tab === 'dashboard';
+const logoutClearedSession = !settingsActionState.token
+  && !localStorage.getItem('openray_token')
+  && !sessionStorage.getItem('openray_token')
+  && settingsActionState.tab === 'dashboard';
 
 let loginRefreshStarted = false;
 let loginRefreshResolved = false;
@@ -633,8 +643,28 @@ globalThis.document = {
   querySelectorAll: () => [],
 };
 await loginActions.login({ preventDefault: () => {} });
+const loginStoresSessionOnly = sessionStorage.getItem('openray_token') === 'login-token'
+  && !localStorage.getItem('openray_token')
+  && localStorage.getItem('ruopenray:test:login-password') === null;
 const loginReturnedBeforeRefresh = loginRefreshStarted && !loginRefreshResolved && loginActionState.token === 'login-token' && loginRenderCount > 0;
 await new Promise((resolve) => setTimeout(resolve, 35));
+
+sessionStorage.removeItem('openray_token');
+localStorage.removeItem('openray_token');
+loginActionState.rememberPassword = true;
+globalThis.document = {
+  ...globalThis.document,
+  querySelector: (selector) => {
+    if (selector === '#password') return { value: 'admin' };
+    if (selector === '#rememberPassword') return { checked: true };
+    return null;
+  },
+  querySelectorAll: () => [],
+};
+await loginActions.login({ preventDefault: () => {} });
+const loginRememberStoresLocalOnly = localStorage.getItem('openray_token') === 'login-token'
+  && !sessionStorage.getItem('openray_token')
+  && localStorage.getItem('ruopenray:test:login-password') === null;
 
 const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
 const initialState = createInitialState();
@@ -1259,6 +1289,8 @@ const checks = [
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
   ['settings actions logout', logoutClearedSession],
   ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
+  ['settings actions login stores session token without password', loginStoresSessionOnly],
+  ['settings actions remember login stores local token without password', loginRememberStoresLocalOnly],
   ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
   ['diagnostics domain mode switch', domainModeSwitchWorks],
   ['diagnostics domain event window switch', domainEventWindowSwitchWorks],

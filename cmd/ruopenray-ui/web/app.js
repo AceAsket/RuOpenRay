@@ -57,8 +57,9 @@ import { createInitialState } from './state.js';
 import { createXrayDraftActions } from './xray-draft-actions.js';
 import { createXrayConfigModel } from './xray-config-model.js';
 import {
-  cleanupSensitiveBrowserStorage,
+  clearAuthToken,
   domainMonitorFilterStorageKey,
+  installPasswordStorageKey,
   routeNamesStorageKey,
   shellQuote,
   xrayStatsResetAtStorageKey
@@ -66,12 +67,11 @@ import {
 
 const app = document.querySelector('#app');
 const state = createInitialState();
-cleanupSensitiveBrowserStorage();
 
 function clearAuth() {
   state.token = '';
-  globalThis.sessionStorage?.removeItem('openray_token');
-  globalThis.localStorage?.removeItem('openray_token');
+  state.rememberPassword = false;
+  clearAuthToken();
   state.message = 'Сессия устарела. Войдите заново.';
   render();
 }

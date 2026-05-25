@@ -5,6 +5,12 @@ function fileSize(size) {
   return n > 1024 * 1024 ? `${Math.round((n / 1024 / 1024) * 10) / 10} MB` : `${Math.round(n / 1024)} KB`;
 }
 
+function metricSize(size, fallback = 'не рассчитано') {
+  const n = Number(size || 0);
+  if (!n) return fallback;
+  return n > 1024 * 1024 ? `${Math.round((n / 1024 / 1024) * 10) / 10} MB` : `${Math.round(n / 1024)} KB`;
+}
+
 function geoSelectedPresetIds() {
   const ids = [state.geoBasePreset, ...state.geoExtraPresets].filter(Boolean);
   return [...new Set(ids)];
@@ -97,12 +103,12 @@ function geoNandCard(geo, selectedPresets) {
         <button class="btn secondary" data-action="cleanupExtraGeoDat" ${extraCount ? '' : 'disabled'}>Удалить дополнительные dat</button>
       </div>
       <div class="nand-plan-grid">
-        <article><span>Свободно</span><strong>${escapeHtml(fileSize(disk.free))}</strong><small>${escapeHtml(geo.dir || '')}</small></article>
-        <article><span>Geo сейчас</span><strong>${escapeHtml(fileSize(storage.currentDatBytes))}</strong><small>geoip.dat + geosite.dat</small></article>
-        <article><span>Бэкапы</span><strong>${escapeHtml(fileSize(storage.backupBytes))}</strong><small>можно очистить отдельно</small></article>
-        <article><span>Компактный набор</span><strong>${escapeHtml(fileSize(storage.compactEstimate))}</strong><small>Nidelon / РФ блокировки</small></article>
-        <article><span>С бэкапом</span><strong>${escapeHtml(fileSize(requiredBackup))}</strong><small>оценка выбранного обновления</small></article>
-        <article><span>Без бэкапа</span><strong>${escapeHtml(fileSize(requiredNoBackup))}</strong><small>рекомендуется для малого NAND</small></article>
+        <article><span>Свободно</span><strong>${escapeHtml(metricSize(disk.free, 'неизвестно'))}</strong><small>${escapeHtml(geo.dir || '')}</small></article>
+        <article><span>Geo сейчас</span><strong>${escapeHtml(metricSize(storage.currentDatBytes, 'не установлено'))}</strong><small>geoip.dat + geosite.dat</small></article>
+        <article><span>Бэкапы</span><strong>${escapeHtml(metricSize(storage.backupBytes, 'нет'))}</strong><small>можно очистить отдельно</small></article>
+        <article><span>Компактный набор</span><strong>${escapeHtml(metricSize(storage.compactEstimate))}</strong><small>Nidelon / РФ блокировки</small></article>
+        <article><span>С бэкапом</span><strong>${escapeHtml(metricSize(requiredBackup))}</strong><small>оценка выбранного обновления</small></article>
+        <article><span>Без бэкапа</span><strong>${escapeHtml(metricSize(requiredNoBackup))}</strong><small>рекомендуется для малого NAND</small></article>
       </div>
       <details class="geo-nand-files" open>
         <summary>

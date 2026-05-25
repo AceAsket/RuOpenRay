@@ -22,6 +22,13 @@ export function createLoginView({
               <button type="button" class="password-toggle" data-action="togglePassword" aria-label="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}" title="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}">${eyeIcon}</button>
             </div>
           </div>
+          <label class="login-remember">
+            <input id="rememberPassword" type="checkbox" ${state.rememberPassword ? 'checked' : ''} />
+            <span>
+              <strong>Запомнить вход</strong>
+              <small>Пароль не сохраняется, только токен панели на этом устройстве.</small>
+            </span>
+          </label>
           <button class="btn" type="submit" style="width: 100%; height: 42px">Войти</button>
           ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
         </form>
@@ -30,6 +37,9 @@ export function createLoginView({
     document.querySelector('#loginForm').addEventListener('submit', login);
     document.querySelector('#password').addEventListener('input', (event) => {
       state.password = event.target.value;
+    });
+    document.querySelector('#rememberPassword').addEventListener('change', (event) => {
+      state.rememberPassword = event.target.checked;
     });
     document.querySelector('[data-action="togglePassword"]').addEventListener('click', () => {
       state.passwordVisible = !state.passwordVisible;

@@ -1,3 +1,5 @@
+import { clearAuthToken, saveAuthToken } from './storage.js';
+
 export function createSettingsActions({
   state,
   request,
@@ -12,16 +14,16 @@ export function createSettingsActions({
   async function login(event) {
     event.preventDefault();
     const passwordInput = document.querySelector('#password');
+    const rememberInput = document.querySelector('#rememberPassword');
     state.password = passwordInput?.value || state.password;
-    state.rememberPassword = false;
+    state.rememberPassword = Boolean(rememberInput?.checked);
     try {
       const result = await request('/api/login', {
         method: 'POST',
         body: JSON.stringify({ password: state.password })
       });
       state.token = result.token;
-      globalThis.sessionStorage?.setItem('openray_token', result.token);
-      globalThis.localStorage?.removeItem('openray_token');
+      saveAuthToken(result.token, state.rememberPassword);
       state.message = '';
       configureLogTimer();
       configureStatusTimer();
@@ -38,8 +40,8 @@ export function createSettingsActions({
 
   function logout() {
     state.token = '';
-    globalThis.sessionStorage?.removeItem('openray_token');
-    globalThis.localStorage?.removeItem('openray_token');
+    state.rememberPassword = false;
+    clearAuthToken();
     state.message = '';
     state.tab = 'dashboard';
     render();
@@ -72,8 +74,8 @@ export function createSettingsActions({
         state.message = result.stderr || 'Не удалось изменить пароль';
       } else {
         state.token = '';
-        globalThis.sessionStorage?.removeItem('openray_token');
-        globalThis.localStorage?.removeItem('openray_token');
+        state.rememberPassword = false;
+        clearAuthToken();
         state.password = '';
         state.settingsCurrentPassword = '';
         state.settingsNewPassword = '';

@@ -199,6 +199,15 @@ export function createRuntimeController({
     refreshTimers.configureStatusTimer();
   }
 
+  function hasConfigSurface(config) {
+    return Boolean(config && typeof config === 'object' && (
+      Array.isArray(config.inbounds)
+      || Array.isArray(config.outbounds)
+      || (config.routing && typeof config.routing === 'object')
+      || (config.dns && typeof config.dns === 'object')
+    ));
+  }
+
   async function refresh(options = {}) {
     const renderAfter = options.renderAfter !== false;
     const background = Boolean(options.background);
@@ -227,13 +236,18 @@ export function createRuntimeController({
       } = await loadAppSnapshot({ request, text: api.text, logsUrl });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
-      const draftConfig = configDraft?.exists && configDraft.config ? configDraft.config : config;
+      const activeConfig = hasConfigSurface(config) ? config : state.config;
+      const usableDraft = configDraft?.exists && hasConfigSurface(configDraft.config);
+      const draftConfig = usableDraft ? configDraft.config : activeConfig;
+      const draftState = configDraft?.exists && !usableDraft
+        ? { ...configDraft, exists: false, error: configDraft.error || 'Черновик config.json пустой и не используется' }
+        : configDraft;
       syncConfig(draftConfig, {
-        activeConfig: config,
+        activeConfig,
         fromServer: true,
         persist: false,
-        forceDraft: Boolean(configDraft?.exists),
-        serverDraft: configDraft
+        forceDraft: usableDraft,
+        serverDraft: draftState
       });
       if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {
         setActiveServerTag(inferredActiveProxyTag());
