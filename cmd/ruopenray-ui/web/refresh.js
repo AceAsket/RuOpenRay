@@ -40,6 +40,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     subscriptions,
     disabledRoutes,
     routeNames,
+    customRoutePresets,
     serverMeta
   ] = await Promise.all([
     request('/api/status'),
@@ -60,6 +61,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     request('/api/subscriptions').catch(() => ({ pools: [] })),
     request('/api/routing/disabled').catch(() => null),
     request('/api/routing/names').catch(() => null),
+    request('/api/routing/presets').catch(() => null),
     request('/api/server-meta').catch(() => null)
   ]);
   return {
@@ -81,6 +83,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     subscriptions,
     disabledRoutes,
     routeNames,
+    customRoutePresets,
     serverMeta
   };
 }

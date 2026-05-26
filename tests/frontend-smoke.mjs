@@ -28,6 +28,7 @@ import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
+import { hiddenBuiltinRoutePresetKeys as builtinHiddenRoutePresetKeys, routeBundles as builtinRouteBundles, routePresets as builtinRoutePresets } from '../cmd/ruopenray-ui/web/presets.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
@@ -642,7 +643,6 @@ const routingActions = createRoutingActions({
   routePresets: {},
   routeBundles: {},
   hiddenBuiltinRoutePresetKeys: new Set(),
-  customRoutePresetsStorageKey: 'ruopenray:test:custom-presets',
   parseRoutingDsl: routingDsl.parseRoutingDsl,
   isDslDefaultRule: routingDsl.isDslDefaultRule,
   dslPreviewStats: routingDsl.dslPreviewStats,
@@ -671,6 +671,240 @@ const routingActions = createRoutingActions({
   saveDisabledRouteRules: () => {},
 });
 routingActions.addRoutingRule();
+
+const groupedPresetRules = [
+  { type: 'field', outboundTag: 'proxy', domain: ['domain:telegram.org', 'domain:t.me'] },
+  { type: 'field', outboundTag: 'proxy', ip: ['91.108.4.0/22', '149.154.160.0/20'] },
+  { type: 'field', outboundTag: 'proxy', network: 'udp', ip: ['91.108.0.0/16'] },
+];
+const groupedRouteState = {
+  config: {
+    routing: {
+      rules: groupedPresetRules.map((rule) => ({ ...JSON.parse(JSON.stringify(rule)), outboundTag: 'germany' })),
+      balancers: [{ tag: 'auto', selector: ['g'], fallbackTag: 'yandex' }],
+    },
+    outbounds: [{ tag: 'yandex', protocol: 'vless' }, { tag: 'germany', protocol: 'vless' }],
+  },
+  routeNames: {},
+  disabledRouteRules: [],
+  customRoutePresets: {},
+  selectedRoutePresets: [],
+  routeSearch: '',
+};
+const groupedRouteModel = createRoutingModel({
+  state: groupedRouteState,
+  managedRouteTags: {},
+  routeBundles: {},
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: {},
+  proxyOutbounds: () => [{ tag: 'yandex' }, { tag: 'germany' }],
+  checkForTag: (tag) => tag === 'germany' ? { ok: true } : { ok: false },
+  checkLabel: (check) => check.ok ? 'работает' : 'нет ответа',
+});
+const groupedRouteActions = createRoutingActions({
+  state: groupedRouteState,
+  render,
+  escapeHtml,
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: {},
+  routeBundles: {
+    telegramFull: {
+      title: 'Telegram full',
+      detail: 'Telegram grouped rules',
+      rules: groupedPresetRules,
+    },
+  },
+  hiddenBuiltinRoutePresetKeys: new Set(),
+  parseRoutingDsl: routingDsl.parseRoutingDsl,
+  isDslDefaultRule: routingDsl.isDslDefaultRule,
+  dslPreviewStats: routingDsl.dslPreviewStats,
+  dslPreviewView: routingDsl.dslPreviewView,
+  routeRules: groupedRouteModel.routeRules,
+  setRoutingDraft: (rules) => {
+    groupedRouteState.config.routing = { ...(groupedRouteState.config.routing || {}), rules };
+  },
+  activeProxyTag: () => 'yandex',
+  balancerOptions: () => [],
+  splitRouteValues: groupedRouteModel.splitRouteValues,
+  routeTarget: groupedRouteModel.routeTarget,
+  routeRuleKey: groupedRouteModel.routeRuleKey,
+  readableRouteTag: groupedRouteModel.readableRouteTag,
+  encodedRouteTarget: groupedRouteModel.encodedRouteTarget,
+  isRuOpenRayManagedRoute: groupedRouteModel.isRuOpenRayManagedRoute,
+  routeRuleName: groupedRouteModel.routeRuleName,
+  setRouteRuleName: groupedRouteModel.setRouteRuleName,
+  copyRouteRuleName: groupedRouteModel.copyRouteRuleName,
+  describeRouteRule: groupedRouteModel.describeRouteRule,
+  routeSectionDefinitions: groupedRouteModel.routeSectionDefinitions,
+  routeCategoryForRule: groupedRouteModel.routeCategoryForRule,
+  routeRuleSource: groupedRouteModel.routeRuleSource,
+  routeTargetOptions: groupedRouteModel.routeTargetOptions,
+  saveRouteNames: groupedRouteModel.saveRouteNames,
+  saveDisabledRouteRules: () => {},
+});
+const shiftedPresetItems = groupedRouteActions.visibleRoutingRuleItems();
+const shiftedPresetHtml = groupedRouteActions.orderedRouteList(
+  shiftedPresetItems,
+  groupedRouteModel.routeTargetOptions(),
+  groupedRouteModel.routeRules().length,
+  []
+);
+groupedRouteActions.moveRoutingRuleInsideGroup(2, 0, 3, -1);
+const reorderedPresetItems = groupedRouteActions.visibleRoutingRuleItems();
+groupedRouteActions.reorderRoutingRuleInsideGroup(0, 0, 3, 3);
+const draggedPresetItems = groupedRouteActions.visibleRoutingRuleItems();
+groupedRouteActions.updateRoutingTarget(1, 'outbound:yandex');
+const mixedPresetItems = groupedRouteActions.visibleRoutingRuleItems();
+const mixedPresetHtml = groupedRouteActions.orderedRouteList(
+  mixedPresetItems,
+  groupedRouteModel.routeTargetOptions(),
+  groupedRouteModel.routeRules().length,
+  []
+);
+const routeValuesDrawerClosedByDefault = !mixedPresetHtml.includes('route-values-drawer');
+groupedRouteState.routeValuesDrawerIndex = 1;
+groupedRouteState.routeValuesDrawerAnchor = { top: 120, left: 640, maxHeight: 280 };
+const routeValuesDrawerHtml = groupedRouteActions.orderedRouteList(
+  mixedPresetItems,
+  groupedRouteModel.routeTargetOptions(),
+  groupedRouteModel.routeRules().length,
+  []
+);
+groupedRouteState.routeValuesDrawerIndex = null;
+groupedRouteState.routeValuesDrawerAnchor = null;
+const nestedTargetSelectEnabled = /<select class="route-outbound" data-route-target="1"\s+title="Сервер можно менять отдельно/.test(mixedPresetHtml);
+const nestedDragEnabled = mixedPresetHtml.includes('data-route-group-child-index="1"') && mixedPresetHtml.includes('Перетащить внутри подборки');
+const nestedEditEnabled = /data-route-edit="1"(?![^>]*disabled)/.test(mixedPresetHtml);
+const balancerOptionLabel = groupedRouteModel.routeTargetOptions().find((option) => option.value === 'balancer:auto')?.label;
+const balancerStatusLabel = groupedRouteModel.routeTargetStatus('balancer:auto')?.label || '';
+groupedRouteActions.openRoutingRuleEditor(1);
+groupedRouteState.routeValue = '91.108.4.0/22, 149.154.160.0/20, 203.0.113.0/24';
+groupedRouteActions.saveRoutingRuleEdit();
+const forkedPresetItems = groupedRouteActions.visibleRoutingRuleItems();
+const forkedPresetKeys = Object.keys(groupedRouteState.customRoutePresets);
+
+const chatgptSplitState = {
+  config: {
+    routing: {
+      rules: builtinRouteBundles.chatgptSplit.rules.map((rule) => ({
+        ...JSON.parse(JSON.stringify(rule)),
+        outboundTag: 'latvia'
+      }))
+    },
+    outbounds: [{ tag: 'latvia', protocol: 'vless' }],
+  },
+  routeNames: {},
+  disabledRouteRules: [],
+  customRoutePresets: {},
+  selectedRoutePresets: [],
+  routeSearch: '',
+};
+const chatgptSplitModel = createRoutingModel({
+  state: chatgptSplitState,
+  managedRouteTags: {},
+  routeBundles: builtinRouteBundles,
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: builtinRoutePresets,
+  proxyOutbounds: () => [{ tag: 'latvia' }],
+});
+const chatgptSplitActions = createRoutingActions({
+  state: chatgptSplitState,
+  render,
+  escapeHtml,
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: builtinRoutePresets,
+  routeBundles: builtinRouteBundles,
+  hiddenBuiltinRoutePresetKeys: builtinHiddenRoutePresetKeys,
+  parseRoutingDsl: routingDsl.parseRoutingDsl,
+  isDslDefaultRule: routingDsl.isDslDefaultRule,
+  dslPreviewStats: routingDsl.dslPreviewStats,
+  dslPreviewView: routingDsl.dslPreviewView,
+  routeRules: chatgptSplitModel.routeRules,
+  setRoutingDraft: (rules) => {
+    chatgptSplitState.config.routing = { ...(chatgptSplitState.config.routing || {}), rules };
+  },
+  activeProxyTag: () => 'latvia',
+  balancerOptions: () => [],
+  splitRouteValues: chatgptSplitModel.splitRouteValues,
+  routeTarget: chatgptSplitModel.routeTarget,
+  routeRuleKey: chatgptSplitModel.routeRuleKey,
+  readableRouteTag: chatgptSplitModel.readableRouteTag,
+  encodedRouteTarget: chatgptSplitModel.encodedRouteTarget,
+  isRuOpenRayManagedRoute: chatgptSplitModel.isRuOpenRayManagedRoute,
+  routeRuleName: chatgptSplitModel.routeRuleName,
+  setRouteRuleName: chatgptSplitModel.setRouteRuleName,
+  copyRouteRuleName: chatgptSplitModel.copyRouteRuleName,
+  describeRouteRule: chatgptSplitModel.describeRouteRule,
+  routeSectionDefinitions: chatgptSplitModel.routeSectionDefinitions,
+  routeCategoryForRule: chatgptSplitModel.routeCategoryForRule,
+  routeRuleSource: chatgptSplitModel.routeRuleSource,
+  routeTargetOptions: chatgptSplitModel.routeTargetOptions,
+  saveRouteNames: chatgptSplitModel.saveRouteNames,
+  saveDisabledRouteRules: () => {},
+});
+const chatgptSplitInstalled = chatgptSplitActions.routePresetInstallSummary('chatgpt').installed;
+
+const googleCoveredState = {
+  config: {
+    routing: {
+      rules: [
+        { ...JSON.parse(JSON.stringify(builtinRouteBundles.googleFull.rules[0])), outboundTag: 'latvia' },
+        { ...JSON.parse(JSON.stringify(builtinRouteBundles.googleFull.rules[2])), outboundTag: 'latvia' },
+      ]
+    },
+    outbounds: [{ tag: 'latvia', protocol: 'vless' }],
+  },
+  routeNames: {},
+  disabledRouteRules: [],
+  customRoutePresets: {},
+  selectedRoutePresets: [],
+  routeSearch: '',
+};
+const googleCoveredModel = createRoutingModel({
+  state: googleCoveredState,
+  managedRouteTags: {},
+  routeBundles: builtinRouteBundles,
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: builtinRoutePresets,
+  proxyOutbounds: () => [{ tag: 'latvia' }],
+});
+const googleCoveredActions = createRoutingActions({
+  state: googleCoveredState,
+  render,
+  escapeHtml,
+  routeKinds: { domain: 'Domain', ip: 'IP' },
+  routePresets: builtinRoutePresets,
+  routeBundles: builtinRouteBundles,
+  hiddenBuiltinRoutePresetKeys: builtinHiddenRoutePresetKeys,
+  parseRoutingDsl: routingDsl.parseRoutingDsl,
+  isDslDefaultRule: routingDsl.isDslDefaultRule,
+  dslPreviewStats: routingDsl.dslPreviewStats,
+  dslPreviewView: routingDsl.dslPreviewView,
+  routeRules: googleCoveredModel.routeRules,
+  setRoutingDraft: (rules) => {
+    googleCoveredState.config.routing = { ...(googleCoveredState.config.routing || {}), rules };
+  },
+  activeProxyTag: () => 'latvia',
+  balancerOptions: () => [],
+  splitRouteValues: googleCoveredModel.splitRouteValues,
+  routeTarget: googleCoveredModel.routeTarget,
+  routeRuleKey: googleCoveredModel.routeRuleKey,
+  readableRouteTag: googleCoveredModel.readableRouteTag,
+  encodedRouteTarget: googleCoveredModel.encodedRouteTarget,
+  isRuOpenRayManagedRoute: googleCoveredModel.isRuOpenRayManagedRoute,
+  routeRuleName: googleCoveredModel.routeRuleName,
+  setRouteRuleName: googleCoveredModel.setRouteRuleName,
+  copyRouteRuleName: googleCoveredModel.copyRouteRuleName,
+  describeRouteRule: googleCoveredModel.describeRouteRule,
+  routeSectionDefinitions: googleCoveredModel.routeSectionDefinitions,
+  routeCategoryForRule: googleCoveredModel.routeCategoryForRule,
+  routeRuleSource: googleCoveredModel.routeRuleSource,
+  routeTargetOptions: googleCoveredModel.routeTargetOptions,
+  saveRouteNames: googleCoveredModel.saveRouteNames,
+  saveDisabledRouteRules: () => {},
+});
+const googleCoveredInstall = googleCoveredActions.routePresetInstallSummary('googleFull');
+
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -964,10 +1198,15 @@ bindRoutingControls({
   editRoutingPreset: () => {},
   deleteCustomRoutePreset: () => {},
   removeRoutingRule: () => {},
+  removeRoutingRuleRange: () => {},
   disableRoutingRule: () => {},
+  disableRoutingRuleRange: () => {},
   restoreDisabledRouteRule: () => {},
   deleteDisabledRouteRule: () => {},
   moveRoutingRule: () => {},
+  moveRoutingRuleInsideGroup: () => {},
+  reorderRoutingRuleInsideGroup: () => {},
+  moveRoutingRuleRange: () => {},
   openRoutingRuleEditor: () => {},
   openRouteBalancerDialog: () => {},
   removeRouteBalancer: () => {},
@@ -976,9 +1215,13 @@ bindRoutingControls({
   setFirewallDeviceMode: () => {},
   toggleFirewallDevice: () => {},
   reorderRoutingRule: () => {},
+  reorderRoutingRuleRange: () => {},
   routeRules: () => [],
   describeRouteRule: () => null,
+  routeTargetFlagMarkup: () => '',
+  routeTargetStatus: () => '',
   updateRoutingTarget: () => {},
+  updateRoutingTargetRange: () => {},
   removeOutbound: () => {},
   routeAllToOutbound: async () => {},
   checkServers: async () => {},
@@ -1153,6 +1396,12 @@ const checks = [
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
+  ['routing preset group survives target/order change', shiftedPresetItems.length === 1 && shiftedPresetItems[0]?.kind === 'presetGroup' && shiftedPresetItems[0]?.items?.length === 3 && shiftedPresetHtml.includes('data-route-range-end="3"') && shiftedPresetHtml.includes('data-details-key="route-preset-group:telegramFull"') && shiftedPresetHtml.includes('value="outbound:germany" selected') && reorderedPresetItems.length === 1 && reorderedPresetItems[0]?.items?.[1]?.rule?.network === 'udp' && draggedPresetItems.length === 1 && draggedPresetItems[0]?.items?.[2]?.rule?.domain?.includes('domain:telegram.org') && mixedPresetItems.length === 1 && mixedPresetItems[0]?.items?.length === 3 && mixedPresetHtml.includes('value="__mixed__" disabled selected') && mixedPresetHtml.includes('germany + yandex') && mixedPresetHtml.includes('data-route-group-child-move="1"') && nestedTargetSelectEnabled && nestedDragEnabled && nestedEditEnabled],
+  ['routing values drawer opens only on demand', routeValuesDrawerClosedByDefault && routeValuesDrawerHtml.includes('route-values-drawer') && routeValuesDrawerHtml.includes('data-route-values-panel-close') && routeValuesDrawerHtml.includes('--route-values-drawer-top:120px') && routeValuesDrawerHtml.includes('--route-values-drawer-left:640px') && routeValuesDrawerHtml.includes('--route-values-drawer-max-height:280px')],
+  ['routing group target labels/status', balancerOptionLabel === 'Группа · auto' && balancerStatusLabel.includes('Группа auto') && balancerStatusLabel.includes('germany - работает') && groupedRouteModel.readableRouteTag('direct') === 'direct'],
+  ['routing group edit forks and applies custom preset', forkedPresetKeys.length === 1 && forkedPresetItems.length === 1 && forkedPresetItems[0]?.kind === 'presetGroup' && String(forkedPresetItems[0]?.key || '').startsWith('custom:') && forkedPresetItems[0]?.items?.[1]?.rule?.ip?.includes('203.0.113.0/24')],
+  ['routing chatgpt split scenario installed', chatgptSplitInstalled],
+  ['routing scenario covered rules installed', googleCoveredInstall.installed && googleCoveredInstall.matched === googleCoveredInstall.total],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],

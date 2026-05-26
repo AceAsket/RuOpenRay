@@ -13,6 +13,8 @@ export function bindRoutingControls({
   restoreDisabledRouteRule,
   deleteDisabledRouteRule,
   moveRoutingRule,
+  moveRoutingRuleInsideGroup,
+  reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
   openRoutingRuleEditor,
   openRouteBalancerDialog,
@@ -116,6 +118,18 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-route-move]').forEach((button) => {
     button.addEventListener('click', () => moveRoutingRule(Number(button.dataset.routeMove), Number(button.dataset.direction)));
   });
+  document.querySelectorAll('[data-route-group-child-move]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      moveRoutingRuleInsideGroup(
+        Number(button.dataset.routeGroupChildMove),
+        Number(button.dataset.routeGroupChildStart),
+        Number(button.dataset.routeGroupChildEnd),
+        Number(button.dataset.direction)
+      );
+    });
+  });
   document.querySelectorAll('[data-route-group-move-start]').forEach((button) => {
     button.addEventListener('click', (event) => {
       event.preventDefault();
@@ -158,6 +172,75 @@ export function bindRoutingControls({
     document.querySelectorAll('.route-row.dragging, .route-row.drag-over, .route-row.drop-before, .route-row.drop-after, .route-preset-group-row.dragging, .route-preset-group-row.drag-over, .route-preset-group-row.drop-before, .route-preset-group-row.drop-after')
       .forEach((item) => item.classList.remove('dragging', 'drag-over', 'drop-before', 'drop-after'));
   };
+  const isRouteGroupChildDrag = (event) => [...(event.dataTransfer?.types || [])].includes('application/x-ruopenray-route-child');
+  document.querySelectorAll('[data-route-group-child-index]').forEach((row) => {
+    row.addEventListener('pointerdown', (event) => {
+      row.dataset.dragHandle = event.target.closest('.route-drag-handle') ? '1' : '0';
+    });
+    row.addEventListener('dragstart', (event) => {
+      event.stopPropagation();
+      if (row.dataset.dragHandle !== '1') {
+        event.preventDefault();
+        return;
+      }
+      row.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      const payload = JSON.stringify({
+        index: Number(row.dataset.routeGroupChildIndex),
+        start: Number(row.dataset.routeGroupChildStart),
+        end: Number(row.dataset.routeGroupChildEnd)
+      });
+      event.dataTransfer.setData('application/x-ruopenray-route-child', payload);
+      event.dataTransfer.setData('text/plain', payload);
+    });
+    row.addEventListener('dragend', (event) => {
+      event.stopPropagation();
+      clearRouteDragState();
+    });
+    row.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'move';
+      const rect = row.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      document.querySelectorAll('.route-preset-group-children .route-row.drag-over, .route-preset-group-children .route-row.drop-before, .route-preset-group-children .route-row.drop-after')
+        .forEach((item) => {
+          if (item !== row) item.classList.remove('drag-over', 'drop-before', 'drop-after');
+        });
+      row.classList.add('drag-over');
+      row.classList.toggle('drop-before', before);
+      row.classList.toggle('drop-after', !before);
+    });
+    row.addEventListener('dragleave', (event) => {
+      event.stopPropagation();
+      row.classList.remove('drag-over', 'drop-before', 'drop-after');
+    });
+    row.addEventListener('drop', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rawPayload = event.dataTransfer.getData('application/x-ruopenray-route-child') || event.dataTransfer.getData('text/plain');
+      let payload = null;
+      try {
+        payload = JSON.parse(rawPayload);
+      } catch {
+        payload = null;
+      }
+      const fromIndex = Number(payload?.index);
+      const fromStart = Number(payload?.start);
+      const fromEnd = Number(payload?.end);
+      const groupStart = Number(row.dataset.routeGroupChildStart);
+      const groupEnd = Number(row.dataset.routeGroupChildEnd);
+      if (fromStart !== groupStart || fromEnd !== groupEnd) {
+        clearRouteDragState();
+        return;
+      }
+      const toIndex = Number(row.dataset.routeGroupChildIndex);
+      const rect = row.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      row.classList.remove('drag-over', 'drop-before', 'drop-after');
+      reorderRoutingRuleInsideGroup(fromIndex, groupStart, groupEnd, before ? toIndex : toIndex + 1);
+    });
+  });
   document.querySelectorAll('[data-route-range-start]').forEach((row) => {
     row.addEventListener('pointerdown', (event) => {
       row.dataset.dragHandle = event.target.closest('.route-drag-handle') ? '1' : '0';
@@ -180,6 +263,7 @@ export function bindRoutingControls({
       clearRouteDragState();
     });
     row.addEventListener('dragover', (event) => {
+      if (isRouteGroupChildDrag(event)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
       const rect = row.getBoundingClientRect();
@@ -194,6 +278,10 @@ export function bindRoutingControls({
     });
     row.addEventListener('dragleave', () => row.classList.remove('drag-over', 'drop-before', 'drop-after'));
     row.addEventListener('drop', (event) => {
+      if (isRouteGroupChildDrag(event)) {
+        clearRouteDragState();
+        return;
+      }
       event.preventDefault();
       const rawPayload = event.dataTransfer.getData('application/x-ruopenray-route-range') || event.dataTransfer.getData('text/plain');
       let payload = null;
@@ -224,6 +312,68 @@ export function bindRoutingControls({
       render();
     });
   });
+  document.querySelectorAll('[data-route-values-panel]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const width = 340;
+      const gap = 8;
+      const margin = 12;
+      const preferredMaxHeight = 420;
+      const clickX = Number.isFinite(event.clientX) ? event.clientX : button.getBoundingClientRect().right;
+      const clickY = Number.isFinite(event.clientY) ? event.clientY : button.getBoundingClientRect().top;
+      const fitsRight = clickX + gap + width + margin <= window.innerWidth;
+      const left = fitsRight
+        ? clickX + gap
+        : Math.max(margin, clickX - width - gap);
+      const top = Math.min(
+        Math.max(margin, clickY - 18),
+        Math.max(margin, window.innerHeight - 220 - margin)
+      );
+      const maxHeight = Math.min(preferredMaxHeight, Math.max(220, window.innerHeight - top - margin));
+      state.routeValuesDrawerAnchor = {
+        top,
+        maxHeight,
+        left
+      };
+      state.routeValuesDrawerIndex = Number(button.dataset.routeValuesPanel);
+      render();
+    });
+  });
+  document.querySelectorAll('[data-route-values-panel-close]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      state.routeValuesDrawerIndex = null;
+      state.routeValuesDrawerAnchor = null;
+      render();
+    });
+  });
+  const closeRouteValuesDrawer = () => {
+    if (state.routeValuesDrawerIndex === null || state.routeValuesDrawerIndex === undefined || state.routeValuesDrawerIndex === '') return false;
+    state.routeValuesDrawerIndex = null;
+    state.routeValuesDrawerAnchor = null;
+    render();
+    return true;
+  };
+  if (typeof document.addEventListener === 'function' && !document.__routeValuesDrawerCloseBound) {
+    document.__routeValuesDrawerCloseBound = true;
+    document.addEventListener('click', (event) => {
+      if (state.routeValuesDrawerIndex === null || state.routeValuesDrawerIndex === undefined || state.routeValuesDrawerIndex === '') return;
+      if (event.target.closest?.('.route-values-drawer') || event.target.closest?.('[data-route-values-panel]')) return;
+      closeRouteValuesDrawer();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      closeRouteValuesDrawer();
+    });
+    document.addEventListener('scroll', (event) => {
+      if (event.target?.closest?.('.route-values-list')) return;
+      closeRouteValuesDrawer();
+    }, true);
+    window.addEventListener('resize', () => {
+      closeRouteValuesDrawer();
+    });
+  }
   const routeTargetOptionLabel = (option) => String(option?.textContent || '')
     .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, '')
     .replace(/^[A-Z]{2}\s+(?=\S)/, '')
@@ -295,9 +445,10 @@ export function bindRoutingControls({
     triggerFlag.className = 'route-target-trigger-flag';
     triggerFlag.innerHTML = flagMarkup || '';
     const triggerStatus = document.createElement('span');
-    triggerStatus.className = `route-target-status ${selectedStatusClass}`;
+    triggerStatus.className = `route-target-status route-target-trigger-status ${selectedStatusClass}`;
     triggerStatus.title = selectedStatus?.label || '';
-    triggerStatus.hidden = !selectedStatusClass;
+    triggerStatus.hidden = false;
+    triggerStatus.classList.toggle('is-empty', !selectedStatusClass);
     const triggerText = document.createElement('span');
     triggerText.className = 'route-target-trigger-text';
     triggerText.textContent = selectedText || selectedOption?.value || '';
@@ -306,6 +457,7 @@ export function bindRoutingControls({
     triggerCaret.setAttribute('aria-hidden', 'true');
     triggerCaret.textContent = '▾';
     trigger.append(triggerFlag, triggerStatus, triggerText, triggerCaret);
+    trigger.title = selectedStatus?.label || triggerText.textContent || selectedOption?.value || '';
     trigger.disabled = select.disabled;
     menu.textContent = '';
     [...select.options].forEach((option) => {
@@ -324,12 +476,14 @@ export function bindRoutingControls({
       optionFlagNode.className = 'route-target-option-flag';
       optionFlagNode.innerHTML = optionFlag || '';
       const optionStatusNode = document.createElement('span');
-      optionStatusNode.className = `route-target-status ${optionStatusClass}`;
+      optionStatusNode.className = `route-target-status route-target-option-status ${optionStatusClass}`;
       optionStatusNode.title = optionStatus?.label || '';
-      optionStatusNode.hidden = !optionStatusClass;
+      optionStatusNode.hidden = false;
+      optionStatusNode.classList.toggle('is-empty', !optionStatusClass);
       const optionText = document.createElement('span');
       optionText.className = 'route-target-option-text';
       optionText.textContent = routeTargetOptionLabel(option) || option.value;
+      optionButton.title = optionStatus?.label || optionText.textContent;
       optionButton.append(optionFlagNode, optionStatusNode, optionText);
       menu.append(optionButton);
     });

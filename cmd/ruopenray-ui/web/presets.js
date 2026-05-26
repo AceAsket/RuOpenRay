@@ -743,6 +743,14 @@ export const routeBundles = {
     detail: 'geoip:antifilter, geoip:antifilter-community и ext LoyalsoldierSite.dat.',
     rules: antifilterRules
   },
+  chatgptSplit: {
+    title: 'OpenAI / ChatGPT через proxy',
+    detail: 'Домены ChatGPT/OpenAI и Cloudflare/OpenAI IP ranges, разделенные на два соседних правила.',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', ip: openaiIps },
+      { type: 'field', outboundTag: 'proxy', domain: openaiDomains }
+    ]
+  },
   mediaComms: {
     title: 'YouTube / Discord / Telegram',
     detail: 'Популярные медиа и мессенджеры через активный proxy.',
@@ -788,6 +796,7 @@ export const hiddenBuiltinRoutePresetKeys = new Set([
   'meta',
   'tuya',
   'openaiIps',
+  'chatgptSplit',
   'xrayuiBasic',
   'directLan',
   'mediaComms',

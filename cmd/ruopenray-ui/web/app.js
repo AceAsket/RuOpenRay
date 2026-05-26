@@ -169,6 +169,22 @@ function saveRouteNamesToServer(names) {
   });
 }
 
+function saveCustomRoutePresetsToServer(presets) {
+  if (!state.token) return;
+  request('/api/routing/presets', {
+    method: 'POST',
+    body: JSON.stringify({ presets: presets || {} })
+  }).then((result) => {
+    if (result?.presets && typeof result.presets === 'object' && !Array.isArray(result.presets)) {
+      state.customRoutePresets = result.presets;
+      localStorage.removeItem(customRoutePresetsStorageKey);
+    }
+  }).catch((error) => {
+    state.message = error.message || 'Не удалось сохранить пользовательские подборки на роутере';
+    render();
+  });
+}
+
 const {
   syncConfig,
   syncLoggingSettings,
@@ -339,7 +355,7 @@ const routingActions = createRoutingActions({
   routePresets,
   routeBundles,
   hiddenBuiltinRoutePresetKeys,
-  customRoutePresetsStorageKey,
+  persistCustomRoutePresets: saveCustomRoutePresetsToServer,
   parseRoutingDsl,
   isDslDefaultRule,
   dslPreviewStats,
@@ -416,6 +432,8 @@ const {
   updateRoutingTarget,
   updateRoutingTargetRange,
   moveRoutingRule,
+  moveRoutingRuleInsideGroup,
+  reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
   reorderRoutingRule,
   reorderRoutingRuleRange,
@@ -632,6 +650,7 @@ const runtimeController = createRuntimeController({
   setActiveServerTag,
   inferredActiveProxyTag,
   syncLanDnsStatus,
+  customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
   routeNamesStorageKey,
   syncLoggingSettings,
@@ -2270,6 +2289,8 @@ function bind() {
     restoreDisabledRouteRule,
     deleteDisabledRouteRule,
     moveRoutingRule,
+    moveRoutingRuleInsideGroup,
+    reorderRoutingRuleInsideGroup,
     moveRoutingRuleRange,
     openRoutingRuleEditor,
     openRouteBalancerDialog,

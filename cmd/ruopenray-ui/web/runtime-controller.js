@@ -12,6 +12,7 @@ export function createRuntimeController({
   setActiveServerTag,
   inferredActiveProxyTag,
   syncLanDnsStatus,
+  customRoutePresetsStorageKey,
   disabledRouteRulesStorageKey,
   routeNamesStorageKey,
   syncLoggingSettings,
@@ -222,6 +223,7 @@ export function createRuntimeController({
         subscriptions,
         disabledRoutes,
         routeNames,
+        customRoutePresets,
         serverMeta
       } = await loadAppSnapshot({ request, text: api.text, logsUrl });
       recordStatusSnapshot(status);
@@ -285,6 +287,31 @@ export function createRuntimeController({
         }
       } else if (state.legacyRouteNames && Object.keys(state.legacyRouteNames).length) {
         state.routeNames = state.legacyRouteNames;
+      }
+      if (customRoutePresets?.presets && typeof customRoutePresets.presets === 'object' && !Array.isArray(customRoutePresets.presets)) {
+        const serverPresets = Object.fromEntries(Object.entries(customRoutePresets.presets).filter(([, preset]) => {
+          return preset
+            && typeof preset === 'object'
+            && Array.isArray(preset.rules)
+            && preset.rules.length
+            && String(preset.title || '').trim();
+        }));
+        const localPresets = state.customRoutePresets && typeof state.customRoutePresets === 'object' && !Array.isArray(state.customRoutePresets)
+          ? state.customRoutePresets
+          : {};
+        if (!Object.keys(serverPresets).length && Object.keys(localPresets).length) {
+          state.customRoutePresets = localPresets;
+          request('/api/routing/presets', {
+            method: 'POST',
+            body: JSON.stringify({ presets: localPresets })
+          }).then((result) => {
+            if (result?.presets && typeof result.presets === 'object') state.customRoutePresets = result.presets;
+            if (customRoutePresetsStorageKey) localStorage.removeItem(customRoutePresetsStorageKey);
+          }).catch(() => {});
+        } else {
+          state.customRoutePresets = serverPresets;
+          if (customRoutePresetsStorageKey) localStorage.removeItem(customRoutePresetsStorageKey);
+        }
       }
       if (serverMeta?.items && typeof serverMeta.items === 'object' && !Array.isArray(serverMeta.items)) {
         state.serverMeta = Object.fromEntries(

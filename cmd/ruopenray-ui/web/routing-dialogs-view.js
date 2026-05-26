@@ -72,6 +72,7 @@ function routeRuleDialog() {
                 <span class="preset-check-copy">
                   <strong>${escapeHtml(preset.title)}</strong>
                   <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
+                  <em class="preset-install-badge">своя</em>
                   ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
                 </span>
                 <span class="preset-check-actions">

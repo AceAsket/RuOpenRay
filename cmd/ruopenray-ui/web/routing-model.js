@@ -1,6 +1,12 @@
 import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
 
 export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, checkForTag, checkLabel, outboundAddress, persistRouteNames }) {
+  const builtInTargetLabels = {
+    proxy: 'proxy',
+    direct: 'direct',
+    block: 'block'
+  };
+
   function routeRules() {
     if (!state.config.routing || typeof state.config.routing !== 'object') state.config.routing = {};
     if (!Array.isArray(state.config.routing.rules)) state.config.routing.rules = [];
@@ -40,16 +46,35 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
 
   function routeTargetOptionLabel(tag) {
+    if (builtInTargetLabels[tag]) return builtInTargetLabels[tag];
     if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
     const location = serverLocation(outboundByTag(tag), state.serverMeta?.[tag] || {});
     const flag = flagForCountry(location.code);
     return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}`;
   }
+
+  function balancerByTag(tag) {
+    return routeBalancers().find((balancer) => balancer?.tag === tag) || null;
+  }
+
+  function balancerMemberTags(tag) {
+    const balancer = balancerByTag(tag);
+    if (!balancer) return [];
+    const selectors = Array.isArray(balancer.selector)
+      ? balancer.selector.map((selector) => String(selector || '').trim()).filter(Boolean)
+      : [];
+    const members = proxyOutbounds()
+      .map((item) => item?.tag)
+      .filter(Boolean)
+      .filter((outboundTag) => selectors.some((selector) => outboundTag.startsWith(selector)));
+    if (balancer.fallbackTag && !members.includes(balancer.fallbackTag)) members.push(balancer.fallbackTag);
+    return members;
+  }
   
   function routeTargetOptions() {
     return [
       ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: routeTargetOptionLabel(tag) })),
-      ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
+      ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Группа · ${tag}` }))
     ];
   }
   
@@ -64,13 +89,30 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
 
   function routeTargetStatus(encodedTarget) {
     const [type, ...parts] = String(encodedTarget || '').split(':');
+    if (type === 'balancer') {
+      const tag = parts.join(':');
+      const members = balancerMemberTags(tag);
+      if (!members.length) return { tone: 'unknown', label: `Группа ${tag}: серверы не выбраны` };
+      const statuses = members.map((memberTag) => {
+        const check = typeof checkForTag === 'function' ? checkForTag(memberTag) : null;
+        const label = check ? ((typeof checkLabel === 'function' ? checkLabel(check) : '') || (check.ok ? 'работает' : 'нет ответа')) : 'не проверялся';
+        return { tag: memberTag, check, label };
+      });
+      const failed = statuses.filter((item) => item.check && !item.check.ok).length;
+      const ok = statuses.filter((item) => item.check?.ok).length;
+      const tone = failed ? 'bad' : ok ? 'ok' : 'unknown';
+      return {
+        tone,
+        label: [`Группа ${tag}`, ...statuses.map((item) => `${readableRouteTag(item.tag)} - ${item.label}`)].join('\n')
+      };
+    }
     if (type !== 'outbound') return null;
     const tag = parts.join(':');
     if (!isProxyTargetTag(tag)) return null;
-    const check = checkForTag(tag);
+    const check = typeof checkForTag === 'function' ? checkForTag(tag) : null;
     if (!check) return { tone: 'unknown', label: 'не проверялся' };
-    if (check.ok) return { tone: 'ok', label: checkLabel(check) || 'работает' };
-    return { tone: 'bad', label: checkLabel(check) || 'нет ответа' };
+    if (check.ok) return { tone: 'ok', label: (typeof checkLabel === 'function' ? checkLabel(check) : '') || 'работает' };
+    return { tone: 'bad', label: (typeof checkLabel === 'function' ? checkLabel(check) : '') || 'нет ответа' };
   }
   
   function encodedRouteTarget(rule) {
@@ -140,7 +182,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function readableRouteTag(tag) {
-    return managedRouteTags[String(tag || '')] || String(tag || '');
+    return builtInTargetLabels[String(tag || '')] || managedRouteTags[String(tag || '')] || String(tag || '');
   }
   
   function routeTagValue(value, kind = '') {
@@ -245,7 +287,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const values = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
     const fullValues = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
     const network = rule.network ? ` · ${rule.network}` : '';
-    const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
+    const outbound = rule.balancerTag ? `Группа · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
     const managedDetail = managedRouteDetail(rule || {});
     if (target.kind === 'default') {
       return {
