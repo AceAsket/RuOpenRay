@@ -906,6 +906,7 @@ const {
   saveServerEdit,
   routeAllToOutbound,
   fallbackSubscriptionPool,
+  selectSubscriptionCandidate,
   deleteSubscriptionPool
 } = serverActions;
 
@@ -2166,6 +2167,7 @@ function bind() {
       checkObservatoryTargets,
       enableObservatoryForProxy,
       fallbackSubscription: (button) => fallbackSubscriptionPool(button.dataset.subscriptionFallback || ''),
+      selectSubscriptionCandidate: (button) => selectSubscriptionCandidate(button.dataset.subscriptionSelect || '', button.dataset.subscriptionCandidateIndex || 0),
       deleteSubscription: (button) => deleteSubscriptionPool(button.dataset.subscriptionDelete || ''),
       scanSni,
       saveProfile,

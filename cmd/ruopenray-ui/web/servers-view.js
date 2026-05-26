@@ -78,6 +78,21 @@ function subscriptionPoolCard(pool) {
   const active = pool?.activeCandidate || {};
   const tag = pool?.tag || '';
   const connecting = state.pendingServerTag === tag;
+  const candidates = Array.isArray(pool?.candidates) ? pool.candidates : [];
+  const activeIndex = Number(pool?.active ?? 0);
+  const candidateRows = candidates.map((candidate, index) => {
+    const address = [candidate?.address, candidate?.port].filter(Boolean).join(':');
+    const selected = index === activeIndex;
+    return `<article class="subscription-candidate ${selected ? 'selected' : ''}">
+      <div>
+        <strong>${escapeHtml(candidate?.tag || `server-${index + 1}`)}</strong>
+        <span>${escapeHtml([address, candidate?.network, candidate?.security].filter(Boolean).join(' · '))}</span>
+      </div>
+      ${selected
+        ? '<span class="server-chip ok">по умолчанию</span>'
+        : `<button class="btn secondary compact" data-action="selectSubscriptionCandidate" data-subscription-select="${escapeHtml(tag)}" data-subscription-candidate-index="${index}">Сделать основным</button>`}
+    </article>`;
+  }).join('');
   return `<article class="server-row subscription-pool-row">
     <div class="server-identity">
       <span class="server-protocol">pool</span>
@@ -95,6 +110,10 @@ function subscriptionPoolCard(pool) {
       ${serverActionButton({ label: connecting ? 'Подключаю подписку' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting })}
       ${serverActionButton({ label: 'Удалить подписку', icon: 'delete', tone: 'danger', attrs: `data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}"` })}
     </div>
+    ${candidates.length ? `<details class="subscription-candidates">
+      <summary>Серверы подписки · ${candidates.length}</summary>
+      <div>${candidateRows}</div>
+    </details>` : ''}
   </article>`;
 }
 

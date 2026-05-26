@@ -504,6 +504,10 @@ const serverActions = createServerActions({
   request: async (path) => {
     if (path === '/api/outbounds/check') return { results: [{ tag: 'proxy-new', ok: true, latencyMs: 10 }] };
     if (path === '/api/subscriptions/fallback') return { ok: true, selected: { tag: 'proxy-new' } };
+    if (path === '/api/subscriptions/select') {
+      serverActionState.selectedSubscription = true;
+      return { ok: true, selected: { tag: 'sub-candidate-2' } };
+    }
     return { ok: true };
   },
   render,
@@ -521,6 +525,7 @@ const serverActions = createServerActions({
 await serverActions.checkServers(['proxy-new']);
 await serverActions.routeAllToOutbound('proxy-new');
 await serverActions.fallbackSubscriptionPool('subscription');
+await serverActions.selectSubscriptionCandidate('subscription', 1);
 
 const observatoryState = {
   config: {},
@@ -681,6 +686,26 @@ const routingModel = createRoutingModel({
   routeKinds: { domain: 'Сайт или домен' },
   routePresets: {},
   proxyOutbounds: () => [{ tag: 'proxy' }],
+});
+const subscriptionRoutingModel = createRoutingModel({
+  state: {
+    config: { routing: { rules: [{ domain: ['domain:telegram.org'], outboundTag: 'sub-main', type: 'field' }] }, outbounds: [] },
+    routeNames: {},
+    serverMeta: {},
+    subscriptionPools: [{
+      tag: 'sub-main',
+      count: 2,
+      activeCandidate: { tag: 'sub-node-1', protocol: 'vless', address: 'sub.example', port: 443, security: 'reality' },
+    }],
+    serverChecks: {},
+  },
+  managedRouteTags: { proxy: 'proxy' },
+  routeBundles: {},
+  routeKinds: { domain: 'РЎР°Р№С‚ РёР»Рё РґРѕРјРµРЅ' },
+  routePresets: {},
+  proxyOutbounds: () => [],
+  checkForTag: () => null,
+  checkLabel: () => '',
 });
 const routingDsl = createRoutingDsl({
   state: { routeDslName: 'Discord' },
@@ -1297,7 +1322,7 @@ const checks = [
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
   ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
   ['import actions preserve pinned route targets', splitRouteSwitchState.config.routing.rules[0]?.outboundTag === 'vpn-a' && splitRouteSwitchState.config.routing.rules[1]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[2]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[3]?.outboundTag === 'vpn-b'],
-  ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed],
+  ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed && serverActionState.selectedSubscription],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
   ['config anonymized export', anonymizedConfig.outbounds[0]?.tag === 'proxy-1' && anonymizedConfig.routing.rules[0]?.outboundTag === 'proxy-1' && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.address?.startsWith('[masked') && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.users?.[0]?.id?.startsWith('[masked')],
@@ -1309,6 +1334,7 @@ const checks = [
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
+  ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main') && subscriptionRoutingModel.routeStats().proxy === 1],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],

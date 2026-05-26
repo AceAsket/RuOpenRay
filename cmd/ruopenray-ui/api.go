@@ -233,6 +233,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.saveSubscriptionPool(w, r)
 	case path == "/subscriptions/delete" && r.Method == http.MethodPost:
 		s.deleteSubscriptionPool(w, r)
+	case path == "/subscriptions/select" && r.Method == http.MethodPost:
+		s.selectSubscriptionCandidate(w, r)
 	case path == "/subscriptions/fallback" && r.Method == http.MethodPost:
 		s.fallbackSubscription(w, r)
 	case path == "/dhcp/leases" && r.Method == http.MethodGet:

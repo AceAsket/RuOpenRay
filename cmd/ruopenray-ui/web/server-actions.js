@@ -243,6 +243,18 @@ export function createServerActions({
     await refresh();
   }
 
+  async function selectSubscriptionCandidate(tag, index) {
+    if (!tag) return;
+    const result = await request('/api/subscriptions/select', {
+      method: 'POST',
+      body: JSON.stringify({ tag, index: Number(index), restart: true })
+    });
+    state.message = result.ok
+      ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'сервер'}`
+      : `Подписка ${tag}: ${result.error || 'не удалось выбрать сервер'}`;
+    await refresh();
+  }
+
   async function deleteSubscriptionPool(tag) {
     if (!tag) return;
     if (!confirm(`Удалить подписку ${tag}? Сервер в профиле и правила маршрутизации останутся на месте.`)) return;
@@ -267,6 +279,7 @@ export function createServerActions({
     routeAllToOutbound,
     checkServers,
     fallbackSubscriptionPool,
+    selectSubscriptionCandidate,
     deleteSubscriptionPool
   };
 }

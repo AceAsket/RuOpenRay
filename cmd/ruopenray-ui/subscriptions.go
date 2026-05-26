@@ -80,6 +80,55 @@ func (s *serverState) deleteSubscriptionPool(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, 200, map[string]any{"ok": true, "tag": tag})
 }
 
+func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	store := s.readSubscriptionStore()
+	poolIndex := rsubscription.FindPoolIndex(store, tag)
+	if poolIndex < 0 {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+		return
+	}
+	pool := store.Pools[poolIndex]
+	if len(pool.Candidates) == 0 {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "В pool нет серверов"})
+		return
+	}
+	selected := number(payload["index"], -1)
+	if selected < 0 || selected >= len(pool.Candidates) {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Выбранный сервер подписки не найден"})
+		return
+	}
+
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTag(pool.Candidates[selected], pool.Tag))
+	backup, _ := s.backupActive("subscription-select")
+	if err := s.writeActiveConfig(cfg); err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup})
+		return
+	}
+
+	pool.Active = selected
+	pool.UpdatedAt = time.Now().Format(time.RFC3339)
+	store.Pools[poolIndex] = pool
+	if err := s.writeSubscriptionStore(store); err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup})
+		return
+	}
+	restart := map[string]any{"ok": true, "stdout": "Xray не перезапущен"}
+	if boolPayload(payload, "restart", true) {
+		restart = s.serviceAction("restart")
+	}
+	writeJSON(w, 200, map[string]any{
+		"ok": restart["ok"], "pool": rsubscription.PublicPool(pool),
+		"selected": rproxy.OutboundSummary(pool.Candidates[selected]), "backup": backup, "restart": restart,
+	})
+}
+
 func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
 	payload, _ := readJSON(r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))

@@ -18,6 +18,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     for (const outbound of Array.isArray(state.config.outbounds) ? state.config.outbounds : []) {
       if (outbound?.tag) names.add(outbound.tag);
     }
+    for (const pool of Array.isArray(state.subscriptionPools) ? state.subscriptionPools : []) {
+      if (pool?.tag) names.add(pool.tag);
+    }
     names.delete('dns-out');
     names.delete('ruopenray-api');
     return [...names];
@@ -32,18 +35,29 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       .find((outbound) => outbound?.tag === tag) || null;
   }
 
+  function subscriptionPoolByTag(tag) {
+    return (Array.isArray(state.subscriptionPools) ? state.subscriptionPools : [])
+      .find((pool) => pool?.tag === tag) || null;
+  }
+
+  function routeTargetOutbound(tag) {
+    return outboundByTag(tag) || subscriptionPoolByTag(tag)?.activeCandidate || null;
+  }
+
   function isProxyTargetTag(tag) {
     if (['proxy', 'direct', 'block', 'dns-out'].includes(tag)) return false;
-    const outbound = outboundByTag(tag);
+    const outbound = routeTargetOutbound(tag);
     if (!outbound) return false;
     return !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
   }
 
   function routeTargetOptionLabel(tag) {
     if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
-    const location = serverLocation(outboundByTag(tag), state.serverMeta?.[tag] || {});
+    const pool = subscriptionPoolByTag(tag);
+    const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
     const flag = flagForCountry(location.code);
-    return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}`;
+    const suffix = pool ? ` · подписка${pool.activeCandidate?.tag ? `: ${pool.activeCandidate.tag}` : ''}` : '';
+    return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}${suffix}`;
   }
   
   function routeTargetOptions() {
@@ -58,7 +72,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (type !== 'outbound') return '';
     const tag = parts.join(':');
     if (!isProxyTargetTag(tag)) return '';
-    const location = serverLocation(outboundByTag(tag), state.serverMeta?.[tag] || {});
+    const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
     return countryFlagMarkup(location.code);
   }
 
@@ -267,7 +281,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeStats() {
     const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
-    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean)]);
+    const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
+    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean), ...subscriptionTags]);
     for (const rule of routeRules()) {
       if (isRuOpenRayManagedRoute(rule)) continue;
       if (rule.balancerTag || proxyTags.has(rule.outboundTag)) stats.proxy += 1;
@@ -290,7 +305,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   function routeCategoryForRule(rule) {
     if (rule?.balancerTag) return 'proxy';
     const outbound = rule?.outboundTag || '';
-    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean)]);
+    const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
+    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean), ...subscriptionTags]);
     if (proxyTags.has(outbound)) return 'proxy';
     if (outbound === 'direct') return 'direct';
     if (outbound === 'block') return 'block';
@@ -314,7 +330,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeStatsFor(rules) {
     const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
-    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean)]);
+    const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
+    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean), ...subscriptionTags]);
     for (const rule of rules || []) {
       if (rule.balancerTag || proxyTags.has(rule.outboundTag)) stats.proxy += 1;
       else if (rule.outboundTag === 'direct') stats.direct += 1;
