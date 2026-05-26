@@ -45,7 +45,10 @@ func (s *serverState) status(w http.ResponseWriter) {
 		"system":    s.systemMetrics(),
 		"xrayStats": s.xrayTrafficStats(cfg, false),
 		"serverChecks": map[string]any{
-			"results": s.readOutboundCheckResults(),
+			"results":                s.readOutboundCheckResults(),
+			"history":                s.readOutboundCheckHistory(),
+			"historySettings":        s.readOutboundCheckHistorySettings(),
+			"subscriptionCandidates": s.readSubscriptionCandidateCheckResults(),
 		},
 		"uptime": time.Since(s.started).Seconds(),
 		"now":    time.Now().Format(time.RFC3339),

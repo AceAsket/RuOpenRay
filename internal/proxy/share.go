@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -129,16 +130,84 @@ func parseVless(u *url.URL) map[string]any {
 		stream["tlsSettings"] = map[string]any{"serverName": firstNonEmpty(q.Get("sni"), u.Hostname())}
 	}
 	if security == "reality" {
-		stream["realitySettings"] = map[string]any{"serverName": q.Get("sni"), "publicKey": q.Get("pbk"), "shortId": q.Get("sid")}
+		reality := map[string]any{
+			"serverName": firstNonEmpty(q.Get("sni"), u.Hostname()),
+			"publicKey":  q.Get("pbk"),
+			"shortId":    q.Get("sid"),
+		}
+		if fingerprint := q.Get("fp"); fingerprint != "" {
+			reality["fingerprint"] = fingerprint
+		}
+		if spiderX := q.Get("spx"); spiderX != "" {
+			reality["spiderX"] = spiderX
+		}
+		stream["realitySettings"] = reality
 	}
 	if network == "ws" {
 		stream["wsSettings"] = map[string]any{"path": firstNonEmpty(q.Get("path"), "/")}
 	}
-	return map[string]any{
+	if fragment := strings.TrimSpace(q.Get("fragment")); fragment != "" {
+		sockopt, _ := stream["sockopt"].(map[string]any)
+		if sockopt == nil {
+			sockopt = map[string]any{}
+		}
+		sockopt["dialerProxy"] = FragmentOutboundTag(fragment)
+		stream["sockopt"] = sockopt
+	}
+	outbound := map[string]any{
 		"tag": tagFromURL(u, "vless-out"), "protocol": "vless",
 		"settings":       map[string]any{"vnext": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "users": []any{user}}}},
 		"streamSettings": stream,
 	}
+	if strings.EqualFold(q.Get("mux"), "true") || q.Get("mux") == "1" {
+		mux := map[string]any{"enabled": true}
+		if concurrency := q.Get("muxConcurrency"); concurrency != "" {
+			if value, err := strconv.Atoi(concurrency); err == nil {
+				mux["concurrency"] = value
+			}
+		}
+		outbound["mux"] = mux
+	}
+	return outbound
+}
+
+const FragmentTagPrefix = "ruopenray-fragment-"
+
+func FragmentOutboundTag(raw string) string {
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(raw)))
+	return FragmentTagPrefix + encoded
+}
+
+func FragmentOutboundFromTag(tag string) (map[string]any, bool) {
+	if !strings.HasPrefix(tag, FragmentTagPrefix) {
+		return nil, false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(tag, FragmentTagPrefix))
+	if err != nil {
+		return nil, false
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(raw)), ",", 3)
+	length := "100-200"
+	interval := "10-20"
+	packets := "tlshello"
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		length = strings.TrimSpace(parts[0])
+	}
+	if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
+		interval = strings.TrimSpace(parts[1])
+	}
+	if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
+		packets = strings.TrimSpace(parts[2])
+	}
+	return map[string]any{
+		"tag":      tag,
+		"protocol": "freedom",
+		"settings": map[string]any{"fragment": map[string]any{
+			"length":   length,
+			"interval": interval,
+			"packets":  packets,
+		}},
+	}, true
 }
 
 func parseTrojan(u *url.URL) map[string]any {

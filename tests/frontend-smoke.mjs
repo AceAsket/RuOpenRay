@@ -33,6 +33,7 @@ import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bi
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
+import { createServersView } from '../cmd/ruopenray-ui/web/servers-view.js';
 import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
 import { createSetupActions } from '../cmd/ruopenray-ui/web/setup-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
@@ -955,6 +956,11 @@ const dnsActions = createDnsActions({
   },
 });
 dnsActions.addDnsServer();
+dnsActionState.dnsAddress = 'https://dns.google/dns-query';
+dnsActionState.dnsDomains = '';
+dnsActions.addDnsServer();
+dnsActions.moveDnsServer(0, 1);
+dnsActions.prioritizeDohDnsServers();
 dnsActions.saveDnsHost();
 const firewallState = {
   config: {
@@ -1131,6 +1137,8 @@ bindDnsControls({
   state,
   render,
   removeDnsServer: () => {},
+  moveDnsServer: () => {},
+  prioritizeDohDnsServers: () => {},
   editDnsHost: () => {},
   removeDnsHost: () => {},
   setDnsModeDraft: () => {},
@@ -1293,11 +1301,65 @@ const anonymizedConfig = anonymizeConfig({
   outbounds: [{
     tag: 'cloudone-private',
     protocol: 'vless',
-    settings: { vnext: [{ address: 'cloudone.example', users: [{ id: '4277f460-216c-412e-99fb-c94534544138', encryption: 'none' }] }] },
+    settings: { vnext: [{ address: 'cloudone.example', users: [{ id: '11111111-2222-4333-8444-555555555555', encryption: 'none' }] }] },
     streamSettings: { security: 'reality', realitySettings: { serverName: 'cloudone.example', privateKey: 'secret', shortId: 'abcd' } }
   }],
   routing: { rules: [{ outboundTag: 'cloudone-private', domain: ['domain:2ip.ru'] }] }
 });
+
+const subscriptionViewState = {
+  serverCheckMode: 'http',
+  serverChecking: false,
+  serverCheckingTags: [],
+  serverCheckHistory: [],
+  serverMeta: [],
+  serverEditDialog: false,
+  subscriptionCandidateSearch: {},
+  subscriptionCandidateChecks: {},
+  subscriptionCandidateChecking: 'test_subs:0',
+  subscriptionFallbackTag: '',
+  subscriptionFallbackStartedAt: 0,
+  subscriptionFallbackTotal: 0,
+  subscriptionFallbackChecked: 0,
+  subscriptionFallbackCurrent: '',
+  subscriptionPools: [],
+  pendingServerTag: '',
+  status: {},
+};
+const serversView = createServersView({
+  state: subscriptionViewState,
+  escapeHtml,
+  stat,
+  activeProxyTag: () => '',
+  checkForTag: () => null,
+  configOutbounds: () => [],
+  isSystemOutbound: () => false,
+  operationProgressView: () => '',
+  outboundAddress: (outbound) => [outbound?.address, outbound?.port].filter(Boolean).join(':'),
+  outboundTransport: () => '',
+  outboundUsage: () => 0,
+  proxyOutbounds: () => [],
+  proxyRuleStrategyStats: () => ({ primary: 0, pinned: 0 }),
+  routingBalancersPanel: () => '',
+  serverCheckButton: () => '',
+  serverLocationChip: () => '',
+  serverMetaChips: () => '',
+  serverStats: () => ({ proxy: 0, system: 0, used: 0 }),
+  serverTrafficView: () => '',
+});
+const subscriptionCardHtml = serversView.subscriptionPoolCard({
+  tag: 'test_subs',
+  url: 'https://example.test/sub',
+  count: 2,
+  candidates: [
+    { tag: 'Germany', address: '1.2.3.4', port: 443, network: 'tcp', security: 'reality' },
+    { tag: 'France', address: '5.6.7.8', port: 443, network: 'tcp', security: 'reality' },
+  ],
+});
+const subscriptionDetailsKeyPersists = subscriptionCardHtml.includes('data-details-key="subscription-candidates-test_subs"');
+const subscriptionCandidateBusyIsLocal = subscriptionCardHtml.includes('data-busy="0"')
+  && subscriptionCardHtml.includes('data-subscription-candidate-index="0" disabled>Проверяю</button>')
+  && subscriptionCardHtml.includes('data-subscription-candidate-index="1" >Проверить</button>');
 
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
@@ -1305,6 +1367,8 @@ const checks = [
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
+  ['subscription candidate details persistence', subscriptionDetailsKeyPersists],
+  ['subscription candidate busy is local', subscriptionCandidateBusyIsLocal],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
@@ -1340,7 +1404,8 @@ const checks = [
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
-  ['dns actions draft', dnsActionState.config.dns.servers[0]?.address === '192.168.1.1' && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
+  ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
+  ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers[1]?.address === '192.168.1.1'],
   ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],
   ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],

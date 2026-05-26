@@ -1595,8 +1595,34 @@
 }
 
 .dns-server-row {
-  grid-template-columns: 88px minmax(0, 1fr) 170px auto;
+  grid-template-columns: 132px 88px minmax(0, 1fr) 170px 44px;
   align-items: center;
+}
+
+.dns-order-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dns-order-number {
+  min-width: 26px;
+  color: var(--accent-2);
+  font-weight: 800;
+  text-align: center;
+}
+
+.dns-order-controls .icon-btn,
+.dns-server-row > .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.server-protocol.doh {
+  background: rgba(96, 211, 120, 0.18);
+  border-color: rgba(96, 211, 120, 0.42);
+  color: #8ff0a4;
 }
 
 @media (max-width: 1040px) {

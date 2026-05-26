@@ -258,27 +258,107 @@ export const countryOptions = Object.entries(countryNames)
 const tldCountries = Object.fromEntries(Object.keys(countryNames).map((code) => [code.toLowerCase(), code]));
 tldCountries.uk = 'GB';
 
-const tokenCountries = [
-  [/germany|deutsch|frankfurt|nuremberg|hetzner|german|\bde\b/i, 'DE'],
-  [/netherlands|holland|amsterdam|\bnl\b/i, 'NL'],
-  [/finland|helsinki|\bfi\b/i, 'FI'],
-  [/sweden|stockholm|\bse\b/i, 'SE'],
-  [/poland|warsaw|\bpl\b/i, 'PL'],
-  [/france|paris|\bfr\b/i, 'FR'],
-  [/london|britain|england|united-kingdom|\buk\b|\bgb\b/i, 'GB'],
-  [/usa|united-states|new-york|los-angeles|miami|\bus\b/i, 'US'],
-  [/canada|toronto|\bca\b/i, 'CA'],
-  [/turkey|istanbul|\btr\b/i, 'TR'],
-  [/armenia|yerevan|\bam\b/i, 'AM'],
-  [/georgia|tbilisi|\bge\b/i, 'GE'],
-  [/kazakhstan|almaty|astana|\bkz\b/i, 'KZ'],
-  [/belarus|minsk|\bby\b/i, 'BY'],
-  [/ukraine|kyiv|kiev|\bua\b/i, 'UA'],
-  [/japan|tokyo|\bjp\b/i, 'JP'],
-  [/singapore|\bsg\b/i, 'SG'],
-  [/hong[- ]?kong|\bhk\b/i, 'HK'],
-  [/russia|moscow|ru-|ru_|\bru\b/i, 'RU']
+const commonIsoTokens = new Set([
+  'ae', 'at', 'au', 'be', 'bg', 'br', 'by', 'ca', 'ch', 'cz', 'de', 'dk', 'ee', 'es', 'fi', 'fr',
+  'gb', 'hk', 'ie', 'il', 'it', 'jp', 'kr', 'kz', 'lt', 'lv', 'md', 'nl', 'no', 'pl', 'pt', 'ro',
+  'rs', 'ru', 'se', 'sg', 'th', 'tr', 'ua', 'uk', 'us'
+]);
+
+const locationAliasRules = [
+  ['DE', /germany|deutsch|german|frankfurt|nuremberg|nuernberg|falkenstein|fsn|hel1|hetzner/i],
+  ['NL', /netherlands|holland|amsterdam|rotterdam|evoxt/i],
+  ['FI', /finland|helsinki/i],
+  ['SE', /sweden|stockholm/i],
+  ['PL', /poland|warsaw|wroclaw/i],
+  ['FR', /france|paris|roubaix|graveline|ovh-fr/i],
+  ['GB', /united[-_ ]?kingdom|great[-_ ]?britain|britain|england|london|manchester/i],
+  ['US', /usa|united[-_ ]?states|america|new[-_ ]?york|los[-_ ]?angeles|miami|ashburn|dallas|chicago|seattle|atlanta/i],
+  ['CA', /canada|toronto|montreal|vancouver/i],
+  ['TR', /turkey|istanbul/i],
+  ['AM', /armenia|yerevan/i],
+  ['GE', /georgia|tbilisi/i],
+  ['KZ', /kazakhstan|almaty|astana/i],
+  ['BY', /belarus|minsk/i],
+  ['UA', /ukraine|kyiv|kiev|odessa|lviv/i],
+  ['JP', /japan|tokyo|osaka/i],
+  ['SG', /singapore/i],
+  ['HK', /hong[-_ ]?kong/i],
+  ['RU', /russia|moscow|saint[-_ ]?petersburg|spb|novosibirsk|ekaterinburg/i],
+  ['CZ', /czech|prague/i],
+  ['AT', /austria|vienna/i],
+  ['CH', /switzerland|zurich|geneva/i],
+  ['ES', /spain|madrid|barcelona/i],
+  ['IT', /italy|milan|rome/i],
+  ['RO', /romania|bucharest/i],
+  ['LT', /lithuania|vilnius|kaunas/i],
+  ['LV', /latvia|riga/i],
+  ['EE', /estonia|tallinn/i],
+  ['MD', /moldova|chisinau/i],
+  ['BG', /bulgaria|sofia/i],
+  ['RS', /serbia|belgrade/i],
+  ['AE', /emirates|dubai|abu[-_ ]?dhabi/i],
+  ['IN', /india|mumbai|delhi|bangalore|chennai/i],
+  ['BR', /brazil|sao[-_ ]?paulo/i],
+  ['AU', /australia|sydney|melbourne/i],
+  ['NO', /norway|oslo/i],
+  ['DK', /denmark|copenhagen/i],
+  ['BE', /belgium|brussels/i],
+  ['IE', /ireland|dublin/i],
+  ['IL', /israel|tel[-_ ]?aviv/i],
+  ['PT', /portugal|lisbon/i],
+  ['KR', /korea|seoul/i],
+  ['TH', /thailand|bangkok/i]
 ];
+
+function locationText(outbound = {}) {
+  return [
+    outbound?.tag,
+    outboundHost(outbound),
+    outbound?.address,
+    outbound?.sendThrough,
+    outbound?.streamSettings?.network,
+    outbound?.streamSettings?.security,
+    outbound?.settings?.vnext?.[0]?.users?.[0]?.email,
+    outbound?.settings?.servers?.[0]?.email,
+    outbound?.meta?.name,
+    outbound?.meta?.remark,
+    outbound?.meta?.address
+  ].filter(Boolean).join(' ');
+}
+
+function splitLocationTokens(value) {
+  return String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function countryFromIsoToken(value) {
+  for (const token of splitLocationTokens(value)) {
+    const code = token === 'uk' ? 'GB' : token.toUpperCase();
+    if (token.length === 2 && commonIsoTokens.has(token) && countryNames[code]) return code;
+    const prefix = token.slice(0, 2);
+    const prefixedCode = prefix === 'uk' ? 'GB' : prefix.toUpperCase();
+    if (/^[a-z]{2}\d+$/.test(token) && commonIsoTokens.has(prefix) && countryNames[prefixedCode]) return prefixedCode;
+  }
+  return '';
+}
+
+function countryFromAlias(value) {
+  const rule = locationAliasRules.find(([, pattern]) => pattern.test(value));
+  return rule?.[0] || '';
+}
+
+function countryResult(code, source, confidence = 0.8) {
+  return {
+    code,
+    flag: flagForCountry(code),
+    label: countryNames[code] || code,
+    source,
+    confidence
+  };
+}
 
 export function flagForCountry(code) {
   const normalized = String(code || '').trim().toUpperCase();
@@ -417,11 +497,19 @@ export function serverLocation(outbound = {}, meta = {}) {
       code: explicit,
       flag: flagForCountry(explicit),
       label: countryNames[explicit] || explicit,
-      source: meta?.country ? 'manual' : 'config'
+      source: meta?.country ? 'manual' : 'config',
+      confidence: 1
     };
   }
 
   const host = outboundHost(outbound);
+  const haystack = locationText(outbound);
+  const byIsoToken = countryFromIsoToken(haystack);
+  if (byIsoToken) return countryResult(byIsoToken, 'name', 0.92);
+
+  const byAlias = countryFromAlias(haystack);
+  if (byAlias) return countryResult(byAlias, 'name', 0.86);
+
   const tld = String(host || '').toLowerCase().match(/\.([a-z]{2})$/)?.[1] || '';
   const byTld = tldCountries[tld];
   if (byTld) {
@@ -429,18 +517,8 @@ export function serverLocation(outbound = {}, meta = {}) {
       code: byTld,
       flag: flagForCountry(byTld),
       label: countryNames[byTld] || byTld,
-      source: 'domain'
-    };
-  }
-
-  const haystack = `${outbound?.tag || ''} ${host || ''}`;
-  const byToken = tokenCountries.find(([pattern]) => pattern.test(haystack))?.[1] || '';
-  if (byToken) {
-    return {
-      code: byToken,
-      flag: flagForCountry(byToken),
-      label: countryNames[byToken] || byToken,
-      source: 'name'
+      source: 'domain',
+      confidence: 0.78
     };
   }
 
@@ -448,6 +526,15 @@ export function serverLocation(outbound = {}, meta = {}) {
     code: '',
     flag: '🌐',
     label: 'Локация не задана',
-    source: 'unknown'
+    source: 'unknown',
+    confidence: 0
   };
+}
+
+export function inferredCountryForOutbound(outbound = {}, meta = {}, minConfidence = 0.75) {
+  if (meta?.country) return '';
+  const location = serverLocation(outbound, meta);
+  if (!location.code || location.source === 'unknown') return '';
+  if (Number(location.confidence || 0) < minConfidence) return '';
+  return location.code;
 }

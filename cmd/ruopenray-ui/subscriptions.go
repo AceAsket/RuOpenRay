@@ -129,21 +129,18 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 	})
 }
 
-func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
-	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
-	store := s.readSubscriptionStore()
-	poolIndex := rsubscription.FindPoolIndex(store, tag)
-	if poolIndex < 0 {
-		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
-		return
-	}
-	pool := store.Pools[poolIndex]
-	if len(pool.Candidates) == 0 {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": "В pool нет кандидатов"})
-		return
-	}
+type subscriptionCandidateCheckOptions struct {
+	mode      string
+	probeURL  string
+	timeoutMs int
+	attempts  int
+}
+
+func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscriptionCandidateCheckOptions {
 	checkMode := strings.ToLower(firstNonEmpty(fmt.Sprint(payload["mode"]), "http"))
+	if checkMode != "endpoint" && checkMode != "http" {
+		checkMode = "http"
+	}
 	probeURL := firstNonEmpty(fmt.Sprint(payload["url"]), "https://www.gstatic.com/generate_204")
 	timeoutMs := number(payload["timeoutMs"], 5000)
 	attempts := number(payload["attempts"], 1)
@@ -165,41 +162,301 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 	if attempts > 5 {
 		attempts = 5
 	}
+	return subscriptionCandidateCheckOptions{
+		mode:      checkMode,
+		probeURL:  probeURL,
+		timeoutMs: timeoutMs,
+		attempts:  attempts,
+	}
+}
+
+func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[string]any, options subscriptionCandidateCheckOptions) map[string]any {
+	summary := rproxy.OutboundSummary(candidate)
+	result := map[string]any{
+		"index":     index,
+		"tag":       summary["tag"],
+		"protocol":  summary["protocol"],
+		"address":   summary["address"],
+		"port":      summary["port"],
+		"network":   summary["network"],
+		"security":  summary["security"],
+		"method":    options.mode,
+		"url":       options.probeURL,
+		"checkedAt": time.Now().Format(time.RFC3339),
+	}
+	ok := false
+	var err error
+	if options.mode == "endpoint" {
+		address := fmt.Sprint(summary["address"])
+		portValue := number(summary["port"], 0)
+		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, options.timeoutMs, options.attempts)
+		ok = endpointOK
+		err = endpointErr
+		result["endpointOk"] = endpointOK
+		if latency > 0 {
+			result["endpointLatencyMs"] = latency
+			result["latencyMs"] = latency
+		}
+	} else {
+		latency, httpOK, httpErr := s.httpOutboundProbe(candidate, options.probeURL, options.timeoutMs, options.attempts)
+		ok = httpOK
+		err = httpErr
+		result["httpOk"] = httpOK
+		if latency > 0 {
+			result["httpLatencyMs"] = latency
+			result["latencyMs"] = latency
+		}
+	}
+	result["ok"] = ok
+	if err != nil {
+		result["error"] = err.Error()
+	}
+	return result
+}
+
+func (s *serverState) checkSubscriptionCandidate(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	index := number(payload["index"], -1)
+	store := s.readSubscriptionStore()
+	poolIndex := rsubscription.FindPoolIndex(store, tag)
+	if poolIndex < 0 {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+		return
+	}
+	pool := store.Pools[poolIndex]
+	if index < 0 || index >= len(pool.Candidates) {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Сервер подписки не найден"})
+		return
+	}
+	result := s.checkSubscriptionCandidateResult(index, pool.Candidates[index], normalizeSubscriptionCandidateCheckOptions(payload))
+	saveError := ""
+	if err := s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result}); err != nil {
+		saveError = err.Error()
+	}
+	response := map[string]any{"ok": true, "tag": tag, "index": index, "result": result, "saved": saveError == ""}
+	if saveError != "" {
+		response["saveError"] = saveError
+	}
+	writeJSON(w, 200, response)
+}
+
+func subscriptionCandidateTag(poolTag string, candidate map[string]any, index int) string {
+	prefix := slugID(poolTag, "subscription")
+	base := slugID(fmt.Sprint(candidate["tag"]), fmt.Sprintf("server-%d", index+1))
+	tag := strings.Trim(prefix+"-"+base, "-")
+	if len(tag) > 96 {
+		tag = strings.Trim(tag[:96], "-")
+	}
+	if tag == "" {
+		return fmt.Sprintf("subscription-server-%d", index+1)
+	}
+	return tag
+}
+
+func (s *serverState) exportSubscriptionCandidates(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	store := s.readSubscriptionStore()
+	poolIndex := rsubscription.FindPoolIndex(store, tag)
+	if poolIndex < 0 {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+		return
+	}
+	pool := store.Pools[poolIndex]
+	if len(pool.Candidates) == 0 {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "В pool нет серверов"})
+		return
+	}
+
+	selected := []int{}
+	if boolPayload(payload, "all", false) {
+		for index := range pool.Candidates {
+			selected = append(selected, index)
+		}
+	} else {
+		seen := map[int]bool{}
+		for _, value := range asArray(payload["indexes"]) {
+			index := number(value, -1)
+			if index >= 0 && index < len(pool.Candidates) && !seen[index] {
+				selected = append(selected, index)
+				seen[index] = true
+			}
+		}
+	}
+	if len(selected) == 0 {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Выберите хотя бы один сервер подписки"})
+		return
+	}
+
+	outbounds := []map[string]any{}
+	items := []map[string]any{}
+	for _, index := range selected {
+		candidate := pool.Candidates[index]
+		cloned := rproxy.CloneOutboundWithTag(candidate, subscriptionCandidateTag(pool.Tag, candidate, index))
+		outbounds = append(outbounds, cloned)
+		items = append(items, rproxy.OutboundSummary(cloned))
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "tag": pool.Tag, "count": len(outbounds), "outbounds": outbounds, "items": items})
+}
+
+func subscriptionOutboundsFromURL(rawURL string) ([]map[string]any, int, error) {
+	links, err := subscriptionLinks(rawURL)
+	if err != nil {
+		return nil, 0, err
+	}
+	outbounds := []map[string]any{}
+	for _, link := range links {
+		outbound, err := rproxy.ParseShareLink(link)
+		if err == nil {
+			outbounds = append(outbounds, outbound)
+		}
+	}
+	return outbounds, len(links), nil
+}
+
+func sameSubscriptionCandidate(a map[string]any, b map[string]any) bool {
+	left := rproxy.OutboundSummary(a)
+	right := rproxy.OutboundSummary(b)
+	if fmt.Sprint(left["tag"]) != "" && fmt.Sprint(left["tag"]) == fmt.Sprint(right["tag"]) {
+		return true
+	}
+	return fmt.Sprint(left["address"]) == fmt.Sprint(right["address"]) && fmt.Sprint(left["port"]) == fmt.Sprint(right["port"])
+}
+
+func preserveSubscriptionActive(previous rsubscription.Pool, candidates []map[string]any) int {
+	if len(candidates) == 0 {
+		return 0
+	}
+	if previous.Active >= 0 && previous.Active < len(previous.Candidates) {
+		active := previous.Candidates[previous.Active]
+		for index, candidate := range candidates {
+			if sameSubscriptionCandidate(active, candidate) {
+				return index
+			}
+		}
+	}
+	return rsubscription.NormalizeActive(previous.Active, len(candidates))
+}
+
+func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	store := s.readSubscriptionStore()
+	poolIndex := rsubscription.FindPoolIndex(store, tag)
+	if poolIndex < 0 {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+		return
+	}
+	pool := store.Pools[poolIndex]
+	rawURL := strings.TrimSpace(firstNonEmpty(fmt.Sprint(payload["url"]), pool.URL))
+	if rawURL == "" || rawURL == "<nil>" {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "У подписки нет URL для обновления"})
+		return
+	}
+	candidates, links, err := subscriptionOutboundsFromURL(rawURL)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if len(candidates) == 0 {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "В подписке не найдены поддерживаемые серверы", "links": links})
+		return
+	}
+	before := len(pool.Candidates)
+	pool.URL = rawURL
+	pool.Candidates = candidates
+	pool.Active = preserveSubscriptionActive(store.Pools[poolIndex], candidates)
+	pool.UpdatedAt = time.Now().Format(time.RFC3339)
+	store.Pools[poolIndex] = pool
+	if err := s.writeSubscriptionStore(store); err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "before": before, "links": links, "count": len(candidates), "pool": rsubscription.PublicPool(pool)})
+}
+
+func (s *serverState) setSubscriptionFallbackProgress(progress map[string]any) {
+	s.fallbackMu.Lock()
+	defer s.fallbackMu.Unlock()
+	if progress == nil {
+		s.fallbackProgress = nil
+		return
+	}
+	next := map[string]any{}
+	for key, value := range progress {
+		next[key] = value
+	}
+	next["updatedAt"] = time.Now().Format(time.RFC3339)
+	s.fallbackProgress = next
+}
+
+func (s *serverState) subscriptionFallbackProgress(tag string) map[string]any {
+	s.fallbackMu.Lock()
+	defer s.fallbackMu.Unlock()
+	if s.fallbackProgress == nil {
+		return map[string]any{"ok": true, "active": false}
+	}
+	if tag != "" && fmt.Sprint(s.fallbackProgress["tag"]) != tag {
+		return map[string]any{"ok": true, "active": false}
+	}
+	next := map[string]any{"ok": true, "active": true}
+	for key, value := range s.fallbackProgress {
+		next[key] = value
+	}
+	return next
+}
+
+func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(r)
+	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
+	store := s.readSubscriptionStore()
+	poolIndex := rsubscription.FindPoolIndex(store, tag)
+	if poolIndex < 0 {
+		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+		return
+	}
+	pool := store.Pools[poolIndex]
+	if len(pool.Candidates) == 0 {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "В pool нет кандидатов"})
+		return
+	}
+	options := normalizeSubscriptionCandidateCheckOptions(payload)
 
 	results := []map[string]any{}
 	selected := -1
+	s.setSubscriptionFallbackProgress(map[string]any{
+		"tag": tag, "total": len(pool.Candidates), "checked": 0, "currentStep": 0,
+	})
+	defer s.setSubscriptionFallbackProgress(nil)
 	for step := 1; step <= len(pool.Candidates); step++ {
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
 		index := (pool.Active + step) % len(pool.Candidates)
 		candidate := pool.Candidates[index]
 		summary := rproxy.OutboundSummary(candidate)
-		result := map[string]any{"index": index, "tag": summary["tag"], "address": summary["address"], "port": summary["port"]}
-		ok := false
-		var err error
-		if checkMode == "endpoint" {
-			address := fmt.Sprint(summary["address"])
-			portValue := number(summary["port"], 0)
-			latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, timeoutMs, attempts)
-			if endpointOK {
-				ok = true
-				if latency > 0 {
-					result["latencyMs"] = latency
-				}
-			} else {
-				err = endpointErr
-			}
-		} else {
-			latency, httpOK, httpErr := s.httpOutboundProbe(candidate, probeURL, timeoutMs, attempts)
-			ok = httpOK
-			err = httpErr
-			if latency > 0 {
-				result["latencyMs"] = latency
-			}
-		}
-		result["ok"] = ok
-		if err != nil {
-			result["error"] = err.Error()
-		}
+		s.setSubscriptionFallbackProgress(map[string]any{
+			"tag": tag, "total": len(pool.Candidates), "checked": len(results),
+			"currentStep": step, "currentIndex": index, "currentTag": summary["tag"],
+			"currentAddress": summary["address"], "currentPort": summary["port"],
+		})
+		result := s.checkSubscriptionCandidateResult(index, candidate, options)
+		ok := result["ok"] == true
 		results = append(results, result)
+		_ = s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result})
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
+		s.setSubscriptionFallbackProgress(map[string]any{
+			"tag": tag, "total": len(pool.Candidates), "checked": len(results),
+			"currentStep": step, "currentIndex": index, "currentTag": summary["tag"],
+			"currentAddress": summary["address"], "currentPort": summary["port"], "lastOk": ok,
+		})
 		if ok {
 			selected = index
 			break

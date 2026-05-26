@@ -19,6 +19,7 @@ func (s *serverState) validateConfig(cfg map[string]any) map[string]any {
 		}
 	}
 	normalizeCatchAllRoutingRules(cfg)
+	ensureFragmentOutboundsInConfig(cfg)
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: JSON корректен; бинарник xray на Windows не проверялся"}
 	}

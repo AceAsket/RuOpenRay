@@ -30,6 +30,13 @@ func TestOutboundCheckResultsKeepLastPerTag(t *testing.T) {
 	if got := int(results["one"]["latencyMs"].(float64)); got != 25 {
 		t.Fatalf("unexpected latency for one: %d", got)
 	}
+	history := state.readOutboundCheckHistory()
+	if len(history["one"]) != 2 {
+		t.Fatalf("expected two history entries for one, got %#v", history["one"])
+	}
+	if got := int(history["one"][0]["latencyMs"].(float64)); got != 25 {
+		t.Fatalf("expected newest history entry first, got %d", got)
+	}
 }
 
 func TestOutboundCheckResultsAreCompact(t *testing.T) {
@@ -67,5 +74,43 @@ func TestLimitOutboundCheckResults(t *testing.T) {
 	}
 	if _, ok := limited["tag-69"]; !ok {
 		t.Fatalf("newest item was trimmed")
+	}
+}
+
+func TestOutboundCheckHistorySettingsPruneByLimit(t *testing.T) {
+	state := &serverState{cfg: appConfig{DataDir: t.TempDir()}}
+	result := state.saveOutboundCheckHistorySettings(map[string]any{"limit": 2, "retentionHours": 168})
+	if result["ok"] != true {
+		t.Fatalf("save settings failed: %#v", result)
+	}
+	for i := 0; i < 4; i++ {
+		if err := state.saveOutboundCheckResults([]map[string]any{
+			{"tag": "one", "ok": i%2 == 0, "latencyMs": i + 1, "checkedAt": fmt.Sprintf("2026-05-24T10:0%d:00Z", i)},
+		}); err != nil {
+			t.Fatalf("save result %d: %v", i, err)
+		}
+	}
+	history := state.readOutboundCheckHistory()
+	if len(history["one"]) != 2 {
+		t.Fatalf("expected two retained history entries, got %#v", history["one"])
+	}
+	if got := int(history["one"][0]["latencyMs"].(float64)); got != 4 {
+		t.Fatalf("expected newest history retained first, got %d", got)
+	}
+}
+
+func TestOutboundCheckHistoryCanBeDisabled(t *testing.T) {
+	state := &serverState{cfg: appConfig{DataDir: t.TempDir()}}
+	result := state.saveOutboundCheckHistorySettings(map[string]any{"limit": 0, "retentionHours": 168})
+	if result["ok"] != true {
+		t.Fatalf("save settings failed: %#v", result)
+	}
+	if err := state.saveOutboundCheckResults([]map[string]any{
+		{"tag": "one", "ok": true, "checkedAt": "2026-05-24T10:00:00Z"},
+	}); err != nil {
+		t.Fatalf("save result: %v", err)
+	}
+	if history := state.readOutboundCheckHistory(); len(history) != 0 {
+		t.Fatalf("expected disabled history to stay empty, got %#v", history)
 	}
 }

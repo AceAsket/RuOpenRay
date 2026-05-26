@@ -1004,7 +1004,7 @@
 .server-ping.warn,
 .server-check-pill.warn {
   color: #12120a;
-  background: var(--yellow);
+  background: var(--amber);
 }
 
 .server-check-pill.muted {

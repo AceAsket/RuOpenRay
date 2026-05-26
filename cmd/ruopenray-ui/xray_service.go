@@ -24,6 +24,7 @@ func (s *serverState) readActiveConfig() (map[string]any, error) {
 
 func (s *serverState) writeActiveConfig(cfg map[string]any) error {
 	normalizeCatchAllRoutingRules(cfg)
+	ensureFragmentOutboundsInConfig(cfg)
 	if _, err := s.prepareConfigLogFiles(cfg); err != nil {
 		return err
 	}
@@ -32,6 +33,7 @@ func (s *serverState) writeActiveConfig(cfg map[string]any) error {
 
 func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
 	normalizeCatchAllRoutingRules(cfg)
+	ensureFragmentOutboundsInConfig(cfg)
 	if err := os.MkdirAll(filepath.Dir(s.cfg.ActiveConfig), 0o755); err != nil {
 		return err
 	}

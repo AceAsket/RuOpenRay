@@ -10,6 +10,34 @@ export function createDnsActions({
   normalizeDnsAddressInput,
   ensureDnsBootstrapHosts
 }) {
+  function cloneConfig() {
+    return JSON.parse(JSON.stringify(state.config || {}));
+  }
+
+  function ensureDnsList(config) {
+    config.dns = config.dns && typeof config.dns === 'object' ? config.dns : {};
+    config.dns.servers = Array.isArray(config.dns.servers) ? config.dns.servers : [];
+    return config.dns.servers;
+  }
+
+  function dnsServerAddress(server) {
+    if (typeof server === 'string') return server;
+    if (server && typeof server === 'object') return server.address || '';
+    return '';
+  }
+
+  function isDohServer(server) {
+    return String(dnsServerAddress(server)).toLowerCase().startsWith('https://');
+  }
+
+  function prioritizeDohServers(config) {
+    const servers = ensureDnsList(config);
+    config.dns.servers = [
+      ...servers.filter((server) => isDohServer(server)),
+      ...servers.filter((server) => !isDohServer(server))
+    ];
+  }
+
   function addDnsServer() {
     const address = String(state.dnsAddress || '').trim();
     if (!address) {
@@ -24,13 +52,15 @@ export function createDnsActions({
       : domains.length
         ? { address: normalized.config, domains }
         : normalized.config;
-    const next = JSON.parse(JSON.stringify(state.config || {}));
-    next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-    next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
-    next.dns.servers.push(server);
+    const next = cloneConfig();
+    const servers = ensureDnsList(next);
+    servers.push(server);
+    if (isDohServer(server)) prioritizeDohServers(next);
     syncConfig(next);
     state.dnsDomains = '';
-    state.message = 'DNS-сервер добавлен в черновик';
+    state.message = isDohServer(server)
+      ? 'DNS-сервер добавлен. DoH поднят выше обычных DNS в черновике.'
+      : 'DNS-сервер добавлен в черновик';
     render();
   }
 
@@ -53,7 +83,7 @@ export function createDnsActions({
       render();
       return;
     }
-    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const next = cloneConfig();
     next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
     next.dns.hosts = next.dns.hosts && typeof next.dns.hosts === 'object' && !Array.isArray(next.dns.hosts) ? next.dns.hosts : {};
     next.dns.hosts[host] = value;
@@ -73,7 +103,7 @@ export function createDnsActions({
   }
 
   function removeDnsHost(host) {
-    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const next = cloneConfig();
     next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
     next.dns.hosts = next.dns.hosts && typeof next.dns.hosts === 'object' && !Array.isArray(next.dns.hosts) ? next.dns.hosts : {};
     delete next.dns.hosts[host];
@@ -87,18 +117,17 @@ export function createDnsActions({
   }
 
   function ensureDnsServer(next, server) {
-    next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
-    next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
+    const servers = ensureDnsList(next);
     const target = typeof server === 'string' ? server : server.address;
-    const exists = next.dns.servers.some((item) => {
+    const exists = servers.some((item) => {
       const address = typeof item === 'string' ? item : item?.address;
       return address === target;
     });
-    if (!exists) next.dns.servers.push(server);
+    if (!exists) servers.push(server);
   }
 
   function applyDnsGuardPreset(mode) {
-    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const next = cloneConfig();
     if (mode === 'secure') {
       ensureDnsServer(next, 'https://dns.google:443/dns-query');
       ensureDnsServer(next, 'https://dns.adguard-dns.com/dns-query');
@@ -117,6 +146,7 @@ export function createDnsActions({
         ? rules
         : [{ type: 'field', network: 'udp', port: '443', outboundTag: activeProxyTag() || 'proxy' }, ...rules];
     }
+    prioritizeDohServers(next);
     syncConfig(next);
     state.message = mode === 'strict'
       ? 'Защита DNS добавила DoH и правило UDP/443 в черновик'
@@ -125,11 +155,34 @@ export function createDnsActions({
   }
 
   function removeDnsServer(index) {
-    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const next = cloneConfig();
     next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
     next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers.filter((_, itemIndex) => itemIndex !== index) : [];
     syncConfig(next);
     state.message = 'DNS-сервер удален из черновика';
+    render();
+  }
+
+  function moveDnsServer(index, direction) {
+    const next = cloneConfig();
+    const servers = ensureDnsList(next);
+    const targetIndex = index + direction;
+    if (index < 0 || index >= servers.length || targetIndex < 0 || targetIndex >= servers.length) return;
+    const [server] = servers.splice(index, 1);
+    servers.splice(targetIndex, 0, server);
+    syncConfig(next);
+    state.message = 'Порядок DNS-серверов изменен в черновике';
+    render();
+  }
+
+  function prioritizeDohDnsServers() {
+    const next = cloneConfig();
+    const before = JSON.stringify(ensureDnsList(next));
+    prioritizeDohServers(next);
+    syncConfig(next);
+    state.message = before === JSON.stringify(next.dns.servers)
+      ? 'DoH уже стоит выше обычных DNS'
+      : 'DoH-серверы подняты выше обычных DNS в черновике';
     render();
   }
 
@@ -172,7 +225,7 @@ export function createDnsActions({
   }
 
   function applyDnsBootstrapHosts() {
-    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const next = cloneConfig();
     ensureDnsBootstrapHosts(next);
     syncConfig(next);
     state.message = 'Bootstrap hosts для DoH добавлены в черновик. Проверьте и примените конфигурацию.';
@@ -209,6 +262,8 @@ export function createDnsActions({
     removeDnsHost,
     applyDnsGuardPreset,
     removeDnsServer,
+    moveDnsServer,
+    prioritizeDohDnsServers,
     checkDnsServer,
     checkDnsDiagnostics,
     applyLanDnsUpstream,

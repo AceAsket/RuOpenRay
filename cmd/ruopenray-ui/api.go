@@ -235,8 +235,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.deleteSubscriptionPool(w, r)
 	case path == "/subscriptions/select" && r.Method == http.MethodPost:
 		s.selectSubscriptionCandidate(w, r)
+	case path == "/subscriptions/check-candidate" && r.Method == http.MethodPost:
+		s.checkSubscriptionCandidate(w, r)
+	case path == "/subscriptions/export" && r.Method == http.MethodPost:
+		s.exportSubscriptionCandidates(w, r)
+	case path == "/subscriptions/refresh" && r.Method == http.MethodPost:
+		s.refreshSubscriptionPool(w, r)
 	case path == "/subscriptions/fallback" && r.Method == http.MethodPost:
 		s.fallbackSubscription(w, r)
+	case path == "/subscriptions/fallback-progress" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.subscriptionFallbackProgress(r.URL.Query().Get("tag")))
 	case path == "/dhcp/leases" && r.Method == http.MethodGet:
 		writeJSON(w, 200, dhcpLeaseReport(s.cfg.DataDir))
 	case path == "/dns/check" && r.Method == http.MethodPost:
@@ -250,6 +258,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.applyLANDNSUpstream(payload))
 	case path == "/outbounds/check" && r.Method == http.MethodPost:
 		s.checkOutbounds(w, r)
+	case path == "/outbounds/check-history/settings" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.saveOutboundCheckHistorySettings(payload))
 	case path == "/sni/scan" && r.Method == http.MethodPost:
 		s.scanSNI(w, r)
 	case path == "/domain-monitor" && r.Method == http.MethodGet:

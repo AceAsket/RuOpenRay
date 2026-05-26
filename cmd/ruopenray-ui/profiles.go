@@ -205,9 +205,6 @@ func (s *serverState) importPreview(w http.ResponseWriter, r *http.Request) {
 				items = append(items, rproxy.OutboundSummary(outbound))
 				outbounds = append(outbounds, outbound)
 			}
-			if len(items) >= 50 {
-				break
-			}
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "source": "subscription", "links": len(links), "items": items, "outbounds": outbounds})
 		return

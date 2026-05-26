@@ -1,4 +1,5 @@
 import { parseServerEditJson, patchServerEditField, stringifyServerEditOutbound } from './server-edit-model.js';
+import { inferredCountryForOutbound } from './server-location.js';
 
 export function createServerActions({
   state,
@@ -14,6 +15,39 @@ export function createServerActions({
   setActiveServerTag,
   applyConfig
 }) {
+  let subscriptionFallbackAbort = null;
+  let subscriptionFallbackTimer = 0;
+
+  function clearSubscriptionFallbackState() {
+    if (subscriptionFallbackTimer) clearInterval(subscriptionFallbackTimer);
+    subscriptionFallbackTimer = 0;
+    subscriptionFallbackAbort = null;
+    state.subscriptionFallbackTag = '';
+    state.subscriptionFallbackStartedAt = 0;
+    state.subscriptionFallbackMessage = '';
+    state.subscriptionFallbackTotal = 0;
+    state.subscriptionFallbackChecked = 0;
+    state.subscriptionFallbackCurrent = '';
+    state.subscriptionFallbackTick = 0;
+  }
+
+  function rememberSubscriptionCandidateChecks(tag, results = []) {
+    if (!tag || !Array.isArray(results)) return;
+    const next = { ...(state.subscriptionCandidateChecks || {}) };
+    const poolChecks = { ...(next[tag] || {}) };
+    for (const item of results) {
+      const index = Number(item?.index);
+      if (!Number.isFinite(index) || index < 0) continue;
+      poolChecks[index] = {
+        ...item,
+        checkedAt: item?.checkedAt || new Date().toISOString(),
+        method: item?.method || state.serverCheckMode
+      };
+    }
+    next[tag] = poolChecks;
+    state.subscriptionCandidateChecks = next;
+  }
+
   async function persistServerMeta(items = state.serverMeta) {
     const result = await request('/api/server-meta', {
       method: 'POST',
@@ -21,6 +55,32 @@ export function createServerActions({
     });
     if (result?.items && typeof result.items === 'object') state.serverMeta = result.items;
     return result;
+  }
+
+  async function persistInferredServerMeta(outbounds = [], { tagMap = {} } = {}) {
+    const nextMeta = { ...(state.serverMeta || {}) };
+    let changed = 0;
+    for (const outbound of outbounds || []) {
+      if (!outbound?.tag) continue;
+      const targetTag = tagMap[outbound.tag] || outbound.tag;
+      const current = nextMeta[targetTag] || {};
+      if (current.country) continue;
+      const country = inferredCountryForOutbound(outbound, current);
+      if (!country) continue;
+      nextMeta[targetTag] = { ...current, country };
+      changed += 1;
+    }
+    if (!changed) return 0;
+    state.serverMeta = nextMeta;
+    await persistServerMeta(nextMeta);
+    return changed;
+  }
+
+  async function persistPoolActiveCandidateMeta(result, tag) {
+    if (!result?.ok || !result.pool?.activeCandidate) return 0;
+    return persistInferredServerMeta([result.pool.activeCandidate], {
+      tagMap: { [result.pool.activeCandidate.tag]: tag }
+    });
   }
 
   function openServerEditor(index) {
@@ -88,6 +148,18 @@ export function createServerActions({
     }
     config.routing = routing;
     return config;
+  }
+
+  function mergeSubscriptionOutbounds(config, outbounds) {
+    const next = JSON.parse(JSON.stringify(config || {}));
+    const imported = (outbounds || []).filter(Boolean).map((outbound) => JSON.parse(JSON.stringify(outbound)));
+    const tags = new Set(imported.map((outbound) => outbound?.tag).filter(Boolean));
+    const current = Array.isArray(next.outbounds) ? next.outbounds : [];
+    const systemTags = new Set(['direct', 'block', 'dns-out']);
+    const system = current.filter((outbound) => systemTags.has(outbound?.tag) || outbound?.protocol === 'freedom' || outbound?.protocol === 'blackhole' || outbound?.protocol === 'dns');
+    const regular = current.filter((outbound) => !system.includes(outbound) && !tags.has(outbound?.tag));
+    next.outbounds = [...imported, ...regular, ...system];
+    return next;
   }
 
   async function saveServerEdit() {
@@ -225,22 +297,98 @@ export function createServerActions({
     if (renderAfter) render();
   }
 
+  async function saveServerCheckHistorySettings() {
+    if (state.serverCheckHistorySaving) return;
+    state.serverCheckHistorySaving = true;
+    render();
+    try {
+      const result = await request('/api/outbounds/check-history/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          limit: Math.max(0, Number(state.serverCheckHistoryLimit) || 0),
+          retentionHours: Math.max(1, Number(state.serverCheckHistoryRetentionHours) || 168)
+        })
+      });
+      if (result?.settings) {
+        state.serverCheckHistoryLimit = String(result.settings.limit ?? state.serverCheckHistoryLimit);
+        state.serverCheckHistoryRetentionHours = String(result.settings.retentionHours ?? state.serverCheckHistoryRetentionHours);
+      }
+      if (result?.history && typeof result.history === 'object') {
+        state.serverCheckHistoryByTag = result.history;
+      }
+      state.message = result?.ok
+        ? 'История проверок серверов сохранена'
+        : `Не удалось сохранить историю проверок: ${result?.error || 'ошибка'}`;
+    } finally {
+      state.serverCheckHistorySaving = false;
+      render();
+    }
+  }
+
   async function fallbackSubscriptionPool(tag) {
-    const result = await request('/api/subscriptions/fallback', {
-      method: 'POST',
-      body: JSON.stringify({
-        tag,
-        mode: state.serverCheckMode,
-        url: state.serverCheckUrl,
-        timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
-        attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
-        restart: true
-      })
-    });
-    state.message = result.ok
-      ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый сервер'}`
-      : `Подписка ${tag}: ${result.error || 'доступный сервер не найден'}`;
-    await refresh();
+    if (!tag || subscriptionFallbackAbort) return;
+    const pool = (state.subscriptionPools || []).find((item) => item?.tag === tag);
+    const total = Array.isArray(pool?.candidates) ? pool.candidates.length : Number(pool?.count || 0);
+    subscriptionFallbackAbort = new AbortController();
+    state.subscriptionFallbackTag = tag;
+    state.subscriptionFallbackStartedAt = Date.now();
+    state.subscriptionFallbackTotal = total;
+    state.subscriptionFallbackChecked = 0;
+    state.subscriptionFallbackCurrent = '';
+    state.subscriptionFallbackMessage = total
+      ? `Проверяю кандидатов по очереди: до ${total}`
+      : 'Проверяю кандидатов подписки';
+    render();
+    subscriptionFallbackTimer = setInterval(() => {
+      state.subscriptionFallbackTick += 1;
+      request(`/api/subscriptions/fallback-progress?tag=${encodeURIComponent(tag)}`)
+        .then((progress) => {
+          if (!progress?.active || state.subscriptionFallbackTag !== tag) return;
+          state.subscriptionFallbackChecked = Number(progress.checked || 0);
+          state.subscriptionFallbackTotal = Number(progress.total || state.subscriptionFallbackTotal || 0);
+          state.subscriptionFallbackCurrent = [progress.currentTag, progress.currentAddress, progress.currentPort ? `:${progress.currentPort}` : '']
+            .filter(Boolean)
+            .join(' ');
+          render();
+        })
+        .catch(() => {});
+      render();
+    }, 1000);
+    try {
+      const result = await request('/api/subscriptions/fallback', {
+        method: 'POST',
+        signal: subscriptionFallbackAbort.signal,
+        body: JSON.stringify({
+          tag,
+          mode: state.serverCheckMode,
+          url: state.serverCheckUrl,
+          timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+          attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
+          restart: true
+        })
+      });
+      state.message = result.ok
+        ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый сервер'}`
+        : `Подписка ${tag}: ${result.error || 'доступный сервер не найден'}`;
+      rememberSubscriptionCandidateChecks(tag, result.results || []);
+      await persistPoolActiveCandidateMeta(result, tag);
+      await refresh();
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        state.message = `Поиск доступного сервера подписки ${tag} остановлен`;
+        render();
+        return;
+      }
+      throw error;
+    } finally {
+      clearSubscriptionFallbackState();
+      render();
+    }
+  }
+
+  function cancelSubscriptionFallback() {
+    if (!subscriptionFallbackAbort) return;
+    subscriptionFallbackAbort.abort();
   }
 
   async function selectSubscriptionCandidate(tag, index) {
@@ -252,7 +400,73 @@ export function createServerActions({
     state.message = result.ok
       ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'сервер'}`
       : `Подписка ${tag}: ${result.error || 'не удалось выбрать сервер'}`;
+    await persistPoolActiveCandidateMeta(result, tag);
     await refresh();
+  }
+
+  async function checkSubscriptionCandidate(tag, index) {
+    if (!tag) return;
+    const numericIndex = Number(index);
+    if (!Number.isFinite(numericIndex) || numericIndex < 0) return;
+    const key = `${tag}:${numericIndex}`;
+    if (state.subscriptionCandidateChecking) return;
+    state.subscriptionCandidateChecking = key;
+    render();
+    try {
+      const result = await request('/api/subscriptions/check-candidate', {
+        method: 'POST',
+        body: JSON.stringify({
+          tag,
+          index: numericIndex,
+          mode: state.serverCheckMode,
+          url: state.serverCheckUrl,
+          timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+          attempts: Math.max(3, Number(state.serverCheckAttempts) || 3)
+        })
+      });
+      if (result?.result) {
+        rememberSubscriptionCandidateChecks(tag, [result.result]);
+        state.message = result.result.ok
+          ? `Сервер подписки доступен: ${result.result.tag || result.result.address || numericIndex + 1}`
+          : `Сервер подписки не ответил: ${result.result.tag || result.result.address || numericIndex + 1}`;
+      } else {
+        state.message = `Не удалось проверить сервер подписки ${tag}`;
+      }
+    } finally {
+      state.subscriptionCandidateChecking = '';
+      render();
+    }
+  }
+
+  async function refreshSubscriptionPool(tag) {
+    if (!tag) return;
+    const result = await request('/api/subscriptions/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ tag })
+    });
+    state.message = result.ok
+      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}`
+      : `Подписка ${tag}: ${result.error || 'не удалось обновить список серверов'}`;
+    await persistPoolActiveCandidateMeta(result, tag);
+    await refresh();
+  }
+
+  async function exportSubscriptionCandidates(tag, indexes = [], { all = false } = {}) {
+    if (!tag) return;
+    const result = await request('/api/subscriptions/export', {
+      method: 'POST',
+      body: JSON.stringify({ tag, indexes, all })
+    });
+    if (!result?.ok || !Array.isArray(result.outbounds) || !result.outbounds.length) {
+      state.message = `Подписка ${tag}: ${result?.error || 'серверы не выбраны'}`;
+      render();
+      return;
+    }
+    syncConfig(mergeSubscriptionOutbounds(state.config, result.outbounds));
+    const inferred = await persistInferredServerMeta(result.outbounds);
+    state.message = `Подписка ${tag}: добавлено в черновик прокси-серверов: ${result.outbounds.length}`;
+    if (inferred) state.message += `, флагов определено: ${inferred}`;
+    render();
   }
 
   async function deleteSubscriptionPool(tag) {
@@ -278,8 +492,13 @@ export function createServerActions({
     persistServerMeta,
     routeAllToOutbound,
     checkServers,
+    saveServerCheckHistorySettings,
     fallbackSubscriptionPool,
+    cancelSubscriptionFallback,
     selectSubscriptionCandidate,
+    checkSubscriptionCandidate,
+    refreshSubscriptionPool,
+    exportSubscriptionCandidates,
     deleteSubscriptionPool
   };
 }

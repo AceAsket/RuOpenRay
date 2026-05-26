@@ -1,6 +1,7 @@
 import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
 import { parseServerEditJson, serverEditFields } from './server-edit-model.js';
+import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 
 export function createServersView(deps) {
   const {
@@ -33,9 +34,11 @@ function serverActionButton({ label, icon, tone = 'secondary', attrs = '', busy 
     active: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
     delete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>',
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.1 6.6"/><path d="M3 12A9 9 0 0 1 18.1 5.4"/><path d="M3 18v-5h5"/><path d="M21 6v5h-5"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>',
   };
   const safeLabel = escapeHtml(label);
-  return `<button type="button" class="server-action-icon ${tone} ${busy ? 'is-busy' : ''}" ${attrs} ${disabled ? 'disabled' : ''} title="${safeLabel}" aria-label="${safeLabel}">
+  return `<button type="button" class="server-action-icon ${tone} ${busy ? 'is-busy' : ''}" ${attrs} data-busy-label-inline="0" ${disabled ? 'disabled' : ''} title="${safeLabel}" aria-label="${safeLabel}">
     ${icons[icon] || ''}
   </button>`;
 }
@@ -45,6 +48,33 @@ function serverActionState(label) {
   return `<span class="server-action-icon active" title="${safeLabel}" aria-label="${safeLabel}" role="status">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
   </span>`;
+}
+
+function subscriptionCandidateStatus(check, checking = false) {
+  if (checking) return '<span class="server-chip warn subscription-check-status"><i></i>проверяю</span>';
+  if (!check) return '<span class="server-chip warn subscription-check-status"><i></i>не проверен</span>';
+  const latency = Number(check.latencyMs || check.httpLatencyMs || check.endpointLatencyMs || 0);
+  const method = check.method === 'endpoint' ? 'TCP' : 'HTTP';
+  if (check.ok) {
+    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}`)}</span>`;
+  }
+  const text = check.error ? `${method} нет ответа` : `${method} недоступен`;
+  return `<span class="server-chip bad subscription-check-status"><i></i>${escapeHtml(text)}</span>`;
+}
+
+function subscriptionCandidateSearchText(candidate, index, location, address) {
+  return [
+    index + 1,
+    candidate?.tag,
+    candidate?.address,
+    candidate?.port,
+    candidate?.network,
+    candidate?.security,
+    location?.code,
+    location?.label,
+    countryNames[location?.code] || '',
+    address
+  ].filter(Boolean).join(' ').toLowerCase();
 }
 
 function serverCard(outbound, index, activeTag) {
@@ -80,19 +110,57 @@ function subscriptionPoolCard(pool) {
   const connecting = state.pendingServerTag === tag;
   const candidates = Array.isArray(pool?.candidates) ? pool.candidates : [];
   const activeIndex = Number(pool?.active ?? 0);
-  const candidateRows = candidates.map((candidate, index) => {
+  const fallbackActive = state.subscriptionFallbackTag === tag;
+  const fallbackTotal = state.subscriptionFallbackTotal || candidates.length || pool?.count || 0;
+  const fallbackElapsed = fallbackActive && state.subscriptionFallbackStartedAt
+    ? Math.max(1, Math.round((Date.now() - state.subscriptionFallbackStartedAt) / 1000))
+    : 0;
+  const fallbackMessage = state.subscriptionFallbackMessage || `Проверяю кандидатов подписки${fallbackTotal ? `: до ${fallbackTotal}` : ''}`;
+  const fallbackChecked = Math.min(Number(state.subscriptionFallbackChecked || 0), fallbackTotal || Number(state.subscriptionFallbackChecked || 0));
+  const fallbackCountText = fallbackTotal
+    ? `${fallbackChecked} из ${fallbackTotal}`
+    : `${fallbackChecked} проверено`;
+  const fallbackCurrent = String(state.subscriptionFallbackCurrent || '').trim();
+  const search = String(state.subscriptionCandidateSearch?.[tag] || '').trim();
+  const query = search.toLowerCase();
+  const candidateChecks = state.subscriptionCandidateChecks?.[tag] || {};
+  const candidateEntries = candidates.map((candidate, index) => {
     const address = [candidate?.address, candidate?.port].filter(Boolean).join(':');
     const selected = index === activeIndex;
-    return `<article class="subscription-candidate ${selected ? 'selected' : ''}">
-      <div>
+    const location = serverLocation(candidate, {});
+    const searchText = subscriptionCandidateSearchText(candidate, index, location, address);
+    const visible = !query || searchText.includes(query);
+    const countryCode = location?.code || '';
+    const countryTitle = countryCode ? `${countryCode} · ${location.label || countryCode}` : 'Локация не определена';
+    const savedCheck = candidateChecks[index] || null;
+    const checkMatchesCandidate = savedCheck
+      && String(savedCheck.address || '') === String(candidate?.address || '')
+      && String(savedCheck.port || '') === String(candidate?.port || '');
+    const check = checkMatchesCandidate ? savedCheck : null;
+    const checkKey = `${tag}:${index}`;
+    const checking = state.subscriptionCandidateChecking === checkKey;
+    return {
+      visible,
+      markup: `<article class="subscription-candidate ${selected ? 'selected' : ''}" data-subscription-candidate-row="${escapeHtml(tag)}" data-subscription-candidate-text="${escapeHtml(searchText)}" ${visible ? '' : 'hidden'}>
+      <label class="subscription-candidate-pick" title="Добавить этот сервер как отдельный proxy">
+        <input type="checkbox" data-subscription-candidate-pick="${escapeHtml(tag)}" value="${index}" />
+        <span></span>
+      </label>
+      <span class="subscription-candidate-flag" title="${escapeHtml(countryTitle)}">${countryFlagMarkup(countryCode)}</span>
+      <div class="subscription-candidate-main">
         <strong>${escapeHtml(candidate?.tag || `server-${index + 1}`)}</strong>
         <span>${escapeHtml([address, candidate?.network, candidate?.security].filter(Boolean).join(' · '))}</span>
       </div>
+      ${subscriptionCandidateStatus(check, checking)}
+      <button class="btn secondary compact subscription-candidate-check" data-action="checkSubscriptionCandidate" data-busy="0" data-subscription-check="${escapeHtml(tag)}" data-subscription-candidate-index="${index}" ${checking ? 'disabled' : ''}>${checking ? 'Проверяю' : 'Проверить'}</button>
       ${selected
         ? '<span class="server-chip ok">по умолчанию</span>'
         : `<button class="btn secondary compact" data-action="selectSubscriptionCandidate" data-subscription-select="${escapeHtml(tag)}" data-subscription-candidate-index="${index}">Сделать основным</button>`}
-    </article>`;
-  }).join('');
+    </article>`
+    };
+  });
+  const visibleCount = candidateEntries.filter((entry) => entry.visible).length;
+  const candidateRows = candidateEntries.map((entry) => entry.markup).join('');
   return `<article class="server-row subscription-pool-row">
     <div class="server-identity">
       <span class="server-protocol">pool</span>
@@ -106,13 +174,32 @@ function subscriptionPoolCard(pool) {
       <small>${escapeHtml(active?.tag ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}` : 'активный сервер не выбран')}</small>
     </div>
     <div class="server-actions">
-      ${serverActionButton({ label: 'Найти доступный сервер', icon: 'search', attrs: `data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}"` })}
+      ${serverActionButton({ label: 'Обновить список серверов подписки', icon: 'refresh', attrs: `data-action="refreshSubscription" data-subscription-refresh="${escapeHtml(tag)}"` })}
+      ${fallbackActive
+        ? serverActionButton({ label: 'Остановить поиск доступного сервера', icon: 'stop', tone: 'danger', attrs: 'data-action="cancelSubscriptionFallback"' })
+        : serverActionButton({ label: 'Найти доступный сервер', icon: 'search', attrs: `data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}"` })}
       ${serverActionButton({ label: connecting ? 'Подключаю подписку' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting })}
       ${serverActionButton({ label: 'Удалить подписку', icon: 'delete', tone: 'danger', attrs: `data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}"` })}
     </div>
-    ${candidates.length ? `<details class="subscription-candidates">
+    ${fallbackActive ? `<div class="subscription-fallback-progress">
+      <div>
+        <strong>Ищу доступный сервер</strong>
+        <span>${escapeHtml(`${fallbackMessage} · проверено ${fallbackCountText} · прошло ${fallbackElapsed} с${fallbackCurrent ? ` · сейчас ${fallbackCurrent}` : ''}`)}</span>
+      </div>
+      <button class="btn danger compact" data-action="cancelSubscriptionFallback">Остановить</button>
+      <i aria-hidden="true"></i>
+    </div>` : ''}
+    ${candidates.length ? `<details class="subscription-candidates" data-details-key="subscription-candidates-${escapeHtml(tag)}">
       <summary>Серверы подписки · ${candidates.length}</summary>
-      <div>${candidateRows}</div>
+      <div class="subscription-candidate-tools">
+        <input data-subscription-candidate-search="${escapeHtml(tag)}" value="${escapeHtml(search)}" placeholder="Найти сервер, страну, адрес..." />
+        <span data-subscription-candidate-count="${escapeHtml(tag)}">${escapeHtml(`Показано ${visibleCount} из ${candidates.length}`)}</span>
+      </div>
+      <div class="subscription-candidate-actions">
+        <button class="btn secondary compact" data-action="exportSubscriptionSelected" data-subscription-export="${escapeHtml(tag)}">Добавить выбранные как прокси</button>
+        <button class="btn secondary compact" data-action="exportSubscriptionAll" data-subscription-export="${escapeHtml(tag)}">Добавить все как прокси</button>
+      </div>
+      <div class="subscription-candidate-list">${candidateRows || '<p class="muted">В подписке нет серверов.</p>'}</div>
     </details>` : ''}
   </article>`;
 }

@@ -2,11 +2,12 @@ package proxy
 
 import (
 	"encoding/base64"
+	"fmt"
 	"testing"
 )
 
 func TestParseVlessShareLink(t *testing.T) {
-	raw := "vless:" + "//00000000-0000-0000-0000-000000000000@example.com:443?type=tcp&encryption=none&security=reality&sni=example.com&p" + "bk=test-key&s" + "id=abcd#demo"
+	raw := "vless:" + "//00000000-0000-0000-0000-000000000000@example.com:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&p" + "bk=test-key&s" + "id=abcd&spx=%2F&flow=xtls-rprx-vision&fragment=100-200,10-20,tlshello&mux=true&muxConcurrency=8#demo"
 	outbound, err := ParseShareLink(raw)
 	if err != nil {
 		t.Fatalf("ParseShareLink returned error: %v", err)
@@ -20,6 +21,26 @@ func TestParseVlessShareLink(t *testing.T) {
 	summary := OutboundSummary(outbound)
 	if summary["address"] != "example.com" || summary["port"] != 443 || summary["security"] != "reality" {
 		t.Fatalf("summary = %#v", summary)
+	}
+	stream := outbound["streamSettings"].(map[string]any)
+	reality := stream["realitySettings"].(map[string]any)
+	if reality["serverName"] != "front.example.com" || reality["fingerprint"] != "chrome" || reality["spiderX"] != "/" {
+		t.Fatalf("reality settings = %#v", reality)
+	}
+	settings := outbound["settings"].(map[string]any)
+	vnext := settings["vnext"].([]any)[0].(map[string]any)
+	user := vnext["users"].([]any)[0].(map[string]any)
+	if user["flow"] != "xtls-rprx-vision" {
+		t.Fatalf("flow = %v, want xtls-rprx-vision", user["flow"])
+	}
+	if fmt.Sprint(getNested(outbound, "streamSettings", "sockopt", "dialerProxy")) == "" {
+		t.Fatalf("dialerProxy was not set: %#v", stream)
+	}
+	if mux := outbound["mux"].(map[string]any); mux["enabled"] != true || mux["concurrency"] != 8 {
+		t.Fatalf("mux = %#v", mux)
+	}
+	if companion, ok := FragmentOutboundFromTag(fmt.Sprint(getNested(outbound, "streamSettings", "sockopt", "dialerProxy"))); !ok || companion["protocol"] != "freedom" {
+		t.Fatalf("fragment companion = %#v, %v", companion, ok)
 	}
 }
 

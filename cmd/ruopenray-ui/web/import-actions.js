@@ -1,3 +1,5 @@
+import { inferredCountryForOutbound } from './server-location.js';
+
 export function createImportActions({
   state,
   request,
@@ -18,6 +20,7 @@ export function createImportActions({
       method: 'POST',
       body: JSON.stringify({ link: state.importLink, profileName: state.profileName, outboundTag: state.importOutboundTag })
     });
+    await persistInferredServerMeta([result.outbound], { forcedCountry: state.importCountry });
     state.message = `Импортирован ${result.outbound.protocol} в профиль ${result.profile}`;
     state.importLink = '';
     state.importOutboundTag = '';
@@ -155,18 +158,32 @@ export function createImportActions({
     await request('/api/profiles/activate', { method: 'POST', body: JSON.stringify({ name }) });
   }
 
+  async function persistInferredServerMeta(outbounds = [], { tagMap = {}, forcedCountry = '' } = {}) {
+    if (typeof persistServerMeta !== 'function') return 0;
+    const nextMeta = { ...(state.serverMeta || {}) };
+    let changed = 0;
+    for (const outbound of outbounds || []) {
+      if (!outbound?.tag) continue;
+      const targetTag = tagMap[outbound.tag] || outbound.tag;
+      const current = nextMeta[targetTag] || {};
+      if (current.country && !forcedCountry) continue;
+      const country = forcedCountry || inferredCountryForOutbound(outbound, current);
+      if (!country) continue;
+      nextMeta[targetTag] = { ...current, country };
+      changed += 1;
+    }
+    if (!changed) return 0;
+    state.serverMeta = nextMeta;
+    await persistServerMeta(nextMeta);
+    return changed;
+  }
+
   async function importToCurrent(makeActive = false) {
     if (!state.importPreview?.outbound) await previewImport();
     const outbound = serverImportOutbound();
     if (!outbound) return;
     syncConfig(mergeOutboundsIntoConfig(state.config, [outbound]));
-    if (state.importCountry && outbound.tag && typeof persistServerMeta === 'function') {
-      state.serverMeta = {
-        ...(state.serverMeta || {}),
-        [outbound.tag]: { ...(state.serverMeta?.[outbound.tag] || {}), country: state.importCountry }
-      };
-      await persistServerMeta(state.serverMeta);
-    }
+    await persistInferredServerMeta([outbound], { forcedCountry: state.importCountry });
     if (makeActive) setActiveProxyDraft(outbound.tag);
     await saveCurrentProfileConfig();
     state.importLink = '';
@@ -189,13 +206,16 @@ export function createImportActions({
     let stableTag = '';
     if (state.subscriptionAutoBalancer) {
       stableTag = suggestedSubscriptionBalancerTag();
-      syncConfig(mergeOutboundsIntoConfig(state.config, [cloneOutboundWithTag(outbounds[0], stableTag)]));
+      const stableOutbound = cloneOutboundWithTag(outbounds[0], stableTag);
+      syncConfig(mergeOutboundsIntoConfig(state.config, [stableOutbound]));
       await request('/api/subscriptions/pool', {
         method: 'POST',
         body: JSON.stringify({ tag: stableTag, url: state.subscriptionUrl, outbounds, active: 0 })
       });
+      await persistInferredServerMeta([stableOutbound]);
     } else {
       syncConfig(mergeOutboundsIntoConfig(state.config, outbounds));
+      await persistInferredServerMeta(outbounds);
     }
     if (makeActive && stableTag) setActiveProxyDraft(stableTag);
     else if (makeActive && outbounds[0]?.tag) setActiveProxyDraft(outbounds[0].tag);

@@ -47,6 +47,53 @@
   grid-column: 1 / -1;
 }
 
+.subscription-fallback-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(242, 189, 82, 0.42);
+  border-radius: 10px;
+  background: rgba(242, 189, 82, 0.1);
+}
+
+.subscription-fallback-progress strong,
+.subscription-fallback-progress span {
+  display: block;
+}
+
+.subscription-fallback-progress strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.subscription-fallback-progress span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.subscription-fallback-progress i {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(237, 246, 243, 0.08);
+}
+
+.subscription-fallback-progress i::before {
+  display: block;
+  width: 36%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--amber));
+  animation: progress-slide 1.05s ease-in-out infinite;
+  content: "";
+}
+
 .subscription-candidates {
   padding-top: 10px;
   border-top: 1px solid var(--line-soft);
@@ -59,15 +106,40 @@
   font-weight: 900;
 }
 
-.subscription-candidates > div {
+.subscription-candidate-list {
   display: grid;
   gap: 8px;
   margin-top: 10px;
 }
 
+.subscription-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.subscription-candidate-tools {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.subscription-candidate-tools input {
+  width: 100%;
+}
+
+.subscription-candidate-tools span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .subscription-candidate {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -76,22 +148,110 @@
   background: rgba(8, 15, 19, 0.68);
 }
 
+.subscription-candidate[hidden] {
+  display: none;
+}
+
+.subscription-candidate-pick {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(139, 231, 220, 0.28);
+  border-radius: 7px;
+  background: rgba(8, 15, 19, 0.74);
+}
+
+.subscription-candidate-pick input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.subscription-candidate-pick span {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(237, 246, 243, 0.44);
+  border-radius: 4px;
+}
+
+.subscription-candidate-pick input:checked + span {
+  border-color: transparent;
+  background: var(--green);
+  box-shadow: inset 0 0 0 3px rgba(8, 15, 19, 0.9);
+}
+
 .subscription-candidate.selected {
   border-color: rgba(115, 226, 129, 0.42);
   background: rgba(75, 180, 92, 0.12);
 }
 
-.subscription-candidate strong,
-.subscription-candidate span {
+.subscription-candidate-flag {
+  width: 30px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.subscription-candidate-flag .flag-icon {
+  width: 30px;
+  height: 22px;
+}
+
+.subscription-candidate-main {
+  min-width: 0;
+}
+
+.subscription-candidate-main strong,
+.subscription-candidate-main span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.subscription-candidate span {
+.subscription-candidate-main span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.subscription-check-status {
+  justify-self: start;
+}
+
+.subscription-candidate-check {
+  min-height: 34px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.subscription-check-status i {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.server-chip.bad {
+  color: #ffd1d8;
+  border-color: rgba(255, 97, 113, 0.36);
+  background: rgba(128, 32, 44, 0.32);
+}
+
+@media (max-width: 860px) {
+  .subscription-candidate-tools,
+  .subscription-candidate {
+    grid-template-columns: 1fr;
+  }
+
+  .subscription-candidate-pick,
+  .subscription-candidate-flag {
+    justify-self: start;
+  }
 }
 
 .server-identity {

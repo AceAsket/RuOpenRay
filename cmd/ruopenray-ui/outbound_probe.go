@@ -29,7 +29,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
 		}},
-		"outbounds": []any{outbound},
+		"outbounds": ensureFragmentOutbounds([]any{outbound}),
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -157,7 +157,7 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
 		}},
-		"outbounds": []any{outbound},
+		"outbounds": ensureFragmentOutbounds([]any{outbound}),
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

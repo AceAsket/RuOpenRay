@@ -174,6 +174,22 @@ export function createRuntimeController({
     if (status?.serverChecks?.results && typeof status.serverChecks.results === 'object' && !Array.isArray(status.serverChecks.results)) {
       state.serverChecks = { ...state.serverChecks, ...status.serverChecks.results };
     }
+    if (status?.serverChecks?.history && typeof status.serverChecks.history === 'object' && !Array.isArray(status.serverChecks.history)) {
+      state.serverCheckHistoryByTag = status.serverChecks.history;
+    }
+    if (status?.serverChecks?.historySettings && typeof status.serverChecks.historySettings === 'object') {
+      const settings = status.serverChecks.historySettings;
+      state.serverCheckHistoryLimit = String(settings.limit ?? state.serverCheckHistoryLimit ?? '24');
+      state.serverCheckHistoryRetentionHours = String(settings.retentionHours ?? state.serverCheckHistoryRetentionHours ?? '168');
+    }
+    if (status?.serverChecks?.subscriptionCandidates && typeof status.serverChecks.subscriptionCandidates === 'object' && !Array.isArray(status.serverChecks.subscriptionCandidates)) {
+      const next = { ...(state.subscriptionCandidateChecks || {}) };
+      Object.entries(status.serverChecks.subscriptionCandidates).forEach(([tag, checks]) => {
+        if (!checks || typeof checks !== 'object' || Array.isArray(checks)) return;
+        next[tag] = { ...(next[tag] || {}), ...checks };
+      });
+      state.subscriptionCandidateChecks = next;
+    }
     recordTrafficSample(status);
     recordXrayStatsSample(status);
   }

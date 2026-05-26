@@ -2,12 +2,20 @@ export function bindDnsControls({
   state,
   render,
   removeDnsServer,
+  moveDnsServer,
+  prioritizeDohDnsServers,
   editDnsHost,
   removeDnsHost,
   setDnsModeDraft,
 }) {
   document.querySelectorAll('[data-dns-delete]').forEach((button) => {
     button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
+  });
+  document.querySelectorAll('[data-dns-move]').forEach((button) => {
+    button.addEventListener('click', () => moveDnsServer(Number(button.dataset.dnsMove), Number(button.dataset.direction) || 0));
+  });
+  document.querySelectorAll('[data-dns-prioritize-doh]').forEach((button) => {
+    button.addEventListener('click', () => prioritizeDohDnsServers());
   });
   document.querySelectorAll('[data-dns-host-edit]').forEach((button) => {
     button.addEventListener('click', () => editDnsHost(button.dataset.dnsHostEdit || ''));

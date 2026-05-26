@@ -629,7 +629,8 @@ function dashboardCheckDetail(check, outbound) {
 function dashboardCheckSummary(check) {
   if (!check) {
     return {
-      label: 'ping не проверен · порт не проверен · HTTP не проверен',
+      label: 'не проверен',
+      title: 'ping не проверен · порт не проверен · HTTP не проверен',
       tone: 'warn'
     };
   }
@@ -644,6 +645,7 @@ function dashboardCheckSummary(check) {
     : check.httpOk === false || check.method === 'http' ? 'HTTP нет' : 'HTTP не проверен';
   return {
     label: [ping, tcp, http].join(' · '),
+    title: [ping, tcp, http].join(' · '),
     tone: check.httpOk === false ? 'bad' : (check.ok ? 'ok' : (check.endpointOk || check.pingOk ? 'warn' : 'bad'))
   };
 }
@@ -756,7 +758,7 @@ function dashboardServerSwitch(servers) {
               </span>
               ${serverTrafficView(tag, 'dashboard-server-traffic')}
               <span class="server-option-side">
-                <span class="server-check-pill ${checkSummary.tone}">${escapeHtml(checkSummary.label)}</span>
+                <span class="server-check-pill ${checkSummary.tone}" title="${escapeHtml(checkSummary.title || checkSummary.label)}">${escapeHtml(checkSummary.label)}</span>
                 <small class="server-option-tech">${escapeHtml(dashboardServerTech(outbound))}</small>
               </span>
             </button>

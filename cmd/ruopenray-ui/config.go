@@ -40,6 +40,8 @@ type serverState struct {
 	logCacheKey      string
 	logCacheText     string
 	logCacheAt       time.Time
+	fallbackMu       sync.Mutex
+	fallbackProgress map[string]any
 }
 
 func getenv(names []string, fallback string) string {

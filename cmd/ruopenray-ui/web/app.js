@@ -905,8 +905,13 @@ const {
   updateServerEditField,
   saveServerEdit,
   routeAllToOutbound,
+  saveServerCheckHistorySettings,
   fallbackSubscriptionPool,
+  cancelSubscriptionFallback,
   selectSubscriptionCandidate,
+  checkSubscriptionCandidate,
+  refreshSubscriptionPool,
+  exportSubscriptionCandidates,
   deleteSubscriptionPool
 } = serverActions;
 
@@ -1008,6 +1013,8 @@ const {
   removeDnsHost,
   applyDnsGuardPreset,
   removeDnsServer,
+  moveDnsServer,
+  prioritizeDohDnsServers,
   checkDnsServer,
   checkDnsDiagnostics,
   applyLanDnsUpstream,
@@ -2164,10 +2171,20 @@ function bind() {
       checkDnsDiagnostics,
       applyDnsBootstrapHosts,
       checkServers,
+      saveServerCheckHistorySettings,
       checkObservatoryTargets,
       enableObservatoryForProxy,
       fallbackSubscription: (button) => fallbackSubscriptionPool(button.dataset.subscriptionFallback || ''),
+      cancelSubscriptionFallback,
       selectSubscriptionCandidate: (button) => selectSubscriptionCandidate(button.dataset.subscriptionSelect || '', button.dataset.subscriptionCandidateIndex || 0),
+      checkSubscriptionCandidate: (button) => checkSubscriptionCandidate(button.dataset.subscriptionCheck || '', button.dataset.subscriptionCandidateIndex || 0),
+      refreshSubscription: (button) => refreshSubscriptionPool(button.dataset.subscriptionRefresh || ''),
+      exportSubscriptionSelected: (button) => {
+        const tag = button.dataset.subscriptionExport || '';
+        const indexes = [...document.querySelectorAll(`[data-subscription-candidate-pick="${CSS.escape(tag)}"]:checked`)].map((item) => Number(item.value));
+        exportSubscriptionCandidates(tag, indexes);
+      },
+      exportSubscriptionAll: (button) => exportSubscriptionCandidates(button.dataset.subscriptionExport || '', [], { all: true }),
       deleteSubscription: (button) => deleteSubscriptionPool(button.dataset.subscriptionDelete || ''),
       scanSni,
       saveProfile,
@@ -2215,6 +2232,8 @@ function bind() {
     state,
     render,
     removeDnsServer,
+    moveDnsServer,
+    prioritizeDohDnsServers,
     editDnsHost,
     removeDnsHost,
     setDnsModeDraft,

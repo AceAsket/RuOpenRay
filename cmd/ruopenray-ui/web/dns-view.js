@@ -216,6 +216,8 @@ function dnsLeakProtectionTargets() {
 }
 
 function dnsServersSection(dns) {
+  const isDohServer = (server) => String(describeDnsServer(server).address || '').toLowerCase().startsWith('https://');
+  const dohCount = (dns.servers || []).filter((server) => isDohServer(server)).length;
   const presets = [
     ['Cloudflare DoH', 'https://cloudflare-dns.com/dns-query'],
     ['Google DoH', 'https://dns.google:443/dns-query'],
@@ -268,15 +270,26 @@ function dnsServersSection(dns) {
       <div class="panel-title">
         <div><h2>DNS-серверы</h2><span>Порядок важен: Xray обрабатывает список сверху вниз. Изменения остаются в черновике до применения.</span></div>
         <div class="split-actions">
+          <button class="btn secondary" data-dns-prioritize-doh ${dohCount ? '' : 'disabled'}>DoH выше</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
+      </div>
+      <div class="settings-warning compact">
+        <strong>Порядок DNS</strong>
+        <span>Сверху ставьте DoH/TCP, ниже оставляйте обычный UDP только как локальный или аварийный fallback. Xray читает этот список в таком же порядке, как он показан здесь.</span>
       </div>
       <div class="dns-list">
         ${dns.servers
           .map((server, index) => {
             const info = describeDnsServer(server);
+            const doh = isDohServer(server);
             return `<article class="dns-server-row">
-              <div class="server-protocol">DNS</div>
+              <div class="dns-order-controls">
+                <span class="dns-order-number">${index + 1}</span>
+                <button class="icon-btn route-action-btn move-up" type="button" data-dns-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять DNS выше">↑</button>
+                <button class="icon-btn route-action-btn move-down" type="button" data-dns-move="${index}" data-direction="1" ${index >= dns.servers.length - 1 ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить DNS ниже">↓</button>
+              </div>
+              <div class="server-protocol ${doh ? 'doh' : ''}">${doh ? 'DoH' : 'DNS'}</div>
               <div class="server-main">
                 <strong>${escapeHtml(info.address)}</strong>
                 <span>${escapeHtml(info.domains.length ? info.domains.join(', ') : 'для всех доменов')}</span>
@@ -285,7 +298,7 @@ function dnsServersSection(dns) {
                 <span>${escapeHtml(info.network || (info.address.startsWith('https://') ? 'https' : 'udp/tcp'))}</span>
                 <span>${escapeHtml(info.port ? `порт ${info.port}` : 'порт из адреса')}</span>
               </div>
-              <button class="btn secondary" data-dns-delete="${index}">Удалить</button>
+              <button class="icon-btn route-action-btn danger" type="button" data-dns-delete="${index}" title="Удалить" aria-label="Удалить DNS">×</button>
             </article>`;
           })
           .join('') || '<p class="muted">DNS-серверы пока не заданы.</p>'}

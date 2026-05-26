@@ -268,7 +268,7 @@
 
 .settings-warning strong {
   min-width: 0;
-  color: var(--yellow);
+  color: var(--amber);
 }
 
 .settings-warning span {

@@ -180,6 +180,62 @@ function routingScenariosPanel() {
   `;
 }
 
+function balancerHistoryEvents(tags = []) {
+  const history = state.serverCheckHistoryByTag || {};
+  return tags
+    .flatMap((tag) => (Array.isArray(history[tag]) ? history[tag] : []).map((item) => ({ ...item, tag: item.tag || tag })))
+    .sort((a, b) => new Date(b.checkedAt || 0).getTime() - new Date(a.checkedAt || 0).getTime());
+}
+
+function balancerHistoryLabel(item = {}) {
+  const latency = Number(item.latencyMs || item.httpLatencyMs || item.endpointLatencyMs || item.pingLatencyMs || 0);
+  const status = item.ok ? 'доступен' : item.error ? 'ошибка' : 'нет ответа';
+  return `${item.tag || 'сервер'}: ${status}${latency ? ` · ${Math.round(latency)} мс` : ''}`;
+}
+
+function balancerHistoryTime(value) {
+  const date = new Date(value || 0);
+  if (Number.isNaN(date.getTime())) return 'время неизвестно';
+  return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function balancerHistoryView(tags = []) {
+  const events = balancerHistoryEvents(tags);
+  if (!tags.length) return '';
+  if (!events.length) {
+    return `<div class="balancer-history muted">Истории проверок пока нет. Запустите ручную проверку или observatory для участников группы.</div>`;
+  }
+  const failed = events.filter((item) => item.ok === false).length;
+  const last = events[0];
+  return `<div class="balancer-history">
+    <div class="balancer-history-head">
+      <strong>История проверок</strong>
+      <span>${events.length} записей · отказов: ${failed} · последняя: ${escapeHtml(balancerHistoryTime(last.checkedAt))}</span>
+    </div>
+    <div class="balancer-history-strip">
+      ${events.slice(0, 8).map((item) => `<span class="${item.ok ? 'ok' : 'bad'}" title="${escapeHtml(balancerHistoryLabel(item))}">
+        ${escapeHtml(item.ok ? 'ok' : 'fail')} · ${escapeHtml(balancerHistoryTime(item.checkedAt))}
+      </span>`).join('')}
+    </div>
+  </div>`;
+}
+
+function balancerHistorySettingsView() {
+  return `<div class="balancer-history-settings">
+    <div>
+      <strong>История проверок</strong>
+      <span>RuOpenRay хранит последние результаты на роутере: это помогает увидеть, когда серверы в группе отваливались.</span>
+    </div>
+    <label>На сервер
+      <input id="serverCheckHistoryLimit" type="number" min="0" max="200" value="${escapeHtml(state.serverCheckHistoryLimit)}" />
+    </label>
+    <label>Период, часов
+      <input id="serverCheckHistoryRetentionHours" type="number" min="1" max="2160" value="${escapeHtml(state.serverCheckHistoryRetentionHours)}" />
+    </label>
+    <button class="btn secondary ${state.serverCheckHistorySaving ? 'is-busy' : ''}" data-action="saveServerCheckHistorySettings" ${state.serverCheckHistorySaving ? 'disabled' : ''}>${state.serverCheckHistorySaving ? 'Сохраняю...' : 'Сохранить'}</button>
+  </div>`;
+}
+
 function routingBalancersPanel() {
   const balancers = routeBalancers();
   return `
@@ -189,6 +245,7 @@ function routingBalancersPanel() {
         <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для ping нужен Observatory, для нагрузки — Burst Observatory.</span></div>
         <button class="btn warning" data-action="openRouteBalancerDialog">Добавить</button>
       </div>
+      ${balancerHistorySettingsView()}
       <div class="balancer-list wide">
         ${balancers.length ? balancers.map((balancer, index) => {
           const selectors = Array.isArray(balancer.selector) ? balancer.selector.join(', ') : '';
@@ -206,6 +263,7 @@ function routingBalancersPanel() {
               <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
               <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · резерв: ${balancer.fallbackTag}` : ''}</span>
               ${balancerMembersView(matched)}
+              ${balancerHistoryView(matched)}
             </div>
             <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
             <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
