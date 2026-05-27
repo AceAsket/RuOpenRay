@@ -1,4 +1,5 @@
 import { countryFlagMarkup, serverLocation } from './server-location.js';
+import { isServiceOutbound } from './outbound-tags.js';
 
 export function createServerModel({
   state,
@@ -30,9 +31,7 @@ export function createServerModel({
   function serverStats() {
     const stats = { proxy: 0, system: 0, used: 0, unused: 0 };
     for (const outbound of configOutbounds()) {
-      const tag = outbound?.tag || '';
-      const system = ['direct', 'block', 'dns-out'].includes(tag) || ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
-      if (system) {
+      if (isSystemOutbound(outbound)) {
         stats.system += 1;
         continue;
       }
@@ -44,8 +43,7 @@ export function createServerModel({
   }
 
   function isSystemOutbound(outbound) {
-    const tag = outbound?.tag || '';
-    return ['direct', 'block', 'dns-out'].includes(tag) || ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
+    return isServiceOutbound(outbound);
   }
 
   function proxyOutbounds() {

@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	APITag  = "ruopenray-api"
-	APIPort = 10085
+	APITag                    = "ruopenray-api"
+	fragmentOutboundTagPrefix = "ruopenray-fragment-"
+	APIPort                   = 10085
 )
 
 func APIInfo(cfg map[string]any) map[string]any {
@@ -216,6 +217,8 @@ func OutboundKind(tag, protocol string) string {
 	normalizedTag := strings.ToLower(strings.TrimSpace(tag))
 	normalizedProtocol := strings.ToLower(strings.TrimSpace(protocol))
 	switch {
+	case strings.HasPrefix(normalizedTag, fragmentOutboundTagPrefix):
+		return "system"
 	case normalizedProtocol == "freedom" || normalizedTag == "direct":
 		return "direct"
 	case normalizedProtocol == "blackhole" || normalizedTag == "block":

@@ -1,3 +1,5 @@
+import { isServiceOutbound } from './outbound-tags.js';
+
 export function createSetupView({
   state,
   shellQuote,
@@ -155,7 +157,7 @@ function setupWizardSteps(readiness) {
 
 function proxyOutboundsSafe() {
   try {
-    return (state.config?.outbounds || []).filter((item) => item && !['direct', 'block', 'dns-out', 'ruopenray-api'].includes(item.tag));
+    return (state.config?.outbounds || []).filter((item) => item && !isServiceOutbound(item));
   } catch {
     return [];
   }

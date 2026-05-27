@@ -289,6 +289,23 @@ export function createRoutingActions({
     return routeRuleConditionKey(rule) === routeRuleConditionKey(presetRule);
   }
 
+  function routePresetRuleSetMatches(currentRules, presetRules) {
+    if (!Array.isArray(currentRules) || currentRules.length !== presetRules.length) return false;
+    const remaining = new Map();
+    presetRules.forEach((rule) => {
+      const key = routeRuleConditionKey(rule);
+      remaining.set(key, (remaining.get(key) || 0) + 1);
+    });
+    for (const rule of currentRules) {
+      const key = routeRuleConditionKey(rule);
+      const count = remaining.get(key) || 0;
+      if (count <= 0) return false;
+      if (count === 1) remaining.delete(key);
+      else remaining.set(key, count - 1);
+    }
+    return remaining.size === 0;
+  }
+
   function allRoutePresetEntries() {
     return [
       ...builtinRoutePresetEntries({ includeHidden: true }),
@@ -314,7 +331,7 @@ export function createRoutingActions({
       .sort((left, right) => right.rules.length - left.rules.length);
     for (const entry of entries) {
       if (startIndex + entry.rules.length > rules.length) continue;
-      const matched = entry.rules.every((presetRule, offset) => routePresetRuleMatches(rules[startIndex + offset], presetRule));
+      const matched = routePresetRuleSetMatches(rules.slice(startIndex, startIndex + entry.rules.length), entry.rules);
       if (matched) return entry;
     }
     return null;
@@ -820,21 +837,92 @@ export function createRoutingActions({
     </details>`;
   }
 
+  function routePreviewValue(value) {
+    return String(value || '')
+      .replace(/^domain:/, '')
+      .replace(/^regexp:/, '')
+      .replace(/^full:/, '')
+      .replace(/\\/g, '')
+      .trim();
+  }
+
+  function routeValuesPreviewHtml(rule, info, index) {
+    const target = routeTarget(rule || {});
+    const values = target.values || [];
+    const network = rule?.network || '';
+    const count = values.length;
+    const meta = [info.kind, network, count ? `${count} знач.` : ''].filter(Boolean);
+    const chips = values.slice(0, 3).map((value) => routePreviewValue(value)).filter(Boolean);
+    return `<div class="route-main route-main-preview">
+      <div class="route-meta-line">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
+      <div class="route-value-chips" title="${escapeHtml(info.fullValue)}">
+        ${chips.length ? chips.map((value) => `<code>${escapeHtml(value)}</code>`).join('') : `<code>${escapeHtml(info.value)}</code>`}
+        ${count > chips.length ? `<button type="button" data-route-values-panel="${index}">+${count - chips.length}</button>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function routeValuesDrawer() {
+    if (state.routeValuesDrawerIndex === null || state.routeValuesDrawerIndex === undefined || state.routeValuesDrawerIndex === '') return '';
+    const index = Number(state.routeValuesDrawerIndex);
+    if (!Number.isInteger(index) || index < 0) return '';
+    const rule = routeRules()[index];
+    if (!rule) return '';
+    const info = describeRouteRule(rule);
+    const target = routeTarget(rule || {});
+    const values = target.values || [];
+    const anchor = state.routeValuesDrawerAnchor && typeof state.routeValuesDrawerAnchor === 'object' ? state.routeValuesDrawerAnchor : null;
+    const anchorStyle = anchor && Number.isFinite(Number(anchor.top)) && Number.isFinite(Number(anchor.left))
+      ? ` style="--route-values-drawer-top:${Math.max(12, Number(anchor.top))}px;--route-values-drawer-left:${Math.max(12, Number(anchor.left))}px;--route-values-drawer-right:auto;--route-values-drawer-max-height:${Math.max(220, Number(anchor.maxHeight) || 420)}px"`
+      : '';
+    return `<aside class="route-values-drawer" aria-label="Значения правила"${anchorStyle}>
+      <header>
+        <div>
+          <strong>${escapeHtml(routeRuleName(rule, info))}</strong>
+          <span>${escapeHtml(info.kind)}${rule.network ? ` · ${escapeHtml(rule.network)}` : ''} · ${values.length} знач.</span>
+        </div>
+        <button class="icon-btn" type="button" data-route-values-panel-close aria-label="Закрыть">×</button>
+      </header>
+      <div class="route-values-list">
+        ${values.map((value) => `<code>${escapeHtml(value)}</code>`).join('')}
+      </div>
+    </aside>`;
+  }
+
   function routeRowHtml(item, options, rulesLength) {
     const { index, info, name, source, presets = [] } = item;
     const nested = Boolean(item.nested);
+    const groupStart = Number.isFinite(Number(item.groupStart)) ? Number(item.groupStart) : -1;
+    const groupEnd = Number.isFinite(Number(item.groupEnd)) ? Number(item.groupEnd) : -1;
+    const canMoveNestedUp = nested && groupStart >= 0 && index > groupStart;
+    const canMoveNestedDown = nested && groupEnd > groupStart && index < groupEnd - 1;
     const selectedTarget = encodedRouteTarget(item.rule);
     const category = routeCategoryForRule(item.rule);
     const managed = isRuOpenRayManagedRoute(item.rule);
-    const controlsLocked = managed || nested;
+    const dragLocked = managed;
+    const targetLocked = managed || nested;
+    const editLocked = managed;
+    const actionLocked = managed || nested;
+    const moveUpAttrs = nested
+      ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="-1"`
+      : `data-route-move="${index}" data-direction="-1"`;
+    const moveDownAttrs = nested
+      ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="1"`
+      : `data-route-move="${index}" data-direction="1"`;
+    const moveUpDisabled = managed || (nested ? !canMoveNestedUp : index === 0);
+    const moveDownDisabled = managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
     const targetOptions = options.some((option) => option.value === selectedTarget)
       ? options
       : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${item.rule.balancerTag}` : readableRouteTag(item.rule.outboundTag || 'не задано') }, ...options];
     const section = routeSectionDefinitions().find((entry) => entry.id === category) || routeSectionDefinitions().find((entry) => entry.id === 'other');
-    const dragAttrs = controlsLocked ? '' : `data-route-index="${index}" data-route-range-start="${index}" data-route-range-end="${index + 1}"`;
-    return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''}" draggable="${controlsLocked ? 'false' : 'true'}" ${dragAttrs}>
+    const dragAttrs = dragLocked
+      ? ''
+      : nested
+        ? `data-route-group-child-index="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}"`
+        : `data-route-index="${index}" data-route-range-start="${index}" data-route-range-end="${index + 1}"`;
+    return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''}" draggable="${dragLocked ? 'false' : 'true'}" ${dragAttrs}>
       <div class="route-order">
-        <button class="route-drag-handle" type="button" ${controlsLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Правило входит в подборку. Перетаскивайте всю подборку целиком.' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Правило входит в подборку' : 'Перетащить правило'}">${managed ? '•' : nested ? '·' : '⋮⋮'}</button>
+        <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
         <span>${index + 1}</span>
       </div>
       <div class="route-kind-stack">
@@ -846,19 +934,16 @@ export function createRoutingActions({
         <span>${escapeHtml(source)} · выше = раньше</span>
         ${presets.length ? `<div class="route-preset-tags">${presets.slice(0, 3).map((preset) => `<em>${escapeHtml(preset.title)}</em>`).join('')}${presets.length > 3 ? `<em>+${presets.length - 3}</em>` : ''}</div>` : ''}
       </div>
-      <div class="route-main">
-        <strong title="${escapeHtml(info.fullValue)}">${escapeHtml(info.value)}</strong>
-        <span>${escapeHtml(info.detail)}</span>
-      </div>
-      <select class="route-outbound" data-route-target="${index}" ${controlsLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через профильный раздел' : nested ? 'Внутренние правила подборки меняются через редактор подборки' : ''}">
+      ${routeValuesPreviewHtml(item.rule, info, index)}
+      <select class="route-outbound" data-route-target="${index}" ${targetLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через профильный раздел' : nested ? 'Назначение меняется для всей подборки в верхней строке' : ''}">
         ${targetOptions.map((option) => `<option value="${escapeHtml(option.value)}" ${selectedTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
       </select>
       <div class="route-actions">
-        <button class="icon-btn route-action-btn move-up" type="button" data-route-move="${index}" data-direction="-1" ${index === 0 || controlsLocked ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять правило выше">↑</button>
-        <button class="icon-btn route-action-btn move-down" type="button" data-route-move="${index}" data-direction="1" ${index === rulesLength - 1 || controlsLocked ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить правило ниже">↓</button>
-        <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${controlsLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват, Защиту от утечек или Статистику Xray' : nested ? 'Внутреннее правило подборки меняется через редактор подборки' : 'Править'}" aria-label="Править правило">✎</button>
-        <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${controlsLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : nested ? 'Отключайте подборку целиком или раскройте ее в редакторе' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
-        <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${controlsLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : nested ? 'Удаляйте подборку целиком или раскройте ее в редакторе' : 'Удалить'}" aria-label="Удалить правило">×</button>
+        <button class="icon-btn route-action-btn move-up" type="button" ${moveUpAttrs} ${moveUpDisabled ? 'disabled' : ''} title="${nested ? 'Поднять внутри подборки' : 'Поднять выше'}" aria-label="${nested ? 'Поднять правило внутри подборки' : 'Поднять правило выше'}">↑</button>
+        <button class="icon-btn route-action-btn move-down" type="button" ${moveDownAttrs} ${moveDownDisabled ? 'disabled' : ''} title="${nested ? 'Опустить внутри подборки' : 'Опустить ниже'}" aria-label="${nested ? 'Опустить правило внутри подборки' : 'Опустить правило ниже'}">↓</button>
+        <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${editLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват, Защиту от утечек или Статистику Xray' : nested ? 'Править правило и сохранить как измененную копию подборки' : 'Править'}" aria-label="Править правило">✎</button>
+        <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : nested ? 'Отключайте подборку целиком или раскройте ее в редакторе' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
+        <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : nested ? 'Удаляйте подборку целиком или раскройте ее в редакторе' : 'Удалить'}" aria-label="Удалить правило">×</button>
       </div>
     </article>`;
   }
@@ -884,7 +969,8 @@ export function createRoutingActions({
         : [{ value: selectedTarget, label: readableRouteTag(selectedTarget.replace(/^(outbound|balancer):/, '') || 'не задано') }, ...options];
     const startIndex = item.index;
     const endIndex = item.index + item.items.length;
-    return `<details class="route-preset-group-row" draggable="true" data-route-index="${item.index}" data-route-range-start="${item.index}" data-route-range-end="${item.index + item.items.length}" data-route-preset-group="${escapeHtml(item.key)}">
+    const detailsKey = `routing:preset-group:${item.key}:${startIndex}:${endIndex}`;
+    return `<details class="route-preset-group-row" draggable="true" data-details-key="${escapeHtml(detailsKey)}" data-route-index="${item.index}" data-route-range-start="${item.index}" data-route-range-end="${item.index + item.items.length}" data-route-preset-group="${escapeHtml(item.key)}">
       <summary>
         <div class="route-preset-group-order">
           <button class="route-drag-handle" type="button" title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
@@ -907,7 +993,7 @@ export function createRoutingActions({
         </div>
       </summary>
       <div class="route-preset-group-children">
-        ${item.items.map((child) => routeRowHtml({ ...child, nested: true }, options, rulesLength)).join('')}
+        ${item.items.map((child) => routeRowHtml({ ...child, nested: true, groupStart: startIndex, groupEnd: endIndex }, options, rulesLength)).join('')}
       </div>
     </details>`;
   }
@@ -922,7 +1008,7 @@ export function createRoutingActions({
         ${items.map((item) => item.kind === 'presetGroup' ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
     </section>` : `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
-    return `${userList}${managedRoutesPanel(managedItems)}`;
+    return `${userList}${managedRoutesPanel(managedItems)}${routeValuesDrawer()}`;
   }
 
   function disableVisibleRoutingRules() {
@@ -1029,6 +1115,41 @@ export function createRoutingActions({
     if (next) reorderRoutingRuleRange(fromStart, fromEnd, next.end);
   }
 
+  function moveRoutingRuleInsideGroup(index, groupStart, groupEnd, direction) {
+    index = Number(index);
+    groupStart = Number(groupStart);
+    groupEnd = Number(groupEnd);
+    direction = Number(direction);
+    if (![index, groupStart, groupEnd, direction].every(Number.isInteger)) return;
+    if (Math.abs(direction) !== 1) return;
+    const rules = [...routeRules()];
+    const target = index + direction;
+    if (groupStart < 0 || groupEnd > rules.length || groupStart >= groupEnd) return;
+    if (index < groupStart || index >= groupEnd || target < groupStart || target >= groupEnd) return;
+    [rules[index], rules[target]] = [rules[target], rules[index]];
+    setRoutingDraft(rules);
+    state.message = 'Порядок правил внутри подборки изменен.';
+    render();
+  }
+
+  function reorderRoutingRuleInsideGroup(fromIndex, groupStart, groupEnd, toIndex) {
+    fromIndex = Number(fromIndex);
+    groupStart = Number(groupStart);
+    groupEnd = Number(groupEnd);
+    toIndex = Number(toIndex);
+    if (![fromIndex, groupStart, groupEnd, toIndex].every(Number.isInteger)) return;
+    const rules = [...routeRules()];
+    if (groupStart < 0 || groupEnd > rules.length || groupStart >= groupEnd) return;
+    if (fromIndex < groupStart || fromIndex >= groupEnd || toIndex < groupStart || toIndex > groupEnd) return;
+    if (toIndex === fromIndex || toIndex === fromIndex + 1) return;
+    const [moved] = rules.splice(fromIndex, 1);
+    if (fromIndex < toIndex) toIndex -= 1;
+    rules.splice(toIndex, 0, moved);
+    setRoutingDraft(rules);
+    state.message = 'Порядок правил внутри подборки изменен.';
+    render();
+  }
+
   function reorderRoutingRuleRange(fromStart, fromEnd, toIndex) {
     const rules = [...routeRules()];
     const length = fromEnd - fromStart;
@@ -1106,6 +1227,8 @@ export function createRoutingActions({
     updateRoutingTarget,
     updateRoutingTargetRange,
     moveRoutingRule,
+    moveRoutingRuleInsideGroup,
+    reorderRoutingRuleInsideGroup,
     reorderRoutingRule,
     reorderRoutingRuleRange,
     moveRoutingRuleRange,

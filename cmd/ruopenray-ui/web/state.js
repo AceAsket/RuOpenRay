@@ -209,6 +209,8 @@ export function createInitialState() {
   routingView: 'rules',
   dnsView: 'servers',
   routeSearch: '',
+  routeValuesDrawerIndex: null,
+  routeValuesDrawerAnchor: null,
   routeDslName: '',
   routeDsl: '',
   routeDslPreview: null,

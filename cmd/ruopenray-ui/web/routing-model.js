@@ -1,4 +1,5 @@
 import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
+import { isFragmentOutboundTag } from './outbound-tags.js';
 
 export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, checkForTag, checkLabel, outboundAddress, persistRouteNames }) {
   function routeRules() {
@@ -16,7 +17,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   function outboundOptions() {
     const names = new Set(['proxy', 'direct', 'block']);
     for (const outbound of Array.isArray(state.config.outbounds) ? state.config.outbounds : []) {
-      if (outbound?.tag) names.add(outbound.tag);
+      if (outbound?.tag && !isFragmentOutboundTag(outbound.tag)) names.add(outbound.tag);
     }
     for (const pool of Array.isArray(state.subscriptionPools) ? state.subscriptionPools : []) {
       if (pool?.tag) names.add(pool.tag);
@@ -45,7 +46,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
 
   function isProxyTargetTag(tag) {
-    if (['proxy', 'direct', 'block', 'dns-out'].includes(tag)) return false;
+    if (['proxy', 'direct', 'block', 'dns-out'].includes(tag) || isFragmentOutboundTag(tag)) return false;
     const outbound = routeTargetOutbound(tag);
     if (!outbound) return false;
     return !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
@@ -154,6 +155,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function readableRouteTag(tag) {
+    if (isFragmentOutboundTag(tag)) return 'Фрагментация TLS (служебно)';
     return managedRouteTags[String(tag || '')] || String(tag || '');
   }
   

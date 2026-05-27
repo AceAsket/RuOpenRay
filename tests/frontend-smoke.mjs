@@ -779,7 +779,7 @@ const routingActions = createRoutingActions({
 routingActions.addRoutingRule();
 const routeGroupState = {
   config: { routing: { rules: [
-    { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org'] },
+    { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
     { type: 'field', outboundTag: 'vpn-a', network: 'udp', ip: ['91.108.4.0/22'] },
   ] } },
   routeNames: {},
@@ -787,13 +787,15 @@ const routeGroupState = {
   customRoutePresets: {},
   selectedRoutePresets: [],
   routeSearch: '',
+  routeValuesDrawerIndex: null,
+  routeValuesDrawerAnchor: null,
   message: '',
 };
 const routeGroupBundles = {
   telegramFull: {
     title: 'Telegram полный',
     rules: [
-      { type: 'field', outboundTag: 'proxy', domain: ['domain:telegram.org'] },
+      { type: 'field', outboundTag: 'proxy', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: ['91.108.4.0/22'] },
     ],
   },
@@ -852,6 +854,36 @@ const routePresetGroupStableAcrossTarget = routeGroupBefore[0]?.kind === 'preset
   && routeGroupAfter[0]?.kind === 'presetGroup'
   && routeGroupAfter[0]?.items?.length === 2
   && routeGroupState.config.routing.rules.every((rule) => rule.outboundTag === 'vpn-b');
+routeGroupActions.moveRoutingRuleInsideGroup(1, 0, 2, -1);
+const routeGroupAfterInnerMove = routeGroupActions.visibleRoutingRuleItems(80);
+const routePresetGroupInnerMoveWorks = routeGroupAfterInnerMove[0]?.kind === 'presetGroup'
+  && routeGroupState.config.routing.rules[0]?.network === 'udp'
+  && routeGroupState.config.routing.rules[1]?.domain?.includes('domain:telegram.org');
+routeGroupActions.reorderRoutingRuleInsideGroup(0, 0, 2, 2);
+const routeGroupAfterInnerDrag = routeGroupActions.visibleRoutingRuleItems(80);
+const routePresetGroupInnerDragWorks = routeGroupAfterInnerDrag[0]?.kind === 'presetGroup'
+  && routeGroupState.config.routing.rules[0]?.domain?.includes('domain:telegram.org')
+  && routeGroupState.config.routing.rules[1]?.network === 'udp';
+const routePresetGroupHtmlClosed = routeGroupActions.orderedRouteList(
+  routeGroupActions.visibleRoutingRuleItems(80),
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+routeGroupState.routeValuesDrawerIndex = 0;
+routeGroupState.routeValuesDrawerAnchor = { top: 120, left: 640, maxHeight: 280 };
+const routePresetGroupHtmlOpen = routeGroupActions.orderedRouteList(
+  routeGroupActions.visibleRoutingRuleItems(80),
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+routeGroupState.routeValuesDrawerIndex = null;
+routeGroupState.routeValuesDrawerAnchor = null;
+const routeValuesDrawerWorks = routePresetGroupHtmlClosed.includes('route-value-chips')
+  && routePresetGroupHtmlClosed.includes('data-route-values-panel="0"')
+  && !routePresetGroupHtmlClosed.includes('route-values-drawer')
+  && routePresetGroupHtmlOpen.includes('route-values-drawer')
+  && routePresetGroupHtmlOpen.includes('--route-values-drawer-top:120px')
+  && routePresetGroupHtmlOpen.includes('domain:telegram.org');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -1152,10 +1184,14 @@ bindRoutingControls({
   editRoutingPreset: () => {},
   deleteCustomRoutePreset: () => {},
   removeRoutingRule: () => {},
+  removeRoutingRuleRange: () => {},
   disableRoutingRule: () => {},
+  disableRoutingRuleRange: () => {},
   restoreDisabledRouteRule: () => {},
   deleteDisabledRouteRule: () => {},
   moveRoutingRule: () => {},
+  moveRoutingRuleInsideGroup: () => {},
+  moveRoutingRuleRange: () => {},
   openRoutingRuleEditor: () => {},
   openRouteBalancerDialog: () => {},
   removeRouteBalancer: () => {},
@@ -1164,9 +1200,14 @@ bindRoutingControls({
   setFirewallDeviceMode: () => {},
   toggleFirewallDevice: () => {},
   reorderRoutingRule: () => {},
+  reorderRoutingRuleInsideGroup: () => {},
+  reorderRoutingRuleRange: () => {},
   routeRules: () => [],
   describeRouteRule: () => null,
+  routeTargetFlagMarkup: () => '',
+  routeTargetStatus: () => null,
   updateRoutingTarget: () => {},
+  updateRoutingTargetRange: () => {},
   removeOutbound: () => {},
   routeAllToOutbound: async () => {},
   checkServers: async () => {},
@@ -1401,6 +1442,8 @@ const checks = [
   ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main') && subscriptionRoutingModel.routeStats().proxy === 1],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
+  ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
+  ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
