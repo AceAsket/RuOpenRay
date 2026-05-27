@@ -58,6 +58,13 @@ function subscriptionCandidateStatus(check, checking = false) {
   if (check.ok) {
     return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}`)}</span>`;
   }
+  if (check.httpOk === false && check.endpointOk) {
+    const endpointLatency = Number(check.endpointLatencyMs || 0);
+    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · HTTP нет`)}</span>`;
+  }
+  if (check.endpointOk === false) {
+    return '<span class="server-chip bad subscription-check-status"><i></i>порт закрыт</span>';
+  }
   const text = check.error ? `${method} нет ответа` : `${method} недоступен`;
   return `<span class="server-chip bad subscription-check-status"><i></i>${escapeHtml(text)}</span>`;
 }

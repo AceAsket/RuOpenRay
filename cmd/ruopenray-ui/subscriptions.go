@@ -134,6 +134,7 @@ type subscriptionCandidateCheckOptions struct {
 	probeURL  string
 	timeoutMs int
 	attempts  int
+	robust    bool
 }
 
 func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscriptionCandidateCheckOptions {
@@ -141,13 +142,14 @@ func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscrip
 	if checkMode != "endpoint" && checkMode != "http" {
 		checkMode = "http"
 	}
+	robust := boolPayload(payload, "robust", false)
 	probeURL := firstNonEmpty(fmt.Sprint(payload["url"]), "https://www.gstatic.com/generate_204")
 	timeoutMs := number(payload["timeoutMs"], 5000)
 	attempts := number(payload["attempts"], 1)
 	if timeoutMs < 300 {
 		timeoutMs = 300
 	}
-	if checkMode == "http" && timeoutMs < 5000 {
+	if robust && checkMode == "http" && timeoutMs < 5000 {
 		timeoutMs = 5000
 	}
 	if timeoutMs > 15000 {
@@ -156,7 +158,7 @@ func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscrip
 	if attempts < 1 {
 		attempts = 1
 	}
-	if (checkMode == "http" || checkMode == "endpoint") && attempts < 3 {
+	if robust && (checkMode == "http" || checkMode == "endpoint") && attempts < 3 {
 		attempts = 3
 	}
 	if attempts > 5 {
@@ -167,6 +169,7 @@ func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscrip
 		probeURL:  probeURL,
 		timeoutMs: timeoutMs,
 		attempts:  attempts,
+		robust:    robust,
 	}
 }
 
@@ -186,10 +189,26 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 	}
 	ok := false
 	var err error
+	address := fmt.Sprint(summary["address"])
+	portValue := number(summary["port"], 0)
+	endpointTimeoutMs := options.timeoutMs
+	if endpointTimeoutMs > 3000 {
+		endpointTimeoutMs = 3000
+	}
+	if portValue > 0 && address != "" {
+		pingTimeoutMs := endpointTimeoutMs
+		if pingTimeoutMs > 1500 {
+			pingTimeoutMs = 1500
+		}
+		ping := directPingProbe(address, pingTimeoutMs)
+		result["ping"] = ping
+		result["pingOk"] = ping["ok"] == true
+		if pingLatency := number(ping["latencyMs"], 0); pingLatency > 0 {
+			result["pingLatencyMs"] = pingLatency
+		}
+	}
 	if options.mode == "endpoint" {
-		address := fmt.Sprint(summary["address"])
-		portValue := number(summary["port"], 0)
-		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, options.timeoutMs, options.attempts)
+		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, endpointTimeoutMs, options.attempts)
 		ok = endpointOK
 		err = endpointErr
 		result["endpointOk"] = endpointOK
@@ -198,6 +217,14 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 			result["latencyMs"] = latency
 		}
 	} else {
+		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, endpointTimeoutMs, 1)
+		result["endpointOk"] = endpointOK
+		if latency > 0 {
+			result["endpointLatencyMs"] = latency
+		}
+		if endpointErr != nil {
+			result["endpointError"] = endpointErr.Error()
+		}
 		latency, httpOK, httpErr := s.httpOutboundProbe(candidate, options.probeURL, options.timeoutMs, options.attempts)
 		ok = httpOK
 		err = httpErr
@@ -409,6 +436,7 @@ func (s *serverState) subscriptionFallbackProgress(tag string) map[string]any {
 
 func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
 	payload, _ := readJSON(r)
+	payload["robust"] = true
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)

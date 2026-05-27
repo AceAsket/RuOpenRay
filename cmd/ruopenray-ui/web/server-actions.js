@@ -420,8 +420,8 @@ export function createServerActions({
           index: numericIndex,
           mode: state.serverCheckMode,
           url: state.serverCheckUrl,
-          timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
-          attempts: Math.max(3, Number(state.serverCheckAttempts) || 3)
+          timeoutMs: Math.max(2500, Number(state.serverCheckTimeout) || 5000),
+          attempts: 1
         })
       });
       if (result?.result) {

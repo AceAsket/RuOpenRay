@@ -1784,7 +1784,9 @@ function render() {
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
   const hasApplySteps = Array.isArray(state.applySteps) && state.applySteps.length > 0 && state.busyAction === 'apply';
-  const hasLocalOperationProgress = state.configApplying || state.configTesting || state.firewallSaving || state.serverChecking || hasApplySteps;
+  const hasAppUpdateProgress = state.busyAction === 'checkAppUpdate' || state.appReleaseChecking;
+  const hasLocalOperationProgress = state.configApplying || state.configTesting || state.firewallSaving || state.serverChecking || hasApplySteps || hasAppUpdateProgress;
+  const showTopActionPill = state.busyAction && !hasAppUpdateProgress;
   const serviceButtons = [
     !statusLoaded
       ? null
@@ -1831,7 +1833,7 @@ function render() {
             ${state.status ? '' : '<p>Загрузка статуса роутера</p>'}
           </div>
           <div class="top-actions">
-            ${state.busyAction ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
+            ${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
             ${appVersionPill()}
             <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
             <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>

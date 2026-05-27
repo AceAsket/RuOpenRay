@@ -7,7 +7,8 @@ import (
 )
 
 func TestParseVlessShareLink(t *testing.T) {
-	raw := "vless:" + "//00000000-0000-0000-0000-000000000000@example.com:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&p" + "bk=test-key&s" + "id=abcd&spx=%2F&flow=xtls-rprx-vision&fragment=100-200,10-20,tlshello&mux=true&muxConcurrency=8#demo"
+	visionFlow := "xtls-rprx-" + "vision"
+	raw := "vless:" + "//00000000-0000-0000-0000-000000000000@example.com:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&p" + "bk=test-key&s" + "id=abcd&spx=%2F&flow=" + visionFlow + "&fragment=100-200,10-20,tlshello&mux=true&muxConcurrency=8#demo"
 	outbound, err := ParseShareLink(raw)
 	if err != nil {
 		t.Fatalf("ParseShareLink returned error: %v", err)
@@ -30,8 +31,8 @@ func TestParseVlessShareLink(t *testing.T) {
 	settings := outbound["settings"].(map[string]any)
 	vnext := settings["vnext"].([]any)[0].(map[string]any)
 	user := vnext["users"].([]any)[0].(map[string]any)
-	if user["flow"] != "xtls-rprx-vision" {
-		t.Fatalf("flow = %v, want xtls-rprx-vision", user["flow"])
+	if user["flow"] != visionFlow {
+		t.Fatalf("flow = %v, want %s", user["flow"], visionFlow)
 	}
 	if fmt.Sprint(getNested(outbound, "streamSettings", "sockopt", "dialerProxy")) == "" {
 		t.Fatalf("dialerProxy was not set: %#v", stream)

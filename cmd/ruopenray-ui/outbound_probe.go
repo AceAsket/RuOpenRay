@@ -49,8 +49,8 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	defer os.Remove(path)
 
 	samples := attempts
-	if samples < 3 {
-		samples = 3
+	if samples < 1 {
+		samples = 1
 	}
 	totalSamples := samples + 1
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(totalSamples+2))*time.Millisecond+5*time.Second)
@@ -201,8 +201,8 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 	}
 
 	samples := attempts
-	if samples < 3 {
-		samples = 3
+	if samples < 1 {
+		samples = 1
 	}
 	totalSamples := samples + 1
 	target := net.JoinHostPort(host, targetPort)
