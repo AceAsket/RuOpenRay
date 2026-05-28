@@ -395,13 +395,21 @@
 .route-row {
   position: relative;
   display: grid;
-  grid-template-columns: 72px 154px minmax(150px, 0.35fr) minmax(0, 1fr) minmax(210px, 0.42fr) auto;
+  grid-template-columns: 72px 154px 54px minmax(150px, 0.35fr) minmax(0, 1fr) minmax(210px, 0.42fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   background: rgba(13, 20, 25, 0.75);
+}
+
+.route-row-preset-icon {
+  justify-self: center;
+}
+
+.route-row-preset-icon-empty {
+  visibility: hidden;
 }
 
 .route-preset-group-row {
@@ -534,6 +542,14 @@
 
 .route-preset-group-children .route-row {
   background: rgba(8, 15, 19, 0.66);
+}
+
+.route-row-nested {
+  grid-template-columns: 72px 154px minmax(150px, 0.35fr) minmax(0, 1fr) minmax(210px, 0.42fr) auto;
+}
+
+.route-row-nested .route-row-preset-icon-empty {
+  display: none;
 }
 
 .route-row-managed {
@@ -803,7 +819,8 @@
 }
 
 .route-values-list code {
-  display: block;
+  display: grid;
+  gap: 4px;
   padding: 8px 10px;
   border: 1px solid rgba(126, 230, 216, 0.12);
   border-radius: 7px;
@@ -811,6 +828,14 @@
   background: rgba(13, 20, 25, 0.72);
   font-size: 12px;
   word-break: break-all;
+}
+
+.route-values-list code span {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .route-preset-tags {

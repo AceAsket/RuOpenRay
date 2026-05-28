@@ -627,15 +627,16 @@ export const routePresets = {
     detail: 'Tuya, Smart Life, OpenAPI и региональные облака Tuya.',
     rule: { type: 'field', outboundTag: 'proxy', domain: tuyaDomains }
   },
-  chatgpt: {
-    title: 'OpenAI / ChatGPT через proxy',
-    detail: 'ChatGPT/OpenAI домены и Cloudflare/OpenAI IP ranges одной подборкой.',
-    rule: { type: 'field', outboundTag: 'proxy', domain: openaiDomains, ip: openaiIps }
-  },
   openaiIps: {
     title: 'OpenAI IP через proxy',
     detail: 'Cloudflare/OpenAI IP ranges и точечные адреса для ChatGPT/OpenAI.',
     rule: { type: 'field', outboundTag: 'proxy', ip: openaiIps }
+  },
+  chatgptLegacy: {
+    title: 'ChatGPT / OpenAI',
+    detail: 'Домены ChatGPT/OpenAI и Cloudflare/OpenAI IP ranges одной подборкой.',
+    preserveMixed: true,
+    rule: { type: 'field', outboundTag: 'proxy', domain: openaiDomains, ip: openaiIps }
   },
   kinopubIps: {
     title: 'KinoPub через proxy',
@@ -667,6 +668,11 @@ export const routePresets = {
     rule: { type: 'field', outboundTag: 'direct', ip: ['geoip:private', '127.0.0.1/8', '::1/128'] }
   }
 };
+
+const chatgptPresetRules = [
+  { type: 'field', outboundTag: 'proxy', domain: openaiDomains },
+  { type: 'field', outboundTag: 'proxy', ip: openaiIps }
+];
 
 export const routeBundles = {
   ruMinimal: {
@@ -710,6 +716,11 @@ export const routeBundles = {
     rules: [
       routePresets.tuya.rule
     ]
+  },
+  chatgpt: {
+    title: 'ChatGPT / OpenAI',
+    detail: 'Домены ChatGPT/OpenAI и Cloudflare/OpenAI IP ranges одной подборкой.',
+    rules: chatgptPresetRules
   },
   xrayuiBasic: {
     title: 'Базовый набор xrayui',
@@ -760,7 +771,7 @@ export const routeBundles = {
     title: 'AI / Dev',
     detail: 'AI-сервисы, GitHub, Claude, OpenAI и Google Gemini через proxy.',
     rules: [
-      routePresets.chatgpt.rule,
+      ...chatgptPresetRules,
       routePresets.claude.rule,
       routePresets.geminiAi.rule,
       routePresets.github.rule
@@ -788,6 +799,7 @@ export const hiddenBuiltinRoutePresetKeys = new Set([
   'meta',
   'tuya',
   'openaiIps',
+  'chatgptLegacy',
   'xrayuiBasic',
   'directLan',
   'mediaComms',

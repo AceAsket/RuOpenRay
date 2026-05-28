@@ -799,6 +799,12 @@ const routeGroupBundles = {
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: ['91.108.4.0/22'] },
     ],
   },
+  mixedOpenai: {
+    title: 'ChatGPT / OpenAI',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com', 'domain:openai.com'], ip: ['172.64.150.0/24'] },
+    ],
+  },
 };
 const routeGroupModel = createRoutingModel({
   state: routeGroupState,
@@ -884,6 +890,14 @@ const routeValuesDrawerWorks = routePresetGroupHtmlClosed.includes('route-value-
   && routePresetGroupHtmlOpen.includes('route-values-drawer')
   && routePresetGroupHtmlOpen.includes('--route-values-drawer-top:120px')
   && routePresetGroupHtmlOpen.includes('domain:telegram.org');
+routeGroupState.config.routing.rules = [];
+routeGroupState.selectedRoutePresets = ['mixedOpenai'];
+routeGroupActions.applySelectedRoutingPresets();
+const routeMixedItems = routeGroupActions.visibleRoutingRuleItems(80);
+const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'presetGroup'
+  && routeMixedItems[0]?.items?.length === 2
+  && routeGroupState.config.routing.rules.some((rule) => rule.domain?.includes('domain:chatgpt.com') && !rule.ip)
+  && routeGroupState.config.routing.rules.some((rule) => rule.ip?.includes('172.64.150.0/24') && !rule.domain);
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -1444,6 +1458,7 @@ const checks = [
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
+  ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],

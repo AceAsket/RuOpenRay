@@ -242,6 +242,38 @@ export function createRoutingActions({
     return next;
   }
 
+  function routeRuleConditionValue(rule, field) {
+    if (field === 'port') {
+      const value = String(rule?.port || '').trim();
+      return value && value !== '0-65535' ? value : '';
+    }
+    const values = Array.isArray(rule?.[field])
+      ? rule[field].map((item) => String(item || '').trim()).filter(Boolean)
+      : (rule?.[field] ? [String(rule[field]).trim()].filter(Boolean) : []);
+    return values;
+  }
+
+  function splitMixedRouteRule(rule) {
+    if (!rule) return [];
+    const fields = ['domain', 'ip', 'source', 'inboundTag', 'port'];
+    const populated = fields
+      .map((field) => ({ field, value: routeRuleConditionValue(rule, field) }))
+      .filter(({ value }) => Array.isArray(value) ? value.length > 0 : Boolean(value));
+    if (populated.length <= 1) return [rule];
+    const base = JSON.parse(JSON.stringify(rule));
+    fields.forEach((field) => delete base[field]);
+    return populated.map(({ field, value }) => ({
+      ...JSON.parse(JSON.stringify(base)),
+      [field]: Array.isArray(value) ? [...value] : value
+    }));
+  }
+
+  function expandRoutePresetRules(rules, preserveMixed = false) {
+    const source = Array.isArray(rules) ? rules : [];
+    if (preserveMixed) return source;
+    return source.flatMap(splitMixedRouteRule);
+  }
+
   function normalizedRouteTarget(tag) {
     const value = String(tag || '').trim();
     if (!value) return '';
@@ -327,7 +359,7 @@ export function createRoutingActions({
         title: routePresetTitle(key),
         rules: routePresetRules(key).map(normalizePresetRule)
       }))
-      .filter((entry) => entry.rules.length > 1)
+      .filter((entry) => entry.rules.length > 0)
       .sort((left, right) => right.rules.length - left.rules.length);
     for (const entry of entries) {
       if (startIndex + entry.rules.length > rules.length) continue;
@@ -411,9 +443,9 @@ export function createRoutingActions({
 
   function routePresetRules(key) {
     const custom = customRoutePreset(key);
-    if (custom) return custom.rules || [];
-    if (routeBundles[key]) return routeBundles[key].rules;
-    if (routePresets[key]) return [routePresets[key].rule];
+    if (custom) return expandRoutePresetRules(custom.rules || [], Boolean(custom.preserveMixed));
+    if (routeBundles[key]) return expandRoutePresetRules(routeBundles[key].rules || [], Boolean(routeBundles[key].preserveMixed));
+    if (routePresets[key]) return expandRoutePresetRules([routePresets[key].rule], Boolean(routePresets[key].preserveMixed));
     return [];
   }
 
@@ -846,18 +878,55 @@ export function createRoutingActions({
       .trim();
   }
 
+  function routeConditionGroups(rule) {
+    const groups = [];
+    const add = (kind, values) => {
+      const list = Array.isArray(values) ? values.filter(Boolean) : (values ? [values] : []);
+      if (!list.length) return;
+      const label = routeKinds[kind] || kind;
+      const readableValues = kind === 'inboundTag'
+        ? list.map((value) => readableRouteTag(value))
+        : list;
+      groups.push({ kind, label, values: readableValues, rawValues: list });
+    };
+    add('domain', rule?.domain);
+    add('ip', rule?.ip);
+    add('source', rule?.source);
+    add('inboundTag', rule?.inboundTag);
+    add('port', rule?.port);
+    if (!groups.length) {
+      const target = routeTarget(rule || {});
+      add(target.kind, target.values);
+    }
+    return groups;
+  }
+
+  function routeConditionMeta(groups, network) {
+    const parts = [];
+    for (const group of groups) {
+      parts.push(`${group.label} · ${group.values.length} знач.`);
+    }
+    if (network) parts.push(network);
+    return parts;
+  }
+
   function routeValuesPreviewHtml(rule, info, index) {
-    const target = routeTarget(rule || {});
-    const values = target.values || [];
+    const groups = routeConditionGroups(rule || {});
     const network = rule?.network || '';
-    const count = values.length;
-    const meta = [info.kind, network, count ? `${count} знач.` : ''].filter(Boolean);
-    const chips = values.slice(0, 3).map((value) => routePreviewValue(value)).filter(Boolean);
+    const meta = routeConditionMeta(groups, network);
+    const total = groups.reduce((sum, group) => sum + group.values.length, 0);
+    const chips = groups
+      .flatMap((group) => group.values.map((value) => ({ group, value: routePreviewValue(value) })))
+      .filter(({ value }) => Boolean(value))
+      .slice(0, 3);
+    const title = groups
+      .map((group) => `${group.label}: ${group.rawValues.join(', ')}`)
+      .join('\n');
     return `<div class="route-main route-main-preview">
       <div class="route-meta-line">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>
-      <div class="route-value-chips" title="${escapeHtml(info.fullValue)}">
-        ${chips.length ? chips.map((value) => `<code>${escapeHtml(value)}</code>`).join('') : `<code>${escapeHtml(info.value)}</code>`}
-        ${count > chips.length ? `<button type="button" data-route-values-panel="${index}">+${count - chips.length}</button>` : ''}
+      <div class="route-value-chips" title="${escapeHtml(title || info.fullValue)}">
+        ${chips.length ? chips.map(({ value }) => `<code>${escapeHtml(value)}</code>`).join('') : `<code>${escapeHtml(info.value)}</code>`}
+        ${total > chips.length ? `<button type="button" data-route-values-panel="${index}">+${total - chips.length}</button>` : ''}
       </div>
     </div>`;
   }
@@ -869,8 +938,8 @@ export function createRoutingActions({
     const rule = routeRules()[index];
     if (!rule) return '';
     const info = describeRouteRule(rule);
-    const target = routeTarget(rule || {});
-    const values = target.values || [];
+    const groups = routeConditionGroups(rule || {});
+    const values = groups.flatMap((group) => group.rawValues.map((value) => ({ group, value })));
     const anchor = state.routeValuesDrawerAnchor && typeof state.routeValuesDrawerAnchor === 'object' ? state.routeValuesDrawerAnchor : null;
     const anchorStyle = anchor && Number.isFinite(Number(anchor.top)) && Number.isFinite(Number(anchor.left))
       ? ` style="--route-values-drawer-top:${Math.max(12, Number(anchor.top))}px;--route-values-drawer-left:${Math.max(12, Number(anchor.left))}px;--route-values-drawer-right:auto;--route-values-drawer-max-height:${Math.max(220, Number(anchor.maxHeight) || 420)}px"`
@@ -879,12 +948,12 @@ export function createRoutingActions({
       <header>
         <div>
           <strong>${escapeHtml(routeRuleName(rule, info))}</strong>
-          <span>${escapeHtml(info.kind)}${rule.network ? ` · ${escapeHtml(rule.network)}` : ''} · ${values.length} знач.</span>
+          <span>${escapeHtml(routeConditionMeta(groups, rule.network).join(' · '))}</span>
         </div>
         <button class="icon-btn" type="button" data-route-values-panel-close aria-label="Закрыть">×</button>
       </header>
       <div class="route-values-list">
-        ${values.map((value) => `<code>${escapeHtml(value)}</code>`).join('')}
+        ${values.map(({ group, value }) => `<code><span>${escapeHtml(group.label)}</span>${escapeHtml(value)}</code>`).join('')}
       </div>
     </aside>`;
   }
@@ -920,6 +989,13 @@ export function createRoutingActions({
       : nested
         ? `data-route-group-child-index="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}"`
         : `data-route-index="${index}" data-route-range-start="${index}" data-route-range-end="${index + 1}"`;
+    const matchedPreset = !nested && presets.length ? presets[0] : null;
+    const matchedPresetData = matchedPreset
+      ? (routeBundles[matchedPreset.key] || routePresets[matchedPreset.key] || customRoutePreset(matchedPreset.key) || { title: matchedPreset.title })
+      : null;
+    const presetIcon = matchedPreset
+      ? routePresetIconView(escapeHtml, matchedPreset.key, matchedPresetData, 'compact route-row-preset-icon')
+      : '<span class="route-preset-icon compact route-row-preset-icon route-row-preset-icon-empty" aria-hidden="true"></span>';
     return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''}" draggable="${dragLocked ? 'false' : 'true'}" ${dragAttrs}>
       <div class="route-order">
         <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
@@ -929,6 +1005,7 @@ export function createRoutingActions({
         <span class="route-category route-category-${escapeHtml(category)}">${escapeHtml(section?.title || 'Другое')}</span>
         <span class="route-kind">${escapeHtml(info.kind)}</span>
       </div>
+      ${presetIcon}
       <div class="route-title">
         <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
         <span>${escapeHtml(source)} · выше = раньше</span>

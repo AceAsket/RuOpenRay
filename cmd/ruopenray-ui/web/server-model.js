@@ -36,7 +36,7 @@ export function createServerModel({
         continue;
       }
       stats.proxy += 1;
-      if (outboundUsage(tag)) stats.used += 1;
+      if (outboundUsage(outbound?.tag || '')) stats.used += 1;
       else stats.unused += 1;
     }
     return stats;
