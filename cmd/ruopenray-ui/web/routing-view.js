@@ -598,16 +598,17 @@ function firewallPanel() {
       <summary>
         <span>
           <strong>Команды для OpenWrt</strong>
-          <em>Черновик nftables/TProxy для ручной проверки и копирования.</em>
+          <em>Активные или будущие правила nftables/TProxy для ручной проверки.</em>
         </span>
         <b>Открыть</b>
       </summary>
       <div class="intercept-details-body">
     <section class="panel intercept-command-panel">
       <div class="panel-title">
-        <div><h2>Команды для OpenWrt</h2><span>Черновик nftables/TProxy. Перед применением проверьте интерфейсы, порты и правила автозапуска.</span></div>
+        <div><h2>Команды OpenWrt</h2><span>Если статус ниже говорит «Применено сейчас», это уже активные правила на роутере. Иначе это черновик для следующего применения.</span></div>
         <button class="btn secondary" data-action="copyFirewall">Скопировать</button>
       </div>
+      ${firewallCommandsStatusView()}
       <pre class="console">${escapeHtml(firewallCommands())}</pre>
     </section>
       </div>
@@ -625,6 +626,36 @@ function xrayConfigTestLogView() {
       <summary>${log.ok ? 'Технический вывод Xray' : 'Подробности ошибки Xray'} · ${escapeHtml(time)}</summary>
       <pre class="mini-console">${escapeHtml(text)}</pre>
     </details>
+  `;
+}
+
+function firewallCommandsStatusView() {
+  const status = state.firewallStatus || {};
+  const ready = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : false;
+  const pending = typeof firewallPendingReasons === 'function' ? firewallPendingReasons(status) : [];
+  const hasActive = Boolean(status.active);
+  const hasPersistent = Boolean(status.persistent);
+  if (ready) {
+    return `
+      <div class="settings-warning compact ok">
+        <strong>Применено сейчас</strong>
+        <span>Активная таблица nftables и сохраненный файл совпадают с выбранными настройками.</span>
+      </div>
+    `;
+  }
+  if (hasActive || hasPersistent) {
+    return `
+      <div class="settings-warning compact">
+        <strong>Черновик отличается</strong>
+        <span>${escapeHtml(pending.slice(0, 3).join(' · ') || 'Ниже показано, что будет записано при следующем применении firewall.')}</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="settings-warning compact">
+      <strong>Еще не применено</strong>
+      <span>Ниже показан черновик команд, которые RuOpenRay сохранит и применит на OpenWrt.</span>
+    </div>
   `;
 }
 

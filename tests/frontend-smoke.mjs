@@ -24,6 +24,12 @@ import { createProfileActions } from '../cmd/ruopenray-ui/web/profile-actions.js
 import { bindProfileControls } from '../cmd/ruopenray-ui/web/profile-bindings.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
+import {
+  expandRoutePresetRules,
+  routePresetRuleSetMatches,
+  routeRuleConditionKey,
+  splitMixedRouteRule
+} from '../cmd/ruopenray-ui/web/routing-rule-helpers.js';
 import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
 import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
@@ -299,6 +305,13 @@ const firewallHydrateOk = firewallHydrated
   && firewallHydrateState.firewallKillSwitchTargets.includes('chatgpt.com')
   && firewallHydrateState.firewallKillSwitchTargets.includes('1.1.1.1');
 const firewallHydratePreservesDraft = !hydrateFirewallDraftFromStatus({ firewallHydratedFromStatus: true }, firewallHydrateStatus);
+const firewallActiveStatusHydrates = firewallDraftFromStatus({
+  active: true,
+  persistent: false,
+  routerMode: 'tproxy',
+  bypassMode: 'redirect',
+  portMode: 'all',
+})?.firewallBypassMode === 'redirect';
 const setupActions = createSetupActions({
   state: setupState,
   request: async (path) => {
@@ -1415,6 +1428,19 @@ const subscriptionDetailsKeyPersists = subscriptionCardHtml.includes('data-detai
 const subscriptionCandidateBusyIsLocal = subscriptionCardHtml.includes('data-busy="0"')
   && subscriptionCardHtml.includes('data-subscription-candidate-index="0" disabled>Проверяю</button>')
   && subscriptionCardHtml.includes('data-subscription-candidate-index="1" >Проверить</button>');
+const mixedRule = { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'], ip: ['172.64.150.0/24'], port: '443' };
+const mixedRuleSplits = splitMixedRouteRule(mixedRule);
+const routingHelpersSplitMixed = mixedRuleSplits.length === 3
+  && mixedRuleSplits.some((rule) => rule.domain?.[0] === 'domain:chatgpt.com' && !rule.ip && !rule.port)
+  && mixedRuleSplits.some((rule) => rule.ip?.[0] === '172.64.150.0/24' && !rule.domain && !rule.port)
+  && mixedRuleSplits.some((rule) => rule.port === '443' && !rule.domain && !rule.ip);
+const routingHelpersPreserveMixed = expandRoutePresetRules([mixedRule], true).length === 1
+  && expandRoutePresetRules([mixedRule]).length === 3;
+const routingHelpersSetMatches = routePresetRuleSetMatches(
+  [{ domain: ['domain:b.test', 'domain:a.test'] }, { ip: ['1.1.1.1'] }],
+  [{ ip: ['1.1.1.1'] }, { domain: ['domain:a.test', 'domain:b.test'] }]
+);
+const routingHelpersKeyIgnoresValueOrder = routeRuleConditionKey({ domain: ['b', 'a'] }) === routeRuleConditionKey({ domain: ['a', 'b'] });
 
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
@@ -1424,6 +1450,9 @@ const checks = [
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
   ['subscription candidate details persistence', subscriptionDetailsKeyPersists],
   ['subscription candidate busy is local', subscriptionCandidateBusyIsLocal],
+  ['routing helpers split mixed rules', routingHelpersSplitMixed],
+  ['routing helpers preserve mixed flag', routingHelpersPreserveMixed],
+  ['routing helpers set matching', routingHelpersSetMatches && routingHelpersKeyIgnoresValueOrder],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
@@ -1464,7 +1493,7 @@ const checks = [
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
   ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers[1]?.address === '192.168.1.1'],
-  ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft],
+  ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft && firewallActiveStatusHydrates],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],
   ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],
   ['firewall actions draft', firewallState.firewallBypassMode === 'redirect' && firewallState.firewallPortMode === 'all' && firewallState.firewallKillSwitchTargets.includes('chatgpt.com')],

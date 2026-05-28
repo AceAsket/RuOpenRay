@@ -299,17 +299,22 @@ func (s *serverState) firewallStatus() map[string]any {
 		hotplugExists = true
 	}
 	nftActive := runTimeout(5*time.Second, "nft", "list", "table", "inet", "ruopenray")
+	activeNftBody := fmt.Sprint(nftActive["stdout"])
+	statusBody := nftBody
+	if strings.TrimSpace(statusBody) == "" && strings.TrimSpace(activeNftBody) != "" {
+		statusBody = activeNftBody
+	}
 	ipRules := runTimeout(5*time.Second, "ip", "rule", "show")
 	ipRoutes := runTimeout(5*time.Second, "ip", "route", "show", "table", "100")
 	ipRuleActive := strings.Contains(fmt.Sprint(ipRules["stdout"]), "fwmark 0x1") && strings.Contains(fmt.Sprint(ipRules["stdout"]), "lookup 100")
 	ipRouteActive := strings.Contains(fmt.Sprint(ipRoutes["stdout"]), "local") && strings.Contains(fmt.Sprint(ipRoutes["stdout"]), "dev lo")
 	routerMode := "unknown"
-	if strings.Contains(nftBody, " tproxy ") {
+	if strings.Contains(statusBody, " tproxy ") {
 		routerMode = "tproxy"
-	} else if strings.Contains(nftBody, " redirect ") {
+	} else if strings.Contains(statusBody, " redirect ") {
 		routerMode = "redirect"
 	}
-	meta := parseFirewallStatusMeta(nftBody)
+	meta := parseFirewallStatusMeta(statusBody)
 	if value := strings.TrimSpace(fmt.Sprint(meta["routerMode"])); value != "" && value != "<nil>" {
 		routerMode = value
 	}

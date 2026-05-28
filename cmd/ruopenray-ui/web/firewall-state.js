@@ -1,5 +1,6 @@
 export function firewallDraftFromStatus(status) {
-  if (!status || typeof status !== 'object' || !status.persistent) return null;
+  if (!status || typeof status !== 'object') return null;
+  if (!status.persistent && !status.active) return null;
   const routerMode = normalizeChoice(status.routerMode, ['tproxy', 'redirect'], 'tproxy');
   const bypassMode = normalizeChoice(status.bypassMode, ['off', 'bypass', 'redirect'], 'off');
   const deviceMode = normalizeChoice(status.deviceMode, ['all', 'selected', 'exclude'], 'all');
