@@ -1,3 +1,5 @@
+import { fragmentOutboundDetail, isFragmentOutboundTag } from './outbound-tags.js';
+
 export function createXrayConfigModel(state) {
   function configInbounds() {
     if (!Array.isArray(state.config.inbounds)) state.config.inbounds = [];
@@ -46,6 +48,7 @@ export function createXrayConfigModel(state) {
   }
   
   function outboundAddress(outbound) {
+    if (isFragmentOutboundTag(outbound?.tag)) return fragmentOutboundDetail(outbound?.tag) || 'фрагментация TLS';
     const protocol = outbound?.protocol;
     if (protocol === 'vless' || protocol === 'vmess') {
       const vnext = outbound?.settings?.vnext?.[0];
@@ -67,6 +70,7 @@ export function createXrayConfigModel(state) {
     const stream = outbound?.streamSettings || {};
     const network = stream.network || 'tcp';
     const security = stream.security || 'none';
+    if (isFragmentOutboundTag(outbound?.tag)) return 'fragment';
     if (outbound?.protocol === 'freedom') return 'direct';
     if (outbound?.protocol === 'blackhole') return 'block';
     if (outbound?.protocol === 'dns') return 'dns';

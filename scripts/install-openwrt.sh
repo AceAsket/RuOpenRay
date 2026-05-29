@@ -11,6 +11,7 @@ PORT="${RUOPENRAY_PORT:-9090}"
 HOST="${RUOPENRAY_HOST:-0.0.0.0}"
 PASSWORD="${RUOPENRAY_PASSWORD:-}"
 PASSWORD_GENERATED=0
+PASSWORD_REUSED=0
 ACTIVE_CONFIG="${RUOPENRAY_ACTIVE_CONFIG:-/etc/xray/config.json}"
 XRAY_SERVICE="${RUOPENRAY_XRAY_SERVICE:-xray}"
 RELEASE_BASE_URL="${RUOPENRAY_RELEASE_BASE_URL:-https://github.com/AceAsket/RuOpenRay/releases/latest/download}"
@@ -40,10 +41,21 @@ generate_password() {
 	fi
 }
 
+current_panel_password() {
+	command -v uci >/dev/null 2>&1 || return 0
+	uci -q get ruopenray-ui.main.password 2>/dev/null || true
+}
+
 ensure_password() {
 	if [ -z "$PASSWORD" ]; then
-		PASSWORD="$(generate_password)"
-		PASSWORD_GENERATED=1
+		existing_password="$(current_panel_password)"
+		if [ -n "$existing_password" ] && [ "$existing_password" != "admin" ]; then
+			PASSWORD="$existing_password"
+			PASSWORD_REUSED=1
+		else
+			PASSWORD="$(generate_password)"
+			PASSWORD_GENERATED=1
+		fi
 	fi
 	[ -n "$PASSWORD" ] || die "не удалось сгенерировать пароль"
 	case "$PASSWORD" in
@@ -203,6 +215,10 @@ set ruopenray-ui.main.download_mirror='$DOWNLOAD_MIRROR'
 set ruopenray-ui.main.mirror_prefix='$MIRROR_PREFIX'
 commit ruopenray-ui
 EOF
+	saved_password="$(current_panel_password)"
+	if [ "$saved_password" != "$PASSWORD" ]; then
+		die "пароль панели не записался в UCI. Ожидался новый пароль, в конфиге осталось: ${saved_password:-пусто}"
+	fi
 }
 
 write_init() {
@@ -558,6 +574,30 @@ enable_xray_service_config() {
 start_service() {
 	/etc/init.d/$SERVICE_NAME enable
 	/etc/init.d/$SERVICE_NAME restart
+	validate_service_password
+}
+
+service_env_value() {
+	key="$1"
+	pids="$(pidof "$APP_NAME" 2>/dev/null || true)"
+	set -- $pids
+	[ "$#" -gt 0 ] || return 1
+	[ -r "/proc/$1/environ" ] || return 1
+	tr '\0' '\n' < "/proc/$1/environ" | sed -n "s/^${key}=//p" | tail -n1
+}
+
+validate_service_password() {
+	i=0
+	while [ "$i" -lt 10 ]; do
+		running_password="$(service_env_value RUOPENRAY_PASSWORD || true)"
+		if [ "$running_password" = "$PASSWORD" ]; then
+			return 0
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+	saved_password="$(current_panel_password)"
+	die "сервис запустился не с тем паролем. UCI: ${saved_password:-пусто}, process env: ${running_password:-пусто}"
 }
 
 print_summary() {
@@ -571,6 +611,8 @@ print_summary() {
 	log "Пароль: ${PASSWORD}"
 	if [ "$PASSWORD_GENERATED" = "1" ]; then
 		log "Пароль сгенерирован автоматически. Сохраните его; позже можно сменить в веб-панели: Настройки -> Пароль."
+	elif [ "$PASSWORD_REUSED" = "1" ]; then
+		log "Использован уже заданный пароль из /etc/config/ruopenray-ui."
 	fi
 	if ! command -v xray >/dev/null 2>&1; then
 		log "Xray пока не найден. Его можно установить из веб-панели или повторить установку с RUOPENRAY_INSTALL_XRAY=1."

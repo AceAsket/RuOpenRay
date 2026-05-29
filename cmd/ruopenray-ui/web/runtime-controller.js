@@ -241,6 +241,7 @@ export function createRuntimeController({
         domainMonitor,
         logging,
         serviceSettings,
+        storageReport,
         tcpFastOpen,
         lanDns,
         firewallStatus,
@@ -285,6 +286,7 @@ export function createRuntimeController({
         state.selectedCoreVersion = latestStable?.tag || latestInstallable?.tag || state.coreReleases[0]?.tag || '';
       }
       state.geoStatus = geo;
+      state.storageReport = storageReport;
       if (!state.domainMonitorPaused || !state.domainMonitor) {
         state.domainMonitor = domainMonitor;
       }

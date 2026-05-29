@@ -172,6 +172,50 @@ export function createSettingsActions({
     render();
   }
 
+  async function refreshStorageReport() {
+    state.storageCleaning = 'refresh';
+    try {
+      state.storageReport = await request('/api/storage/report');
+      state.message = 'Отчёт по памяти обновлён';
+    } finally {
+      state.storageCleaning = '';
+    }
+    render();
+  }
+
+  async function cleanupStorage(target, successMessage) {
+    state.storageCleaning = target;
+    state.message = 'Очищаю память роутера...';
+    render();
+    try {
+      const result = await request('/api/storage/cleanup', {
+        method: 'POST',
+        body: JSON.stringify({ target })
+      });
+      state.storageReport = result.report || state.storageReport;
+      state.storageLastCleanup = result;
+      const freed = Number(result.freed || 0);
+      state.message = result.ok
+        ? `${successMessage}: освобождено ${freed ? `${Math.round(freed / 1024 / 102.4) / 10} MB` : '0 MB'}`
+        : (Array.isArray(result.errors) && result.errors.length ? result.errors.join('\n') : 'Очистка завершилась с ошибкой');
+    } finally {
+      state.storageCleaning = '';
+    }
+    render();
+  }
+
+  function cleanupStorageBackups() {
+    return cleanupStorage('backups', 'Бэкапы очищены');
+  }
+
+  function cleanupPackageCache() {
+    return cleanupStorage('package-cache', 'Кэш пакетов очищен');
+  }
+
+  function cleanupUnusedDat() {
+    return cleanupStorage('unused-dat', 'Неиспользуемые DAT удалены');
+  }
+
   async function setSystemTcpFastOpen(enabled) {
     state.tcpFastOpenSaving = true;
     state.message = enabled ? 'Включаю TCP Fast Open в системе...' : 'Выключаю TCP Fast Open в системе...';
@@ -204,6 +248,10 @@ export function createSettingsActions({
     clearLoggingFiles,
     refreshDhcpLeases,
     saveServiceSettings,
+    refreshStorageReport,
+    cleanupStorageBackups,
+    cleanupPackageCache,
+    cleanupUnusedDat,
     setSystemTcpFastOpen,
     service
   };

@@ -307,6 +307,93 @@ function dnsServersSection(dns) {
   `;
 }
 
+function dnsPolicyKind(value) {
+  const text = String(value || '').trim();
+  if (/^geosite:/i.test(text)) return 'geosite';
+  if (/^geoip:/i.test(text)) return 'geoip';
+  if (/^ext:/i.test(text)) return 'ext';
+  if (/^regexp:/i.test(text)) return 'regexp';
+  if (/^domain:/i.test(text)) return 'domain';
+  return text.includes('.') ? 'domain' : 'match';
+}
+
+function dnsPolicyDisplay(value) {
+  return String(value || '').replace(/^(domain|geosite|geoip|regexp):/i, '');
+}
+
+function dnsPoliciesSection(dns) {
+  const servers = dns.servers || [];
+  const safeIndex = servers.length
+    ? Math.max(0, Math.min(Number(state.dnsPolicyServerIndex) || 0, servers.length - 1))
+    : 0;
+  const selectedInfo = servers.length ? describeDnsServer(servers[safeIndex]) : { address: '', domains: [] };
+  const editorValue = state.dnsPolicyDomains === null || typeof state.dnsPolicyDomains === 'undefined'
+    ? (selectedInfo.domains || []).join('\n')
+    : state.dnsPolicyDomains;
+  const policyServers = servers
+    .map((server, index) => ({ index, info: describeDnsServer(server) }))
+    .filter(({ info }) => (info.domains || []).length);
+  const policyCount = policyServers.reduce((sum, { info }) => sum + (info.domains || []).length, 0);
+  const unscopedCount = Math.max(0, servers.length - policyServers.length);
+  return `
+    <section class="panel dns-policy-panel">
+      <div class="panel-title">
+        <div>
+          <h2>DNS-политики</h2>
+          <span>Можно указать, какой DNS использовать для отдельных доменов, geosite/geoip и ext-списков. Маршрутизация трафика после ответа DNS остается в обычных правилах Xray.</span>
+        </div>
+        <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
+      </div>
+
+      <div class="settings-info-grid dns-policy-summary">
+        <article><span>Политики</span><strong>${policyCount}</strong><small>${policyServers.length} DNS-серверов с условиями</small></article>
+        <article><span>Без условий</span><strong>${unscopedCount}</strong><small>fallback DNS по порядку списка</small></article>
+        <article><span>Порядок</span><strong>сверху вниз</strong><small>как во вкладке «Серверы»</small></article>
+      </div>
+
+      <div class="settings-warning compact">
+        <strong>Как это работает</strong>
+        <span>Xray сначала ищет DNS-сервер, у которого в domains есть совпадение: domain:openai.com, geosite:youtube, geoip:ru или ext:"file.dat:list". Если совпадений нет, используется обычный порядок dns.servers.</span>
+      </div>
+
+      <div class="dns-policy-editor">
+        <div class="form-row">
+          <label>DNS-сервер</label>
+          <select id="dnsPolicyServer" ${servers.length ? '' : 'disabled'}>
+            ${servers.map((server, index) => {
+              const info = describeDnsServer(server);
+              return `<option value="${index}" ${index === safeIndex ? 'selected' : ''}>${index + 1}. ${escapeHtml(info.address)}</option>`;
+            }).join('')}
+          </select>
+        </div>
+        <div class="form-row dns-policy-domains-row">
+          <label>Домены и категории для этого DNS</label>
+          <textarea id="dnsPolicyDomains" ${servers.length ? '' : 'disabled'} placeholder="domain:openai.com&#10;geosite:youtube&#10;geoip:ru&#10;ext:&quot;custom.dat:list&quot;">${escapeHtml(editorValue || '')}</textarea>
+        </div>
+        <div class="dns-policy-actions">
+          <button class="btn" data-action="saveDnsPolicy" ${servers.length ? '' : 'disabled'}>Сохранить политику</button>
+          <button class="btn secondary" data-action="clearDnsPolicy" ${servers.length ? '' : 'disabled'}>Очистить для DNS</button>
+        </div>
+      </div>
+
+      <div class="dns-policy-list">
+        ${policyServers.map(({ index, info }) => `<article class="dns-policy-row">
+          <div class="dns-policy-order">${index + 1}</div>
+          <div class="dns-policy-main">
+            <strong>${escapeHtml(info.address)}</strong>
+            <span>${escapeHtml(info.network || (info.address.startsWith('https://') ? 'https' : 'dns'))}</span>
+          </div>
+          <div class="dns-policy-chips">
+            ${(info.domains || []).slice(0, 8).map((domain) => `<span class="dns-policy-chip"><small>${escapeHtml(dnsPolicyKind(domain))}</small>${escapeHtml(dnsPolicyDisplay(domain))}</span>`).join('')}
+            ${(info.domains || []).length > 8 ? `<span class="dns-policy-chip more">+${info.domains.length - 8}</span>` : ''}
+          </div>
+          <button class="btn secondary" type="button" data-dns-policy-edit="${index}">Править</button>
+        </article>`).join('') || '<p class="muted">Пока нет DNS-политик. Все DNS-серверы работают как общий список fallback.</p>'}
+      </div>
+    </section>
+  `;
+}
+
 function dnsHostsSection(dns) {
   const hosts = Object.entries(dns.hosts || {});
   return `
@@ -421,6 +508,20 @@ function lanDnsSection() {
   const dnsPortConflict = status.dnsPortConflict || readiness.udpConflict;
   const conflictOwner = status.dnsPortConflictOwner || readiness.udpOwner || '';
   const suggestedTarget = status.suggestedXrayTarget || '127.0.0.1#10535';
+  const draftMode = state.lanDnsMode || 'xray';
+  const draftTarget = draftMode === 'xray'
+    ? xrayTarget
+    : draftMode === 'upstream'
+      ? (state.lanDnsUpstream || 'адрес Pi-hole/DNS не задан')
+      : 'системные настройки OpenWrt';
+  const draftUpstream = String(state.lanDnsUpstream || '').trim();
+  const currentMatchesDraft = status.mode === draftMode && (
+    draftMode !== 'upstream' ||
+    (draftUpstream && (
+      servers.includes(draftUpstream) ||
+      servers.includes(draftUpstream.includes('#') ? draftUpstream : `${draftUpstream}#53`)
+    ))
+  );
   return `
     <section class="panel settings-section lan-dns-panel">
       <div class="panel-title">
@@ -434,6 +535,24 @@ function lanDnsSection() {
         <article><span>Upstream dnsmasq</span><strong>${escapeHtml(current)}</strong></article>
         <article><span>Адрес роутера</span><strong>${escapeHtml(routerLan)}</strong></article>
         <article><span>Xray DNS inbound</span><strong>${escapeHtml(xrayTarget)}</strong></article>
+      </div>
+      <div class="apply-state-panel ${currentMatchesDraft ? 'ok' : 'warn'}">
+        <div class="apply-state-head">
+          <strong>${currentMatchesDraft ? 'LAN DNS применен' : 'LAN DNS отличается от черновика'}</strong>
+          <span>${currentMatchesDraft ? 'dnsmasq уже настроен так, как выбрано ниже.' : 'Ниже видно текущий upstream dnsmasq и что будет применено после кнопки «Применить LAN DNS».'}</span>
+        </div>
+        <div class="apply-state-grid two">
+          <article class="${currentMatchesDraft ? 'ok' : 'warn'}">
+            <span>Сейчас в dnsmasq</span>
+            <strong>${escapeHtml(lanDnsModeLabel(status.mode))}</strong>
+            <small>${escapeHtml(current)}</small>
+          </article>
+          <article class="${currentMatchesDraft ? 'ok' : 'warn'}">
+            <span>Черновик</span>
+            <strong>${escapeHtml(lanDnsModeLabel(draftMode))}</strong>
+            <small>${escapeHtml(draftTarget)}</small>
+          </article>
+        </div>
       </div>
       <div class="advanced-grid three lan-dns-modes">
         <button type="button" class="advanced-card ${state.lanDnsMode === 'xray' ? 'active' : ''}" data-lan-dns-mode="xray">
@@ -495,6 +614,7 @@ function dnsPanel() {
   const stats = dnsStats();
   const dnsTabs = [
     ['servers', 'Серверы'],
+    ['policies', 'Политики'],
     ['hosts', 'Hosts'],
     ['lan', 'LAN DNS'],
     ['guard', 'Защита'],
@@ -503,6 +623,7 @@ function dnsPanel() {
   const view = dnsTabs.some(([value]) => value === state.dnsView) ? state.dnsView : 'servers';
   const views = {
     servers: () => dnsServersSection(dns),
+    policies: () => dnsPoliciesSection(dns),
     hosts: () => dnsHostsSection(dns),
     lan: lanDnsSection,
     guard: () => dnsLeakChecklist(dns, stats),

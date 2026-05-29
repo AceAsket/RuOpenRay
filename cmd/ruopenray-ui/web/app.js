@@ -696,6 +696,10 @@ const {
   clearLoggingFiles,
   refreshDhcpLeases,
   saveServiceSettings,
+  refreshStorageReport,
+  cleanupStorageBackups,
+  cleanupPackageCache,
+  cleanupUnusedDat,
   setSystemTcpFastOpen,
   service
 } = settingsActions;
@@ -1017,6 +1021,9 @@ const {
   removeDnsServer,
   moveDnsServer,
   prioritizeDohDnsServers,
+  editDnsPolicy,
+  saveDnsPolicy,
+  clearDnsPolicy,
   checkDnsServer,
   checkDnsDiagnostics,
   applyLanDnsUpstream,
@@ -1807,11 +1814,14 @@ function render() {
     ${routeBalancerDialog()}
     ${importDialog(state.importDialog)}
     <div class="shell">
-      <aside class="sidebar">
+      <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
         <div class="brand">
           <img class="brand-mark" src="/assets/ruopenray-icon-512.png" alt="" />
           <div><strong>RuOpenRay UI</strong><span>Панель Xray для OpenWrt</span></div>
         </div>
+        <button class="mobile-menu-toggle" data-action="toggleMobileNav" type="button" aria-expanded="${state.mobileNavOpen ? 'true' : 'false'}">
+          <span>${state.mobileNavOpen ? 'Закрыть меню' : 'Меню'}</span>
+        </button>
         <nav class="nav">
           ${nav.map(([key, title]) => `<button class="${key === state.tab ? 'active' : ''}" data-tab="${key}">${title}</button>`).join('')}
         </nav>
@@ -1982,6 +1992,10 @@ function bind() {
       start: () => service('start'),
       stop: () => service('stop'),
       restart: () => service('restart'),
+      toggleMobileNav: () => {
+        state.mobileNavOpen = !state.mobileNavOpen;
+        render();
+      },
       logout,
       refresh,
       changePanelPassword,
@@ -2108,6 +2122,10 @@ function bind() {
       checkGeoAudit,
       saveGeoSchedule,
       cleanupGeoBackups,
+      refreshStorageReport,
+      cleanupStorageBackups,
+      cleanupPackageCache,
+      cleanupUnusedDat,
       uploadGeoFile,
       cleanupExtraGeoDat,
       addGeoSource,
@@ -2166,6 +2184,8 @@ function bind() {
       addDevice: addDeviceRule,
       addDns: addDnsServer,
       saveDnsHost,
+      saveDnsPolicy,
+      clearDnsPolicy,
       previewLanDnsUpstream,
       applyLanDnsUpstream,
       dnsWizardSecure: () => applyDnsGuardPreset('secure'),
@@ -2240,6 +2260,7 @@ function bind() {
     prioritizeDohDnsServers,
     editDnsHost,
     removeDnsHost,
+    editDnsPolicy,
     setDnsModeDraft,
   });
   bindRoutingControls({

@@ -6,6 +6,7 @@ export function bindDnsControls({
   prioritizeDohDnsServers,
   editDnsHost,
   removeDnsHost,
+  editDnsPolicy,
   setDnsModeDraft,
 }) {
   document.querySelectorAll('[data-dns-delete]').forEach((button) => {
@@ -22,6 +23,9 @@ export function bindDnsControls({
   });
   document.querySelectorAll('[data-dns-host-delete]').forEach((button) => {
     button.addEventListener('click', () => removeDnsHost(button.dataset.dnsHostDelete || ''));
+  });
+  document.querySelectorAll('[data-dns-policy-edit]').forEach((button) => {
+    button.addEventListener('click', () => editDnsPolicy(Number(button.dataset.dnsPolicyEdit)));
   });
   document.querySelectorAll('[data-dns-preset]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -46,6 +50,12 @@ export function bindDnsControls({
   });
   document.querySelector('#dnsDomains')?.addEventListener('input', (event) => {
     state.dnsDomains = event.target.value;
+  });
+  document.querySelector('#dnsPolicyServer')?.addEventListener('change', (event) => {
+    editDnsPolicy(Number(event.target.value));
+  });
+  document.querySelector('#dnsPolicyDomains')?.addEventListener('input', (event) => {
+    state.dnsPolicyDomains = event.target.value;
   });
   document.querySelector('#dnsHostName')?.addEventListener('input', (event) => {
     state.dnsHostName = event.target.value;

@@ -145,6 +145,16 @@
   width: min(620px, 100%);
 }
 
+.segmented.settings-log-levels {
+  display: grid;
+  width: min(620px, 100%);
+}
+
+.settings-log-levels button {
+  min-width: 0;
+  white-space: normal;
+}
+
 .settings-check {
   min-width: 0;
   display: grid;
@@ -266,6 +276,15 @@
   background: rgba(245, 193, 85, 0.1);
 }
 
+.settings-warning.danger {
+  border-color: rgba(196, 54, 71, 0.45);
+  background: rgba(196, 54, 71, 0.12);
+}
+
+.settings-warning.danger strong {
+  color: #ff9aa5;
+}
+
 .settings-warning strong {
   min-width: 0;
   color: var(--amber);
@@ -316,6 +335,46 @@
 .settings-info-grid strong {
   margin-top: 6px;
   color: var(--text);
+}
+
+.storage-maintenance-list {
+  grid-template-columns: 1fr;
+  margin-top: 12px;
+}
+
+.settings-storage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(13, 20, 25, 0.72);
+}
+
+.settings-storage-row strong,
+.settings-storage-row span,
+.settings-storage-row small {
+  display: block;
+  min-width: 0;
+}
+
+.settings-storage-row span {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.settings-storage-row small {
+  margin-top: 6px;
+  color: var(--soft);
+  overflow-wrap: anywhere;
+}
+
+.settings-storage-row b {
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .settings-message {
@@ -735,6 +794,7 @@ select {
 
 .login-card {
   width: min(420px, 100%);
+  min-width: 0;
   padding: 26px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -791,6 +851,30 @@ select {
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+@media (max-width: 520px) {
+  .login {
+    padding: 16px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: calc(100vw - 32px);
+    padding: 20px 18px;
+  }
+
+  .login-card h1 {
+    font-size: 22px;
+  }
+
+  .settings-log-levels {
+    grid-template-columns: 1fr;
+  }
+
+  .segmented.settings-log-levels {
+    grid-template-columns: 1fr;
+  }
 }
 
 .login-remember {

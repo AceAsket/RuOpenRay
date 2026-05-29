@@ -436,6 +436,7 @@ function firewallPanel() {
       <div class="panel-title">
         <div><h2>Текущая схема</h2><span>Коротко: способ обработки, политика до Xray и охват устройств.</span></div>
       </div>
+      ${firewallApplyComparisonView({ compact: true })}
       <div class="intercept-summary-grid">
         <article>
           <span>Способ</span>
@@ -629,6 +630,180 @@ function xrayConfigTestLogView() {
   `;
 }
 
+function firewallApplyComparison() {
+  const status = state.firewallStatus || {};
+  const preview = firewallPolicyPreview();
+  const routeSets = preview.routeSets || {};
+  const ready = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : false;
+  const pending = typeof firewallPendingReasons === 'function' ? firewallPendingReasons(status) : [];
+  const currentRouter = status.active || status.persistent
+    ? `${routerModeLabel(status.routerMode || state.firewallRouterMode)} · ${deviceModeLabel(status.deviceMode || 'all')} · ${portModeValue(status)}`
+    : 'правила firewall еще не применены';
+  const draftRouter = `${routerModeLabel(state.firewallRouterMode)} · ${preview.traffic} · ${preview.ports}`;
+  const currentPolicy = status.active || status.persistent
+    ? `${bypassModeLabel(status.bypassMode || 'off')} · DNS ${onOffLabel(status.dnsIntercept)} · QUIC ${onOffLabel(status.blockQuic)}`
+    : 'не выбрана на роутере';
+  const draftPolicy = `${bypassModeLabel(state.firewallBypassMode || 'off')} · DNS ${onOffLabel(state.firewallDnsIntercept)} · QUIC ${onOffLabel(state.firewallBlockQuic)}`;
+  const currentDnsNftset = firewallDnsNftsetCurrent(status);
+  const draftDnsNftset = firewallDnsNftsetDraft(routeSets, state.firewallBypassMode || 'off');
+  const currentLeak = firewallLeakCurrent(status);
+  const draftLeak = firewallLeakDraft(preview);
+  const rows = [
+    {
+      title: 'Перехват LAN',
+      current: currentRouter,
+      draft: draftRouter,
+      ok: ready || (status.active && sameText(currentRouter, draftRouter))
+    },
+    {
+      title: 'Политика BYPASS/REDIRECT',
+      current: currentPolicy,
+      draft: draftPolicy,
+      ok: ready || sameText(currentPolicy, draftPolicy)
+    },
+    {
+      title: 'DNS nftset',
+      current: currentDnsNftset,
+      draft: draftDnsNftset,
+      ok: dnsNftsetMatchesDraft(status, routeSets, state.firewallBypassMode || 'off')
+    },
+    {
+      title: 'Защита от утечек',
+      current: currentLeak,
+      draft: draftLeak,
+      ok: leakMatchesDraft(status, preview)
+    }
+  ];
+  return { ready, pending, rows };
+}
+
+function firewallApplyComparisonView(options = {}) {
+  const comparison = firewallApplyComparison();
+  const limit = options.limit || comparison.rows.length;
+  return `
+    <div class="apply-state-panel ${comparison.ready ? 'ok' : 'warn'}">
+      <div class="apply-state-head">
+        <strong>${comparison.ready ? 'Сейчас применено' : 'Черновик отличается от роутера'}</strong>
+        <span>${escapeHtml(comparison.ready ? 'Активные правила совпадают с выбранными настройками.' : comparison.pending.slice(0, 2).join(' · ') || 'Ниже видно, что изменится при применении.')}</span>
+      </div>
+      <div class="apply-state-grid">
+        ${comparison.rows.slice(0, limit).map((row) => `
+          <article class="${row.ok ? 'ok' : 'warn'}">
+            <span>${escapeHtml(row.title)}</span>
+            <strong>Сейчас: ${escapeHtml(row.current)}</strong>
+            <small>Черновик: ${escapeHtml(row.draft)}</small>
+          </article>
+        `).join('')}
+      </div>
+      ${comparison.pending.length > 2 && !options.compact ? `<small class="apply-state-more">Еще отличия: ${escapeHtml(comparison.pending.slice(2, 8).join(' · '))}</small>` : ''}
+    </div>
+  `;
+}
+
+function firewallDnsNftsetCurrent(status) {
+  const mode = status.bypassMode || 'off';
+  if (!status.active && !status.persistent) return 'не применен';
+  if (mode === 'bypass') {
+    const count = status.directNftset?.count ?? (status.directNftset?.domains || []).length;
+    return count ? `direct-домены в bypass4: ${count}` : 'direct-домены не подключены';
+  }
+  if (mode === 'redirect') {
+    const count = status.proxyNftset?.count ?? (status.proxyNftset?.domains || []).length;
+    return count ? `proxy-домены в proxy4: ${count}` : 'proxy-домены не подключены';
+  }
+  return 'geo/domain nftset не используется';
+}
+
+function firewallDnsNftsetDraft(routeSets, mode) {
+  if (mode === 'bypass') {
+    const count = (routeSets.directDomains || []).length + (routeSets.directGeosite || []).length + (routeSets.directExt || []).length;
+    return count ? `direct-домены/geo: ${count}` : 'direct-домены не нужны';
+  }
+  if (mode === 'redirect') {
+    const count = (routeSets.proxyDomains || []).length + (routeSets.proxyGeosite || []).length + (routeSets.proxyExt || []).length;
+    return count ? `proxy-домены/geo: ${count}` : 'proxy-домены не заданы';
+  }
+  return 'OFF: DNS nftset не нужен';
+}
+
+function dnsNftsetMatchesDraft(status, routeSets, mode) {
+  if (mode === 'off') return true;
+  if (!status.active && !status.persistent) return false;
+  if (mode === 'bypass') {
+    const expected = (routeSets.directDomains || []).length;
+    const actual = (status.directNftset?.domains || []).length;
+    return expected === 0 || actual >= expected;
+  }
+  const expected = (routeSets.proxyDomains || []).length;
+  const actual = (status.proxyNftset?.domains || []).length;
+  return expected === 0 || actual >= expected;
+}
+
+function firewallLeakCurrent(status) {
+  if (!status.active && !status.persistent) return 'не применена';
+  if (!status.killSwitch) return 'выключена';
+  const ips = (status.killSwitchIps || []).length;
+  const domains = status.killSwitchDomainMode === 'nftset'
+    ? (status.killSwitchNftset?.domains || []).length
+    : (status.killSwitchDNSBlock?.domains || []).length;
+  return `${domainModeLabel(status.killSwitchDomainMode)} · IP ${ips} · домены ${domains}`;
+}
+
+function firewallLeakDraft(preview) {
+  if (!state.firewallKillSwitchEnabled) return 'выключена';
+  const guard = preview.guard || {};
+  const ips = (guard.ips || []).length + (guard.geoip || []).length;
+  const domains = (guard.domains || []).length + (guard.geosite || []).length + (guard.ext || []).length;
+  return `${domainModeLabel(state.firewallKillSwitchDomainMode)} · IP/geo ${ips} · домены/geo ${domains}`;
+}
+
+function leakMatchesDraft(status, preview) {
+  if (!state.firewallKillSwitchEnabled) return status.killSwitch !== true;
+  if (!status.killSwitch) return false;
+  const guard = preview.guard || {};
+  const expectedIps = (guard.ips || []).length;
+  const actualIps = (status.killSwitchIps || []).length;
+  const expectedDomains = (guard.domains || []).length;
+  const actualDomains = state.firewallKillSwitchDomainMode === 'nftset'
+    ? (status.killSwitchNftset?.domains || []).length
+    : (status.killSwitchDNSBlock?.domains || []).length;
+  return actualIps >= expectedIps && actualDomains >= expectedDomains;
+}
+
+function routerModeLabel(value) {
+  return value === 'redirect' ? 'REDIRECT' : 'TPROXY';
+}
+
+function bypassModeLabel(value) {
+  if (value === 'bypass') return 'BYPASS: direct мимо Xray';
+  if (value === 'redirect') return 'REDIRECT: только proxy в Xray';
+  return 'OFF: все выбранное в Xray';
+}
+
+function deviceModeLabel(value) {
+  if (value === 'selected') return 'выбранные клиенты';
+  if (value === 'exclude') return 'кроме выбранных';
+  return 'весь LAN';
+}
+
+function portModeValue(status) {
+  if (status.portMode === 'all') return 'все порты';
+  const ports = Array.isArray(status.ports) ? status.ports.filter(Boolean) : [];
+  return ports.length ? `порты ${ports.join(', ')}` : 'порты по списку';
+}
+
+function domainModeLabel(value) {
+  return value === 'nftset' ? 'nftset по клиентам' : 'DNS-блокировка';
+}
+
+function onOffLabel(value) {
+  return value ? 'вкл' : 'выкл';
+}
+
+function sameText(left, right) {
+  return String(left || '').trim() === String(right || '').trim();
+}
+
 function firewallCommandsStatusView() {
   const status = state.firewallStatus || {};
   const ready = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : false;
@@ -677,13 +852,11 @@ function leakProtectionPanel() {
   const dnsBlockDomains = killSwitchDNSBlock.domains || [];
   const domainMode = state.firewallKillSwitchDomainMode === 'nftset' ? 'nftset' : 'dns-block';
   const firewallApplied = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(status) : false;
-  const pendingReasons = typeof firewallPendingReasons === 'function' ? firewallPendingReasons(status) : [];
   const scopeLabel = state.firewallKillSwitchDeviceMode === 'selected'
     ? `только выбранные клиенты (${selectedDevices.size || 0})`
     : state.firewallKillSwitchDeviceMode === 'exclude'
       ? `весь LAN, кроме выбранных (${selectedDevices.size || 0})`
       : 'весь LAN';
-  const domainModeTitle = domainMode === 'nftset' ? 'nftset по клиентам' : 'точная DNS-блокировка';
   const totalTargets = protectedIps.length + protectedDomains.length + protectedGeoCount;
   const protectedDomainLikeCount = protectedDomains.length + protectedGeosite.length + protectedExt.length;
   const domainStatus = protectedDomainLikeCount
@@ -743,25 +916,7 @@ function leakProtectionPanel() {
       <div class="panel-title">
         <div><h2>Не выпускать без Xray</h2><span>IP и подсети принудительно идут в Xray. Если Xray остановлен, прямой выход блокируется. Для доменов можно выбрать точную DNS-блокировку или nftset по клиентам.</span></div>
       </div>
-      <div class="leak-status-strip ${firewallApplied ? 'ok' : 'warn'}">
-        <article>
-          <span>Состояние firewall</span>
-          <strong>${firewallApplied ? 'защита соответствует настройкам' : 'есть непримененные изменения'}</strong>
-        </article>
-        <article>
-          <span>Кого защищаем</span>
-          <strong>${escapeHtml(scopeLabel)}</strong>
-        </article>
-        <article>
-          <span>Домены</span>
-          <strong>${escapeHtml(domainModeTitle)}</strong>
-        </article>
-      </div>
-      ${pendingReasons.length ? `<div class="leak-pending-box">
-        <strong>Что еще не применено</strong>
-        <ul>${pendingReasons.slice(0, 6).map((reason) => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>
-        ${pendingReasons.length > 6 ? `<small>Еще ${pendingReasons.length - 6} отличий в firewall-настройках.</small>` : ''}
-      </div>` : ''}
+      ${firewallApplyComparisonView({ limit: 4 })}
       <div class="leak-check-list">
         ${leakChecks.map((item) => `<article class="${item.ok ? 'ok' : 'warn'}">
           <i>${item.ok ? '✓' : '!'}</i>
@@ -878,6 +1033,7 @@ function firewallApplyPanel() {
         </div>
       </div>
       ${operationProgressView()}
+      ${firewallApplyComparisonView({ limit: 4 })}
       ${firewallSafetyPanel(safety, blockedBySafety)}
       <div class="firewall-preview-grid">
         <article><span>Состояние</span><strong>${escapeHtml(summary)}</strong><small>${escapeHtml(status.routerMode || state.firewallRouterMode)}</small></article>

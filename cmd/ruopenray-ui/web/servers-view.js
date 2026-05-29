@@ -2,6 +2,7 @@ import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
 import { parseServerEditJson, serverEditFields } from './server-edit-model.js';
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
+import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 
 export function createServersView(deps) {
   const {
@@ -386,7 +387,7 @@ function serversPanel() {
 
     <section class="stats route-stats">
       ${stat('Прокси', stats.proxy, 'Пользовательские подключения')}
-      ${stat('Служебные', stats.system, 'direct, block, DNS')}
+      ${stat('Служебные', stats.system, 'direct, block, DNS, fragment')}
       ${stat('В правилах', stats.used, 'Используются маршрутизацией')}
       ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'порт сервера'}`)}
     </section>
@@ -436,11 +437,14 @@ function serversPanel() {
         ${systemEntries.length ? systemEntries.map(({ outbound, index }) => {
           const tag = outbound?.tag || `outbound-${index + 1}`;
           const usage = outboundUsage(tag);
+          const label = serviceOutboundLabel(outbound);
+          const detail = fragmentOutboundDetail(tag) || outboundAddress(outbound);
+          const protocolLabel = isFragmentOutboundTag(tag) ? 'fragment' : (outbound?.protocol || 'unknown');
           return `<article class="server-row system-row">
-            <div class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</div>
+            <div class="server-protocol">${escapeHtml(protocolLabel)}</div>
             <div class="server-main">
-              <strong>${escapeHtml(tag)}</strong>
-              <span>${escapeHtml(outboundAddress(outbound))}</span>
+              <strong title="${escapeHtml(tag)}">${escapeHtml(label)}</strong>
+              <span>${escapeHtml(detail)}</span>
             </div>
             <div class="server-meta">
               <span>${escapeHtml(outboundTransport(outbound))}</span>

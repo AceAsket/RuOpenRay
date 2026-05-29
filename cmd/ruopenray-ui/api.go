@@ -128,6 +128,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/settings/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(r)
 		writeJSON(w, 200, s.saveServiceSettings(payload))
+	case path == "/storage/report" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.storageReport())
+	case path == "/storage/cleanup" && r.Method == http.MethodPost:
+		payload, _ := readJSON(r)
+		writeJSON(w, 200, s.cleanupStorage(payload))
 	case path == "/install/plan" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.installPlan())
 	case path == "/network/tcp-fast-open" && r.Method == http.MethodGet:

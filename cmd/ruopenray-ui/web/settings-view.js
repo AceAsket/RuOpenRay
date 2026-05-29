@@ -11,10 +11,30 @@ function settingsPanel() {
   ];
   const accessSize = byteSize(state.loggingSettings?.accessSize || 0);
   const errorSize = byteSize(state.loggingSettings?.errorSize || 0);
+  const storageReport = state.storageReport || {};
+  const storageItems = storageReport.items || {};
+  const storageDisk = storageReport.disk || state.status?.system?.disk || {};
+  const storageItem = (key) => storageItems[key] || {};
+  const storageSize = (key) => Number(storageItem(key).size || 0);
+  const storageCount = (key) => Number(storageItem(key).count || 0);
+  const storagePercent = (value) => Number.parseFloat(String(value || '').replace('%', '')) || 0;
+  const storageFree = Number(storageDisk.free || 0);
+  const storageUsedPercent = storagePercent(storageDisk.usedPercent);
+  const storagePressure = storageUsedPercent >= 90 || (storageFree > 0 && storageFree < 8 * 1024 * 1024);
+  const unusedDat = Array.isArray(storageReport.unusedDat) ? storageReport.unusedDat : [];
+  const storageRows = [
+    ['backups', 'Бэкапы RuOpenRay', storageItem('backups').path || '', 'Резервные копии конфигов, бинарников и geo-файлов.'],
+    ['geoBase', 'Стандартные DAT', storageItem('geoBase').path || '', 'geoip.dat и geosite.dat, которые обычно нужны Xray.'],
+    ['geoExtra', 'Дополнительные DAT', storageItem('geoExtra').path || '', 'Отдельные файлы для ext:"file.dat:list". Неиспользуемые можно удалить.'],
+    ['logs', 'Логи', storageItem('logs').path || '', 'Access/error/DNS-логи и ротационные копии.'],
+    ['packageCache', 'Кэш пакетов', storageItem('packageCache').path || '', 'apk/opkg индексы и кэш после установки пакетов.'],
+    ['appBinary', 'Бинарник панели', storageItem('appBinary').path || '', 'Исполняемый файл RuOpenRay UI.']
+  ];
   const settingsTabs = [
     ['logging', 'Логирование'],
     ['security', 'Панель'],
     ['service', 'Сервис'],
+    ['storage', 'Память'],
     ['updates', 'Обновление']
   ];
   const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'logging';
@@ -203,10 +223,57 @@ function settingsPanel() {
       </div>
     </section>
   `;
+  const storageSection = `
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>Память роутера</h2><span>Сводка по overlay и быстрые безопасные действия для маленького NAND.</span></div>
+        <button class="btn secondary ${state.storageCleaning === 'refresh' ? 'is-busy' : ''}" data-action="refreshStorageReport" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'refresh' ? 'Обновляю...' : 'Обновить'}</button>
+      </div>
+      <div class="settings-info-grid">
+        <article><span>Свободно</span><strong>${escapeHtml(storageFree ? byteSize(storageFree) : 'неизвестно')}</strong><small>${escapeHtml(storageDisk.path || storageDisk.label || 'overlay')}</small></article>
+        <article><span>Занято</span><strong>${escapeHtml(storageUsedPercent ? `${storageUsedPercent}%` : 'неизвестно')}</strong><small>${escapeHtml(storageDisk.total ? `из ${byteSize(storageDisk.total)}` : '')}</small></article>
+        <article><span>Бэкапы</span><strong>${escapeHtml(byteSize(storageSize('backups')))}</strong><small>${escapeHtml(`${storageCount('backups')} файлов`)}</small></article>
+        <article><span>DAT-файлы</span><strong>${escapeHtml(byteSize(storageSize('geoBase') + storageSize('geoExtra')))}</strong><small>${escapeHtml(`${storageCount('geoBase') + storageCount('geoExtra')} файлов`)}</small></article>
+      </div>
+      ${storagePressure ? `<div class="settings-warning danger">
+        <strong>Мало свободного места</strong>
+        <span>Сначала очистите бэкапы и кэш пакетов. Стандартные geoip.dat/geosite.dat удаляйте только если понимаете, какие правила их используют.</span>
+      </div>` : ''}
+      <div class="settings-maintenance storage-maintenance-list">
+        ${storageRows.map(([key, label, path, hint]) => `
+          <article class="settings-storage-row">
+            <div>
+              <strong>${escapeHtml(label)}</strong>
+              <span>${escapeHtml(hint)}</span>
+              ${path ? `<small>${escapeHtml(path)}</small>` : ''}
+            </div>
+            <b>${escapeHtml(byteSize(storageSize(key)))}</b>
+          </article>
+        `).join('')}
+      </div>
+      <div class="settings-warning">
+        <strong>Неиспользуемые DAT</strong>
+        <span>${unusedDat.length
+          ? escapeHtml(`${unusedDat.length} дополнительных файлов не найдены в активных ext-правилах: ${unusedDat.slice(0, 4).map((item) => item.name).join(', ')}${unusedDat.length > 4 ? '...' : ''}`)
+          : 'Дополнительных DAT без ссылок в текущем конфиге не найдено.'}</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn warning ${state.storageCleaning === 'backups' ? 'is-busy' : ''}" data-action="cleanupStorageBackups" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'backups' ? 'Очищаю...' : 'Очистить бэкапы'}</button>
+        <button class="btn secondary ${state.storageCleaning === 'package-cache' ? 'is-busy' : ''}" data-action="cleanupPackageCache" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'package-cache' ? 'Очищаю...' : 'Очистить кэш пакетов'}</button>
+        <button class="btn secondary ${state.storageCleaning === 'unused-dat' ? 'is-busy' : ''}" data-action="cleanupUnusedDat" ${state.storageCleaning || !unusedDat.length ? 'disabled' : ''}>${state.storageCleaning === 'unused-dat' ? 'Удаляю...' : 'Удалить неиспользуемые DAT'}</button>
+      </div>
+      ${state.storageLastCleanup ? `<div class="core-result">
+        <strong>${state.storageLastCleanup.ok ? 'Готово' : 'Есть ошибки'}</strong>
+        <span>Удалено: ${escapeHtml(state.storageLastCleanup.deleted ?? 0)} · освобождено: ${escapeHtml(byteSize(state.storageLastCleanup.freed || 0))}</span>
+      </div>` : ''}
+    </section>
+  `;
   const visibleSection = settingsView === 'security'
     ? securitySection
     : settingsView === 'updates'
       ? appUpdateSection
+    : settingsView === 'storage'
+      ? storageSection
     : settingsView === 'service'
       ? serviceSection
       : loggingSections;

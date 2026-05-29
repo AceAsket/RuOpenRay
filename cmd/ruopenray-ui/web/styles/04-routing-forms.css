@@ -1959,6 +1959,27 @@
   min-height: 40px;
 }
 
+@media (max-width: 720px) {
+  .balancer-history-settings {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .balancer-history-settings div,
+  .balancer-history-settings label {
+    width: 100%;
+  }
+
+  .balancer-history-settings span {
+    overflow-wrap: anywhere;
+  }
+
+  .balancer-history-settings .btn,
+  .balancer-history-settings button {
+    width: 100%;
+  }
+}
+
 .balancer-history {
   display: grid;
   gap: 8px;

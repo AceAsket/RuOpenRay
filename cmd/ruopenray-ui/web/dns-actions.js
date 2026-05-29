@@ -30,6 +30,17 @@ export function createDnsActions({
     return String(dnsServerAddress(server)).toLowerCase().startsWith('https://');
   }
 
+  function dnsServerToObject(server) {
+    if (server && typeof server === 'object' && !Array.isArray(server)) return { ...server };
+    return { address: dnsServerAddress(server) };
+  }
+
+  function dnsPolicyDomainsFor(index) {
+    const servers = dnsConfig().servers || [];
+    const server = servers[index];
+    return Array.isArray(server?.domains) ? server.domains : [];
+  }
+
   function prioritizeDohServers(config) {
     const servers = ensureDnsList(config);
     config.dns.servers = [
@@ -186,6 +197,45 @@ export function createDnsActions({
     render();
   }
 
+  function editDnsPolicy(index) {
+    const servers = dnsConfig().servers || [];
+    const safeIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(servers.length - 1, 0)));
+    state.dnsPolicyServerIndex = safeIndex;
+    state.dnsPolicyDomains = dnsPolicyDomainsFor(safeIndex).join('\n');
+    state.dnsView = 'policies';
+    render();
+  }
+
+  function saveDnsPolicy() {
+    const next = cloneConfig();
+    const servers = ensureDnsList(next);
+    const index = Math.max(0, Math.min(Number(state.dnsPolicyServerIndex) || 0, servers.length - 1));
+    if (!servers.length || index < 0 || index >= servers.length) {
+      state.message = 'Добавьте DNS-сервер, затем задайте для него домены.';
+      render();
+      return;
+    }
+    const rawDomains = state.dnsPolicyDomains === null || typeof state.dnsPolicyDomains === 'undefined'
+      ? dnsPolicyDomainsFor(index).join('\n')
+      : state.dnsPolicyDomains;
+    const domains = splitRouteValues(rawDomains || '');
+    const server = dnsServerToObject(servers[index]);
+    if (domains.length) server.domains = domains;
+    else delete server.domains;
+    servers[index] = server;
+    syncConfig(next);
+    state.dnsPolicyDomains = domains.join('\n');
+    state.message = domains.length
+      ? 'DNS-политика сохранена в черновик'
+      : 'DNS-политика очищена в черновике';
+    render();
+  }
+
+  function clearDnsPolicy() {
+    state.dnsPolicyDomains = '';
+    saveDnsPolicy();
+  }
+
   async function checkDnsServer() {
     const normalized = normalizeDnsAddressInput(state.dnsAddress);
     const result = await request('/api/dns/check', {
@@ -264,6 +314,9 @@ export function createDnsActions({
     removeDnsServer,
     moveDnsServer,
     prioritizeDohDnsServers,
+    editDnsPolicy,
+    saveDnsPolicy,
+    clearDnsPolicy,
     checkDnsServer,
     checkDnsDiagnostics,
     applyLanDnsUpstream,

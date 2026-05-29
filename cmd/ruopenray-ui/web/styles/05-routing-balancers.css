@@ -1616,6 +1616,91 @@
   color: var(--muted);
 }
 
+.apply-state-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(242, 189, 82, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(242, 189, 82, 0.08), transparent 48%),
+    rgba(7, 12, 16, 0.56);
+}
+
+.apply-state-panel.ok {
+  border-color: rgba(103, 222, 120, 0.34);
+  background:
+    linear-gradient(90deg, rgba(103, 222, 120, 0.08), transparent 48%),
+    rgba(7, 12, 16, 0.56);
+}
+
+.apply-state-head {
+  display: grid;
+  gap: 4px;
+}
+
+.apply-state-head strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.apply-state-head span,
+.apply-state-more {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.apply-state-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.apply-state-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.apply-state-grid article {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(242, 189, 82, 0.28);
+  border-radius: 8px;
+  background: rgba(13, 20, 25, 0.72);
+}
+
+.apply-state-grid article.ok {
+  border-color: rgba(103, 222, 120, 0.28);
+}
+
+.apply-state-grid span,
+.apply-state-grid strong,
+.apply-state-grid small {
+  display: block;
+  min-width: 0;
+}
+
+.apply-state-grid span {
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.apply-state-grid strong {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.apply-state-grid small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .leak-check-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
