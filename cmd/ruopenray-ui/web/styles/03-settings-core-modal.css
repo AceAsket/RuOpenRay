@@ -741,6 +741,17 @@ select {
   font-size: 13px;
 }
 
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.profile-table {
+  min-width: 620px;
+}
+
 .table th,
 .table td {
   padding: 11px 10px;

@@ -108,7 +108,7 @@ function devicesPanel() {
 function profilesPanel(compact = false) {
   const rows = compact ? state.profiles.slice(0, 5) : state.profiles;
   return `
-    <section class="panel">
+    <section class="panel profile-panel">
       <div class="panel-title">
         <div><h2>Профили</h2><span>Каждый профиль хранится отдельным JSON-файлом.</span></div>
         <div class="split-actions">
@@ -116,22 +116,24 @@ function profilesPanel(compact = false) {
           <button class="btn danger" data-action="restoreLatestBackup">Откатить apply</button>
         </div>
       </div>
-      <table class="table">
-        <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th></th></tr></thead>
-        <tbody>
-          ${rows
-            .map(
-              (p) => `<tr>
-                <td>${escapeHtml(p.name)}</td>
-                <td>${new Date(p.updatedAt).toLocaleString()}</td>
-                <td>${Math.round(p.size / 10) / 100} KB</td>
-                <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
-                <td><button class="btn secondary" data-profile="${escapeHtml(p.name)}">Активировать</button></td>
-              </tr>`
-            )
-            .join('')}
-        </tbody>
-      </table>
+      <div class="table-scroll profile-table-scroll">
+        <table class="table profile-table">
+          <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            ${rows
+              .map(
+                (p) => `<tr>
+                  <td>${escapeHtml(p.name)}</td>
+                  <td>${new Date(p.updatedAt).toLocaleString()}</td>
+                  <td>${Math.round(p.size / 10) / 100} KB</td>
+                  <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
+                  <td><button class="btn secondary" data-profile="${escapeHtml(p.name)}">Активировать</button></td>
+                </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
     </section>
   `;
 }

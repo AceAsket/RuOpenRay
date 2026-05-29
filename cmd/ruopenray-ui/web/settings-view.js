@@ -30,6 +30,15 @@ function settingsPanel() {
     ['packageCache', 'Кэш пакетов', storageItem('packageCache').path || '', 'apk/opkg индексы и кэш после установки пакетов.'],
     ['appBinary', 'Бинарник панели', storageItem('appBinary').path || '', 'Исполняемый файл RuOpenRay UI.']
   ];
+  const cleanup = state.storageLastCleanup || null;
+  const cleanupRemovedBytes = Number(cleanup?.removedBytes ?? cleanup?.freed ?? 0);
+  const cleanupFreeDelta = Number(cleanup?.freeDelta ?? cleanup?.freed ?? 0);
+  const cleanupFreeKnown = cleanup?.freeKnown === true;
+  const cleanupFreeBefore = Number(cleanup?.freeBefore || 0);
+  const cleanupFreeAfter = Number(cleanup?.freeAfter || 0);
+  const cleanupDeltaText = cleanupFreeDelta < 0
+    ? `-${byteSize(Math.abs(cleanupFreeDelta))}`
+    : `+${byteSize(cleanupFreeDelta)}`;
   const settingsTabs = [
     ['logging', 'Логирование'],
     ['security', 'Панель'],
@@ -264,7 +273,11 @@ function settingsPanel() {
       </div>
       ${state.storageLastCleanup ? `<div class="core-result">
         <strong>${state.storageLastCleanup.ok ? 'Готово' : 'Есть ошибки'}</strong>
-        <span>Удалено: ${escapeHtml(state.storageLastCleanup.deleted ?? 0)} · освобождено: ${escapeHtml(byteSize(state.storageLastCleanup.freed || 0))}</span>
+        <span>Удалено файлов: ${escapeHtml(state.storageLastCleanup.deleted ?? 0)} · размер удаленного: ${escapeHtml(byteSize(cleanupRemovedBytes))}</span>
+        <span>${cleanupFreeKnown
+          ? `Свободное место: было ${escapeHtml(byteSize(cleanupFreeBefore))} → стало ${escapeHtml(byteSize(cleanupFreeAfter))} (${escapeHtml(cleanupDeltaText)})`
+          : 'Реальную дельту свободного места не удалось получить через df.'}</span>
+        <small>На overlay размер удаленных файлов может отличаться от фактического прироста свободного места.</small>
       </div>` : ''}
     </section>
   `;

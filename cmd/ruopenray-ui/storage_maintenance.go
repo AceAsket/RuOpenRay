@@ -89,26 +89,29 @@ func (s *serverState) cleanupStorage(payload map[string]any) map[string]any {
 	if target == "" {
 		target = "all"
 	}
+	diskBefore := rsystem.SystemDiskInfo()
 	result := map[string]any{
-		"ok":      true,
-		"target":  target,
-		"deleted": 0,
-		"freed":   int64(0),
-		"errors":  []string{},
-		"steps":   []map[string]any{},
+		"ok":           true,
+		"target":       target,
+		"deleted":      0,
+		"removedBytes": int64(0),
+		"freed":        int64(0),
+		"errors":       []string{},
+		"steps":        []map[string]any{},
 	}
 	addStep := func(name string, step storageCleanupResult) {
 		result["deleted"] = numberAny(result["deleted"]) + int64(step.Deleted)
-		result["freed"] = numberAny(result["freed"]) + step.Freed
+		result["removedBytes"] = numberAny(result["removedBytes"]) + step.Freed
 		if len(step.Errors) > 0 {
 			result["ok"] = false
 			result["errors"] = appendStringSlice(result["errors"], step.Errors...)
 		}
 		result["steps"] = append(result["steps"].([]map[string]any), map[string]any{
-			"name":    name,
-			"deleted": step.Deleted,
-			"freed":   step.Freed,
-			"errors":  step.Errors,
+			"name":         name,
+			"deleted":      step.Deleted,
+			"removedBytes": step.Freed,
+			"freed":        step.Freed,
+			"errors":       step.Errors,
 		})
 	}
 
@@ -128,6 +131,25 @@ func (s *serverState) cleanupStorage(payload map[string]any) map[string]any {
 	default:
 		result["ok"] = false
 		result["errors"] = []string{"неизвестная цель очистки"}
+	}
+	diskAfter := rsystem.SystemDiskInfo()
+	beforeFree, beforeOK := diskFreeBytes(diskBefore)
+	afterFree, afterOK := diskFreeBytes(diskAfter)
+	result["diskBefore"] = diskBefore
+	result["diskAfter"] = diskAfter
+	result["freeKnown"] = beforeOK && afterOK
+	if beforeOK {
+		result["freeBefore"] = beforeFree
+	}
+	if afterOK {
+		result["freeAfter"] = afterFree
+	}
+	if beforeOK && afterOK {
+		result["freeDelta"] = afterFree - beforeFree
+		result["freed"] = afterFree - beforeFree
+	} else {
+		result["freeDelta"] = int64(0)
+		result["freed"] = int64(0)
 	}
 	result["report"] = s.storageReport()
 	return result
@@ -353,4 +375,12 @@ func sortedKeys(values map[string]bool) []string {
 func appendStringSlice(value any, items ...string) []string {
 	out, _ := value.([]string)
 	return append(out, items...)
+}
+
+func diskFreeBytes(info map[string]any) (int64, bool) {
+	if info == nil || info["ok"] == false {
+		return 0, false
+	}
+	free := numberAny(info["free"])
+	return free, free > 0
 }

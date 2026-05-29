@@ -11,6 +11,16 @@ export function createSettingsActions({
   syncLoggingSettings,
   syncServiceSettings
 }) {
+  function formatStorageBytes(value) {
+    const bytes = Number(value || 0);
+    if (!Number.isFinite(bytes)) return '0 B';
+    const sign = bytes < 0 ? '-' : '';
+    const abs = Math.abs(bytes);
+    if (abs >= 1024 * 1024) return `${sign}${Math.round(abs / 1024 / 102.4) / 10} MB`;
+    if (abs >= 1024) return `${sign}${Math.round(abs / 102.4) / 10} KB`;
+    return `${sign}${abs} B`;
+  }
+
   async function login(event) {
     event.preventDefault();
     const passwordInput = document.querySelector('#password');
@@ -194,9 +204,10 @@ export function createSettingsActions({
       });
       state.storageReport = result.report || state.storageReport;
       state.storageLastCleanup = result;
-      const freed = Number(result.freed || 0);
+      const removedBytes = Number(result.removedBytes ?? result.freed ?? 0);
+      const freeDelta = Number(result.freeDelta ?? result.freed ?? 0);
       state.message = result.ok
-        ? `${successMessage}: освобождено ${freed ? `${Math.round(freed / 1024 / 102.4) / 10} MB` : '0 MB'}`
+        ? `${successMessage}: удалено файлов на ${formatStorageBytes(removedBytes)}, overlay ${freeDelta >= 0 ? '+' : ''}${formatStorageBytes(freeDelta)}`
         : (Array.isArray(result.errors) && result.errors.length ? result.errors.join('\n') : 'Очистка завершилась с ошибкой');
     } finally {
       state.storageCleaning = '';

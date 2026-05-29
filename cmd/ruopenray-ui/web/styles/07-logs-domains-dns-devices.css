@@ -2246,8 +2246,10 @@
   }
 
   .sidebar.nav-open .sidebar-footer {
-    display: block;
-    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 6px;
   }
 
   .sidebar.nav-open .nav button {
@@ -2257,6 +2259,20 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .sidebar.nav-open .logout-button {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 52px;
+    justify-content: center;
+    border: 1px solid transparent;
+    background: rgba(22, 34, 41, 0.5);
+    text-align: center;
+  }
+
+  .sidebar.nav-open .logout-button span[aria-hidden="true"] {
+    width: auto;
   }
 
   .intercept-summary-grid,
@@ -2451,5 +2467,109 @@
   .route-target-trigger {
     width: 100%;
     justify-content: center;
+  }
+
+  .dashboard-server-option {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .server-option-pick {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .server-option-side {
+    width: 100%;
+    justify-self: stretch;
+    text-align: left;
+  }
+
+  .server-option-actions,
+  .server-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .server-option-actions .compact-action,
+  .server-option-actions .server-action-icon,
+  .server-actions .btn,
+  .server-actions .tag,
+  .server-actions .server-action-icon {
+    width: 56px;
+    min-width: 56px;
+    max-width: 56px;
+    height: 56px;
+    min-height: 56px;
+    flex: 0 0 56px;
+    padding: 0;
+  }
+
+  .server-option-actions .server-action-icon svg,
+  .server-actions .server-action-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .server-option-actions .server-state-pill,
+  .server-actions .active-tag {
+    width: 56px;
+    min-width: 56px;
+    max-width: 56px;
+    height: 56px;
+    min-height: 56px;
+    padding: 0;
+    border-radius: 14px;
+    font-size: 0;
+  }
+
+  .server-option-actions .server-state-pill::before,
+  .server-actions .active-tag::before {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+  }
+
+  .server-option-actions .server-state-pill.active::before {
+    color: #06120c;
+    font-size: 22px;
+    line-height: 1;
+    content: "✓";
+  }
+
+  .server-actions .active-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .server-actions .active-tag::before {
+    content: "✓";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #06120c;
+    background: transparent;
+    box-shadow: none;
+    font-size: 22px;
+    font-weight: 950;
+  }
+
+  .profile-panel {
+    overflow: hidden;
+  }
+
+  .profile-table-scroll {
+    margin-inline: -2px;
+    padding-bottom: 6px;
+  }
+
+  .profile-table {
+    display: table;
+    min-width: 640px;
   }
 }
