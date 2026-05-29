@@ -168,6 +168,75 @@
   white-space: nowrap;
 }
 
+@media (max-width: 520px) {
+  .dash-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .dash-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+  }
+
+  .router-health-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric-stat {
+    width: 100%;
+    min-width: 0;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .metric-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .metric-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .metric-stat strong {
+    font-size: 14px;
+  }
+
+  .metric-stat div > span,
+  .metric-stat small {
+    font-size: 10.5px;
+  }
+
+  .metric-stat:nth-child(5),
+  .traffic-metric {
+    grid-column: 1 / -1;
+  }
+
+  .metric-stat:nth-child(5) div,
+  .traffic-metric div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 10px;
+    row-gap: 2px;
+  }
+
+  .metric-stat:nth-child(5) div > span,
+  .traffic-metric div > span {
+    grid-column: 1 / -1;
+  }
+
+  .traffic-metric strong,
+  .traffic-metric small {
+    white-space: normal;
+  }
+}
+
 .traffic-monitor {
   margin-top: 10px;
   padding: 12px;

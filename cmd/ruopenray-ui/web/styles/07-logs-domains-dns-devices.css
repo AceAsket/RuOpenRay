@@ -1945,12 +1945,13 @@
   }
 
   .settings-log-levels {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(132px, 1fr));
+    overflow-x: auto;
   }
 
   .segmented.settings-log-levels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(132px, 1fr));
     width: 100%;
   }
 
@@ -2317,6 +2318,28 @@
     white-space: normal;
   }
 
+  .top-actions {
+    gap: 8px;
+  }
+
+  .top-actions > .pill,
+  .top-actions > .profile-pill,
+  .top-actions > .app-version-pill {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .top-actions > .app-version-pill {
+    height: auto;
+    min-height: 32px;
+    padding-block: 7px;
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+  }
+
   .service-controls {
     width: auto;
     max-width: 100%;
@@ -2564,12 +2587,76 @@
   }
 
   .profile-table-scroll {
-    margin-inline: -2px;
-    padding-bottom: 6px;
+    margin: 0;
+    padding-bottom: 0;
+    overflow: visible;
   }
 
   .profile-table {
-    display: table;
-    min-width: 640px;
+    display: block;
+    min-width: 0;
+  }
+
+  .profile-table thead {
+    display: none;
+  }
+
+  .profile-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .profile-table tr {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: rgba(8, 13, 17, 0.34);
+  }
+
+  .profile-table td {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .profile-table td::before {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .profile-table td:nth-child(1)::before {
+    content: "Имя";
+  }
+
+  .profile-table td:nth-child(2)::before {
+    content: "Обновлен";
+  }
+
+  .profile-table td:nth-child(3)::before {
+    content: "Размер";
+  }
+
+  .profile-table td:nth-child(4)::before {
+    content: "Статус";
+  }
+
+  .profile-table td:nth-child(5) {
+    display: block;
+  }
+
+  .profile-table td:nth-child(5)::before {
+    content: none;
+  }
+
+  .profile-table td .btn,
+  .profile-table td button {
+    width: 100%;
   }
 }

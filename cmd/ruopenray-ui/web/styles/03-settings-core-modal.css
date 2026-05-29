@@ -141,18 +141,20 @@
 
 .settings-log-levels {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  width: min(620px, 100%);
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .segmented.settings-log-levels {
   display: grid;
-  width: min(620px, 100%);
+  width: 100%;
 }
 
 .settings-log-levels button {
   min-width: 0;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .settings-check {
@@ -798,9 +800,23 @@ select {
 
 .login {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 20px;
+}
+
+body.is-login-page {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+body.is-login-page #app,
+body.is-login-page .login {
+  height: 100%;
+  min-height: 100%;
 }
 
 .login-card {
@@ -866,7 +882,7 @@ select {
 
 @media (max-width: 520px) {
   .login {
-    padding: 16px;
+    padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
   }
 
   .login-card {

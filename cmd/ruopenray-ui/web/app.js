@@ -1782,6 +1782,7 @@ function render() {
   const renderSnapshot = captureRenderState();
   state.pendingBackgroundRender = false;
   if (!state.token) return loginView();
+  document.body.classList.remove('is-login-page');
   const statusLoaded = Boolean(state.status);
   const running = state.status?.service?.running;
   const xrayUptime = Number(state.status?.service?.uptime || 0);
