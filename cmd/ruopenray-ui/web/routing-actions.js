@@ -1,11 +1,13 @@
 import { routePresetIconView } from './route-visuals.js';
 import {
   expandRoutePresetRules,
-  routePresetRuleMatches,
-  routePresetRuleSetMatches,
-  routeRuleConditionKey,
-  routeRuleConditionSignature
+  routeRuleConditionKey
 } from './routing-rule-helpers.js';
+import {
+  routePresetInstallSummaryFor,
+  routePresetSequenceAt as findRoutePresetSequenceAt,
+  routeRulePresetMatchesFor
+} from './routing-groups.js';
 
 export function createRoutingActions({
   state,
@@ -249,24 +251,6 @@ export function createRoutingActions({
     return next;
   }
 
-  function normalizedRouteTarget(tag) {
-    const value = String(tag || '').trim();
-    if (!value) return '';
-    const active = activeProxyTag();
-    if (value === 'proxy' || (active && value === active)) return 'proxy';
-    return value;
-  }
-
-  function canonicalRouteRule(rule) {
-    const target = rule?.balancerTag
-      ? `balancer:${rule.balancerTag}`
-      : `outbound:${normalizedRouteTarget(rule?.outboundTag || '')}`;
-    return JSON.stringify({
-      target,
-      ...routeRuleConditionSignature(rule)
-    });
-  }
-
   function allRoutePresetEntries() {
     return [
       ...builtinRoutePresetEntries({ includeHidden: true }),
@@ -275,27 +259,11 @@ export function createRoutingActions({
   }
 
   function routeRulePresetMatches(rule) {
-    return allRoutePresetEntries()
-      .filter(([key]) => routePresetRules(key).some((presetRule) => routePresetRuleMatches(rule, normalizePresetRule(presetRule))))
-      .map(([key]) => ({ key, title: routePresetTitle(key) }));
+    return routeRulePresetMatchesFor(rule, allRoutePresetEntries(), routePresetRules, normalizePresetRule, routePresetTitle);
   }
 
   function routePresetSequenceAt(rules, startIndex) {
-    const entries = allRoutePresetEntries()
-      .map(([key, preset]) => ({
-        key,
-        preset,
-        title: routePresetTitle(key),
-        rules: routePresetRules(key).map(normalizePresetRule)
-      }))
-      .filter((entry) => entry.rules.length > 0)
-      .sort((left, right) => right.rules.length - left.rules.length);
-    for (const entry of entries) {
-      if (startIndex + entry.rules.length > rules.length) continue;
-      const matched = routePresetRuleSetMatches(rules.slice(startIndex, startIndex + entry.rules.length), entry.rules);
-      if (matched) return entry;
-    }
-    return null;
+    return findRoutePresetSequenceAt(rules, startIndex, allRoutePresetEntries(), routePresetRules, normalizePresetRule, routePresetTitle);
   }
 
   function routeRuleSourceWithPresets(rule) {
@@ -309,16 +277,7 @@ export function createRoutingActions({
   }
 
   function routePresetInstallSummary(key) {
-    const presetRules = routePresetRules(key).map(normalizePresetRule);
-    const currentKeys = new Set(routeRules().map(routeRuleConditionKey));
-    const presetKeys = [...new Set(presetRules.map(routeRuleConditionKey))];
-    const matched = presetKeys.filter((key) => currentKeys.has(key)).length;
-    return {
-      matched,
-      total: presetKeys.length,
-      installed: Boolean(presetKeys.length && matched === presetKeys.length),
-      partial: Boolean(matched && matched < presetKeys.length)
-    };
+    return routePresetInstallSummaryFor(key, routeRules(), routePresetRules, normalizePresetRule);
   }
 
   function routePresetInstallLabel(key) {

@@ -40,6 +40,7 @@ export const sensitiveBrowserStorageKeys = [
   'ruopenray_active_server',
   savedPasswordStorageKey,
   installPasswordStorageKey,
+  routeNamesStorageKey,
   disabledRouteRulesStorageKey,
   customRoutePresetsStorageKey,
   setupSnapshotStorageKey,
@@ -107,25 +108,14 @@ export function shellQuote(value) {
 
 export function loadRouteNames() {
   try {
-    const names = JSON.parse(globalThis.localStorage?.getItem(routeNamesStorageKey) || '{}');
-    return names && typeof names === 'object' && !Array.isArray(names) ? names : {};
-  } catch {
-    return {};
-  }
+    globalThis.localStorage?.removeItem(routeNamesStorageKey);
+  } catch {}
+  return {};
 }
 
 export function loadCustomRoutePresets() {
   try {
-    const items = JSON.parse(globalThis.localStorage?.getItem(customRoutePresetsStorageKey) || '{}');
-    if (!items || typeof items !== 'object' || Array.isArray(items)) return {};
-    return Object.fromEntries(Object.entries(items).filter(([, preset]) => {
-      return preset
-        && typeof preset === 'object'
-        && Array.isArray(preset.rules)
-        && preset.rules.length
-        && String(preset.title || '').trim();
-    }));
-  } catch {
-    return {};
-  }
+    globalThis.localStorage?.removeItem(customRoutePresetsStorageKey);
+  } catch {}
+  return {};
 }

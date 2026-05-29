@@ -188,6 +188,78 @@ export function createXrayDraftActions({
     render();
   }
 
+  function readLocalProxyForm(kind) {
+    const prefix = kind === 'socks' ? 'Socks' : 'Http';
+    const defaults = kind === 'socks'
+      ? { tag: 'socks-in', protocol: 'socks', port: 10808, udp: true }
+      : { tag: 'http-in', protocol: 'http', port: 10809, udp: false };
+    const enabled = Boolean(document.getElementById(`localProxy${prefix}Enabled`)?.checked);
+    const listen = String(document.getElementById(`localProxy${prefix}Listen`)?.value || '127.0.0.1').trim() || '127.0.0.1';
+    const port = Number(document.getElementById(`localProxy${prefix}Port`)?.value || defaults.port);
+    const auth = Boolean(document.getElementById(`localProxy${prefix}Auth`)?.checked);
+    const user = String(document.getElementById(`localProxy${prefix}User`)?.value || '').trim();
+    const pass = String(document.getElementById(`localProxy${prefix}Pass`)?.value || '');
+    if (enabled && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+      throw new Error(`${kind === 'socks' ? 'SOCKS5' : 'HTTP'}: порт должен быть от 1 до 65535`);
+    }
+    if (enabled && auth && (!user || !pass)) {
+      throw new Error(`${kind === 'socks' ? 'SOCKS5' : 'HTTP'}: для авторизации нужны пользователь и пароль`);
+    }
+    return { ...defaults, enabled, listen, port, auth, user, pass };
+  }
+
+  function buildLocalProxyInbound(form, existing) {
+    const settings = { ...(existing?.settings || {}) };
+    if (form.protocol === 'socks') {
+      settings.udp = true;
+    } else {
+      delete settings.udp;
+    }
+    if (form.auth) {
+      settings.accounts = [{ user: form.user, pass: form.pass }];
+      if (form.protocol === 'socks') settings.auth = 'password';
+      else delete settings.auth;
+    } else {
+      delete settings.auth;
+      delete settings.accounts;
+    }
+    return {
+      ...(existing || {}),
+      tag: form.tag,
+      listen: form.listen,
+      port: form.port,
+      protocol: form.protocol,
+      settings
+    };
+  }
+
+  function upsertLocalProxyInbound(inbounds, form) {
+    const index = inbounds.findIndex((item) => item?.tag === form.tag);
+    if (!form.enabled) {
+      return index >= 0 ? inbounds.filter((_, itemIndex) => itemIndex !== index) : inbounds;
+    }
+    if (index >= 0) {
+      return inbounds.map((item, itemIndex) => itemIndex === index ? buildLocalProxyInbound(form, item) : item);
+    }
+    return [...inbounds, buildLocalProxyInbound(form)];
+  }
+
+  function saveLocalProxyDraft() {
+    const socks = readLocalProxyForm('socks');
+    const http = readLocalProxyForm('http');
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    let inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
+    inbounds = upsertLocalProxyInbound(inbounds, socks);
+    inbounds = upsertLocalProxyInbound(inbounds, http);
+    next.inbounds = inbounds;
+    syncConfig(next);
+    const enabled = [socks, http].filter((item) => item.enabled).map((item) => `${item.protocol === 'socks' ? 'SOCKS5' : 'HTTP'} ${item.listen}:${item.port}`);
+    state.message = enabled.length
+      ? `Локальные прокси обновлены в черновике: ${enabled.join(', ')}. Проверьте конфигурацию и примените изменения.`
+      : 'Локальные прокси выключены в черновике Xray.';
+    render();
+  }
+
   async function copyFirewallCommands() {
     await navigator.clipboard.writeText(firewallCommands());
     state.message = 'Команды OpenWrt скопированы в буфер обмена';
@@ -206,6 +278,7 @@ export function createXrayDraftActions({
     setDnsModeDraft,
     prepareTransparentDraft,
     prepareDnsInboundDraft,
+    saveLocalProxyDraft,
     copyFirewallCommands,
     copyInstallCommand
   };

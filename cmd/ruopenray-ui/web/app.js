@@ -60,7 +60,6 @@ import {
   clearAuthToken,
   domainMonitorFilterStorageKey,
   installPasswordStorageKey,
-  routeNamesStorageKey,
   shellQuote,
   xrayStatsResetAtStorageKey
 } from './storage.js';
@@ -601,7 +600,6 @@ const runtimeController = createRuntimeController({
   setActiveServerTag,
   inferredActiveProxyTag,
   syncLanDnsStatus,
-  routeNamesStorageKey,
   syncLoggingSettings,
   syncServiceSettings,
   clearAuth
@@ -1072,6 +1070,7 @@ const {
   setDnsModeDraft,
   prepareTransparentDraft,
   prepareDnsInboundDraft,
+  saveLocalProxyDraft,
   copyFirewallCommands,
   copyInstallCommand
 } = xrayDraftActions;
@@ -2177,6 +2176,7 @@ function bind() {
       disableTcpFastOpenDraft: () => setTcpFastOpenDraft(false),
       prepareTransparent: prepareTransparentDraft,
       prepareDnsInbound: prepareDnsInboundDraft,
+      saveLocalProxyDraft,
       copyFirewall: copyFirewallCommands,
       copyInstallCommand: () => copyInstallCommand(),
       copyInstallWithXrayCommand: () => copyInstallCommand(true),

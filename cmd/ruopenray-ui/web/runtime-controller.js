@@ -13,7 +13,6 @@ export function createRuntimeController({
   setActiveServerTag,
   inferredActiveProxyTag,
   syncLanDnsStatus,
-  routeNamesStorageKey,
   syncLoggingSettings,
   syncServiceSettings,
   clearAuth
@@ -299,48 +298,17 @@ export function createRuntimeController({
         state.disabledRouteRules = disabledRoutes.rules.filter((item) => item && item.rule);
       }
       if (routeNames?.names && typeof routeNames.names === 'object' && !Array.isArray(routeNames.names)) {
-        const serverNames = Object.fromEntries(Object.entries(routeNames.names).filter(([, value]) => String(value || '').trim()));
-        const legacyNames = state.legacyRouteNames && typeof state.legacyRouteNames === 'object' && !Array.isArray(state.legacyRouteNames) ? state.legacyRouteNames : {};
-        const localNames = Object.keys(legacyNames).length ? legacyNames : {};
-        if (!Object.keys(serverNames).length && Object.keys(localNames).length) {
-          state.routeNames = localNames;
-          request('/api/routing/names', {
-            method: 'POST',
-            body: JSON.stringify({ names: localNames })
-          }).then(() => {
-            if (routeNamesStorageKey) globalThis.localStorage?.removeItem(routeNamesStorageKey);
-            state.legacyRouteNames = {};
-          }).catch(() => {});
-        } else {
-          state.routeNames = serverNames;
-          if (Object.keys(serverNames).length && routeNamesStorageKey) globalThis.localStorage?.removeItem(routeNamesStorageKey);
-          state.legacyRouteNames = {};
-        }
-      } else if (state.legacyRouteNames && Object.keys(state.legacyRouteNames).length) {
-        state.routeNames = state.legacyRouteNames;
+        state.routeNames = Object.fromEntries(Object.entries(routeNames.names).filter(([, value]) => String(value || '').trim()));
+      } else {
+        state.routeNames = {};
       }
+      state.legacyRouteNames = {};
       if (routePresets?.presets && typeof routePresets.presets === 'object' && !Array.isArray(routePresets.presets)) {
-        const serverPresets = routePresets.presets;
-        const legacyPresets = state.legacyCustomRoutePresets && typeof state.legacyCustomRoutePresets === 'object' && !Array.isArray(state.legacyCustomRoutePresets)
-          ? state.legacyCustomRoutePresets
-          : {};
-        if (!Object.keys(serverPresets).length && Object.keys(legacyPresets).length) {
-          state.customRoutePresets = legacyPresets;
-          request('/api/routing/presets', {
-            method: 'POST',
-            body: JSON.stringify({ presets: legacyPresets })
-          }).then(() => {
-            globalThis.localStorage?.removeItem('ruopenray_custom_route_presets');
-            state.legacyCustomRoutePresets = {};
-          }).catch(() => {});
-        } else {
-          state.customRoutePresets = serverPresets;
-          if (Object.keys(serverPresets).length) globalThis.localStorage?.removeItem('ruopenray_custom_route_presets');
-          state.legacyCustomRoutePresets = {};
-        }
-      } else if (state.legacyCustomRoutePresets && Object.keys(state.legacyCustomRoutePresets).length) {
-        state.customRoutePresets = state.legacyCustomRoutePresets;
+        state.customRoutePresets = routePresets.presets;
+      } else {
+        state.customRoutePresets = {};
       }
+      state.legacyCustomRoutePresets = {};
       if (serverMeta?.items && typeof serverMeta.items === 'object' && !Array.isArray(serverMeta.items)) {
         state.serverMeta = Object.fromEntries(
           Object.entries(serverMeta.items)

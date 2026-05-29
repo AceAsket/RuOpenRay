@@ -64,6 +64,7 @@ const busyLabels = {
   disableTcpFastOpenSystem: 'Выключаю TCP Fast Open',
   prepareTransparent: 'Готовлю transparent inbound',
   prepareDnsInbound: 'Готовлю DNS inbound',
+  saveLocalProxyDraft: 'Обновляю локальные прокси',
   startClientTrafficTest: 'Начинаю замер трафика',
   finishClientTrafficTest: 'Проверяю трафик клиента',
   previewLanDnsUpstream: 'Проверяю LAN DNS',

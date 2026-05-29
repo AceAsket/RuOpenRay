@@ -43,6 +43,7 @@ function settingsPanel() {
     ['logging', 'Логирование'],
     ['security', 'Панель'],
     ['service', 'Сервис'],
+    ['local-proxy', 'Локальные прокси'],
     ['storage', 'Память'],
     ['updates', 'Обновление']
   ];
@@ -121,6 +122,94 @@ function settingsPanel() {
       <div class="toolbar">
         <button class="btn warning ${state.loggingSaving ? 'is-busy' : ''}" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить логирование'}</button>
         <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
+      </div>
+    </section>
+  `;
+  const localProxyDefaults = {
+    socks: { tag: 'socks-in', label: 'SOCKS5', port: 10808, protocol: 'socks' },
+    http: { tag: 'http-in', label: 'HTTP', port: 10809, protocol: 'http' }
+  };
+  const localProxyInfo = (kind) => {
+    const defaults = localProxyDefaults[kind];
+    const inbounds = Array.isArray(state.config?.inbounds) ? state.config.inbounds : [];
+    const inbound = inbounds.find((item) => item?.tag === defaults.tag)
+      || inbounds.find((item) => item?.protocol === defaults.protocol && String(item?.listen || '') === '127.0.0.1');
+    const accounts = Array.isArray(inbound?.settings?.accounts) ? inbound.settings.accounts : [];
+    const account = accounts[0] || {};
+    const auth = inbound?.settings?.auth === 'password' || Boolean(account.user || account.pass);
+    return {
+      ...defaults,
+      enabled: Boolean(inbound),
+      listen: inbound?.listen || '127.0.0.1',
+      port: Number(inbound?.port || defaults.port),
+      auth,
+      user: account.user || '',
+      pass: account.pass || '',
+      udp: inbound?.settings?.udp !== false
+    };
+  };
+  const proxyCard = (kind) => {
+    const info = localProxyInfo(kind);
+    const name = kind === 'socks' ? 'Socks' : 'Http';
+    const lanExposed = info.enabled && info.listen !== '127.0.0.1' && info.listen !== '::1';
+    const authMissing = lanExposed && !info.auth;
+    return `
+      <article class="local-proxy-card ${info.enabled ? 'active' : ''} ${authMissing ? 'warn' : ''}">
+        <div class="local-proxy-card-head">
+          <label class="settings-check compact ${info.enabled ? 'active' : ''}">
+            <input id="localProxy${name}Enabled" type="checkbox" ${info.enabled ? 'checked' : ''} />
+            <span><strong>${escapeHtml(info.label)}</strong><em>${info.enabled ? `${escapeHtml(info.listen)}:${escapeHtml(String(info.port))}` : 'не включен'}</em></span>
+          </label>
+          <span class="local-proxy-status ${info.enabled ? 'ok' : ''}">${info.enabled ? 'в черновике' : 'выключен'}</span>
+        </div>
+        <div class="local-proxy-form">
+          <div class="settings-field">
+            <label>Слушать адрес</label>
+            <input id="localProxy${name}Listen" list="localProxyListenPresets" value="${escapeHtml(info.listen)}" placeholder="127.0.0.1" />
+            <small>127.0.0.1 — только роутер, 0.0.0.0 или LAN-IP — доступно из сети.</small>
+          </div>
+          <div class="settings-field">
+            <label>Порт</label>
+            <input id="localProxy${name}Port" type="number" min="1" max="65535" value="${escapeHtml(String(info.port))}" />
+          </div>
+          <label class="settings-check compact ${info.auth ? 'active' : ''}">
+            <input id="localProxy${name}Auth" type="checkbox" ${info.auth ? 'checked' : ''} />
+            <span><strong>Логин и пароль</strong><em>Обязательно включайте, если прокси слушает LAN.</em></span>
+          </label>
+          <div class="settings-field">
+            <label>Пользователь</label>
+            <input id="localProxy${name}User" value="${escapeHtml(info.user)}" autocomplete="off" />
+          </div>
+          <div class="settings-field">
+            <label>Пароль</label>
+            <input id="localProxy${name}Pass" type="password" value="${escapeHtml(info.pass)}" autocomplete="new-password" />
+          </div>
+        </div>
+        ${authMissing ? `<div class="settings-warning compact danger"><strong>Открыто в LAN без пароля</strong><span>Такой прокси сможет использовать любое устройство в сети. Лучше включить логин и пароль или оставить 127.0.0.1.</span></div>` : ''}
+      </article>
+    `;
+  };
+  const localProxySection = `
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>Локальные прокси Xray</h2><span>SOCKS5 и HTTP inbound’ы для ручной настройки приложений. Они используют те же правила маршрутизации Xray, что и остальная конфигурация.</span></div>
+      </div>
+      <datalist id="localProxyListenPresets">
+        <option value="127.0.0.1">только на роутере</option>
+        <option value="0.0.0.0">все интерфейсы</option>
+        <option value="192.168.1.1">LAN-адрес роутера</option>
+      </datalist>
+      <div class="local-proxy-grid">
+        ${proxyCard('socks')}
+        ${proxyCard('http')}
+      </div>
+      <div class="settings-warning">
+        <strong>Как у v2rayA</strong>
+        <span>Xray сам не поднимает SOCKS5 автоматически: нужен inbound в config.json. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn warning ${state.busyAction === 'saveLocalProxyDraft' ? 'is-busy' : ''}" data-action="saveLocalProxyDraft" ${state.busyAction === 'saveLocalProxyDraft' ? 'disabled' : ''}>${state.busyAction === 'saveLocalProxyDraft' ? 'Обновляю...' : 'Обновить черновик Xray'}</button>
+        <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
       </div>
     </section>
   `;
@@ -289,6 +378,8 @@ function settingsPanel() {
       ? storageSection
     : settingsView === 'service'
       ? serviceSection
+    : settingsView === 'local-proxy'
+      ? localProxySection
       : loggingSections;
   return `
     <section class="settings-hero">

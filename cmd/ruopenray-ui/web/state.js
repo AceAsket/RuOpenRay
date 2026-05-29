@@ -2,8 +2,6 @@ import {
   domainMonitorFilterStorageKey,
   initialInstallPassword,
   loadAuthToken,
-  loadCustomRoutePresets,
-  loadRouteNames,
   xrayStatsResetAtStorageKey
 } from './storage.js';
 
@@ -227,9 +225,9 @@ export function createInitialState() {
   routePresetEditDsl: '',
   routePresetEditPreview: null,
   routePresetEditChecked: false,
-  legacyCustomRoutePresets: loadCustomRoutePresets(),
+  legacyCustomRoutePresets: {},
   customRoutePresets: {},
-  legacyRouteNames: loadRouteNames(),
+  legacyRouteNames: {},
   routeNames: {},
   disabledRouteRules: [],
   deviceName: '',
