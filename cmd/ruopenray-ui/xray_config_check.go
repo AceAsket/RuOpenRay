@@ -121,16 +121,16 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	info := []string{}
 	counts := map[string]int{"proxy": 0, "direct": 0, "block": 0, "other": 0, "total": 0}
 	if !hasTransparentInbound && (hasDNSInbound || hasPlainLocalInbound) {
-		warnings = append(warnings, "Нет transparent inbound: LAN-трафик через nftables/TPROXY не попадет в Xray. Подготовьте transparent_ipv4 в разделе Перехват или через мастер настройки.")
+		warnings = append(warnings, "Нет входящего потока перехвата: LAN-трафик через nftables/TPROXY не попадет в Xray. Подготовьте transparent_ipv4 в разделе Перехват или через мастер настройки.")
 	}
 	if hasDNSInbound && !hasTransparentInbound {
-		warnings = append(warnings, "DNS inbound ruopenray_dns_in есть, но он обрабатывает только DNS с dnsmasq. Для сайтов и приложений LAN-клиентов нужен отдельный transparent inbound.")
+		warnings = append(warnings, "DNS-вход ruopenray_dns_in есть, но он обрабатывает только DNS с dnsmasq. Для сайтов и приложений LAN-клиентов нужен отдельный входящий поток перехвата.")
 	}
 	if hasDNSInbound && runtime.GOOS != "windows" {
 		host, port, _ := xrayDNSInboundEndpoint(cfg)
 		owner := udpPortOwner(host, port)
 		if owner != "" && !strings.Contains(owner, "/xray") {
-			warnings = append(warnings, fmt.Sprintf("DNS inbound ruopenray_dns_in не сможет стартовать: UDP %s:%d уже занят процессом %s. Подготовьте DNS inbound заново, RuOpenRay выберет свободный порт.", host, port, owner))
+			warnings = append(warnings, fmt.Sprintf("DNS-вход ruopenray_dns_in не сможет стартовать: UDP %s:%d уже занят процессом %s. Подготовьте DNS-вход заново, RuOpenRay выберет свободный порт.", host, port, owner))
 		}
 	}
 	geoipPath := filepath.Join(s.cfg.GeoDir, "geoip.dat")
@@ -166,10 +166,10 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			}
 			if strategy == "leastPing" || strategy == "leastLoad" {
 				requiredSelectors := observatorySelectors
-				requiredName := "observatory.subjectSelector"
+				requiredName := "настройки наблюдения Xray"
 				if strategy == "leastLoad" {
 					requiredSelectors = burstObservatorySelectors
-					requiredName = "burstObservatory.subjectSelector"
+					requiredName = "настройки burst-наблюдения Xray"
 				}
 				hasSelector := false
 				for _, selector := range asArray(balancer["selector"]) {
@@ -179,7 +179,7 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 					}
 				}
 				if !hasSelector {
-					warnings = append(warnings, fmt.Sprintf("Балансировщик %d: strategy %s требует %s", index+1, strategy, requiredName))
+					warnings = append(warnings, fmt.Sprintf("Балансировщик %d: выбранный режим %s требует %s", index+1, strategy, requiredName))
 				}
 			}
 		}
@@ -199,14 +199,14 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			balancerTag = ""
 		}
 		if tag != "" && balancerTag != "" {
-			errors = append(errors, fmt.Sprintf("Правило %d: укажите outboundTag или balancerTag, но не оба сразу", index+1))
+			errors = append(errors, fmt.Sprintf("Правило %d: укажите сервер или балансировщик, но не оба сразу", index+1))
 		} else if tag == "" && balancerTag == "" {
-			warnings = append(warnings, fmt.Sprintf("Правило %d: не указан outboundTag или balancerTag", index+1))
+			warnings = append(warnings, fmt.Sprintf("Правило %d: не указан сервер или балансировщик", index+1))
 		} else if balancerTag != "" && !balancers[balancerTag] {
 			errors = append(errors, fmt.Sprintf("Правило %d: balancerTag %q не найден в routing.balancers", index+1, balancerTag))
 		} else if tag != "" {
 			if _, exists := outbounds[tag]; !exists && !apiTags[tag] {
-				errors = append(errors, fmt.Sprintf("Правило %d: outboundTag %q не найден в outbounds", index+1, tag))
+				errors = append(errors, fmt.Sprintf("Правило %d: сервер %q не найден в списке направлений Xray", index+1, tag))
 			}
 		}
 		switch {

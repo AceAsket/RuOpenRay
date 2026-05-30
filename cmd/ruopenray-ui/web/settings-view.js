@@ -23,7 +23,7 @@ function settingsPanel() {
   const storagePressure = storageUsedPercent >= 90 || (storageFree > 0 && storageFree < 8 * 1024 * 1024);
   const unusedDat = Array.isArray(storageReport.unusedDat) ? storageReport.unusedDat : [];
   const storageRows = [
-    ['backups', 'Бэкапы RuOpenRay', storageItem('backups').path || '', 'Резервные копии конфигов, бинарников и geo-файлов.'],
+    ['backups', 'Резервные копии RuOpenRay', storageItem('backups').path || '', 'Копии конфигураций, бинарников и geo-файлов.'],
     ['geoBase', 'Стандартные DAT', storageItem('geoBase').path || '', 'geoip.dat и geosite.dat, которые обычно нужны Xray.'],
     ['geoExtra', 'Дополнительные DAT', storageItem('geoExtra').path || '', 'Отдельные файлы для ext:"file.dat:list". Неиспользуемые можно удалить.'],
     ['logs', 'Логи', storageItem('logs').path || '', 'Access/error/DNS-логи и ротационные копии.'],
@@ -49,8 +49,8 @@ function settingsPanel() {
   ];
   const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'logging';
   const loggingApplyHint = state.loggingRestart
-    ? 'Сохранение проверит config.json и перезапустит Xray, новые параметры начнут работать сразу.'
-    : 'Сохранение изменит config.json и настройки ротации. Работающий Xray применит новые пути, уровень и dnsLog после следующего перезапуска.';
+    ? 'Сохранение проверит конфигурацию Xray и перезапустит сервис, новые параметры начнут работать сразу.'
+    : 'Сохранение изменит конфигурацию Xray и настройки ротации. Работающий Xray применит новые пути, уровень и DNS-лог после следующего перезапуска.';
   const loggingSections = `
     <section class="panel settings-section">
       <div class="panel-title">
@@ -67,7 +67,7 @@ function settingsPanel() {
 
         <label class="settings-check ${state.loggingAccessLog ? 'active' : ''}">
           <input id="loggingAccessLog" type="checkbox" ${state.loggingAccessLog ? 'checked' : ''} />
-          <span><strong>Логи доступа</strong><em>Соединения, источник, назначение, inbound и outbound.</em></span>
+          <span><strong>Логи доступа</strong><em>Соединения, источник, назначение, входящий поток и исходящее направление.</em></span>
           <b>${accessSize}</b>
         </label>
         <label class="settings-check ${state.loggingErrorLog ? 'active' : ''}">
@@ -111,7 +111,7 @@ function settingsPanel() {
         </label>
         <label class="settings-check compact ${state.loggingRestart ? 'active' : ''}">
           <input id="loggingRestart" type="checkbox" ${state.loggingRestart ? 'checked' : ''} />
-          <span><strong>Применить сразу через перезапуск Xray</strong><em>Без перезапуска изменения сохраняются в config.json и ждут следующего старта Xray.</em></span>
+          <span><strong>Применить сразу через перезапуск Xray</strong><em>Без перезапуска изменения сохраняются в конфигурации и ждут следующего старта Xray.</em></span>
         </label>
       </div>
       <p class="settings-hint">${escapeHtml(loggingApplyHint)}</p>
@@ -192,7 +192,7 @@ function settingsPanel() {
   const localProxySection = `
     <section class="panel settings-section">
       <div class="panel-title">
-        <div><h2>Локальные прокси Xray</h2><span>SOCKS5 и HTTP inbound’ы для ручной настройки приложений. Они используют те же правила маршрутизации Xray, что и остальная конфигурация.</span></div>
+        <div><h2>Локальные прокси Xray</h2><span>SOCKS5 и HTTP-входы для ручной настройки приложений. Они используют те же правила маршрутизации Xray, что и остальная конфигурация.</span></div>
       </div>
       <datalist id="localProxyListenPresets">
         <option value="127.0.0.1">только на роутере</option>
@@ -205,7 +205,7 @@ function settingsPanel() {
       </div>
       <div class="settings-warning">
         <strong>Как у v2rayA</strong>
-        <span>Xray сам не поднимает SOCKS5 автоматически: нужен inbound в config.json. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
+        <span>Xray сам не поднимает SOCKS5 автоматически: нужен входящий поток в конфигурации. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
       </div>
       <div class="toolbar">
         <button class="btn warning ${state.busyAction === 'saveLocalProxyDraft' ? 'is-busy' : ''}" data-action="saveLocalProxyDraft" ${state.busyAction === 'saveLocalProxyDraft' ? 'disabled' : ''}>${state.busyAction === 'saveLocalProxyDraft' ? 'Обновляю...' : 'Обновить черновик Xray'}</button>
@@ -257,7 +257,7 @@ function settingsPanel() {
       <div class="settings-maintenance">
         <label class="settings-check compact ${state.appBackup ? 'active' : ''}">
           <input id="appBackup" type="checkbox" ${state.appBackup ? 'checked' : ''} />
-          <span><strong>Сохранить бэкап бинарника</strong><em>Выключайте на роутерах с малым NAND, если свободного места мало.</em></span>
+          <span><strong>Сохранить резервную копию бинарника</strong><em>Выключайте на роутерах с малым NAND, если свободного места мало.</em></span>
         </label>
       </div>
       <div class="toolbar">
@@ -330,12 +330,12 @@ function settingsPanel() {
       <div class="settings-info-grid">
         <article><span>Свободно</span><strong>${escapeHtml(storageFree ? byteSize(storageFree) : 'неизвестно')}</strong><small>${escapeHtml(storageDisk.path || storageDisk.label || 'overlay')}</small></article>
         <article><span>Занято</span><strong>${escapeHtml(storageUsedPercent ? `${storageUsedPercent}%` : 'неизвестно')}</strong><small>${escapeHtml(storageDisk.total ? `из ${byteSize(storageDisk.total)}` : '')}</small></article>
-        <article><span>Бэкапы</span><strong>${escapeHtml(byteSize(storageSize('backups')))}</strong><small>${escapeHtml(`${storageCount('backups')} файлов`)}</small></article>
+        <article><span>Резервные копии</span><strong>${escapeHtml(byteSize(storageSize('backups')))}</strong><small>${escapeHtml(`${storageCount('backups')} файлов`)}</small></article>
         <article><span>DAT-файлы</span><strong>${escapeHtml(byteSize(storageSize('geoBase') + storageSize('geoExtra')))}</strong><small>${escapeHtml(`${storageCount('geoBase') + storageCount('geoExtra')} файлов`)}</small></article>
       </div>
       ${storagePressure ? `<div class="settings-warning danger">
         <strong>Мало свободного места</strong>
-        <span>Сначала очистите бэкапы и кэш пакетов. Стандартные geoip.dat/geosite.dat удаляйте только если понимаете, какие правила их используют.</span>
+        <span>Сначала очистите резервные копии и кэш пакетов. Стандартные geoip.dat/geosite.dat удаляйте только если понимаете, какие правила их используют.</span>
       </div>` : ''}
       <div class="settings-maintenance storage-maintenance-list">
         ${storageRows.map(([key, label, path, hint]) => `
@@ -353,10 +353,10 @@ function settingsPanel() {
         <strong>Неиспользуемые DAT</strong>
         <span>${unusedDat.length
           ? escapeHtml(`${unusedDat.length} дополнительных файлов не найдены в активных ext-правилах: ${unusedDat.slice(0, 4).map((item) => item.name).join(', ')}${unusedDat.length > 4 ? '...' : ''}`)
-          : 'Дополнительных DAT без ссылок в текущем конфиге не найдено.'}</span>
+          : 'Дополнительных DAT без ссылок в текущей конфигурации не найдено.'}</span>
       </div>
       <div class="toolbar">
-        <button class="btn warning ${state.storageCleaning === 'backups' ? 'is-busy' : ''}" data-action="cleanupStorageBackups" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'backups' ? 'Очищаю...' : 'Очистить бэкапы'}</button>
+        <button class="btn warning ${state.storageCleaning === 'backups' ? 'is-busy' : ''}" data-action="cleanupStorageBackups" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'backups' ? 'Очищаю...' : 'Очистить резервные копии'}</button>
         <button class="btn secondary ${state.storageCleaning === 'package-cache' ? 'is-busy' : ''}" data-action="cleanupPackageCache" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'package-cache' ? 'Очищаю...' : 'Очистить кэш пакетов'}</button>
         <button class="btn secondary ${state.storageCleaning === 'unused-dat' ? 'is-busy' : ''}" data-action="cleanupUnusedDat" ${state.storageCleaning || !unusedDat.length ? 'disabled' : ''}>${state.storageCleaning === 'unused-dat' ? 'Удаляю...' : 'Удалить неиспользуемые DAT'}</button>
       </div>

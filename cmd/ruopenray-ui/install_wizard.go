@@ -51,7 +51,7 @@ func (s *serverState) installPlan() map[string]any {
 		"leanOk":          free == 0 || free >= leanRequired,
 		"fullOk":          free == 0 || free >= fullRequired,
 		"recommendedGeo":  "Nidelon",
-		"recommendedMode": "Экономный режим: без бэкапов, компактный geosite/geoip, удаление лишних dat",
+		"recommendedMode": "Экономный режим: без резервных копий, компактный geosite/geoip, удаление лишних dat",
 	}
 	steps := []map[string]any{
 		{"id": "manager", "title": "Пакетный менеджер", "ok": manager == "apk" || manager == "opkg", "detail": manager},

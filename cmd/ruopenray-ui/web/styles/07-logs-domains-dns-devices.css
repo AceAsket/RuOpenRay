@@ -1787,6 +1787,7 @@
   .xray-dashboard-strip,
   .flow-strip,
   .route-layout,
+  .setup-guided-layout,
   .firewall-grid {
     grid-template-columns: 1fr;
   }
@@ -2024,6 +2025,29 @@
   .server-option-pick,
   .server-option-actions {
     grid-template-columns: 1fr;
+  }
+
+  .setup-page-head {
+    display: grid;
+  }
+
+  .setup-page-head .split-actions,
+  .setup-inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .setup-guide-rail {
+    position: static;
+  }
+
+  .setup-guide-rail .setup-stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-guide-workspace {
+    padding: 12px;
   }
 
   .server-option-actions {

@@ -20,7 +20,7 @@ function devicesPanel() {
     <section class="route-hero devices-hero">
       <div>
         <h2>Устройства LAN</h2>
-        <p>Назначайте режимы по IP: телевизор напрямую, приставку через proxy, отдельный клиент в block. RuOpenRay делает это обычными Xray source-правилами.</p>
+        <p>Назначайте режимы по IP: телевизор напрямую, приставку через прокси, отдельный клиент в блокировку. RuOpenRay делает это обычными Xray source-правилами.</p>
       </div>
       <div class="route-score">
         <strong>${devices.length}</strong>
@@ -29,7 +29,7 @@ function devicesPanel() {
     </section>
 
     <section class="stats route-stats">
-      ${stat('Через proxy', stats.proxy, 'Устройства идут через сервер')}
+      ${stat('Через прокси', stats.proxy, 'Устройства идут через сервер')}
       ${stat('Напрямую', stats.direct, 'Обход прокси')}
       ${stat('Блокировка', stats.block, 'Доступ остановлен')}
       ${stat('Другое', stats.other, 'Особые направления')}
@@ -67,7 +67,7 @@ function devicesPanel() {
           <button class="btn" data-action="addDevice">Добавить правило</button>
         </div>
         <div class="device-modes">
-          <button class="mode-card" data-device-mode="proxy"><strong>Через proxy</strong><span>YouTube, Discord, ChatGPT и заблокированные сайты.</span></button>
+          <button class="mode-card" data-device-mode="proxy"><strong>Через прокси</strong><span>YouTube, Discord, ChatGPT и заблокированные сайты.</span></button>
           <button class="mode-card" data-device-mode="direct"><strong>Напрямую</strong><span>Банки, локальные сервисы, умный дом и IPTV.</span></button>
           <button class="mode-card" data-device-mode="block"><strong>Блокировка</strong><span>Отключить доступ для отдельного клиента.</span></button>
         </div>
@@ -112,8 +112,8 @@ function profilesPanel(compact = false) {
       <div class="panel-title">
         <div><h2>Профили</h2><span>Каждый профиль хранится отдельным JSON-файлом.</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="backup">Бэкап активного</button>
-          <button class="btn danger" data-action="restoreLatestBackup">Откатить apply</button>
+          <button class="btn secondary" data-action="backup">Сохранить резервную копию</button>
+          <button class="btn danger" data-action="restoreLatestBackup">Вернуть последнюю копию</button>
         </div>
       </div>
       <div class="table-scroll profile-table-scroll">

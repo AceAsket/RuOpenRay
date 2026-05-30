@@ -67,8 +67,8 @@ func TestAnalyzeConfigWarnsAboutMissingTransparentInbound(t *testing.T) {
 		}},
 	})
 	warnings := strings.Join(stringSlice(result["warnings"]), "\n")
-	if !strings.Contains(warnings, "Нет transparent inbound") {
-		t.Fatalf("expected transparent inbound warning, got %#v", result["warnings"])
+	if !strings.Contains(warnings, "Нет входящего потока перехвата") {
+		t.Fatalf("expected transparent capture warning, got %#v", result["warnings"])
 	}
 }
 
@@ -87,7 +87,7 @@ func TestAnalyzeConfigRejectsMissingOutboundTag(t *testing.T) {
 		}},
 	})
 	errors := strings.Join(stringSlice(result["errors"]), "\n")
-	if !strings.Contains(errors, `outboundTag "proxy"`) {
-		t.Fatalf("expected missing proxy outboundTag error, got %#v", result["errors"])
+	if !strings.Contains(errors, `сервер "proxy"`) {
+		t.Fatalf("expected missing proxy route target error, got %#v", result["errors"])
 	}
 }

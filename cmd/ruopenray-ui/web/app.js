@@ -800,7 +800,7 @@ async function applyConfigAndFirewall() {
 
   const steps = [
     configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray перед перезапуском', status: 'pending' } : null,
-    configDirty ? { id: 'apply-xray', label: 'Записываю config.json и перезапускаю Xray', status: 'pending' } : null,
+    configDirty ? { id: 'apply-xray', label: 'Записываю конфигурацию и перезапускаю Xray', status: 'pending' } : null,
     firewallDirty ? { id: 'apply-firewall', label: 'Применяю nftables без перезапуска Xray', status: 'pending' } : null,
     { id: 'refresh', label: 'Обновляю состояние панели', status: 'pending' }
   ].filter(Boolean);
@@ -819,14 +819,14 @@ async function applyConfigAndFirewall() {
       setStep('check-xray', 'running');
       await applyConfig({
         progressMessage: firewallDirty
-          ? 'Проверяю config.json, перезапускаю Xray, затем обновлю firewall...'
-          : 'Проверяю config.json и перезапускаю Xray...',
+          ? 'Проверяю конфигурацию, перезапускаю Xray, затем обновлю firewall...'
+          : 'Проверяю конфигурацию и перезапускаю Xray...',
         successMessage: firewallDirty
           ? 'Xray применен, применяю firewall...'
           : 'Конфигурация Xray применена'
       });
       setStep('check-xray', 'done', 'Черновик Xray проверен');
-      setStep('apply-xray', 'done', 'Xray перезапущен с новым config.json');
+      setStep('apply-xray', 'done', 'Xray перезапущен с новой конфигурацией');
     }
 
     if (firewallDirty || firewallHasUnappliedChanges()) {
@@ -1076,10 +1076,7 @@ const {
 } = xrayDraftActions;
 
 const {
-  setupFlowStep,
-  setupFlowGuide,
   setupPage,
-  setupWizardDialog,
   installWizardDialog,
   coreUpdateDialog
 } = setupView;
@@ -1553,7 +1550,7 @@ function pendingXrayChangeItems() {
   if (!sameJsonValue(before?.log, after?.log)) items.push('Xray: настройки логирования изменены');
   if (!sameJsonValue(before?.observatory, after?.observatory) || !sameJsonValue(before?.burstObservatory, after?.burstObservatory)) items.push('Xray: наблюдение серверов изменено');
 
-  return items.length ? items : ['Xray: черновик config.json отличается от примененной версии'];
+  return items.length ? items : ['Xray: черновик конфигурации отличается от примененной версии'];
 }
 
 function firewallHasUnappliedChanges() {
@@ -1601,7 +1598,7 @@ function pendingChangesBanner() {
   const visibleXrayReasons = xrayReasons.slice(0, 5);
   const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
   const changeItems = [
-    configDirty ? 'Xray: будет проверен config.json и выполнен перезапуск сервиса' : '',
+    configDirty ? 'Xray: будет проверена конфигурация и выполнен перезапуск сервиса' : '',
     firewallDirty ? 'Firewall: nftables и policy routing применятся без перезапуска Xray' : '',
     ...visibleXrayReasons,
     firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
@@ -1659,7 +1656,7 @@ function setupStepGate(step) {
     }
   }
   if (step === 'server' && proxyCount < 1) {
-    return notice('bad', 'Нет proxy-сервера', 'Добавьте сервер или подписку в разделе proxy, затем вернитесь в мастер.');
+    return notice('bad', 'Нет прокси-сервера', 'Добавьте сервер или подписку в разделе “Серверы”, затем вернитесь в мастер.');
   }
   if (step === 'firewall') {
     if (!transparentReady) {
@@ -1670,7 +1667,7 @@ function setupStepGate(step) {
           step,
           level: 'warn',
           title: 'Черновик перехвата подготовлен',
-          detail: 'Мастер добавил transparent inbound и служебные правила в черновик. На финальном шаге он проверит Xray и применит firewall.'
+          detail: 'Мастер добавил входящий поток перехвата и служебные правила в черновик. На финальном шаге он проверит Xray и применит firewall.'
         }
       };
     }

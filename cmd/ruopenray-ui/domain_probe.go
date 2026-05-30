@@ -265,8 +265,8 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 	} else {
 		outbound, tag = firstProxyOutbound(cfg)
 	}
-	proxyTCP := map[string]any{"ok": false, "error": "proxy outbound не найден"}
-	proxy := map[string]any{"ok": false, "error": "proxy outbound не найден"}
+	proxyTCP := map[string]any{"ok": false, "error": "прокси-направление не найдено"}
+	proxy := map[string]any{"ok": false, "error": "прокси-направление не найдено"}
 	if outbound != nil {
 		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, directAttempts)
 		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port), "attempts": directAttempts}

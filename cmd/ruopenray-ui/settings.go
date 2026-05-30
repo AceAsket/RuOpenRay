@@ -530,7 +530,7 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 	if boolPayload(payload, "restart", true) {
 		restart = s.serviceAction("restart")
 	} else {
-		stdout = "Логирование сохранено в config.json. Работающий Xray применит его после перезапуска."
+		stdout = "Логирование сохранено в конфигурацию Xray. Работающий Xray применит его после перезапуска."
 		restart = map[string]any{"ok": true, "stdout": "Xray не перезапускался"}
 	}
 	return map[string]any{"ok": restart["ok"], "test": test, "backup": backup, "restart": restart, "maintenance": maintenance, "settings": s.loggingSettings(), "stdout": stdout}

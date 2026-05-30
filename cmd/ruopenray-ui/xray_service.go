@@ -230,7 +230,7 @@ func (s *serverState) latestBackup() (map[string]any, error) {
 		}
 	}
 	if latestInfo == nil {
-		return nil, fmt.Errorf("бэкапы конфигурации пока не найдены")
+		return nil, fmt.Errorf("резервные копии конфигурации пока не найдены")
 	}
 	return map[string]any{"path": latestPath, "name": filepath.Base(latestPath), "size": latestInfo.Size(), "modifiedAt": latestInfo.ModTime().Format(time.RFC3339)}, nil
 }

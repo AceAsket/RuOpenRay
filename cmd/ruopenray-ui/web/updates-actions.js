@@ -198,7 +198,7 @@ export function createUpdatesActions({
     const result = await request('/api/geo/cleanup', { method: 'POST', body: '{}' });
     state.geoUpdate = result;
     state.geoStatus = result.status || state.geoStatus;
-    state.message = result.stdout || 'Geo-бэкапы очищены';
+    state.message = result.stdout || 'Резервные копии geo очищены';
     render();
   }
 
@@ -591,7 +591,7 @@ export function createUpdatesActions({
       render();
       return;
     }
-    if (!confirm(`Изменить категорию ${code} в ${state.geoCatalogEditFile || (kind === 'geoip' ? 'geoip.dat' : 'geosite.dat')}? RuOpenRay сохранит бэкап, перезапишет DAT и перезапустит Xray.`)) {
+    if (!confirm(`Изменить категорию ${code} в ${state.geoCatalogEditFile || (kind === 'geoip' ? 'geoip.dat' : 'geosite.dat')}? RuOpenRay сохранит резервную копию, перезапишет DAT и перезапустит Xray.`)) {
       return;
     }
     state.geoUpdating = true;

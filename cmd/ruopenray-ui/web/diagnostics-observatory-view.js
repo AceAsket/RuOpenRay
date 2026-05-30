@@ -66,10 +66,10 @@ function observatoryPanel() {
   return `
     <section class="panel observatory-panel">
       <div class="panel-title">
-        <div><h2>Наблюдение Xray для балансировки</h2><span>Это настройки xray-core для групп серверов. Ручная проверка RuOpenRay остается в разделе Proxy и не меняет конфигурацию Xray.</span></div>
+        <div><h2>Автопроверка групп серверов</h2><span>Это встроенная проверка Xray для групп серверов. Ручная проверка RuOpenRay остается в разделе “Серверы” и не меняет конфигурацию Xray.</span></div>
         <div class="split-actions">
           <button class="btn secondary ${state.busyAction === 'checkObservatoryTargets' ? 'is-busy' : ''}" data-action="checkObservatoryTargets" ${checkTags.length && state.busyAction !== 'checkObservatoryTargets' ? '' : 'disabled'}>${state.busyAction === 'checkObservatoryTargets' ? 'Проверяю...' : 'Проверить через RuOpenRay'}</button>
-          <button class="btn ${state.busyAction === 'enableObservatoryForProxy' ? 'is-busy' : ''}" data-action="enableObservatoryForProxy" ${state.busyAction === 'enableObservatoryForProxy' ? 'disabled' : ''}>${state.busyAction === 'enableObservatoryForProxy' ? 'Включаю...' : 'Включить для proxy'}</button>
+          <button class="btn ${state.busyAction === 'enableObservatoryForProxy' ? 'is-busy' : ''}" data-action="enableObservatoryForProxy" ${state.busyAction === 'enableObservatoryForProxy' ? 'disabled' : ''}>${state.busyAction === 'enableObservatoryForProxy' ? 'Включаю...' : 'Включить для прокси'}</button>
         </div>
       </div>
       <div class="observatory-settings">
@@ -78,10 +78,10 @@ function observatoryPanel() {
           <input id="observatoryCheckUrl" value="${escapeHtml(probeURL)}" placeholder="https://www.gstatic.com/generate_204" />
         </div>
         <div class="form-row">
-          <label>Интервал наблюдения</label>
+          <label>Интервал автопроверки</label>
           <input id="observatoryInterval" value="${escapeHtml(probeInterval)}" placeholder="10s, 30s, 1m" />
         </div>
-        <p class="inline-help">Стратегия “меньший ping” использует Observatory. Стратегия “меньше нагрузка” использует Burst Observatory. “Случайно” и “по очереди” работают без наблюдения.</p>
+        <p class="inline-help">Стратегия “меньший ping” требует проверки задержки Xray. Стратегия “меньше нагрузка” требует проверки нагрузки Xray. “Случайно” и “по очереди” работают без автопроверки.</p>
       </div>
       <div class="manual-check-settings">
         <strong>Ручная проверка RuOpenRay</strong>
@@ -89,7 +89,7 @@ function observatoryPanel() {
           <div class="form-row">
             <label>Метод</label>
             <select id="serverCheckMode">
-              <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
+              <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через прокси</option>
               <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Порт сервера</option>
             </select>
           </div>
@@ -102,15 +102,15 @@ function observatoryPanel() {
             <input id="serverCheckAttempts" type="number" min="1" max="5" step="1" value="${escapeHtml(state.serverCheckAttempts)}" />
           </div>
         </div>
-        <span>Ручная проверка нужна для выбора прокси сейчас. Observatory — это уже настройка самого Xray для групп серверов.</span>
+        <span>Ручная проверка нужна для выбора прокси сейчас. Автопроверка Xray нужна, когда группа сама выбирает сервер по задержке или нагрузке.</span>
       </div>
       <div class="observatory-grid">
         <article>
-          <span>Observatory</span>
+          <span>Проверка задержки</span>
           <strong>${observedMatched.length ? `${observedMatched.length} серверов` : 'не включен'}</strong>
         </article>
         <article>
-          <span>Burst Observatory</span>
+          <span>Проверка нагрузки</span>
           <strong>${burstMatched.length ? `${burstMatched.length} серверов` : 'не включен'}</strong>
         </article>
         <article>
@@ -118,11 +118,11 @@ function observatoryPanel() {
           <strong>${escapeHtml(obs.probeURL || 'не применен')}</strong>
         </article>
         <article>
-          <span>Burst URL</span>
+          <span>URL проверки нагрузки</span>
           <strong>${escapeHtml(burstPing.destination || 'не применен')}</strong>
         </article>
         <article>
-          <span>Интервал Xray</span>
+          <span>Интервал автопроверки</span>
           <strong>${escapeHtml(obs.probeInterval || burstPing.interval || 'не применен')}</strong>
         </article>
         <article class="${missing.length ? 'warn' : ''}">
@@ -131,7 +131,7 @@ function observatoryPanel() {
         </article>
       </div>
       <div class="observatory-tags">
-        ${allSelectors.length ? allSelectors.map((selector) => `<span>${escapeHtml(selector)}</span>`).join('') : '<span class="muted">серверы для Xray-наблюдения пока не выбраны</span>'}
+        ${allSelectors.length ? allSelectors.map((selector) => `<span>${escapeHtml(selector)}</span>`).join('') : '<span class="muted">серверы для автопроверки Xray пока не выбраны</span>'}
       </div>
       ${matched.length ? `<div class="observatory-targets">
         ${matched.map((outbound) => {
@@ -143,7 +143,7 @@ function observatoryPanel() {
           </article>`;
         }).join('')}
       </div>` : ''}
-      ${missing.length ? `<p class="settings-warning compact"><strong>Внимание</strong><span>Некоторые группы используют умную стратегию, но нужный Xray observer еще не покрывает их серверы.</span></p>` : ''}
+      ${missing.length ? `<p class="settings-warning compact"><strong>Внимание</strong><span>Некоторые группы используют умную стратегию, но автопроверка Xray еще не проверяет их серверы.</span></p>` : ''}
     </section>
   `;
 }

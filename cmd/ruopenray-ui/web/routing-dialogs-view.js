@@ -45,7 +45,7 @@ function routeRuleDialog() {
         <div class="modal-head">
           <div>
             <h2 id="routeRuleTitle">${editing ? 'Редактирование правила' : presetsMode ? 'Добавить подборки' : 'Новое правило'}</h2>
-            <span>${editing ? 'Измените условие, цель или название правила. Порядок в списке останется прежним.' : presetsMode ? 'Выберите одну или несколько подборок правил и добавьте их в черновик маршрутизации.' : listMode ? 'Вставьте несколько правил списком и добавьте их в черновик маршрутизации.' : 'Добавьте один сайт, IP, LAN-устройство, порт или inbound в черновик маршрутизации.'}</span>
+            <span>${editing ? 'Измените условие, цель или название правила. Порядок в списке останется прежним.' : presetsMode ? 'Выберите одну или несколько подборок правил и добавьте их в черновик маршрутизации.' : listMode ? 'Вставьте несколько правил списком и добавьте их в черновик маршрутизации.' : 'Добавьте один сайт, IP, LAN-устройство, порт или входящий поток в черновик маршрутизации.'}</span>
           </div>
           <button class="icon-btn" type="button" data-action="closeRouteRuleDialog" aria-label="Закрыть">×</button>
         </div>
@@ -211,8 +211,8 @@ function routeBalancerDialog() {
   const advancedObserver = strategyObserverType(state.routeBalancerStrategy);
   const advancedStrategy = Boolean(advancedObserver);
   const advancedHelp = advancedObserver === 'burstObservatory'
-    ? 'Для этой стратегии Xray включает Burst Observatory: проверяет серверы сериями и выбирает менее нагруженный доступный участник. Это advanced-режим.'
-    : 'Для этой стратегии Xray включает Observatory: проверяет серверы HTTP-запросом и выбирает участника с меньшей задержкой. Ручная проверка RuOpenRay тут только помогает увидеть результат в UI.';
+    ? 'Для этой стратегии Xray включает burst-наблюдение: проверяет серверы сериями и выбирает менее нагруженный доступный участник. Это расширенная настройка.'
+    : 'Для этой стратегии Xray включает наблюдение за серверами: проверяет их HTTP-запросом и выбирает участника с меньшей задержкой. Ручная проверка RuOpenRay только показывает результат в интерфейсе.';
   return `
     <div class="modal-backdrop" data-action="closeRouteBalancerDialog">
       <section class="modal route-balancer-dialog" role="dialog" aria-modal="true" aria-labelledby="routeBalancerTitle" data-modal>
@@ -345,7 +345,7 @@ function routePresetDialog() {
             <div class="preset-editor-grid">
               <label>
                 <span>Название</span>
-                <input id="routePresetEditTitle" value="${escapeHtml(state.routePresetEditTitle)}" placeholder="Например, YouTube через proxy" />
+                <input id="routePresetEditTitle" value="${escapeHtml(state.routePresetEditTitle)}" placeholder="Например, YouTube через прокси" />
               </label>
               <label>
                 <span>Описание</span>

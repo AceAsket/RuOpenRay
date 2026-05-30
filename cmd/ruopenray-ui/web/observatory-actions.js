@@ -100,8 +100,8 @@ export function createObservatoryActions({
   }
 
   function observerLabel(type) {
-    if (type === 'burstObservatory') return 'Burst Observatory';
-    if (type === 'observatory') return 'Observatory';
+    if (type === 'burstObservatory') return 'проверка нагрузки';
+    if (type === 'observatory') return 'проверка задержки';
     return 'не требуется';
   }
 
@@ -117,7 +117,7 @@ export function createObservatoryActions({
   function enableObservatoryForProxy() {
     const tags = proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean);
     if (!tags.length) {
-      state.message = 'Сначала добавьте хотя бы один proxy-сервер';
+      state.message = 'Сначала добавьте хотя бы один прокси-сервер';
       render();
       return;
     }
@@ -138,10 +138,10 @@ export function createObservatoryActions({
     }
     syncConfig(nextConfig);
     const parts = [
-      leastPingSelectors.length || (!leastLoadSelectors.length && !required.length) ? 'Observatory' : '',
-      leastLoadSelectors.length ? 'Burst Observatory' : ''
+      leastPingSelectors.length || (!leastLoadSelectors.length && !required.length) ? 'проверка задержки' : '',
+      leastLoadSelectors.length ? 'проверка нагрузки' : ''
     ].filter(Boolean).join(' и ');
-    state.message = `${parts || 'Наблюдение'} включено для proxy-серверов. Проверьте конфигурацию и примените.`;
+    state.message = `${parts || 'Автопроверка'} включена для прокси-серверов. Проверьте конфигурацию и примените.`;
     render();
   }
 

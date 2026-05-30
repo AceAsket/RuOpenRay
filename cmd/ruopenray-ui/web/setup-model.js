@@ -38,17 +38,17 @@ export function createSetupModel({
       {
         key: 'servers',
         ok: proxyCount > 0,
-        title: 'Proxy-сервер добавлен',
-        detail: proxyCount ? `${proxyCount} proxy-направлений в конфигурации` : 'Добавьте VLESS/Vmess/Trojan/SS-сервер или подписку.'
+        title: 'Прокси-сервер добавлен',
+        detail: proxyCount ? `${proxyCount} прокси-направлений в конфигурации` : 'Добавьте VLESS/Vmess/Trojan/SS-сервер или подписку.'
       },
       {
         key: 'transparent',
         ok: Boolean(transparent.ready),
         warn: Boolean(transparent.transparent.length),
-        title: 'Transparent inbound',
+        title: 'Входящий поток перехвата',
         detail: transparent.ready
-          ? `Порт ${transparent.transparentPort}, dns-out и local bypass найдены`
-          : 'Мастер подготовит inbound transparent_ipv4, dns-out и базовые bypass-правила.'
+          ? `Порт ${transparent.transparentPort}, DNS-выход и локальные исключения найдены`
+          : 'Мастер подготовит входящий поток transparent_ipv4, DNS-выход и базовые исключения.'
       },
       {
         key: 'firewall',
@@ -59,7 +59,7 @@ export function createSetupModel({
           ? 'nftables активен, но примененная схема отличается от выбранной сейчас.'
           : firewall.active
           ? `${firewall.routerMode || state.firewallRouterMode} · ${firewall.persistent ? 'сохранен' : 'только до перезапуска'}`
-          : 'Нужно применить nftables и policy routing из RuOpenRay.'
+          : 'Нужно применить nftables и правила маршрутизации RuOpenRay.'
       },
       {
         key: 'dns',
@@ -269,7 +269,7 @@ export function createSetupModel({
     normalizeSetupRules(next);
   
     syncConfig(next);
-    if (message) state.message = 'Черновик активного режима подготовлен: transparent inbound, DNS inbound, dns-out и базовые правила добавлены.';
+    if (message) state.message = 'Черновик активного режима подготовлен: входящий поток перехвата, DNS-вход Xray, DNS-выход и базовые правила добавлены.';
   }
 
   return {

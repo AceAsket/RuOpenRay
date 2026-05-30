@@ -106,7 +106,7 @@ func (s *serverState) dnsDiagnostics() map[string]any {
 		if owner == "" || owner == "<nil>" {
 			owner = "другой процесс"
 		}
-		warnings = append(warnings, fmt.Sprintf("Порт DNS для Xray занят: %s. Подготовьте DNS inbound заново, чтобы RuOpenRay выбрал свободный порт.", owner))
+		warnings = append(warnings, fmt.Sprintf("Порт DNS для Xray занят: %s. Подготовьте DNS-вход заново, чтобы RuOpenRay выбрал свободный порт.", owner))
 	}
 	if fmt.Sprint(lan["mode"]) == "xray" && readiness["ready"] != true {
 		warnings = append(warnings, "dnsmasq направлен в Xray DNS, но Xray DNS еще не готов. LAN-клиенты могут остаться без DNS.")
@@ -260,7 +260,7 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 		status := s.lanDNSUpstreamStatus(plan)
 		status["ok"] = false
 		status["readiness"] = readiness
-		status["error"] = "DNS inbound Xray еще не готов. Сначала примените конфигурацию Xray и убедитесь, что порт " + fmt.Sprint(readiness["targetTCP"]) + " слушает."
+		status["error"] = "DNS-вход Xray еще не готов. Сначала примените конфигурацию Xray и убедитесь, что порт " + fmt.Sprint(readiness["targetTCP"]) + " слушает."
 		return status
 	}
 	steps := []map[string]any{}
@@ -420,22 +420,22 @@ func (s *serverState) guardXrayDNSPortBeforeStart() map[string]any {
 	}
 	nextPort, _ := suggestedXrayDNSPort()
 	if nextPort == port || nextPort <= 0 || nextPort > 65535 {
-		message := fmt.Sprintf("DNS inbound Xray не сможет стартовать: UDP %s:%d занят процессом %s, свободный порт не найден.", host, port, owner)
+		message := fmt.Sprintf("DNS-вход Xray не сможет стартовать: UDP %s:%d занят процессом %s, свободный порт не найден.", host, port, owner)
 		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
 	}
 	if !setXrayDNSInboundPort(cfg, nextPort) {
-		message := "DNS inbound Xray найден, но RuOpenRay не смог изменить его порт."
+		message := "DNS-вход Xray найден, но RuOpenRay не смог изменить его порт."
 		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
 	}
 	if err := s.writeActiveConfig(cfg); err != nil {
-		message := "Не удалось сохранить новый порт DNS inbound Xray: " + err.Error()
+		message := "Не удалось сохранить новый порт DNS-входа Xray: " + err.Error()
 		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
 	}
 	oldTarget := fmt.Sprintf("%s#%d", host, port)
 	newTarget := fmt.Sprintf("%s#%d", host, nextPort)
 	dnsmasq := s.repointDnsmasqTarget(oldTarget, newTarget)
 	dnsmasqOK := dnsmasq["ok"] == true
-	message := fmt.Sprintf("DNS inbound Xray перенесен с %s на %s: старый порт занят процессом %s.", oldTarget, newTarget, owner)
+	message := fmt.Sprintf("DNS-вход Xray перенесен с %s на %s: старый порт занят процессом %s.", oldTarget, newTarget, owner)
 	if !dnsmasqOK {
 		message += " dnsmasq не удалось перенастроить автоматически: " + fmt.Sprint(dnsmasq["stderr"])
 	}
@@ -466,7 +466,7 @@ func (s *serverState) repointDnsmasqTarget(oldTarget, newTarget string) map[stri
 		}
 	}
 	if !usesOldTarget {
-		return map[string]any{"ok": true, "skipped": true, "message": "dnsmasq не был направлен на старый DNS inbound"}
+		return map[string]any{"ok": true, "skipped": true, "message": "dnsmasq не был направлен на старый DNS-вход"}
 	}
 	steps := []map[string]any{
 		run("uci", "-q", "del_list", "dhcp.@dnsmasq[0].server="+oldTarget),

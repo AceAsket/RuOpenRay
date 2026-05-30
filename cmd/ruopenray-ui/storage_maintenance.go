@@ -50,7 +50,7 @@ func (s *serverState) storageReport() map[string]any {
 				"count": data.Count,
 			},
 			"backups": map[string]any{
-				"label": "Бэкапы",
+				"label": "Резервные копии",
 				"path":  s.cfg.BackupDir,
 				"size":  backups.Size,
 				"count": backups.Count,

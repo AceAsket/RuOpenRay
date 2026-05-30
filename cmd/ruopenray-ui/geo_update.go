@@ -316,7 +316,7 @@ func (s *serverState) cleanupGeoBackups() map[string]any {
 			deleted++
 		}
 	}
-	return map[string]any{"ok": true, "deleted": deleted, "freed": freed, "status": s.geoStatus(), "stdout": fmt.Sprintf("Удалено geo-бэкапов: %d, освобождено %.1f MB", deleted, float64(freed)/1024/1024)}
+	return map[string]any{"ok": true, "deleted": deleted, "freed": freed, "status": s.geoStatus(), "stdout": fmt.Sprintf("Удалено резервных копий geo: %d, освобождено %.1f MB", deleted, float64(freed)/1024/1024)}
 }
 
 func (s *serverState) deleteGeoFiles(payload map[string]any) map[string]any {

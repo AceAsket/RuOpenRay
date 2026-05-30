@@ -221,8 +221,8 @@ export function createServerModel({
 
   function serverObserverLabels(outbound) {
     const labels = [];
-    if (outboundMatchesSelectors(outbound, observatorySelectors())) labels.push('Observatory');
-    if (outboundMatchesSelectors(outbound, burstObservatorySelectors())) labels.push('Burst');
+    if (outboundMatchesSelectors(outbound, observatorySelectors())) labels.push('наблюдение');
+    if (outboundMatchesSelectors(outbound, burstObservatorySelectors())) labels.push('burst');
     return labels;
   }
 

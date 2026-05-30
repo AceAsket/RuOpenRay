@@ -71,7 +71,7 @@ function routingRulesPanel() {
       </div>
       <div class="route-tools">
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
-        <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, proxy, direct..." />
+        <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
         <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
         <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
       </div>
@@ -106,7 +106,7 @@ function routingRulesPanel() {
       </summary>
       <div class="dsl-compact">
         <div class="panel-title">
-          <div><h2>Импорт правил списком</h2><span><code>domain(domain:discord.com) -> proxy</code>, alias proxy сейчас ведет на <code>${escapeHtml(resolveRoutingAlias('proxy'))}</code>.</span></div>
+          <div><h2>Импорт правил списком</h2><span><code>domain(domain:discord.com) -> proxy</code>, слово proxy сейчас ведет на <code>${escapeHtml(resolveRoutingAlias('proxy'))}</code>.</span></div>
           <div class="split-actions">
             <button class="btn secondary" data-action="previewRouteDsl">Предпросмотр</button>
             <button class="btn secondary" data-action="analyzeConfig">Проверить</button>
@@ -203,7 +203,7 @@ function balancerHistoryView(tags = []) {
   const events = balancerHistoryEvents(tags);
   if (!tags.length) return '';
   if (!events.length) {
-    return `<div class="balancer-history muted">Истории проверок пока нет. Запустите ручную проверку или observatory для участников группы.</div>`;
+    return `<div class="balancer-history muted">Истории проверок пока нет. Запустите ручную проверку или включите наблюдение для участников группы.</div>`;
   }
   const failed = events.filter((item) => item.ok === false).length;
   const last = events[0];
@@ -242,7 +242,7 @@ function routingBalancersPanel() {
     ${observatoryPanel()}
     <section class="panel routing-balancers-panel">
       <div class="panel-title">
-        <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для ping нужен Observatory, для нагрузки — Burst Observatory.</span></div>
+        <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для выбора по задержке нужно наблюдение Xray, для выбора по нагрузке — burst-наблюдение.</span></div>
         <button class="btn warning" data-action="openRouteBalancerDialog">Добавить</button>
       </div>
       ${balancerHistorySettingsView()}
@@ -283,7 +283,7 @@ function interceptAdvancedSections() {
   return `
     <section class="panel settings-section">
       <div class="panel-title">
-        <div><h2>Сниффер Xray</h2><span>Advanced-настройка для transparent proxy: Xray извлекает домен из HTTP/TLS/QUIC и использует его в правилах маршрутизации.</span></div>
+        <div><h2>Сниффер Xray</h2><span>Расширенная настройка для прозрачного перехвата: Xray извлекает домен из HTTP/TLS/QUIC и использует его в правилах маршрутизации.</span></div>
       </div>
       <div class="advanced-grid">
         <div class="settings-field wide">
@@ -295,7 +295,7 @@ function interceptAdvancedSections() {
               ['http-tls-quic', 'HTTP + TLS + QUIC']
             ].map(([value, label]) => `<button type="button" class="${sniffer.mode === value ? 'active' : ''}" data-sniffer-mode="${value}">${label}</button>`).join('')}
           </div>
-          <small>${sniffer.targets ? `Будет применено к inbound: ${sniffer.targets}` : 'Inbound пока не найден. Подготовьте transparent proxy в разделе Перехват.'}</small>
+          <small>${sniffer.targets ? `Будет применено к входам: ${sniffer.targets}` : 'Входящий поток пока не найден. Подготовьте перехват в разделе “Перехват”.'}</small>
         </div>
         <label class="settings-check compact ${sniffer.routeOnly ? 'active' : ''}">
           <input id="snifferRouteOnly" type="checkbox" ${sniffer.routeOnly ? 'checked' : ''} ${sniffer.mode === 'off' ? 'disabled' : ''} />
@@ -410,11 +410,11 @@ function firewallPanel() {
   const deviceChoices = firewallDeviceChoices();
   const selectedDevices = new Set(state.firewallSelectedDevices);
   const transparentRows = info.transparent.length
-    ? info.transparent.map((item) => `${item.tag || 'transparent'} · ${item.protocol || 'inbound'} · порт ${item.port || 'не задан'}`).join('\n')
-    : 'Transparent inbound пока не найден.';
+    ? info.transparent.map((item) => `${item.tag || 'transparent'} · ${item.protocol || 'вход'} · порт ${item.port || 'не задан'}`).join('\n')
+    : 'Входящий поток перехвата пока не найден.';
   const dnsRows = info.dnsOut.length
     ? info.dnsOut.map((item) => `${item.tag || 'dns'} · ${item.protocol}`).join('\n')
-    : 'DNS outbound пока не найден.';
+    : 'DNS-выход пока не найден.';
   const sourceRows = info.sourceRules.length
     ? info.sourceRules.slice(0, 8).map((rule) => `${rule.source.join(', ')} -> ${rule.outboundTag}`).join('\n')
     : 'Отдельных правил для LAN-устройств пока нет.';
@@ -424,7 +424,7 @@ function firewallPanel() {
     <section class="route-hero firewall-hero intercept-hero">
       <div>
         <h2>Перехват трафика</h2>
-        <p>Короткая настройка transparent proxy: кого обрабатываем, какие порты берем и как рано отсекаем direct/proxy трафик.</p>
+        <p>Короткая настройка прозрачного перехвата: кого обрабатываем, какие порты берем и как рано отсекаем трафик напрямую или через прокси.</p>
       </div>
       <div class="route-score">
         <strong>${info.ready ? 'OK' : '3'}</strong>
@@ -441,7 +441,7 @@ function firewallPanel() {
         <article>
           <span>Способ</span>
           <strong>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'REDIRECT' : 'TPROXY')}</strong>
-          <small>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'TCP-сценарий, QUIC лучше блокировать' : 'TCP+UDP, лучше для transparent proxy')}</small>
+          <small>${escapeHtml(state.firewallRouterMode === 'redirect' ? 'TCP-сценарий, QUIC лучше блокировать' : 'TCP+UDP, лучше для прозрачного перехвата')}</small>
         </article>
         <article>
           <span>Политика</span>
@@ -457,14 +457,14 @@ function firewallPanel() {
           <span>Готовность</span>
           <strong>${escapeHtml(info.ready ? 'Можно применять' : 'Нужно проверить')}</strong>
           <small>${escapeHtml([
-            info.transparent.length ? 'inbound найден' : 'нет transparent inbound',
+            info.transparent.length ? 'вход найден' : 'нет входящего потока перехвата',
             info.dnsOut.length ? 'dns-out найден' : 'нет dns-out',
             info.localBypass.length ? 'direct есть' : 'нет local bypass'
           ].join(' · '))}</small>
         </article>
       </div>
       ${preview.warnings.length ? `<div class="settings-warning compact"><strong>Проверить</strong><span>${escapeHtml(preview.warnings.join(' '))}</span></div>` : ''}
-      ${missingTransparent ? `<div class="settings-warning compact"><strong>Перехват не готов</strong><span>Сейчас найден только DNS/SOCKS-вход или входов нет. Для LAN-клиентов нужен transparent inbound на порт перехвата.</span><button class="btn secondary" data-action="prepareTransparent">Подготовить черновик</button></div>` : ''}
+      ${missingTransparent ? `<div class="settings-warning compact"><strong>Перехват не готов</strong><span>Сейчас найден только DNS/SOCKS-вход или входов нет. Для LAN-клиентов нужен входящий поток на порт перехвата.</span><button class="btn secondary" data-action="prepareTransparent">Подготовить черновик</button></div>` : ''}
     </section>
 
     <section class="panel intercept-compact-panel">
@@ -492,8 +492,8 @@ function firewallPanel() {
               <em>Direct-адреса не нагружают Xray, остальное идет в правила.</em>
             </button>
             <button type="button" class="${state.firewallBypassMode === 'redirect' ? 'active' : ''}" data-firewall-bypass-mode="redirect">
-              <strong>Только proxy</strong>
-              <em>В Xray попадает только то, что заранее известно как proxy.</em>
+              <strong>Только прокси</strong>
+              <em>В Xray попадает только то, что заранее отмечено для прокси.</em>
             </button>
           </div>
         </div>
@@ -561,11 +561,11 @@ function firewallPanel() {
         </div>
         <div class="firewall-facts">
           <div>
-            <label>Transparent inbound</label>
+            <label>Входящий поток перехвата</label>
             <pre class="mini-console">${escapeHtml(transparentRows)}</pre>
           </div>
           <div>
-            <label>DNS outbound</label>
+            <label>DNS-выход</label>
             <pre class="mini-console">${escapeHtml(dnsRows)}</pre>
           </div>
           <div>
@@ -577,10 +577,10 @@ function firewallPanel() {
 
       <section class="panel">
         <div class="panel-title">
-          <div><h2>Подготовка Xray</h2><span>Добавляет недостающие inbound/outbound/routing в черновик.</span></div>
+          <div><h2>Подготовка Xray</h2><span>Добавляет недостающие входы, выходы и правила в черновик.</span></div>
         </div>
         <div class="firewall-steps">
-          <div><strong>1</strong><span>Transparent inbound принимает TCP/UDP после перехвата firewall.</span></div>
+          <div><strong>1</strong><span>Входящий поток перехвата принимает TCP/UDP после firewall.</span></div>
           <div><strong>2</strong><span>DNS-направление отдельно обрабатывает порт 53.</span></div>
           <div><strong>3</strong><span>Локальные адреса и LAN не уходят в прокси.</span></div>
         </div>
@@ -709,7 +709,7 @@ function firewallDnsNftsetCurrent(status) {
   }
   if (mode === 'redirect') {
     const count = status.proxyNftset?.count ?? (status.proxyNftset?.domains || []).length;
-    return count ? `proxy-домены в proxy4: ${count}` : 'proxy-домены не подключены';
+    return count ? `прокси-домены в proxy4: ${count}` : 'прокси-домены не подключены';
   }
   return 'geo/domain nftset не используется';
 }
@@ -721,7 +721,7 @@ function firewallDnsNftsetDraft(routeSets, mode) {
   }
   if (mode === 'redirect') {
     const count = (routeSets.proxyDomains || []).length + (routeSets.proxyGeosite || []).length + (routeSets.proxyExt || []).length;
-    return count ? `proxy-домены/geo: ${count}` : 'proxy-домены не заданы';
+    return count ? `прокси-домены/geo: ${count}` : 'прокси-домены не заданы';
   }
   return 'OFF: DNS nftset не нужен';
 }
@@ -904,7 +904,7 @@ function leakProtectionPanel() {
     <section class="route-hero firewall-hero intercept-hero">
       <div>
         <h2>Защита от утечек</h2>
-        <p>Цифровая гигиена для адресов, которые нельзя выпускать напрямую: если Xray остановлен или VPN не работает, firewall не даст им уйти мимо proxy.</p>
+        <p>Цифровая гигиена для адресов, которые нельзя выпускать напрямую: если Xray остановлен или VPN не работает, firewall не даст им уйти мимо прокси.</p>
       </div>
       <div class="route-score">
         <strong>${state.firewallKillSwitchEnabled ? totalTargets : 'OFF'}</strong>
