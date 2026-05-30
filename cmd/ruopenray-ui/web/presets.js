@@ -256,6 +256,20 @@ const patreonDomains = [
   'regexp:.*\\.patreoncommunity\\.com'
 ];
 
+const speedtestDomains = [
+  'domain:speedtest.net',
+  'domain:www.speedtest.net',
+  'domain:speedtest.com',
+  'domain:ookla.com',
+  'domain:ooklaserver.net',
+  'domain:speedtestcustom.com',
+  'domain:speedtestcdn.com',
+  'domain:speedtestconfig.com',
+  'regexp:.*speedtest.*',
+  'regexp:.*ookla.*',
+  'regexp:.*\\.ooklaserver\\.net'
+];
+
 const githubDomains = [
   'geosite:github',
   'domain:github.com',
@@ -782,6 +796,14 @@ export const routeBundles = {
       { type: 'field', outboundTag: 'proxy', domain: telegramDomains },
       { type: 'field', outboundTag: 'proxy', ip: telegramMtprotoIps },
       { type: 'field', outboundTag: 'proxy', network: 'udp', ip: telegramCallIps }
+    ]
+  },
+  speedtestOokla: {
+    title: 'Speedtest / Ookla',
+    detail: 'Сайт Speedtest, API Ookla и тестовые серверы на 8080 через активный proxy.',
+    rules: [
+      { type: 'field', outboundTag: 'proxy', domain: speedtestDomains },
+      { type: 'field', outboundTag: 'proxy', network: 'tcp,udp', port: '8080' }
     ]
   },
   aiDev: {

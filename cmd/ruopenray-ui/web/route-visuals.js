@@ -28,6 +28,7 @@ const presetIcons = {
   openaiIps: ['AI', 'ai'],
   patreon: ['PT', 'media'],
   ruMinimal: ['RU', 'runet'],
+  speedtestOokla: ['ST', 'speedtest'],
   telegram: ['TG', 'telegram'],
   telegramCalls: ['CALL', 'telegram'],
   telegramFull: ['TG', 'telegram'],
@@ -51,6 +52,7 @@ const titleIconHints = [
   [/meta/i, ['M', 'meta']],
   [/linkedin/i, ['IN', 'linkedin']],
   [/patreon/i, ['PT', 'media']],
+  [/speedtest|ookla/i, ['ST', 'speedtest']],
   [/microsoft|windows|xbox/i, ['MS', 'microsoft']],
   [/google|gemini/i, ['G', 'google']],
   [/github/i, ['GH', 'dev']],
@@ -115,6 +117,7 @@ function presetIconSvg(key, tone) {
   if (group.includes('meta')) return iconMeta();
   if (group.includes('linkedin')) return iconLinkedIn();
   if (group.includes('patreon')) return iconPatreon();
+  if (group.includes('speedtest') || group.includes('ookla')) return iconSpeedtest();
   if (group.includes('microsoft')) return iconMicrosoft();
   if (group.includes('github')) return iconGitHub();
   if (group.includes('xtwitter')) return iconX();
@@ -200,6 +203,10 @@ function iconLinkedIn() {
 
 function iconPatreon() {
   return brandSvg('0 0 24 24', '<path fill="#ff424d" fill-rule="evenodd" d="M1 5a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4zm18 4.5a4.5 4.5 0 1 1-9 0a4.5 4.5 0 0 1 9 0M5 5h3.5v14H5z" clip-rule="evenodd"></path>');
+}
+
+function iconSpeedtest() {
+  return brandSvg('0 0 24 24', '<path fill="#161b2e" d="M12 1.767c6.605 0 12 5.396 12 12c0 3.349-1.395 6.326-3.535 8.466l-1.674-1.675c1.674-1.767 2.79-4.186 2.79-6.79A9.57 9.57 0 0 0 12 4.184a9.57 9.57 0 0 0-9.581 9.581c0 2.698 1.023 5.024 2.79 6.791l-1.674 1.675C1.302 20.092 0 17.115 0 13.767c0-6.604 5.395-12 12-12"></path><path fill="#20b8ff" d="m11.628 16.186l-2.047-2.14l6.791-5.953l1.21 1.302z"></path>');
 }
 
 function iconMicrosoft() {
