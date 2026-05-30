@@ -217,6 +217,8 @@ EOF
 }
 
 write_uci_via_cli() {
+	mkdir -p /etc/config
+	touch /etc/config/ruopenray-ui
 	uci -q delete ruopenray-ui.main 2>/dev/null || true
 	uci -q set ruopenray-ui.main=ruopenray-ui
 	uci -q set ruopenray-ui.main.enabled=1
@@ -609,8 +611,8 @@ enable_xray_service_config() {
 }
 
 start_service() {
-	/etc/init.d/$SERVICE_NAME enable
-	/etc/init.d/$SERVICE_NAME restart
+	/etc/init.d/$SERVICE_NAME enable >/dev/null 2>&1 || true
+	/etc/init.d/$SERVICE_NAME restart >/dev/null 2>&1 || /etc/init.d/$SERVICE_NAME start >/dev/null 2>&1 || true
 	validate_service_password
 }
 
