@@ -27,6 +27,17 @@ export function createRoutingDialogsView({
   describeRouteRule,
   routePresetRules,
 }) {
+function routeRuleTestResultView(result) {
+  if (!result) return '';
+  const tone = result.tone || (result.ok ? 'both-ok' : 'bad');
+  return `
+    <div class="domain-probe compact route-rule-test-result ${escapeHtml(tone)}">
+      <span>${escapeHtml(result.title || 'Тест выполнен')}</span>
+      <small>${escapeHtml(result.detail || '')}</small>
+    </div>
+  `;
+}
+
 function routeRuleDialog() {
   if (!state.routeRuleDialog) return '';
   const outboundTargetOptions = routeTargetOptions()
@@ -159,6 +170,7 @@ function routeRuleDialog() {
               </select>
             `}
           </div>
+          ${routeRuleTestResultView(state.routeRuleTestResult)}
         </div>
         `}
         ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
@@ -173,7 +185,10 @@ function routeRuleDialog() {
           ` : listMode ? `
             <button class="btn secondary ${state.busyAction === 'previewRouteDsl' ? 'is-busy' : ''}" type="button" data-action="previewRouteDsl" ${state.busyAction === 'previewRouteDsl' ? 'disabled' : ''}>${state.busyAction === 'previewRouteDsl' ? 'Проверяю...' : 'Проверить список'}</button>
             <button class="btn warning ${state.busyAction === 'appendRouteDslFromDialog' ? 'is-busy' : ''}" type="button" data-action="appendRouteDslFromDialog" ${state.busyAction === 'appendRouteDslFromDialog' ? 'disabled' : ''}>${state.busyAction === 'appendRouteDslFromDialog' ? 'Добавляю...' : 'Добавить список'}</button>
-          ` : `<button class="btn warning ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'is-busy' : ''}" type="button" data-action="${editing ? 'saveRouteEdit' : 'addRoute'}" ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'disabled' : ''}>${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'Сохраняю...' : editing ? 'Сохранить правило' : 'Добавить правило'}</button>`}
+          ` : `
+            <button class="btn secondary ${state.busyAction === 'testRouteRuleTarget' ? 'is-busy' : ''}" type="button" data-action="testRouteRuleTarget" ${state.busyAction === 'testRouteRuleTarget' ? 'disabled' : ''}>${state.busyAction === 'testRouteRuleTarget' ? 'Тест...' : 'Тест'}</button>
+            <button class="btn warning ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'is-busy' : ''}" type="button" data-action="${editing ? 'saveRouteEdit' : 'addRoute'}" ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'disabled' : ''}>${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'Сохраняю...' : editing ? 'Сохранить правило' : 'Добавить правило'}</button>
+          `}
         </div>
       </section>
     </div>

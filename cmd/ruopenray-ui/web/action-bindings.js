@@ -51,6 +51,7 @@ const busyLabels = {
   appendRouteDslFromDialog: 'Добавляю список правил',
   replaceRouteDsl: 'Заменяю правила',
   addRoute: 'Добавляю правило',
+  testRouteRuleTarget: 'Проверяю правило',
   saveRouteEdit: 'Сохраняю правило',
   saveRouteBalancer: 'Сохраняю балансировщик',
   previewRoutePresetEdit: 'Проверяю подборку',

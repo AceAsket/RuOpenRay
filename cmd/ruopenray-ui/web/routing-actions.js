@@ -12,7 +12,7 @@ import {
 export function createRoutingActions({
   state,
   render,
-  request,
+  request = async () => { throw new Error('API request is not configured'); },
   escapeHtml,
   routeKinds,
   routePresets,
@@ -150,6 +150,110 @@ export function createRoutingActions({
     state.routeBalancer = balancerOptions()[0] || '';
     state.routeRuleMode = 'single';
     state.routeRuleEditingIndex = -1;
+    state.routeRuleTestResult = null;
+  }
+
+  function routeProbeHostFromForm() {
+    const value = splitRouteValues(state.routeValue)[0] || '';
+    if (!value || state.routeKind === 'default' || state.routeKind === 'port' || state.routeKind === 'source' || state.routeKind === 'inboundTag') return '';
+    if (state.routeKind === 'domain') {
+      const clean = value
+        .replace(/^(domain|full):/i, '')
+        .replace(/^\*\./, '')
+        .trim();
+      if (!clean || /^(regexp|keyword|geosite):/i.test(value) || /[*()[\]\\]/.test(clean)) return '';
+      return clean;
+    }
+    if (state.routeKind === 'ip') {
+      if (value.includes('/') || value.includes(',')) return '';
+      return value.trim();
+    }
+    return '';
+  }
+
+  function latencyText(value) {
+    const latency = Number(value);
+    return Number.isFinite(latency) && latency > 0 ? `${Math.round(latency)} ms` : '';
+  }
+
+  function routeRuleTestDetail(tag, result) {
+    const proxy = result?.proxy || {};
+    const tcpProxy = result?.checks?.tcpProxy || {};
+    if (proxy.ok) return `Через ${tag}: HTTP ${latencyText(proxy.latencyMs) || 'ok'}`;
+    if (tcpProxy.ok) return `Через ${tag}: TCP ${latencyText(tcpProxy.latencyMs) || 'ok'}, HTTP не ответил`;
+    return `Через ${tag}: ${proxy.error || tcpProxy.error || result?.stderr || 'нет ответа'}`;
+  }
+
+  async function testRouteRuleTarget() {
+    state.routeRuleTestResult = null;
+    const tag = state.routeTargetType === 'balancer' ? '' : String(state.routeOutbound || '').trim();
+    if (!tag) {
+      state.routeRuleTestResult = {
+        ok: false,
+        tone: 'pending',
+        title: 'Выберите конкретный сервер',
+        detail: 'Тест работает для outbound-сервера. Для балансировщика сначала выберите один сервер.'
+      };
+      render();
+      return;
+    }
+    const host = routeProbeHostFromForm();
+    state.message = host
+      ? `Проверяю ${host} через ${tag}...`
+      : `Проверяю доступность ${tag}...`;
+    render();
+    try {
+      if (host) {
+        const result = await request('/api/diagnostics/domain-probe', {
+          method: 'POST',
+          body: JSON.stringify({
+            host,
+            tag,
+            timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
+          })
+        });
+        const proxyOk = Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok);
+        state.routeRuleTestResult = {
+          ok: proxyOk,
+          tone: proxyOk ? 'both-ok' : 'bad',
+          title: `${host}: ${result?.verdict?.label || (proxyOk ? 'работает через сервер' : 'нет ответа через сервер')}`,
+          detail: routeRuleTestDetail(tag, result)
+        };
+        state.message = state.routeRuleTestResult.title;
+      } else {
+        const result = await request('/api/outbounds/check', {
+          method: 'POST',
+          body: JSON.stringify({
+            tags: [tag],
+            timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+            attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
+            mode: state.serverCheckMode || 'http',
+            url: state.serverCheckUrl || 'https://www.gstatic.com/generate_204'
+          })
+        });
+        const item = (result.results || [])[0] || {};
+        const ok = Boolean(item.ok || item.endpointOk);
+        state.routeRuleTestResult = {
+          ok,
+          tone: ok ? 'both-ok' : 'bad',
+          title: `${tag}: ${ok ? 'сервер отвечает' : 'сервер не ответил'}`,
+          detail: ok
+            ? `Проверка ${item.method || result.mode || 'http'} ${latencyText(item.latencyMs || item.endpointLatencyMs) || 'ok'}`
+            : (item.error || 'У этого типа правила нет одного домена для HTTP-теста')
+        };
+        state.message = state.routeRuleTestResult.title;
+      }
+    } catch (error) {
+      state.routeRuleTestResult = {
+        ok: false,
+        tone: 'bad',
+        title: 'Тест не завершился',
+        detail: error.message || String(error)
+      };
+      state.message = state.routeRuleTestResult.detail;
+    } finally {
+      render();
+    }
   }
 
   function routeRuleFromForm(baseRule = {}) {
@@ -204,6 +308,7 @@ export function createRoutingActions({
     state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
     state.routeOutbound = rule.outboundTag || 'proxy';
     state.message = '';
+    state.routeRuleTestResult = null;
     render();
   }
 
@@ -1148,6 +1253,7 @@ export function createRoutingActions({
     configAnalysisView,
     applyRoutingDsl,
     addRoutingRule,
+    testRouteRuleTarget,
     resetRouteRuleForm,
     routeRuleFromForm,
     openRoutingRuleEditor,

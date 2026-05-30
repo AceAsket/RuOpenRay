@@ -218,6 +218,7 @@ export function createInitialState() {
   routeRuleDialog: false,
   routeRuleMode: 'single',
   routeRuleEditingIndex: -1,
+  routeRuleTestResult: null,
   routePresetDialog: false,
   selectedRoutePresets: [],
   routePresetEditor: '',

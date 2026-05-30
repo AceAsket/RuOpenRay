@@ -753,9 +753,22 @@ const routingActionModel = createRoutingModel({
   routePresets: {},
   proxyOutbounds: () => [{ tag: 'proxy' }],
 });
+let routeRuleProbeRequest = null;
 const routingActions = createRoutingActions({
   state: routingActionState,
   render,
+  request: async (path, options = {}) => {
+    routeRuleProbeRequest = {
+      path,
+      payload: JSON.parse(options.body || '{}')
+    };
+    return {
+      ok: true,
+      verdict: { label: 'через proxy' },
+      proxy: { ok: true, latencyMs: 12 },
+      checks: { tcpProxy: { ok: true, latencyMs: 8 } }
+    };
+  },
   escapeHtml,
   routeKinds: { domain: 'Сайт или домен' },
   routePresets: {},
@@ -790,6 +803,16 @@ const routingActions = createRoutingActions({
   saveDisabledRouteRules: () => {},
 });
 routingActions.addRoutingRule();
+routingActionState.routeRuleDialog = true;
+routingActionState.routeRuleMode = 'single';
+routingActionState.routeKind = 'domain';
+routingActionState.routeValue = 'domain:example.com';
+routingActionState.routeOutbound = 'proxy';
+await routingActions.testRouteRuleTarget();
+const routeRuleTargetTestWorks = routeRuleProbeRequest?.path === '/api/diagnostics/domain-probe'
+  && routeRuleProbeRequest?.payload?.host === 'example.com'
+  && routeRuleProbeRequest?.payload?.tag === 'proxy'
+  && routingActionState.routeRuleTestResult?.ok;
 const routeGroupState = {
   config: { routing: { rules: [
     { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
@@ -956,6 +979,13 @@ const routeDialogView = createRoutingDialogsView({
       : [],
 });
 const routeDialogPresetsHtml = routeDialogView.routeRuleDialog();
+routeDialogState.routeRuleMode = 'single';
+routeDialogState.routeKind = 'domain';
+routeDialogState.routeValue = 'domain:example.com';
+routeDialogState.routeOutbound = 'proxy';
+routeDialogState.routeTargetType = 'outbound';
+routeDialogState.routeRuleTestResult = { ok: true, title: 'example.com: работает', detail: 'Через proxy: HTTP 12 ms' };
+const routeDialogSingleHtml = routeDialogView.routeRuleDialog();
 const routeBalancerState = {
   config: { routing: { balancers: [] } },
   routeBalancerEditingIndex: -1,
@@ -1499,6 +1529,8 @@ const checks = [
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('Patreon') && routeDialogPresetsHtml.includes('Speedtest') && routeDialogPresetsHtml.includes('data-route-preset-check')],
+  ['routing rule target test action', routeRuleTargetTestWorks],
+  ['routing rule target test button', routeDialogSingleHtml.includes('data-action="testRouteRuleTarget"') && routeDialogSingleHtml.includes('route-rule-test-result')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],

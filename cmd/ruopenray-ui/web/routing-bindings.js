@@ -518,6 +518,7 @@ export function bindRoutingControls({
     decorateRouteTargetSelect(select, `outbound:${select.value}`);
     select.addEventListener('change', (event) => {
       state.routeOutbound = event.target.value;
+      state.routeRuleTestResult = null;
       decorateRouteTargetSelect(select, `outbound:${event.target.value}`);
     });
   });
@@ -640,6 +641,7 @@ export function bindRoutingControls({
 
   document.querySelectorAll('#routeKind').forEach((input) => input.addEventListener('change', (event) => {
     state.routeKind = event.target.value;
+    state.routeRuleTestResult = null;
     render();
   }));
   document.querySelectorAll('#routeName').forEach((input) => input.addEventListener('input', (event) => {
@@ -647,11 +649,13 @@ export function bindRoutingControls({
   }));
   document.querySelectorAll('#routeValue').forEach((input) => input.addEventListener('input', (event) => {
     state.routeValue = event.target.value;
+    state.routeRuleTestResult = null;
   }));
   document.querySelectorAll('[data-route-lease-ip]').forEach((button) => {
     button.addEventListener('click', () => {
       state.routeValue = button.dataset.routeLeaseIp || '';
       if (!state.routeName.trim() && button.dataset.routeLeaseName) state.routeName = button.dataset.routeLeaseName;
+      state.routeRuleTestResult = null;
       render();
     });
   });
@@ -664,6 +668,7 @@ export function bindRoutingControls({
   });
   document.querySelectorAll('#routeBalancer').forEach((input) => input.addEventListener('change', (event) => {
     state.routeBalancer = event.target.value;
+    state.routeRuleTestResult = null;
   }));
   document.querySelector('#routeBalancerTag')?.addEventListener('input', (event) => {
     state.routeBalancerTag = event.target.value;
@@ -691,6 +696,7 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-route-target-type]').forEach((button) => {
     button.addEventListener('click', () => {
       state.routeTargetType = button.dataset.routeTargetType;
+      state.routeRuleTestResult = null;
       if (state.routeTargetType === 'balancer' && !state.routeBalancer) state.routeBalancer = balancerOptions()[0] || '';
       render();
     });
