@@ -265,36 +265,41 @@ export function createServerActions({
     state.serverCheckingTags = requestedTags;
     state.message = requestedTags.length === 1 ? 'Проверяю выбранный прокси...' : 'Проверяю все прокси...';
     if (renderAfter) render();
-    const result = await request('/api/outbounds/check', {
-      method: 'POST',
-      body: JSON.stringify({
-        tags: requestedTags,
-        timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
-        attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
-        mode: state.serverCheckMode,
-        url: state.serverCheckUrl
-      })
-    });
-    for (const item of result.results || []) {
-      if (item.tag) state.serverChecks[item.tag] = item;
+    try {
+      const result = await request('/api/outbounds/check', {
+        method: 'POST',
+        body: JSON.stringify({
+          tags: requestedTags,
+          timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
+          attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
+          mode: state.serverCheckMode,
+          url: state.serverCheckUrl
+        })
+      });
+      for (const item of result.results || []) {
+        if (item.tag) state.serverChecks[item.tag] = item;
+      }
+      const alive = (result.results || []).filter((item) => item.ok).length;
+      state.serverCheckHistory = [
+        {
+          at: new Date().toISOString(),
+          total: result.results?.length || 0,
+          alive,
+          results: result.results || []
+        },
+        ...state.serverCheckHistory
+      ].slice(0, 12);
+      state.message = requestedTags.length === 1
+        ? `Проверка сервера: ${alive ? 'доступен' : 'нет ответа'}`
+        : `Проверено серверов: ${result.results?.length || 0}, доступны: ${alive}`;
+    } catch (error) {
+      state.message = `Проверка прокси не завершилась: ${error.message || error}`;
+    } finally {
+      await keepOperationVisible(startedAt);
+      state.serverChecking = false;
+      state.serverCheckingTags = [];
+      if (renderAfter) render();
     }
-    const alive = (result.results || []).filter((item) => item.ok).length;
-    state.serverCheckHistory = [
-      {
-        at: new Date().toISOString(),
-        total: result.results?.length || 0,
-        alive,
-        results: result.results || []
-      },
-      ...state.serverCheckHistory
-    ].slice(0, 12);
-    state.message = requestedTags.length === 1
-      ? `Проверка сервера: ${alive ? 'доступен' : 'нет ответа'}`
-      : `Проверено серверов: ${result.results?.length || 0}, доступны: ${alive}`;
-    await keepOperationVisible(startedAt);
-    state.serverChecking = false;
-    state.serverCheckingTags = [];
-    if (renderAfter) render();
   }
 
   async function saveServerCheckHistorySettings() {
