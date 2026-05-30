@@ -18,6 +18,7 @@ const (
 	ruOpenRayFirewallNftPath       = "/etc/ruopenray-ui/firewall.nft"
 	ruOpenRayFirewallLegacyNftPath = "/etc/nftables.d/ruopenray.nft"
 	ruOpenRayFirewallHotplugPath   = "/etc/hotplug.d/iface/90-ruopenray-tproxy"
+	ruOpenRayFirewallEventPath     = "/etc/hotplug.d/firewall/90-ruopenray-tproxy"
 	ruOpenRayKillSwitchDNSPath     = "/etc/ruopenray-ui/killswitch-dns-domains"
 )
 
@@ -26,14 +27,16 @@ var killSwitchDomainPattern = regexp.MustCompile(`^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$
 func applyTProxyPolicyRouting(enabled bool) []map[string]any {
 	if !enabled {
 		return []map[string]any{
+			runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1/1", "table", "100"),
 			runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1", "table", "100"),
 			runTimeout(5*time.Second, "ip", "route", "flush", "table", "100"),
 		}
 	}
 	return []map[string]any{
+		runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1/1", "table", "100"),
 		runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1", "table", "100"),
 		runTimeout(5*time.Second, "ip", "route", "flush", "table", "100"),
-		runTimeout(5*time.Second, "ip", "rule", "add", "fwmark", "1", "table", "100"),
+		runTimeout(5*time.Second, "ip", "rule", "add", "fwmark", "1/1", "table", "100"),
 		runTimeout(5*time.Second, "ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "100"),
 	}
 }
@@ -306,7 +309,8 @@ func (s *serverState) firewallStatus() map[string]any {
 	}
 	ipRules := runTimeout(5*time.Second, "ip", "rule", "show")
 	ipRoutes := runTimeout(5*time.Second, "ip", "route", "show", "table", "100")
-	ipRuleActive := strings.Contains(fmt.Sprint(ipRules["stdout"]), "fwmark 0x1") && strings.Contains(fmt.Sprint(ipRules["stdout"]), "lookup 100")
+	ipRulesText := fmt.Sprint(ipRules["stdout"])
+	ipRuleActive := (strings.Contains(ipRulesText, "fwmark 0x1/0x1") || strings.Contains(ipRulesText, "fwmark 0x1 ")) && strings.Contains(ipRulesText, "lookup 100")
 	ipRouteActive := strings.Contains(fmt.Sprint(ipRoutes["stdout"]), "local") && strings.Contains(fmt.Sprint(ipRoutes["stdout"]), "dev lo")
 	routerMode := "unknown"
 	if strings.Contains(statusBody, " tproxy ") {
@@ -542,11 +546,17 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
 	if routerMode == "tproxy" {
 		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallHotplugPath), 0o755)
-		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, []byte(rfw.HotplugScript()), 0o755); err != nil {
+		hotplug := []byte(rfw.HotplugScript())
+		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, hotplug, 0o755); err != nil {
+			return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
+		}
+		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallEventPath), 0o755)
+		if err := os.WriteFile(ruOpenRayFirewallEventPath, hotplug, 0o755); err != nil {
 			return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
 		}
 	} else {
 		_ = os.Remove(ruOpenRayFirewallHotplugPath)
+		_ = os.Remove(ruOpenRayFirewallEventPath)
 	}
 	if commandExists("/etc/init.d/firewall") {
 		steps = append(steps, runTimeout(20*time.Second, "/etc/init.d/firewall", "reload"))
@@ -587,11 +597,17 @@ func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string
 	}
 	if strings.TrimSpace(hotplugBody) != "" {
 		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallHotplugPath), 0o755)
-		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, []byte(hotplugBody), 0o755); err != nil {
+		hotplug := []byte(hotplugBody)
+		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, hotplug, 0o755); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallEventPath), 0o755)
+		if err := os.WriteFile(ruOpenRayFirewallEventPath, hotplug, 0o755); err != nil {
 			return map[string]any{"ok": false, "error": err.Error()}
 		}
 	} else {
 		_ = os.Remove(ruOpenRayFirewallHotplugPath)
+		_ = os.Remove(ruOpenRayFirewallEventPath)
 	}
 	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
 	if commandExists("/etc/init.d/firewall") {
@@ -626,6 +642,7 @@ func (s *serverState) disableFirewall() map[string]any {
 	_ = os.Remove(ruOpenRayFirewallNftPath)
 	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
 	_ = os.Remove(ruOpenRayFirewallHotplugPath)
+	_ = os.Remove(ruOpenRayFirewallEventPath)
 	if commandExists("/etc/init.d/firewall") {
 		steps = append(steps, runTimeout(20*time.Second, "/etc/init.d/firewall", "reload"))
 	}

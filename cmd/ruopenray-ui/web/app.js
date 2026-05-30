@@ -1796,11 +1796,15 @@ function render() {
   document.body.classList.remove('is-login-page');
   const statusLoaded = Boolean(state.status);
   const running = state.status?.service?.running;
+  const serviceManaged = Boolean(state.status?.service?.managed);
   const xrayUptime = Number(state.status?.service?.uptime || 0);
+  const xrayOwner = state.status?.service?.external && state.status?.service?.owner
+    ? ` через ${state.status.service.owner}`
+    : '';
   const serviceBusy = ['start', 'stop', 'restart'].includes(state.busyAction);
   const xrayStatusText = statusLoaded
     ? running
-      ? `Xray работает${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
+      ? `Xray работает${xrayOwner}${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
       : 'Xray остановлен'
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
@@ -1814,10 +1818,10 @@ function render() {
       : running
         ? null
         : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
-    statusLoaded && running
+    statusLoaded && running && serviceManaged
       ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
       : null,
-    statusLoaded && running
+    statusLoaded && running && serviceManaged
       ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
       : null,
   ].filter(Boolean).join('');

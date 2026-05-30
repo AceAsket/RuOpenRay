@@ -75,9 +75,9 @@ func TestKillSwitchDNSBlockEntries(t *testing.T) {
 func TestParseFirewallPortsFromLegacyBody(t *testing.T) {
 	body := `table inet ruopenray {
   chain prerouting {
-    iifname "br-lan" meta l4proto { tcp, udp } th dport 53 counter tproxy ip to :52345 meta mark set 1 comment "RuOpenRay DNS Intercept"
+    iifname "br-lan" meta l4proto { tcp, udp } th dport 53 counter tproxy ip to 127.0.0.1:52345 meta mark set 1 comment "RuOpenRay DNS Intercept"
     iifname "br-lan" udp dport 443 drop comment "RuOpenRay Block QUIC"
-    iifname "br-lan" meta l4proto { tcp, udp } th dport { 80, 443 } counter tproxy ip to :52345 meta mark set 1
+    iifname "br-lan" meta l4proto { tcp, udp } th dport { 80, 443 } counter tproxy ip to 127.0.0.1:52345 meta mark set 1
   }
 }`
 	ports := parseFirewallPortsFromBody(body)
@@ -165,7 +165,7 @@ func TestFirewallPreviewUsesExpandedGeoTargets(t *testing.T) {
 		"dnsInterceptTargetPort": 5353,
 	})
 	body, meta := rfw.NativeNft(expanded)
-	for _, needle := range []string{"10.0.0.0/8", "192.168.0.0/16", "@killswitch4", "meta l4proto { tcp, udp } counter tproxy ip to :52345"} {
+	for _, needle := range []string{"10.0.0.0/8", "192.168.0.0/16", "@killswitch4", "meta l4proto { tcp, udp } counter tproxy ip to 127.0.0.1:52345"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("nft preview missing %q:\n%s", needle, body)
 		}

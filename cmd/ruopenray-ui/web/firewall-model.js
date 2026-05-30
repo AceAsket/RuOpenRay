@@ -232,7 +232,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     if (state.firewallRouterMode === 'redirect') {
       return `nft add rule inet ruopenray prerouting ${lanExpr}${deviceExpr}meta l4proto tcp${portExpr} redirect to :${port}`;
     }
-    return `nft add rule inet ruopenray prerouting ${lanExpr}${deviceExpr}meta l4proto { tcp, udp }${portExpr} counter tproxy to :${port} meta mark set 1`;
+    return `nft add rule inet ruopenray prerouting ${lanExpr}${deviceExpr}meta l4proto { tcp, udp }${portExpr} counter tproxy ip to 127.0.0.1:${port} meta mark set 1`;
   }
 
   function firewallPolicyPreview() {
@@ -329,7 +329,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto tcp tcp dport 53 redirect to :${port} comment "RuOpenRay DNS Intercept"`);
         dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto udp udp dport 53 drop comment "RuOpenRay DNS UDP guard"`);
       } else {
-        dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto { tcp, udp } th dport 53 counter tproxy to :${port} meta mark set 1 comment "RuOpenRay DNS Intercept"`);
+        dnsInterceptRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${scopedDeviceExpr}meta l4proto { tcp, udp } th dport 53 counter tproxy ip to 127.0.0.1:${port} meta mark set 1 comment "RuOpenRay DNS Intercept"`);
       }
     }
     const guard = firewallKillSwitchTargets();
@@ -355,18 +355,19 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto tcp redirect to :${port} comment "RuOpenRay Kill Switch"`);
         killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto udp drop comment "RuOpenRay Kill Switch UDP guard"`);
       } else {
-        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy to :${port} meta mark set 1 comment "RuOpenRay Kill Switch"`);
+        killSwitchRules.push(`nft add rule inet ruopenray prerouting iifname "br-lan" ${killSwitchDeviceExpr}ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to 127.0.0.1:${port} meta mark set 1 comment "RuOpenRay Kill Switch"`);
       }
     }
     const common = [
       '# Черновик для OpenWrt firewall4/nftables. Проверьте LAN-интерфейс и порт перед применением.',
       packageCommand,
       'nft delete table inet ruopenray 2>/dev/null || true',
+      state.firewallRouterMode === 'tproxy' ? 'ip rule del fwmark 1/1 table 100 2>/dev/null || true' : '',
       state.firewallRouterMode === 'tproxy' ? 'ip rule del fwmark 1 table 100 2>/dev/null || true' : '',
       state.firewallRouterMode === 'tproxy' ? 'ip route flush table 100 2>/dev/null || true' : '',
       'nft add table inet ruopenray',
       state.firewallRouterMode === 'tproxy'
-        ? 'nft add chain inet ruopenray prerouting { type filter hook prerouting priority mangle \\; policy accept \\; }'
+        ? 'nft add chain inet ruopenray prerouting { type filter hook prerouting priority mangle - 5 \\; policy accept \\; }'
         : 'nft add chain inet ruopenray prerouting { type nat hook prerouting priority dstnat \\; policy accept \\; }',
       state.firewallRouterMode === 'tproxy' ? 'nft add chain inet ruopenray output { type route hook output priority mangle \\; policy accept \\; }' : '',
       'nft add rule inet ruopenray prerouting iifname != "br-lan" return',
@@ -376,7 +377,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       'nft add rule inet ruopenray prerouting ip daddr { 10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return',
       ...dnsInterceptRules,
       blockQuicRule,
-      state.firewallRouterMode === 'tproxy' ? 'ip rule add fwmark 1 table 100' : '',
+      state.firewallRouterMode === 'tproxy' ? 'ip rule add fwmark 1/1 table 100' : '',
       state.firewallRouterMode === 'tproxy' ? 'ip route add local 0.0.0.0/0 dev lo table 100' : '',
       ''
     ].filter(Boolean);
@@ -405,7 +406,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
           : '# proxy-доменов для dnsmasq/nftset нет',
         selectedModeEmpty ? selectedNoopRule : state.firewallRouterMode === 'redirect'
           ? `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto tcp${firewallPortExpression()} redirect to :${port}`
-          : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy to :${port} meta mark set 1`
+          : `nft add rule inet ruopenray prerouting iifname "br-lan" ip daddr @proxy4 ${state.firewallDeviceMode === 'selected' ? firewallDeviceExpression() : ''}meta l4proto { tcp, udp }${firewallPortExpression()} counter tproxy ip to 127.0.0.1:${port} meta mark set 1`
       ].join('\n');
     }
     return [

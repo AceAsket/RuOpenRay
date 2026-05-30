@@ -61,3 +61,29 @@ func TestXrayEnvUsesGeoDir(t *testing.T) {
 		t.Fatalf("xrayEnv does not include V2RAY_LOCATION_ASSET: %s", env)
 	}
 }
+
+func TestXrayProcessOwner(t *testing.T) {
+	tests := []struct {
+		name    string
+		cmdline string
+		want    string
+	}{
+		{name: "v2raya config", cmdline: "/usr/bin/xray run --config=/etc/v2raya/config.json", want: "v2rayA"},
+		{name: "ruopenray path", cmdline: "/usr/bin/xray run --config=/etc/ruopenray-ui/config.json", want: "RuOpenRay"},
+		{name: "plain xray", cmdline: "/usr/bin/xray run --config=/etc/xray/config.json", want: "xray"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := xrayProcessOwner(tt.cmdline); got != tt.want {
+				t.Fatalf("xrayProcessOwner() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExternalXrayDetail(t *testing.T) {
+	got := externalXrayDetail("inactive with no instances", "v2rayA", "/usr/bin/xray run --config=/etc/v2raya/config.json")
+	if !strings.Contains(got, "inactive with no instances") || !strings.Contains(got, "v2rayA") || !strings.Contains(got, "/etc/v2raya/config.json") {
+		t.Fatalf("externalXrayDetail() did not include expected context: %q", got)
+	}
+}

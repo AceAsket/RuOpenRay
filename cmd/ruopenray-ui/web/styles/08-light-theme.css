@@ -428,6 +428,52 @@ body[data-theme="light"] .route-target-option:hover {
   box-shadow: inset 0 0 0 1px rgba(10, 159, 139, 0.12);
 }
 
+body[data-theme="light"] .server-edit-section,
+body[data-theme="light"] .server-json-details,
+body[data-theme="light"] .country-picker {
+  color: var(--text);
+  border-color: var(--line-soft);
+  background:
+    linear-gradient(135deg, rgba(10, 159, 139, 0.05), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: none;
+}
+
+body[data-theme="light"] .server-edit-section h3,
+body[data-theme="light"] .server-json-details summary,
+body[data-theme="light"] .country-picker-head label,
+body[data-theme="light"] .country-search-current b,
+body[data-theme="light"] .country-option strong {
+  color: var(--text);
+}
+
+body[data-theme="light"] .country-search-current,
+body[data-theme="light"] .country-option {
+  color: var(--text);
+  border-color: var(--line);
+  background: #f8fcfb;
+}
+
+body[data-theme="light"] .country-search-current em,
+body[data-theme="light"] .country-option em,
+body[data-theme="light"] .country-picker-foot {
+  color: var(--muted);
+}
+
+body[data-theme="light"] .country-option.active,
+body[data-theme="light"] .country-option:hover {
+  color: var(--text);
+  border-color: rgba(10, 159, 139, 0.44);
+  background: #e5f7f3;
+}
+
+body[data-theme="light"] .route-preset-tags em {
+  color: #064538;
+  border-color: rgba(10, 159, 139, 0.28);
+  background: #dff8ed;
+  text-shadow: none;
+}
+
 body[data-theme="light"] .route-system-panel > summary span,
 body[data-theme="light"] .route-system-panel > summary small,
 body[data-theme="light"] .server-main strong,

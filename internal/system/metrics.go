@@ -192,6 +192,15 @@ func ProcComm(pid string) string {
 	return strings.TrimSpace(string(comm))
 }
 
+func ProcCmdline(pid string) string {
+	body, err := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(string(body), "\x00"), "\x00")
+	return strings.Join(parts, " ")
+}
+
 type NetDevStat struct {
 	Name      string
 	RxBytes   uint64

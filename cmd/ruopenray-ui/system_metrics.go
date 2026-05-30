@@ -96,15 +96,49 @@ func (s *serverState) xrayServiceStatus() map[string]any {
 	result := run("/etc/init.d/"+s.cfg.ServiceName, "status")
 	text := result["stdout"].(string) + " " + result["stderr"].(string)
 	normalized := strings.ToLower(text)
-	running := result["ok"].(bool) && !strings.Contains(normalized, "no instances") && regexp.MustCompile(`(?i)running|active`).MatchString(text)
-	service := map[string]any{"running": running, "detail": strings.TrimSpace(text)}
-	if running {
-		if uptime, pid := rsystem.ProcessUptimeSeconds(s.cfg.ServiceName); uptime > 0 {
-			service["uptime"] = uptime
-			service["pid"] = pid
+	managed := result["ok"].(bool) && !strings.Contains(normalized, "no instances") && regexp.MustCompile(`(?i)running|active`).MatchString(text)
+	uptime, pid := rsystem.ProcessUptimeSeconds(s.cfg.ServiceName)
+	processRunning := uptime > 0
+	running := managed || processRunning
+	detail := strings.TrimSpace(text)
+	service := map[string]any{"running": running, "managed": managed, "external": processRunning && !managed, "detail": detail}
+	if processRunning {
+		service["uptime"] = uptime
+		service["pid"] = pid
+		cmdline := rsystem.ProcCmdline(pid)
+		owner := xrayProcessOwner(cmdline)
+		service["owner"] = owner
+		if !managed {
+			service["detail"] = externalXrayDetail(detail, owner, cmdline)
 		}
 	}
 	return service
+}
+
+func xrayProcessOwner(cmdline string) string {
+	normalized := strings.ToLower(cmdline)
+	switch {
+	case strings.Contains(normalized, "/etc/v2raya/") || strings.Contains(normalized, "v2raya"):
+		return "v2rayA"
+	case strings.Contains(normalized, "ruopenray"):
+		return "RuOpenRay"
+	default:
+		return "xray"
+	}
+}
+
+func externalXrayDetail(detail, owner, cmdline string) string {
+	msg := "Обнаружен живой процесс xray"
+	if owner != "" && owner != "xray" {
+		msg += ", запущенный через " + owner
+	}
+	if strings.TrimSpace(cmdline) != "" {
+		msg += ": " + strings.TrimSpace(cmdline)
+	}
+	if strings.TrimSpace(detail) == "" {
+		return msg
+	}
+	return strings.TrimSpace(detail) + "\n" + msg
 }
 
 func (s *serverState) saveXrayStatsSettings(enabled bool) map[string]any {

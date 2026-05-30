@@ -58,7 +58,7 @@ func TestNativeNftTProxy(t *testing.T) {
 		"transparentPort": "52345",
 		"ports":           []any{"80", "443"},
 	})
-	if !strings.Contains(body, "tproxy ip to :52345") {
+	if !strings.Contains(body, "tproxy ip to 127.0.0.1:52345") {
 		t.Fatalf("nft body does not contain tproxy rule:\n%s", body)
 	}
 	if meta["routerMode"] != "tproxy" {
@@ -76,7 +76,7 @@ func TestNativeNftInterceptsDNSOutsidePortList(t *testing.T) {
 		"transparentPort": "52345",
 		"ports":           []any{"80", "443"},
 	})
-	if !strings.Contains(body, "th dport 53 counter tproxy ip to :52345") {
+	if !strings.Contains(body, "th dport 53 counter tproxy ip to 127.0.0.1:52345") {
 		t.Fatalf("nft body does not contain DNS intercept rule:\n%s", body)
 	}
 	if meta["dnsIntercept"] != true {
@@ -191,7 +191,7 @@ func TestNativeNftKillSwitchForcesProtectedIPsToXray(t *testing.T) {
 	if !strings.Contains(body, "set killswitch4") {
 		t.Fatalf("nft body does not contain kill switch set:\n%s", body)
 	}
-	if !strings.Contains(body, "ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :52345") {
+	if !strings.Contains(body, "ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to 127.0.0.1:52345") {
 		t.Fatalf("nft body does not force protected IPs to Xray:\n%s", body)
 	}
 	if meta["killSwitch"] != true {
@@ -292,7 +292,7 @@ func TestNativeNftKillSwitchDomainsCreateDynamicSet(t *testing.T) {
 	if !strings.Contains(body, "set killswitch4 { type ipv4_addr; flags interval; }") {
 		t.Fatalf("domain kill switch should create an empty dynamic nft set:\n%s", body)
 	}
-	if !strings.Contains(body, "ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :52345") {
+	if !strings.Contains(body, "ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to 127.0.0.1:52345") {
 		t.Fatalf("domain kill switch should force resolved IPs to Xray:\n%s", body)
 	}
 	domains, ok := meta["killSwitchDomains"].([]string)

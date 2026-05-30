@@ -169,7 +169,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	if routerMode == "redirect" {
 		chainLines = append(chainLines, "    type nat hook prerouting priority dstnat; policy accept;")
 	} else {
-		chainLines = append(chainLines, "    type filter hook prerouting priority mangle; policy accept;")
+		chainLines = append(chainLines, "    type filter hook prerouting priority mangle - 5; policy accept;")
 	}
 	chainLines = append(chainLines,
 		fmt.Sprintf("    iifname != %q return", lanInterface),
@@ -200,7 +200,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 				killSwitchPrefix+"ip daddr @killswitch4 meta l4proto udp drop comment \"RuOpenRay Kill Switch UDP guard\"",
 			)
 		} else {
-			chainLines = append(chainLines, killSwitchPrefix+"ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay Kill Switch\"")
+			chainLines = append(chainLines, killSwitchPrefix+"ip daddr @killswitch4 meta l4proto { tcp, udp } counter tproxy ip to 127.0.0.1:"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay Kill Switch\"")
 		}
 	}
 	if selectedModeEmpty {
@@ -220,7 +220,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 				targetPrefix+"meta l4proto udp udp dport 53 drop comment \"RuOpenRay DNS UDP guard\"",
 			)
 		} else {
-			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp } th dport 53 counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay DNS Intercept\"")
+			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp } th dport 53 counter tproxy ip to 127.0.0.1:"+strconv.Itoa(transparentPort)+" meta mark set 1 comment \"RuOpenRay DNS Intercept\"")
 		}
 	}
 	if !selectedModeEmpty && blockQuic {
@@ -242,7 +242,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 			}
 			chainLines = append(chainLines, targetPrefix+redirectMatch+" redirect to :"+strconv.Itoa(transparentPort))
 		} else {
-			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+DportExpression(ports, "meta")+" counter tproxy ip to :"+strconv.Itoa(transparentPort)+" meta mark set 1")
+			chainLines = append(chainLines, targetPrefix+"meta l4proto { tcp, udp }"+DportExpression(ports, "meta")+" counter tproxy ip to 127.0.0.1:"+strconv.Itoa(transparentPort)+" meta mark set 1")
 		}
 	}
 	chainLines = append(chainLines, "  }")
@@ -306,8 +306,9 @@ NFT_FILE="/etc/ruopenray-ui/firewall.nft"
 nft delete table inet ruopenray 2>/dev/null
 [ -s "$NFT_FILE" ] && nft -f "$NFT_FILE" 2>/dev/null
 ip rule del fwmark 1 table 100 2>/dev/null
+ip rule del fwmark 1/1 table 100 2>/dev/null
 ip route flush table 100 2>/dev/null
-ip rule add fwmark 1 table 100 2>/dev/null
+ip rule add fwmark 1/1 table 100 2>/dev/null
 ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
 exit 0
 `
