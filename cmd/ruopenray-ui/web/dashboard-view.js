@@ -248,6 +248,7 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
   const totals = xrayStatsTotals(stats);
   const groups = stats.groups || {};
   const active = xrayActiveStats(stats);
+  const proxyTraffic = groups.proxy || {};
   return `
     <section class="xray-dashboard-strip">
       <article>
@@ -256,19 +257,14 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
         <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
       </article>
       <article>
-        <span>Через proxy</span>
-        <strong>${escapeHtml(byteSize(groups.proxy?.downlink))} принято</strong>
-        <small>${escapeHtml(`прием ${byteRate(groups.proxy?.downRate)} · отдача ${byteRate(groups.proxy?.upRate)}`)}</small>
+        <span>Proxy-трафик</span>
+        <strong>${escapeHtml(`${byteSize(proxyTraffic.downlink)} принято · ${byteSize(proxyTraffic.uplink)} отправлено`)}</strong>
+        <small>${escapeHtml(`${byteRate(proxyTraffic.downRate)} прием · ${byteRate(proxyTraffic.upRate)} отдача · ${xrayStatsPeriodLabel()}`)}</small>
       </article>
       <article>
         <span>Напрямую / блокировка</span>
         <strong>${escapeHtml(byteSize(groups.direct?.downlink))} · ${escapeHtml(byteSize(groups.block?.downlink))}</strong>
         <small>${escapeHtml(`всего сейчас: прием ${byteRate(totals.downRate)} · отдача ${byteRate(totals.upRate)}`)}</small>
-      </article>
-      <article>
-        <span>Период</span>
-        <strong>${escapeHtml(byteSize(totals.downlink))} принято</strong>
-        <small>${escapeHtml(xrayStatsPeriodLabel())}</small>
       </article>
     </section>
   `;
@@ -284,9 +280,12 @@ function xrayCoreDashboard(status = state.status || {}, available, info) {
   const statsEnabled = stats.enabled === true;
   const totals = xrayStatsTotals(stats);
   const groups = stats.groups || {};
+  const proxyTraffic = groups.proxy || {};
   const active = xrayActiveStats(stats);
   const activeAddress = active?.tag ? outboundAddress(xrayStatsOutboundConfig(active.tag)) : '';
   const directBlockText = `${byteSize(groups.direct?.downlink)} напрямую · ${byteSize(groups.block?.downlink)} блокировка`;
+  const proxyTrafficText = `${byteSize(proxyTraffic.downlink)} принято · ${byteSize(proxyTraffic.uplink)} отправлено`;
+  const proxyTrafficRateText = `${byteRate(proxyTraffic.downRate)} прием · ${byteRate(proxyTraffic.upRate)} отдача`;
   return `
     <section class="panel xray-core-card ${info.hasUpdate ? 'has-update' : ''}">
       <div class="xray-core-head">
@@ -313,18 +312,13 @@ function xrayCoreDashboard(status = state.status || {}, available, info) {
         </article>
         <article>
           <span>Proxy-трафик</span>
-          <strong>${escapeHtml(statsEnabled ? `${byteSize(groups.proxy?.downlink)} принято` : 'нет данных')}</strong>
-          <small>${escapeHtml(statsEnabled ? `${byteRate(groups.proxy?.downRate)} прием · ${byteRate(groups.proxy?.upRate)} отдача` : 'включается в диагностике или кнопкой ниже')}</small>
+          <strong>${escapeHtml(statsEnabled ? proxyTrafficText : 'нет данных')}</strong>
+          <small>${escapeHtml(statsEnabled ? `${proxyTrafficRateText} · ${xrayStatsPeriodLabel()}` : 'включается в диагностике или кнопкой ниже')}</small>
         </article>
         <article>
           <span>Напрямую / блокировка</span>
           <strong>${escapeHtml(statsEnabled ? directBlockText : 'нет данных')}</strong>
           <small>${escapeHtml(statsEnabled ? `${byteRate(totals.downRate)} прием всего · ${byteRate(totals.upRate)} отдача всего` : 'без учета трафика по outbound')}</small>
-        </article>
-        <article>
-          <span>Период</span>
-          <strong>${escapeHtml(statsEnabled ? `${byteSize(totals.downlink)} принято` : 'учет выключен')}</strong>
-          <small>${escapeHtml(statsEnabled ? xrayStatsPeriodLabel() : 'добавляет небольшую нагрузку на Xray')}</small>
         </article>
       </div>
       ${statsEnabled ? '' : `<div class="xray-core-foot"><button class="btn secondary" type="button" data-action="enableXrayStats">Включить статистику Xray</button></div>`}
