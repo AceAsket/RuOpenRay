@@ -11,15 +11,16 @@ export function createLoginView({
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
     app.innerHTML = `
       <main class="login">
-        <form class="login-card" id="loginForm">
+        <form class="login-card" id="loginForm" action="/api/login" method="post" autocomplete="on">
           <div class="brand" style="margin-bottom: 18px">
             <img class="brand-mark" src="/assets/ruopenray-icon-512.png" alt="" />
             <div><strong>RuOpenRay UI</strong><span>Панель управления Xray</span></div>
           </div>
+          <input class="browser-credential-user" id="username" name="username" value="ruopenray" autocomplete="username" tabindex="-1" aria-hidden="true" />
           <div class="form-row">
             <label>Пароль</label>
             <div class="password-field">
-              <input id="password" type="${state.passwordVisible ? 'text' : 'password'}" value="${escapeHtml(state.password)}" autocomplete="current-password" autofocus />
+              <input id="password" name="password" type="${state.passwordVisible ? 'text' : 'password'}" value="${escapeHtml(state.password)}" autocomplete="current-password" autofocus />
               <button type="button" class="password-toggle" data-action="togglePassword" aria-label="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}" title="${state.passwordVisible ? 'Скрыть пароль' : 'Показать пароль'}">${eyeIcon}</button>
             </div>
           </div>

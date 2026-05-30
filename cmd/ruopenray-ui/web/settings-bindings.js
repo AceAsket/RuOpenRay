@@ -1,6 +1,7 @@
 export function bindSettingsControls({
   state,
   render,
+  setUiTheme,
   installPasswordStorageKey,
   githubInstallCommand,
 }) {
@@ -29,6 +30,16 @@ export function bindSettingsControls({
   });
   document.querySelector('#settingsConfirmPassword')?.addEventListener('input', (event) => {
     state.settingsConfirmPassword = event.target.value;
+  });
+  document.querySelectorAll('[data-ui-theme]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (typeof setUiTheme === 'function') {
+        setUiTheme(button.dataset.uiTheme);
+        return;
+      }
+      state.uiTheme = button.dataset.uiTheme === 'light' ? 'light' : 'dark';
+      render();
+    });
   });
   document.querySelector('#installPassword')?.addEventListener('input', (event) => {
     state.installPassword = event.target.value;

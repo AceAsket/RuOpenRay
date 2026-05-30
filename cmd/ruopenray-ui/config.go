@@ -25,6 +25,7 @@ type appConfig struct {
 
 type serverState struct {
 	cfg              appConfig
+	sessionsMu       sync.RWMutex
 	sessions         map[string]bool
 	started          time.Time
 	systemSampler    *rsystem.Sampler
@@ -42,6 +43,33 @@ type serverState struct {
 	logCacheAt       time.Time
 	fallbackMu       sync.Mutex
 	fallbackProgress map[string]any
+}
+
+func (s *serverState) addSession(token string) {
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+	if s.sessions == nil {
+		s.sessions = map[string]bool{}
+	}
+	s.sessions[token] = true
+}
+
+func (s *serverState) hasSession(token string) bool {
+	s.sessionsMu.RLock()
+	defer s.sessionsMu.RUnlock()
+	return s.sessions != nil && s.sessions[token]
+}
+
+func (s *serverState) clearSessions() {
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+	s.sessions = map[string]bool{}
+}
+
+func (s *serverState) sessionCount() int {
+	s.sessionsMu.RLock()
+	defer s.sessionsMu.RUnlock()
+	return len(s.sessions)
 }
 
 func getenv(names []string, fallback string) string {

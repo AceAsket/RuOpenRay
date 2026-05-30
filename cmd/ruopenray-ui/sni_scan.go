@@ -11,7 +11,7 @@ import (
 )
 
 func (s *serverState) scanSNI(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	target := strings.TrimSpace(fmt.Sprint(payload["target"]))
 	if target == "" || target == "<nil>" {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Укажите IP или домен для поиска"})

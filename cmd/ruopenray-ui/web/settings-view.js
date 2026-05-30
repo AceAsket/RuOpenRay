@@ -42,6 +42,7 @@ function settingsPanel() {
   const settingsTabs = [
     ['logging', 'Логирование'],
     ['security', 'Панель'],
+    ['interface', 'Интерфейс'],
     ['service', 'Сервис'],
     ['local-proxy', 'Локальные прокси'],
     ['storage', 'Память'],
@@ -237,6 +238,25 @@ function settingsPanel() {
       </div>
     </section>
   `;
+  const interfaceSection = `
+    <section class="panel settings-section">
+      <div class="panel-title">
+        <div><h2>Тема интерфейса</h2><span>Выбор сохраняется в браузере и применяется сразу ко всей панели.</span></div>
+      </div>
+      <div class="settings-theme-grid" role="radiogroup" aria-label="Тема интерфейса">
+        <button type="button" class="settings-theme-card ${state.uiTheme !== 'light' ? 'active' : ''}" data-ui-theme="dark" aria-pressed="${state.uiTheme !== 'light' ? 'true' : 'false'}">
+          <span class="theme-preview dark" aria-hidden="true"><i></i><b></b><em></em></span>
+          <strong>Темная</strong>
+          <small>Текущий ночной вид RuOpenRay.</small>
+        </button>
+        <button type="button" class="settings-theme-card ${state.uiTheme === 'light' ? 'active' : ''}" data-ui-theme="light" aria-pressed="${state.uiTheme === 'light' ? 'true' : 'false'}">
+          <span class="theme-preview light" aria-hidden="true"><i></i><b></b><em></em></span>
+          <strong>Светлая</strong>
+          <small>Более читаемая днем и на ярких экранах.</small>
+        </button>
+      </div>
+    </section>
+  `;
   const appInfo = state.status?.app || {};
   const appRelease = state.appRelease || {};
   const appHasUpdate = Boolean(appRelease.update && appRelease.assetUrl);
@@ -372,6 +392,8 @@ function settingsPanel() {
   `;
   const visibleSection = settingsView === 'security'
     ? securitySection
+    : settingsView === 'interface'
+      ? interfaceSection
     : settingsView === 'updates'
       ? appUpdateSection
     : settingsView === 'storage'

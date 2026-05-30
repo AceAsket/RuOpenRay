@@ -153,7 +153,7 @@ func (s *serverState) enableXrayServiceConfig() map[string]any {
 }
 
 func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
-	payload, err := readJSON(r)
+	payload, err := readJSON(w, r)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 		return

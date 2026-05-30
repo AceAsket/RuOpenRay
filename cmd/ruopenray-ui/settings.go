@@ -43,7 +43,7 @@ func (s *serverState) changePassword(payload map[string]any) map[string]any {
 	}
 
 	s.cfg.Password = next
-	s.sessions = map[string]bool{}
+	s.clearSessions()
 	return map[string]any{
 		"ok":        true,
 		"persisted": persisted,

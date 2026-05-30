@@ -60,12 +60,26 @@ import {
   clearAuthToken,
   domainMonitorFilterStorageKey,
   installPasswordStorageKey,
+  normalizeUiTheme,
+  saveUiTheme,
   shellQuote,
   xrayStatsResetAtStorageKey
 } from './storage.js';
 
 const app = document.querySelector('#app');
 const state = createInitialState();
+
+function applyUiTheme(theme = state.uiTheme) {
+  state.uiTheme = normalizeUiTheme(theme);
+  document.body.dataset.theme = state.uiTheme;
+}
+
+function setUiTheme(theme) {
+  applyUiTheme(saveUiTheme(theme));
+  render();
+}
+
+applyUiTheme();
 
 function clearAuth() {
   state.token = '';
@@ -1777,6 +1791,7 @@ function restoreRenderState(snapshot) {
 function render() {
   const renderSnapshot = captureRenderState();
   state.pendingBackgroundRender = false;
+  applyUiTheme();
   if (!state.token) return loginView();
   document.body.classList.remove('is-login-page');
   const statusLoaded = Boolean(state.status);
@@ -2222,6 +2237,7 @@ function bind() {
   bindSettingsControls({
     state,
     render,
+    setUiTheme,
     installPasswordStorageKey,
     githubInstallCommand,
   });

@@ -14,6 +14,8 @@ import (
 	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
 )
 
+const maxJSONBodyBytes = 2 * 1024 * 1024
+
 func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.Header().Set("cache-control", "no-store")
@@ -21,11 +23,12 @@ func writeJSON(w http.ResponseWriter, code int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func readJSON(r *http.Request) (map[string]any, error) {
+func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
 	if r.Body == nil {
 		return map[string]any{}, nil
 	}
 	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(bytes.TrimSpace(body)) == 0 {
 		return map[string]any{}, err
@@ -43,7 +46,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}()
 	path := strings.TrimPrefix(r.URL.Path, "/api")
 	if path == "/login" && r.Method == http.MethodPost {
-		payload, err := readJSON(r)
+		payload, err := readJSON(w, r)
 		if err != nil {
 			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 			return
@@ -53,7 +56,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		token := randomToken()
-		s.sessions[token] = true
+		s.addSession(token)
 		http.SetCookie(w, &http.Cookie{Name: "openray_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		writeJSON(w, 200, map[string]any{"ok": true, "token": token})
 		return
@@ -71,7 +74,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/config/draft" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.readConfigDraft())
 	case path == "/config/draft" && r.Method == http.MethodPost:
-		payload, err := readJSON(r)
+		payload, err := readJSON(w, r)
 		if err != nil {
 			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 			return
@@ -80,12 +83,12 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/config/draft" && r.Method == http.MethodDelete:
 		writeJSON(w, 200, s.clearConfigDraft())
 	case path == "/config/test" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		cfg, _ := payload["config"].(map[string]any)
 		result := s.validateConfigWithGeoAudit(cfg)
 		writeJSON(w, 200, result)
 	case path == "/config/analyze" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		cfg, _ := payload["config"].(map[string]any)
 		writeJSON(w, 200, s.analyzeConfig(cfg))
 	case path == "/config/apply" && r.Method == http.MethodPost:
@@ -93,73 +96,73 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/routing/disabled" && r.Method == http.MethodGet:
 		writeJSON(w, 200, map[string]any{"ok": true, "rules": s.disabledRouteRules()})
 	case path == "/routing/disabled" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveDisabledRouteRules(payload))
 	case path == "/routing/names" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.routeNamesReport())
 	case path == "/routing/names" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveRouteNames(payload))
 	case path == "/routing/presets" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.routePresetsReport())
 	case path == "/routing/presets" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveRoutePresets(payload))
 	case path == "/server-meta" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serverMetaReport())
 	case path == "/server-meta" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveServerMeta(payload))
 	case path == "/service" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
 	case path == "/settings/password" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))
 	case path == "/settings/logging" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.loggingSettings())
 	case path == "/settings/logging" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveLoggingSettings(payload))
 	case path == "/settings/logging/clear" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.clearLogFiles())
 	case path == "/settings/service" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serviceSettings())
 	case path == "/settings/service" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveServiceSettings(payload))
 	case path == "/storage/report" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.storageReport())
 	case path == "/storage/cleanup" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.cleanupStorage(payload))
 	case path == "/install/plan" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.installPlan())
 	case path == "/network/tcp-fast-open" && r.Method == http.MethodGet:
 		writeJSON(w, 200, rsystem.TCPFastOpenStatus())
 	case path == "/network/tcp-fast-open" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, rsystem.SetTCPFastOpen(boolPayload(payload, "enabled", true)))
 	case path == "/firewall/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallStatus())
 	case path == "/firewall/snapshot" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallSnapshot())
 	case path == "/firewall/preview" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.previewFirewall(payload))
 	case path == "/firewall/apply" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.applyFirewall(payload))
 	case path == "/firewall/disable" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.disableFirewall())
 	case path == "/firewall/restore" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.restoreFirewallSnapshot(payload))
 	case path == "/xray/stats" && r.Method == http.MethodGet:
 		cfg, _ := s.readActiveConfig()
 		writeJSON(w, 200, s.xrayTrafficStats(cfg, false))
 	case path == "/xray/stats/settings" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveXrayStatsSettings(boolPayload(payload, "enabled", true)))
 	case path == "/xray/stats/reset" && r.Method == http.MethodPost:
 		cfg, _ := s.readActiveConfig()
@@ -168,21 +171,21 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		releases, err := xrayCoreReleases()
 		respond(w, map[string]any{"ok": true, "releases": releases, "asset": xrayAssetName(), "arch": systemArchitecture("github-release")}, err)
 	case path == "/core/update" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateCore(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
 	case path == "/app/releases" && r.Method == http.MethodGet:
 		release, err := appLatestRelease()
 		respond(w, map[string]any{"ok": true, "version": appVersion, "asset": ruOpenRayAssetName(), "arch": systemArchitecture("github-release"), "release": release}, err)
 	case path == "/app/update" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
 	case path == "/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.diagnostics())
 	case path == "/diagnostics/http-probe" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, routerHTTPProbe(payload))
 	case path == "/diagnostics/domain-probe" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.domainProxyProbe(payload))
 	case path == "/geo/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.geoStatus())
@@ -190,32 +193,32 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		full := r.URL.Query().Get("full") == "1" || r.URL.Query().Get("full") == "true" || r.URL.Query().Get("full") == "all"
 		writeJSON(w, 200, s.geoCatalog(r.URL.Query().Get("kind"), r.URL.Query().Get("code"), full, r.URL.Query().Get("file")))
 	case path == "/geo/catalog" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveGeoCatalogCategory(payload))
 	case path == "/geo/audit" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.checkGeoAudit(payload))
 	case path == "/geo/sources" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveGeoCustomSources(payload))
 	case path == "/geo/preset-overrides" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveGeoPresetOverrides(payload))
 	case path == "/geo/lists" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveGeoUserLists(payload))
 	case path == "/geo/update" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateGeo(payload))
 	case path == "/geo/upload" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.uploadGeoFile(r))
 	case path == "/geo/download" && r.Method == http.MethodGet:
 		s.downloadGeoDat(w, r)
 	case path == "/geo/delete" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.deleteGeoFiles(payload))
 	case path == "/geo/schedule" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveGeoSchedule(payload))
 	case path == "/geo/cleanup" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.cleanupGeoBackups())
@@ -259,19 +262,19 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/dns/lan-upstream" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.lanDNSUpstreamStatus(nil))
 	case path == "/dns/lan-upstream" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.applyLANDNSUpstream(payload))
 	case path == "/outbounds/check" && r.Method == http.MethodPost:
 		s.checkOutbounds(w, r)
 	case path == "/outbounds/check-history/settings" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveOutboundCheckHistorySettings(payload))
 	case path == "/sni/scan" && r.Method == http.MethodPost:
 		s.scanSNI(w, r)
 	case path == "/domain-monitor" && r.Method == http.MethodGet:
 		s.domainMonitor(w, r)
 	case path == "/domain-monitor" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.controlDomainMonitor(payload))
 	case path == "/logs" && r.Method == http.MethodGet:
 		w.Header().Set("content-type", "text/plain; charset=utf-8")
@@ -286,7 +289,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		backup, err := s.latestBackup()
 		respond(w, map[string]any{"ok": true, "backup": backup}, err)
 	case path == "/backup/restore" && r.Method == http.MethodPost:
-		payload, _ := readJSON(r)
+		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.restoreBackup(strings.TrimSpace(fmt.Sprint(payload["path"]))))
 	default:
 		writeJSON(w, 404, map[string]any{"ok": false, "error": "Неизвестный API-маршрут"})
@@ -303,10 +306,10 @@ func respond(w http.ResponseWriter, payload any, err error) {
 
 func (s *serverState) authed(r *http.Request) bool {
 	if header := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return s.sessions[strings.TrimSpace(header[7:])]
+		return s.hasSession(strings.TrimSpace(header[7:]))
 	}
 	cookie, err := r.Cookie("openray_session")
-	return err == nil && s.sessions[cookie.Value]
+	return err == nil && s.hasSession(cookie.Value)
 }
 
 func randomToken() string {

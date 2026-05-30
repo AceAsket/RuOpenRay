@@ -29,7 +29,7 @@ func (s *serverState) subscriptionReport() map[string]any {
 }
 
 func (s *serverState) saveSubscriptionPool(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	if tag == "" || tag == "<nil>" {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Укажите стабильный outbound tag для подписки"})
@@ -62,7 +62,7 @@ func (s *serverState) saveSubscriptionPool(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *serverState) deleteSubscriptionPool(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	if tag == "" || tag == "<nil>" {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Укажите подписку для удаления"})
@@ -81,7 +81,7 @@ func (s *serverState) deleteSubscriptionPool(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
@@ -242,7 +242,7 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 }
 
 func (s *serverState) checkSubscriptionCandidate(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	index := number(payload["index"], -1)
 	store := s.readSubscriptionStore()
@@ -282,7 +282,7 @@ func subscriptionCandidateTag(poolTag string, candidate map[string]any, index in
 }
 
 func (s *serverState) exportSubscriptionCandidates(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
@@ -367,7 +367,7 @@ func preserveSubscriptionActive(previous rsubscription.Pool, candidates []map[st
 }
 
 func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
@@ -435,7 +435,7 @@ func (s *serverState) subscriptionFallbackProgress(tag string) map[string]any {
 }
 
 func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	payload["robust"] = true
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
@@ -518,7 +518,7 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	cfg, err := s.readActiveConfig()
 	if err != nil {
 		respond(w, nil, err)

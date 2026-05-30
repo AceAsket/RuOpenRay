@@ -540,7 +540,7 @@ func udpPortOwner(_ string, port int) string {
 }
 
 func (s *serverState) checkDNS(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	server := strings.TrimSpace(fmt.Sprint(payload["server"]))
 	host := dnsconfig.CleanCheckHost(firstNonEmpty(fmt.Sprint(payload["host"]), "example.com"))
 	warnings := []string{}

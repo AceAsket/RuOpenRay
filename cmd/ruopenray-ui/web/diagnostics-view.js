@@ -60,7 +60,7 @@ export function createDiagnosticsView(deps) {
         <div class="segmented diagnostics-tabs" aria-label="Режим диагностики">
           ${[
             ['live', 'Live-Xray'],
-            ['chain', 'Цепочка'],
+            ['chain', 'Проверка связи'],
             ['traffic', 'Трафик'],
             ['sni', 'SNI'],
             ['domains', 'Домены']

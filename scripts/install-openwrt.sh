@@ -194,28 +194,65 @@ download_binary() {
 	mv "$tmp" "$INSTALL_DIR/$APP_NAME"
 }
 
+write_uci_file() {
+	mkdir -p /etc/config
+	cat > /etc/config/ruopenray-ui <<EOF
+config ruopenray-ui 'main'
+	option enabled '1'
+	option host '$HOST'
+	option port '$PORT'
+	option password '$PASSWORD'
+	option data_dir '$DATA_DIR'
+	option backup_dir '$BACKUP_DIR'
+	option geo_dir '$GEO_DIR'
+	option active_config '$ACTIVE_CONFIG'
+	option xray_service '$XRAY_SERVICE'
+	option start_delay '$START_DELAY'
+	option apply_delay '$APPLY_DELAY'
+	option go_memlimit '48MiB'
+	option go_gc '60'
+	option download_mirror '$DOWNLOAD_MIRROR'
+	option mirror_prefix '$MIRROR_PREFIX'
+EOF
+}
+
+write_uci_via_cli() {
+	uci -q delete ruopenray-ui.main 2>/dev/null || true
+	uci -q set ruopenray-ui.main=ruopenray-ui
+	uci -q set ruopenray-ui.main.enabled=1
+	uci -q set "ruopenray-ui.main.host=$HOST"
+	uci -q set "ruopenray-ui.main.port=$PORT"
+	uci -q set "ruopenray-ui.main.password=$PASSWORD"
+	uci -q set "ruopenray-ui.main.data_dir=$DATA_DIR"
+	uci -q set "ruopenray-ui.main.backup_dir=$BACKUP_DIR"
+	uci -q set "ruopenray-ui.main.geo_dir=$GEO_DIR"
+	uci -q set "ruopenray-ui.main.active_config=$ACTIVE_CONFIG"
+	uci -q set "ruopenray-ui.main.xray_service=$XRAY_SERVICE"
+	uci -q set "ruopenray-ui.main.start_delay=$START_DELAY"
+	uci -q set "ruopenray-ui.main.apply_delay=$APPLY_DELAY"
+	uci -q set ruopenray-ui.main.go_memlimit=48MiB
+	uci -q set ruopenray-ui.main.go_gc=60
+	uci -q set "ruopenray-ui.main.download_mirror=$DOWNLOAD_MIRROR"
+	uci -q set "ruopenray-ui.main.mirror_prefix=$MIRROR_PREFIX"
+	uci -q commit ruopenray-ui
+}
+
 write_uci() {
 	mkdir -p "$DATA_DIR/profiles" "$BACKUP_DIR" "$GEO_DIR" "$(dirname "$ACTIVE_CONFIG")"
-	uci -q batch <<EOF
-set ruopenray-ui.main=ruopenray-ui
-set ruopenray-ui.main.enabled='1'
-set ruopenray-ui.main.host='$HOST'
-set ruopenray-ui.main.port='$PORT'
-set ruopenray-ui.main.password='$PASSWORD'
-set ruopenray-ui.main.data_dir='$DATA_DIR'
-set ruopenray-ui.main.backup_dir='$BACKUP_DIR'
-set ruopenray-ui.main.geo_dir='$GEO_DIR'
-set ruopenray-ui.main.active_config='$ACTIVE_CONFIG'
-set ruopenray-ui.main.xray_service='$XRAY_SERVICE'
-set ruopenray-ui.main.start_delay='$START_DELAY'
-set ruopenray-ui.main.apply_delay='$APPLY_DELAY'
-set ruopenray-ui.main.go_memlimit='48MiB'
-set ruopenray-ui.main.go_gc='60'
-set ruopenray-ui.main.download_mirror='$DOWNLOAD_MIRROR'
-set ruopenray-ui.main.mirror_prefix='$MIRROR_PREFIX'
-commit ruopenray-ui
-EOF
+	if command -v uci >/dev/null 2>&1; then
+		if ! write_uci_via_cli; then
+			log "Предупреждение: UCI не принял настройки через CLI, записываю /etc/config/ruopenray-ui напрямую."
+			write_uci_file
+		fi
+	else
+		write_uci_file
+	fi
 	saved_password="$(current_panel_password)"
+	if [ "$saved_password" != "$PASSWORD" ]; then
+		log "Предупреждение: пароль не читается через UCI после записи, пересоздаю /etc/config/ruopenray-ui."
+		write_uci_file
+		saved_password="$(current_panel_password)"
+	fi
 	if [ "$saved_password" != "$PASSWORD" ]; then
 		die "пароль панели не записался в UCI. Ожидался новый пароль, в конфиге осталось: ${saved_password:-пусто}"
 	fi

@@ -28,10 +28,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Test
         run: go test ./...
+      - name: Frontend test
+        run: npm run test:frontend
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}

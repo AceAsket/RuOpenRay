@@ -2,6 +2,7 @@ import {
   domainMonitorFilterStorageKey,
   initialInstallPassword,
   loadAuthToken,
+  loadUiTheme,
   xrayStatsResetAtStorageKey
 } from './storage.js';
 
@@ -9,6 +10,7 @@ export function createInitialState() {
   const auth = loadAuthToken();
   return {
   token: auth.token,
+  uiTheme: loadUiTheme(),
   tab: 'dashboard',
   mobileNavOpen: false,
   status: null,

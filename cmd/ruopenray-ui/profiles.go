@@ -122,7 +122,7 @@ func (s *serverState) profilePath(name string) string {
 }
 
 func (s *serverState) saveProfile(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	name := fmt.Sprint(payload["name"])
 	cfg, ok := payload["config"].(map[string]any)
 	if !ok {
@@ -142,7 +142,7 @@ func (s *serverState) saveProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	body, err := os.ReadFile(s.profilePath(fmt.Sprint(payload["name"])))
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
@@ -153,7 +153,7 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *serverState) importLink(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	outbound, err := rproxy.ParseShareLink(fmt.Sprint(payload["link"]))
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
@@ -190,7 +190,7 @@ func subscriptionLinks(rawURL string) ([]string, error) {
 }
 
 func (s *serverState) importPreview(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	if rawURL := strings.TrimSpace(fmt.Sprint(payload["url"])); rawURL != "" && rawURL != "<nil>" {
 		links, err := subscriptionLinks(rawURL)
 		if err != nil {
@@ -221,7 +221,7 @@ func (s *serverState) importPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *serverState) importSubscription(w http.ResponseWriter, r *http.Request) {
-	payload, _ := readJSON(r)
+	payload, _ := readJSON(w, r)
 	links, err := subscriptionLinks(fmt.Sprint(payload["url"]))
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})

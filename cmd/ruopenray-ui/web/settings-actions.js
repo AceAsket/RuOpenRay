@@ -21,6 +21,21 @@ export function createSettingsActions({
     return `${sign}${abs} B`;
   }
 
+  function promptBrowserPasswordSave(password) {
+    const Credential = globalThis.PasswordCredential;
+    const credentials = globalThis.navigator?.credentials;
+    if (!password || !Credential || !credentials?.store) return;
+    try {
+      credentials.store(new Credential({
+        id: 'ruopenray',
+        name: 'RuOpenRay UI',
+        password
+      })).catch(() => {});
+    } catch {
+      // Browser password managers can still detect the form fields above.
+    }
+  }
+
   async function login(event) {
     event.preventDefault();
     const passwordInput = document.querySelector('#password');
@@ -34,6 +49,7 @@ export function createSettingsActions({
       });
       state.token = result.token;
       saveAuthToken(result.token, state.rememberPassword);
+      promptBrowserPasswordSave(state.password);
       state.message = '';
       configureLogTimer();
       configureStatusTimer();

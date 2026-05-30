@@ -32,5 +32,14 @@ func main() {
 	mux.HandleFunc("/", state.handleStatic)
 	addr := cfg.Host + ":" + cfg.Port
 	log.Printf("RuOpenRay UI слушает http://%s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
+	}
+	log.Fatal(server.ListenAndServe())
 }

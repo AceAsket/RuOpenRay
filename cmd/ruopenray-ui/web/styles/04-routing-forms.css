@@ -946,7 +946,7 @@
 
 .setup-guided-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -969,6 +969,7 @@
 
 .setup-guide-workspace {
   padding: 16px;
+  overflow: hidden;
 }
 
 .setup-rail-title {
@@ -1227,18 +1228,18 @@
 
 .setup-readiness {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .setup-readiness article,
 .setup-result-list article {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   min-width: 0;
-  min-height: 70px;
+  min-height: 78px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1249,8 +1250,8 @@
 .setup-result-list article > span {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   color: #06100c;
   background: var(--muted);

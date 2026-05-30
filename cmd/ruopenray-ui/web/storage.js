@@ -35,6 +35,7 @@ export const xrayStatsResetAtStorageKey = 'ruopenray_xray_stats_reset_at';
 export const setupSnapshotStorageKey = 'ruopenray_setup_snapshot';
 export const domainMonitorFilterStorageKey = 'ruopenray_domain_monitor_filter';
 export const installPasswordStorageKey = 'ruopenray_install_password';
+export const uiThemeStorageKey = 'ruopenray_ui_theme';
 
 export const sensitiveBrowserStorageKeys = [
   'ruopenray_active_server',
@@ -81,6 +82,20 @@ export function saveAuthToken(token, remember = false) {
 export function clearAuthToken() {
   globalThis.sessionStorage?.removeItem(authTokenStorageKey);
   globalThis.localStorage?.removeItem(authTokenStorageKey);
+}
+
+export function normalizeUiTheme(value) {
+  return value === 'light' ? 'light' : 'dark';
+}
+
+export function loadUiTheme() {
+  return normalizeUiTheme(globalThis.localStorage?.getItem(uiThemeStorageKey) || 'dark');
+}
+
+export function saveUiTheme(theme) {
+  const normalized = normalizeUiTheme(theme);
+  globalThis.localStorage?.setItem(uiThemeStorageKey, normalized);
+  return normalized;
 }
 
 export function randomPanelPassword() {
