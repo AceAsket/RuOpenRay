@@ -1696,6 +1696,29 @@
   min-height: 260px;
 }
 
+.label-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.label-actions label {
+  margin: 0;
+}
+
+.label-actions .btn.compact {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.route-value-editor {
+  min-height: 190px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .route-default-hint {
   grid-column: 1 / -1;
   display: grid;

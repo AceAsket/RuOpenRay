@@ -416,7 +416,9 @@ const {
   reorderRoutingRule,
   reorderRoutingRuleInsideGroup,
   reorderRoutingRuleRange,
-  renameRoutingRule
+  renameRoutingRule,
+  groupRoutingRuleWithNext,
+  renameRoutingRuleGroup
 } = routingActions;
 
 
@@ -2299,6 +2301,8 @@ function bind() {
     moveRoutingRuleInsideGroup,
     reorderRoutingRuleInsideGroup,
     moveRoutingRuleRange,
+    groupRoutingRuleWithNext,
+    renameRoutingRuleGroup,
     openRoutingRuleEditor,
     openRouteBalancerDialog,
     removeRouteBalancer,

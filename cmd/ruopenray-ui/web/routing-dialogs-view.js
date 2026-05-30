@@ -50,6 +50,11 @@ function routeRuleDialog() {
   const defaultMode = state.routeKind === 'default';
   const selected = new Set(state.selectedRoutePresets);
   const customEntries = customRoutePresetEntries();
+  const routeValueItems = splitRouteValues(state.routeValue);
+  const useRouteValueTextarea = !defaultMode && (state.routeValueMultiline || routeValueItems.length > 1 || String(state.routeValue || '').length > 90 || String(state.routeValue || '').includes('\n'));
+  const routeValueEditorText = useRouteValueTextarea && !String(state.routeValue || '').includes('\n')
+    ? routeValueItems.join('\n')
+    : state.routeValue;
   return `
     <div class="modal-backdrop" data-action="closeRouteRuleDialog">
       <section class="modal route-rule-dialog" role="dialog" aria-modal="true" aria-labelledby="routeRuleTitle" data-modal>
@@ -146,8 +151,16 @@ function routeRuleDialog() {
           </div>
           ` : `
           <div class="form-row route-value">
-            <label>Значение</label>
-            <input id="routeValue" value="${escapeHtml(state.routeValue)}" placeholder="${escapeHtml(routePlaceholders[state.routeKind])}" />
+            <div class="label-actions">
+              <label>Значение</label>
+              <button class="btn ghost compact" type="button" data-route-value-multiline="${useRouteValueTextarea ? '0' : '1'}">${useRouteValueTextarea ? 'Одной строкой' : 'Списком'}</button>
+            </div>
+            ${useRouteValueTextarea ? `
+              <textarea id="routeValue" class="route-value-editor" spellcheck="false" placeholder="${escapeHtml(routePlaceholders[state.routeKind])}">${escapeHtml(routeValueEditorText)}</textarea>
+              <small>${routeValueItems.length ? `${routeValueItems.length} знач.` : 'По одному значению на строку или через запятую.'}</small>
+            ` : `
+              <input id="routeValue" value="${escapeHtml(state.routeValue)}" placeholder="${escapeHtml(routePlaceholders[state.routeKind])}" />
+            `}
           </div>
           ${routeLeasePicker()}
           `}

@@ -14,6 +14,8 @@ export function bindRoutingControls({
   moveRoutingRuleInsideGroup,
   reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
+  groupRoutingRuleWithNext,
+  renameRoutingRuleGroup,
   openRoutingRuleEditor,
   openRouteBalancerDialog,
   removeRouteBalancer,
@@ -136,6 +138,23 @@ export function bindRoutingControls({
         Number(button.dataset.routeGroupMoveStart),
         Number(button.dataset.routeGroupMoveEnd),
         Number(button.dataset.direction)
+      );
+    });
+  });
+  document.querySelectorAll('[data-route-group-with-next]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      groupRoutingRuleWithNext(Number(button.dataset.routeGroupWithNext));
+    });
+  });
+  document.querySelectorAll('[data-route-group-rename-start]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      renameRoutingRuleGroup(
+        Number(button.dataset.routeGroupRenameStart),
+        Number(button.dataset.routeGroupRenameEnd)
       );
     });
   });
@@ -651,6 +670,20 @@ export function bindRoutingControls({
     state.routeValue = event.target.value;
     state.routeRuleTestResult = null;
   }));
+  document.querySelectorAll('[data-route-value-multiline]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const enable = button.dataset.routeValueMultiline === '1';
+      const values = String(state.routeValue || '')
+        .split(/[\n,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      state.routeValueMultiline = enable;
+      if (enable && values.length) state.routeValue = values.join('\n');
+      if (!enable && values.length) state.routeValue = values.join(', ');
+      state.routeRuleTestResult = null;
+      render();
+    });
+  });
   document.querySelectorAll('[data-route-lease-ip]').forEach((button) => {
     button.addEventListener('click', () => {
       state.routeValue = button.dataset.routeLeaseIp || '';

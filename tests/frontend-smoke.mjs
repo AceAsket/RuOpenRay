@@ -754,6 +754,7 @@ const routingActionModel = createRoutingModel({
   proxyOutbounds: () => [{ tag: 'proxy' }],
 });
 let routeRuleProbeRequest = null;
+const routeRuleProbeRequests = [];
 const routingActions = createRoutingActions({
   state: routingActionState,
   render,
@@ -762,6 +763,7 @@ const routingActions = createRoutingActions({
       path,
       payload: JSON.parse(options.body || '{}')
     };
+    routeRuleProbeRequests.push(routeRuleProbeRequest);
     return {
       ok: true,
       verdict: { label: 'через proxy' },
@@ -813,6 +815,13 @@ const routeRuleTargetTestWorks = routeRuleProbeRequest?.path === '/api/diagnosti
   && routeRuleProbeRequest?.payload?.host === 'example.com'
   && routeRuleProbeRequest?.payload?.tag === 'proxy'
   && routingActionState.routeRuleTestResult?.ok;
+routingActionState.routeValue = 'domain:one.example\ndomain:two.example\nregexp:.*';
+routeRuleProbeRequests.length = 0;
+await routingActions.testRouteRuleTarget();
+const routeRuleTargetListTestWorks = routeRuleProbeRequests.length === 2
+  && routeRuleProbeRequests[0]?.payload?.host === 'one.example'
+  && routeRuleProbeRequests[1]?.payload?.host === 'two.example'
+  && routingActionState.routeRuleTestResult?.title?.includes('2/2');
 const routeGroupState = {
   config: { routing: { rules: [
     { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
@@ -926,6 +935,26 @@ const routeValuesDrawerWorks = routePresetGroupHtmlClosed.includes('route-value-
   && routePresetGroupHtmlOpen.includes('route-values-drawer')
   && routePresetGroupHtmlOpen.includes('--route-values-drawer-top:120px')
   && routePresetGroupHtmlOpen.includes('domain:telegram.org');
+routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:two.example'] },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:three.example'] },
+];
+routeGroupState.routeNames = {};
+const oldPrompt = globalThis.prompt;
+globalThis.prompt = () => 'Моя группа';
+routeGroupActions.groupRoutingRuleWithNext(0);
+globalThis.prompt = oldPrompt;
+const routeCustomGroupItems = routeGroupActions.visibleRoutingRuleItems(80);
+const routeCustomGroupHtml = routeGroupActions.orderedRouteList(
+  routeCustomGroupItems,
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'customGroup'
+  && routeCustomGroupItems[0]?.items?.length === 2
+  && routeCustomGroupHtml.includes('data-route-group-rename-start="0"')
+  && routeCustomGroupHtml.includes('data-route-group-with-next="2"');
 routeGroupState.config.routing.rules = [];
 routeGroupState.selectedRoutePresets = ['mixedOpenai'];
 routeGroupActions.applySelectedRoutingPresets();
@@ -986,6 +1015,9 @@ routeDialogState.routeOutbound = 'proxy';
 routeDialogState.routeTargetType = 'outbound';
 routeDialogState.routeRuleTestResult = { ok: true, title: 'example.com: работает', detail: 'Через proxy: HTTP 12 ms' };
 const routeDialogSingleHtml = routeDialogView.routeRuleDialog();
+routeDialogState.routeValue = 'domain:one.example, domain:two.example, domain:three.example';
+routeDialogState.routeRuleTestResult = null;
+const routeDialogMultiValueHtml = routeDialogView.routeRuleDialog();
 const routeBalancerState = {
   config: { routing: { balancers: [] } },
   routeBalancerEditingIndex: -1,
@@ -1259,6 +1291,8 @@ bindRoutingControls({
   moveRoutingRule: () => {},
   moveRoutingRuleInsideGroup: () => {},
   moveRoutingRuleRange: () => {},
+  groupRoutingRuleWithNext: () => {},
+  renameRoutingRuleGroup: () => {},
   openRoutingRuleEditor: () => {},
   openRouteBalancerDialog: () => {},
   removeRouteBalancer: () => {},
@@ -1527,10 +1561,13 @@ const checks = [
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
+  ['routing custom group from list', routeCustomGroupWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('Patreon') && routeDialogPresetsHtml.includes('Speedtest') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['routing rule target test action', routeRuleTargetTestWorks],
+  ['routing rule target list test action', routeRuleTargetListTestWorks],
   ['routing rule target test button', routeDialogSingleHtml.includes('data-action="testRouteRuleTarget"') && routeDialogSingleHtml.includes('route-rule-test-result')],
+  ['routing dialog multi value textarea', routeDialogMultiValueHtml.includes('route-value-editor') && routeDialogMultiValueHtml.includes('3 знач.') && routeDialogMultiValueHtml.includes('data-route-value-multiline="0"')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],

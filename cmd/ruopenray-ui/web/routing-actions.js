@@ -151,24 +151,28 @@ export function createRoutingActions({
     state.routeRuleMode = 'single';
     state.routeRuleEditingIndex = -1;
     state.routeRuleTestResult = null;
+    state.routeValueMultiline = false;
   }
 
-  function routeProbeHostFromForm() {
-    const value = splitRouteValues(state.routeValue)[0] || '';
-    if (!value || state.routeKind === 'default' || state.routeKind === 'port' || state.routeKind === 'source' || state.routeKind === 'inboundTag') return '';
-    if (state.routeKind === 'domain') {
-      const clean = value
-        .replace(/^(domain|full):/i, '')
-        .replace(/^\*\./, '')
-        .trim();
-      if (!clean || /^(regexp|keyword|geosite):/i.test(value) || /[*()[\]\\]/.test(clean)) return '';
-      return clean;
-    }
-    if (state.routeKind === 'ip') {
-      if (value.includes('/') || value.includes(',')) return '';
-      return value.trim();
-    }
-    return '';
+  function routeProbeHostsFromForm() {
+    const values = splitRouteValues(state.routeValue);
+    if (!values.length || state.routeKind === 'default' || state.routeKind === 'port' || state.routeKind === 'source' || state.routeKind === 'inboundTag') return [];
+    const hosts = [];
+    const push = (value) => {
+      if (!value) return;
+      if (state.routeKind === 'domain') {
+        const clean = value
+          .replace(/^(domain|full):/i, '')
+          .replace(/^\*\./, '')
+          .trim();
+        if (!clean || /^(regexp|keyword|geosite):/i.test(value) || /[*()[\]\\]/.test(clean)) return;
+        hosts.push(clean);
+        return;
+      }
+      if (state.routeKind === 'ip' && !value.includes('/') && !value.includes(',')) hosts.push(value.trim());
+    };
+    values.forEach(push);
+    return [...new Set(hosts)].slice(0, 8);
   }
 
   function latencyText(value) {
@@ -197,27 +201,38 @@ export function createRoutingActions({
       render();
       return;
     }
-    const host = routeProbeHostFromForm();
-    state.message = host
-      ? `Проверяю ${host} через ${tag}...`
+    const hosts = routeProbeHostsFromForm();
+    const host = hosts[0] || '';
+    state.message = hosts.length
+      ? `Проверяю ${hosts.length === 1 ? host : `${hosts.length} знач.`} через ${tag}...`
       : `Проверяю доступность ${tag}...`;
     render();
     try {
-      if (host) {
-        const result = await request('/api/diagnostics/domain-probe', {
-          method: 'POST',
-          body: JSON.stringify({
-            host,
-            tag,
-            timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
-          })
-        });
-        const proxyOk = Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok);
+      if (hosts.length) {
+        const results = [];
+        for (const probeHost of hosts) {
+          const result = await request('/api/diagnostics/domain-probe', {
+            method: 'POST',
+            body: JSON.stringify({
+              host: probeHost,
+              tag,
+              timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
+            })
+          });
+          results.push({ host: probeHost, ...result });
+        }
+        const passed = results.filter((result) => Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok));
+        const proxyOk = passed.length === results.length;
+        const firstFailed = results.find((result) => !Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok));
         state.routeRuleTestResult = {
           ok: proxyOk,
           tone: proxyOk ? 'both-ok' : 'bad',
-          title: `${host}: ${result?.verdict?.label || (proxyOk ? 'работает через сервер' : 'нет ответа через сервер')}`,
-          detail: routeRuleTestDetail(tag, result)
+          title: hosts.length === 1
+            ? `${host}: ${results[0]?.verdict?.label || (proxyOk ? 'работает через сервер' : 'нет ответа через сервер')}`
+            : `Список: ${passed.length}/${results.length} работает через ${tag}`,
+          detail: hosts.length === 1
+            ? routeRuleTestDetail(tag, results[0])
+            : (firstFailed ? `${firstFailed.host || 'значение'}: ${routeRuleTestDetail(tag, firstFailed)}` : `Проверено значений: ${results.length}`)
         };
         state.message = state.routeRuleTestResult.title;
       } else {
@@ -304,6 +319,7 @@ export function createRoutingActions({
     state.routeName = routeRuleName(rule, info);
     state.routeKind = target.kind;
     state.routeValue = target.values.join(', ');
+    state.routeValueMultiline = target.values.length > 1;
     state.routeTargetType = rule.balancerTag ? 'balancer' : 'outbound';
     state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
     state.routeOutbound = rule.outboundTag || 'proxy';
@@ -774,11 +790,11 @@ export function createRoutingActions({
 
   function routeItemMatchesSearch(item, search) {
     if (!search) return true;
-    if (item.kind === 'presetGroup') {
+    if (item.kind === 'presetGroup' || item.kind === 'customGroup') {
       const childText = item.items
         .map(({ info, name, source }) => `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`)
         .join(' ');
-      return `${item.title} ${routePresetDetail(item.key)} ${childText}`.toLowerCase().includes(search);
+      return `${item.title} ${item.preset?.detail || routePresetDetail(item.key)} ${childText}`.toLowerCase().includes(search);
     }
     const { info, name, source } = item;
     return `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`.toLowerCase().includes(search);
@@ -810,6 +826,30 @@ export function createRoutingActions({
       if (isRuOpenRayManagedRoute(rules[index])) {
         index += 1;
         continue;
+      }
+      const customName = state.routeNames?.[routeRuleKey(rules[index])] || '';
+      if (customName) {
+        let end = index + 1;
+        while (
+          end < rules.length &&
+          !isRuOpenRayManagedRoute(rules[end]) &&
+          state.routeNames?.[routeRuleKey(rules[end])] === customName
+        ) {
+          end += 1;
+        }
+        if (end - index > 1) {
+          const group = {
+            kind: 'customGroup',
+            key: `custom:${customName}`,
+            preset: { title: customName, detail: 'Пользовательская группа правил' },
+            title: customName,
+            index,
+            items: rules.slice(index, end).map((rule, offset) => routeRuleListItem(rule, index + offset))
+          };
+          if (routeItemMatchesSearch(group, search)) items.push(group);
+          index = end;
+          continue;
+        }
       }
       const item = routeRuleListItem(rules[index], index);
       if (routeItemMatchesSearch(item, search)) items.push(item);
@@ -965,6 +1005,7 @@ export function createRoutingActions({
     const targetLocked = managed || nested;
     const editLocked = managed;
     const actionLocked = managed || nested;
+    const canGroupWithNext = !managed && !nested && index < rulesLength - 1;
     const moveUpAttrs = nested
       ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="-1"`
       : `data-route-move="${index}" data-direction="-1"`;
@@ -1011,6 +1052,7 @@ export function createRoutingActions({
       <div class="route-actions">
         <button class="icon-btn route-action-btn move-up" type="button" ${moveUpAttrs} ${moveUpDisabled ? 'disabled' : ''} title="${nested ? 'Поднять внутри подборки' : 'Поднять выше'}" aria-label="${nested ? 'Поднять правило внутри подборки' : 'Поднять правило выше'}">↑</button>
         <button class="icon-btn route-action-btn move-down" type="button" ${moveDownAttrs} ${moveDownDisabled ? 'disabled' : ''} title="${nested ? 'Опустить внутри подборки' : 'Опустить ниже'}" aria-label="${nested ? 'Опустить правило внутри подборки' : 'Опустить правило ниже'}">↓</button>
+        <button class="icon-btn route-action-btn" type="button" data-route-group-with-next="${index}" ${canGroupWithNext ? '' : 'disabled'} title="Сгруппировать с правилом ниже" aria-label="Сгруппировать правило с нижним">▦</button>
         <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${editLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват, Защиту от утечек или Статистику Xray' : nested ? 'Править правило и сохранить как измененную копию подборки' : 'Править'}" aria-label="Править правило">✎</button>
         <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : nested ? 'Отключайте подборку целиком или раскройте ее в редакторе' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
         <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : nested ? 'Удаляйте подборку целиком или раскройте ее в редакторе' : 'Удалить'}" aria-label="Удалить правило">×</button>
@@ -1026,10 +1068,11 @@ export function createRoutingActions({
   }
 
   function routePresetGroupRowHtml(item, options, rulesLength) {
+    const customGroup = item.kind === 'customGroup';
     const start = item.index + 1;
     const end = item.index + item.items.length;
     const icon = routePresetIconView(escapeHtml, item.key, item.preset || {}, 'compact');
-    const detail = routePresetDetail(item.key);
+    const detail = customGroup ? (item.preset?.detail || 'Пользовательская группа правил') : routePresetDetail(item.key);
     const encodedTargets = [...new Set(item.items.map(({ rule }) => encodedRouteTarget(rule)).filter(Boolean))];
     const selectedTarget = encodedTargets.length === 1 ? encodedTargets[0] : '__mixed__';
     const targetOptions = selectedTarget === '__mixed__'
@@ -1057,7 +1100,9 @@ export function createRoutingActions({
         <div class="route-actions route-preset-group-actions">
           <button class="icon-btn route-action-btn move-up" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="-1" ${startIndex === 0 ? 'disabled' : ''} title="Поднять подборку выше" aria-label="Поднять подборку выше">↑</button>
           <button class="icon-btn route-action-btn move-down" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="1" ${endIndex >= rulesLength ? 'disabled' : ''} title="Опустить подборку ниже" aria-label="Опустить подборку ниже">↓</button>
-          <button class="icon-btn route-action-btn edit" type="button" data-route-preset-edit="${escapeHtml(item.key)}" title="Править подборку" aria-label="Править подборку">✎</button>
+          ${customGroup
+            ? `<button class="icon-btn route-action-btn edit" type="button" data-route-group-rename-start="${startIndex}" data-route-group-rename-end="${endIndex}" title="Переименовать группу" aria-label="Переименовать группу">✎</button>`
+            : `<button class="icon-btn route-action-btn edit" type="button" data-route-preset-edit="${escapeHtml(item.key)}" title="Править подборку" aria-label="Править подборку">✎</button>`}
           <button class="icon-btn route-action-btn disable" type="button" data-route-group-disable-start="${startIndex}" data-route-group-disable-end="${endIndex}" data-route-group-title="${escapeHtml(item.title)}" title="Отключить подборку без удаления" aria-label="Отключить подборку без удаления">⏸</button>
           <button class="icon-btn route-action-btn danger" type="button" data-route-group-delete-start="${startIndex}" data-route-group-delete-end="${endIndex}" data-route-group-title="${escapeHtml(item.title)}" title="Удалить подборку" aria-label="Удалить подборку">×</button>
         </div>
@@ -1075,7 +1120,7 @@ export function createRoutingActions({
         <span>Сверху вниз: правило №1 проверяется первым. Перетаскивание меняет реальный порядок в конфигурации.</span>
       </header>
       <div class="route-section-list">
-        ${items.map((item) => item.kind === 'presetGroup' ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
+        ${items.map((item) => (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
     </section>` : `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
     return `${userList}${managedRoutesPanel(managedItems)}${routeValuesDrawer()}`;
@@ -1247,6 +1292,60 @@ export function createRoutingActions({
     render();
   }
 
+  function groupRoutingRuleWithNext(index) {
+    const rules = routeRules();
+    const rule = rules[index];
+    if (!rule || isRuOpenRayManagedRoute(rule)) return;
+    const existingName = state.routeNames?.[routeRuleKey(rule)] || '';
+    let start = index;
+    let end = index + 1;
+    if (existingName) {
+      while (start > 0 && !isRuOpenRayManagedRoute(rules[start - 1]) && state.routeNames?.[routeRuleKey(rules[start - 1])] === existingName) start -= 1;
+      while (end < rules.length && !isRuOpenRayManagedRoute(rules[end]) && state.routeNames?.[routeRuleKey(rules[end])] === existingName) end += 1;
+    }
+    if (end >= rules.length || isRuOpenRayManagedRoute(rules[end])) {
+      state.message = 'Ниже нет пользовательского правила, которое можно добавить в группу';
+      render();
+      return;
+    }
+    const fallbackName = existingName || routeRuleName(rule, describeRouteRule(rule)) || 'Моя группа правил';
+    const nextName = prompt('Название группы правил', fallbackName);
+    if (nextName === null) return;
+    const cleanName = String(nextName || '').trim();
+    if (!cleanName) {
+      state.message = 'Укажите название группы';
+      render();
+      return;
+    }
+    for (let ruleIndex = start; ruleIndex <= end; ruleIndex += 1) {
+      state.routeNames[routeRuleKey(rules[ruleIndex])] = cleanName;
+    }
+    saveRouteNames();
+    state.message = `Группа «${cleanName}» собрана: ${end - start + 1} правил. Перетащите группу, чтобы менять порядок целиком.`;
+    render();
+  }
+
+  function renameRoutingRuleGroup(start, end) {
+    const rules = routeRules();
+    const groupRules = rules.slice(start, end).filter((rule) => rule && !isRuOpenRayManagedRoute(rule));
+    if (!groupRules.length) return;
+    const currentName = state.routeNames?.[routeRuleKey(groupRules[0])] || 'Моя группа правил';
+    const nextName = prompt('Название группы правил', currentName);
+    if (nextName === null) return;
+    const cleanName = String(nextName || '').trim();
+    if (!cleanName) {
+      state.message = 'Укажите название группы';
+      render();
+      return;
+    }
+    groupRules.forEach((groupRule) => {
+      state.routeNames[routeRuleKey(groupRule)] = cleanName;
+    });
+    saveRouteNames();
+    state.message = `Группа переименована: ${cleanName}`;
+    render();
+  }
+
 
   return {
     previewRoutingDsl,
@@ -1303,6 +1402,8 @@ export function createRoutingActions({
     reorderRoutingRule,
     reorderRoutingRuleRange,
     moveRoutingRuleRange,
-    renameRoutingRule
+    renameRoutingRule,
+    groupRoutingRuleWithNext,
+    renameRoutingRuleGroup
   };
 }
