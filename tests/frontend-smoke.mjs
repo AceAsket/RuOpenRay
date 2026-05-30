@@ -925,7 +925,10 @@ const routeDialogView = createRoutingDialogsView({
   routeKinds: { domain: 'Сайт или домен' },
   routePlaceholders: { domain: 'domain:example.com' },
   customRoutePresetEntries: () => [],
-  builtinRoutePresetEntries: () => [['chatgpt', { title: 'ChatGPT', rule: { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] } }]],
+  builtinRoutePresetEntries: () => [
+    ['chatgpt', { title: 'ChatGPT', rule: { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] } }],
+    ['patreon', { title: 'Patreon через proxy', rule: { type: 'field', outboundTag: 'proxy', domain: ['domain:patreon.com'] } }]
+  ],
   ruleCountLabel: (count) => `${count} правило`,
   routePresetConditionCount: () => 1,
   routeTargetOptions: () => [],
@@ -943,7 +946,11 @@ const routeDialogView = createRoutingDialogsView({
   balancerStrategyLabel: () => '',
   routePresetCheckResultView: () => '',
   describeRouteRule: (rule) => ({ fullValue: rule?.domain?.join(', ') || 'правило' }),
-  routePresetRules: (key) => key === 'chatgpt' ? [{ type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] }] : [],
+  routePresetRules: (key) => key === 'chatgpt'
+    ? [{ type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'] }]
+    : key === 'patreon'
+      ? [{ type: 'field', outboundTag: 'proxy', domain: ['domain:patreon.com'] }]
+      : [],
 });
 const routeDialogPresetsHtml = routeDialogView.routeRuleDialog();
 const routeBalancerState = {
@@ -1488,7 +1495,7 @@ const checks = [
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
-  ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('data-route-preset-check')],
+  ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('Patreon') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],

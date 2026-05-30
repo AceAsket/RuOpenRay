@@ -26,6 +26,7 @@ const presetIcons = {
   netflix: ['NF', 'media'],
   nintendoEshop: ['N', 'nintendo'],
   openaiIps: ['AI', 'ai'],
+  patreon: ['PT', 'media'],
   ruMinimal: ['RU', 'runet'],
   telegram: ['TG', 'telegram'],
   telegramCalls: ['CALL', 'telegram'],
@@ -49,6 +50,7 @@ const titleIconHints = [
   [/facebook|фейсбук/i, ['F', 'facebook']],
   [/meta/i, ['M', 'meta']],
   [/linkedin/i, ['IN', 'linkedin']],
+  [/patreon/i, ['PT', 'media']],
   [/microsoft|windows|xbox/i, ['MS', 'microsoft']],
   [/google|gemini/i, ['G', 'google']],
   [/github/i, ['GH', 'dev']],
@@ -112,6 +114,7 @@ function presetIconSvg(key, tone) {
   if (group.includes('facebook')) return iconFacebook();
   if (group.includes('meta')) return iconMeta();
   if (group.includes('linkedin')) return iconLinkedIn();
+  if (group.includes('patreon')) return iconPatreon();
   if (group.includes('microsoft')) return iconMicrosoft();
   if (group.includes('github')) return iconGitHub();
   if (group.includes('xtwitter')) return iconX();
@@ -193,6 +196,10 @@ function iconFacebook() {
 
 function iconLinkedIn() {
   return brandSvg('0 0 256 256', '<rect width="256" height="256" fill="#0a66c2" rx="60"></rect><path fill="#fff" d="M184.715 217.685h29.27a4 4 0 0 0 4-3.999l.015-61.842c0-32.323-6.965-57.168-44.738-57.168c-14.359-.534-27.9 6.868-35.207 19.228a.32.32 0 0 1-.595-.161V101.66a4 4 0 0 0-4-4h-27.777a4 4 0 0 0-4 4v112.02a4 4 0 0 0 4 4h29.268a4 4 0 0 0 4-4v-55.373c0-15.657 2.97-30.82 22.381-30.82c19.135 0 19.383 17.916 19.383 31.834v54.364a4 4 0 0 0 4 4M38 59.628c0 11.864 9.767 21.626 21.632 21.626c11.862-.001 21.623-9.769 21.623-21.631C81.253 47.761 71.491 38 59.628 38C47.762 38 38 47.763 38 59.627m6.959 158.058h29.307a4 4 0 0 0 4-4V101.66a4 4 0 0 0-4-4H44.959a4 4 0 0 0-4 4v112.025a4 4 0 0 0 4 4"></path>');
+}
+
+function iconPatreon() {
+  return brandSvg('0 0 24 24', '<path fill="#ff424d" fill-rule="evenodd" d="M1 5a4 4 0 0 1 4-4h14a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4zm18 4.5a4.5 4.5 0 1 1-9 0a4.5 4.5 0 0 1 9 0M5 5h3.5v14H5z" clip-rule="evenodd"></path>');
 }
 
 function iconMicrosoft() {

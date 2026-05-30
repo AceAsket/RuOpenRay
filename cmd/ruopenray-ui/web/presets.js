@@ -244,6 +244,18 @@ const linkedinDomains = [
   'regexp:.*\\.linkedinstatic\\.com'
 ];
 
+const patreonDomains = [
+  'domain:patreon.com',
+  'domain:www.patreon.com',
+  'domain:api.patreon.com',
+  'domain:patreonusercontent.com',
+  'domain:c10.patreonusercontent.com',
+  'domain:patreoncommunity.com',
+  'regexp:.*\\.patreon\\.com',
+  'regexp:.*\\.patreonusercontent\\.com',
+  'regexp:.*\\.patreoncommunity\\.com'
+];
+
 const githubDomains = [
   'geosite:github',
   'domain:github.com',
@@ -586,6 +598,11 @@ export const routePresets = {
     title: 'LinkedIn через proxy',
     detail: 'LinkedIn, short links, CDN и статические ресурсы.',
     rule: { type: 'field', outboundTag: 'proxy', domain: linkedinDomains }
+  },
+  patreon: {
+    title: 'Patreon через proxy',
+    detail: 'Patreon, API, community и медиа с patreonusercontent.',
+    rule: { type: 'field', outboundTag: 'proxy', domain: patreonDomains }
   },
   github: {
     title: 'GitHub через proxy',
