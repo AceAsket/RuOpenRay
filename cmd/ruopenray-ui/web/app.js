@@ -405,6 +405,8 @@ const {
   removeRoutingRuleRange,
   disableRoutingRule,
   disableRoutingRuleRange,
+  removeSelectedRoutingRules,
+  disableSelectedRoutingRules,
   restoreDisabledRouteRule,
   deleteDisabledRouteRule,
   visibleRoutingRuleItems,
@@ -422,6 +424,12 @@ const {
   reorderRoutingRuleInsideGroup,
   reorderRoutingRuleRange,
   renameRoutingRule,
+  selectedRouteRuleIndexes,
+  toggleRouteRuleSelection,
+  clearRouteRuleSelection,
+  openSelectedRouteGroupDialog,
+  closeSelectedRouteGroupDialog,
+  createSelectedRouteGroup,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup
 } = routingActions;
@@ -1766,6 +1774,10 @@ function routePresetDialog(...args) {
   return routingDialogsView.routePresetDialog(...args);
 }
 
+function selectedRouteGroupDialog(...args) {
+  return routingDialogsView.selectedRouteGroupDialog(...args);
+}
+
 function captureRenderState() {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     return { tab: state.tab, scrollY: 0, details: { ...(state.openDetails || {}) } };
@@ -1884,6 +1896,7 @@ function render() {
     </div>
     ${installWizardDialog()}
     ${coreUpdateDialog()}
+    ${selectedRouteGroupDialog()}
     ${routePresetDialog()}
   `;
   bind();
@@ -2095,6 +2108,12 @@ function bind() {
         render();
       },
       applyRoutePresets: applySelectedRoutingPresets,
+      openSelectedRouteGroupDialog,
+      disableSelectedRouteRules: disableSelectedRoutingRules,
+      removeSelectedRouteRules: removeSelectedRoutingRules,
+      clearRouteRuleSelection,
+      closeSelectedRouteGroupDialog,
+      createSelectedRouteGroup,
       checkRoutePresetSource,
       saveRoutePresetSource,
       updateRoutePresetSources: () => updateRoutePresetSources(),
@@ -2306,12 +2325,15 @@ function bind() {
     removeRoutingRuleRange,
     disableRoutingRule,
     disableRoutingRuleRange,
+    removeSelectedRoutingRules,
+    disableSelectedRoutingRules,
     restoreDisabledRouteRule,
     deleteDisabledRouteRule,
     moveRoutingRule,
     moveRoutingRuleInsideGroup,
     reorderRoutingRuleInsideGroup,
     moveRoutingRuleRange,
+    toggleRouteRuleSelection,
     groupRoutingRuleWithNext,
     renameRoutingRuleGroup,
     openRoutingRuleEditor,

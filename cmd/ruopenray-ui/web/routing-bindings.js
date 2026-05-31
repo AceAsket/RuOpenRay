@@ -17,6 +17,7 @@ export function bindRoutingControls({
   moveRoutingRuleInsideGroup,
   reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
+  toggleRouteRuleSelection,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup,
   openRoutingRuleEditor,
@@ -153,11 +154,10 @@ export function bindRoutingControls({
       );
     });
   });
-  document.querySelectorAll('[data-route-group-with-next]').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      groupRoutingRuleWithNext(Number(button.dataset.routeGroupWithNext));
+  document.querySelectorAll('[data-route-select]').forEach((checkbox) => {
+    checkbox.addEventListener('click', (event) => event.stopPropagation());
+    checkbox.addEventListener('change', (event) => {
+      toggleRouteRuleSelection(Number(checkbox.dataset.routeSelect), event.target.checked);
     });
   });
   document.querySelectorAll('[data-route-group-rename-start]').forEach((button) => {
@@ -791,4 +791,14 @@ export function bindRoutingControls({
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
   });
+  document.querySelector('#routeGroupTitleInput')?.addEventListener('input', (event) => {
+    state.routeGroupTitle = event.target.value;
+  });
+  document.querySelector('#routeGroupDetailInput')?.addEventListener('input', (event) => {
+    state.routeGroupDetail = event.target.value;
+  });
+  document.querySelector('#routeGroupIconInput')?.addEventListener('input', (event) => {
+    state.routeGroupIcon = event.target.value;
+  });
+  document.querySelector('#routeGroupIconInput')?.addEventListener('change', render);
 }

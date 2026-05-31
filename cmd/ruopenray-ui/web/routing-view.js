@@ -52,6 +52,7 @@ function routingRulesPanel() {
   const visibleRules = visibleRoutingRuleItems(80);
   const managedRules = managedRoutingRuleItems();
   const userRulesCount = rules.length - managedRules.length;
+  const selectedRuleCount = (state.selectedRouteRuleIndexes || []).length;
 
   return `
     <section class="panel routing-simple-panel">
@@ -72,6 +73,10 @@ function routingRulesPanel() {
       <div class="route-tools">
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
+        <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу${selectedRuleCount ? ` (${selectedRuleCount})` : ''}</button>
+        <button class="btn secondary compact" data-action="disableSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Отключить выбранные</button>
+        <button class="btn danger compact" data-action="removeSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Удалить выбранные</button>
+        <button class="btn secondary compact" data-action="clearRouteRuleSelection" ${selectedRuleCount ? '' : 'disabled'}>Снять выбор</button>
         <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
         <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
       </div>

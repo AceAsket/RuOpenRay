@@ -831,6 +831,11 @@ const routeGroupState = {
   disabledRouteRules: [],
   customRoutePresets: {},
   selectedRoutePresets: [],
+  selectedRouteRuleIndexes: [],
+  routeGroupDialog: false,
+  routeGroupTitle: '',
+  routeGroupDetail: '',
+  routeGroupIcon: '',
   routeSearch: '',
   routeValuesDrawerIndex: null,
   routeValuesDrawerAnchor: null,
@@ -941,20 +946,44 @@ routeGroupState.config.routing.rules = [
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:three.example'] },
 ];
 routeGroupState.routeNames = {};
-const oldPrompt = globalThis.prompt;
-globalThis.prompt = () => 'Моя группа';
-routeGroupActions.groupRoutingRuleWithNext(0);
-globalThis.prompt = oldPrompt;
+routeGroupActions.toggleRouteRuleSelection(0, true);
+routeGroupActions.toggleRouteRuleSelection(2, true);
+routeGroupState.routeGroupTitle = 'Моя группа';
+routeGroupState.routeGroupDetail = 'Выбранные правила';
+routeGroupState.routeGroupIcon = 'simple-icons:telegram';
+routeGroupActions.createSelectedRouteGroup();
 const routeCustomGroupItems = routeGroupActions.visibleRoutingRuleItems(80);
 const routeCustomGroupHtml = routeGroupActions.orderedRouteList(
   routeCustomGroupItems,
   routeGroupModel.routeTargetOptions(),
   routeGroupState.config.routing.rules.length,
 );
-const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'customGroup'
+const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'presetGroup'
   && routeCustomGroupItems[0]?.items?.length === 2
-  && routeCustomGroupHtml.includes('data-route-group-rename-start="0"')
-  && routeCustomGroupHtml.includes('data-route-group-with-next="2"');
+  && routeGroupState.config.routing.rules[0]?.domain?.includes('domain:one.example')
+  && routeGroupState.config.routing.rules[1]?.domain?.includes('domain:three.example')
+  && routeGroupState.config.routing.rules[2]?.domain?.includes('domain:two.example')
+  && routeCustomGroupHtml.includes('Моя группа')
+  && routeCustomGroupHtml.includes('route-preset-iconify');
+routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:keep.example'] },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:disable.example'] },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:delete.example'] },
+];
+routeGroupState.routeNames = {};
+routeGroupState.disabledRouteRules = [];
+routeGroupState.selectedRouteRuleIndexes = [];
+routeGroupActions.toggleRouteRuleSelection(1, true);
+routeGroupActions.disableSelectedRoutingRules();
+const routeSelectedDisableWorks = routeGroupState.config.routing.rules.length === 2
+  && routeGroupState.disabledRouteRules.length === 1
+  && routeGroupState.disabledRouteRules[0]?.rule?.domain?.includes('domain:disable.example')
+  && routeGroupState.selectedRouteRuleIndexes.length === 0;
+routeGroupActions.toggleRouteRuleSelection(1, true);
+routeGroupActions.removeSelectedRoutingRules();
+const routeSelectedDeleteWorks = routeGroupState.config.routing.rules.length === 1
+  && routeGroupState.config.routing.rules[0]?.domain?.includes('domain:keep.example')
+  && routeGroupState.selectedRouteRuleIndexes.length === 0;
 routeGroupState.config.routing.rules = [];
 routeGroupState.selectedRoutePresets = ['mixedOpenai'];
 routeGroupActions.applySelectedRoutingPresets();
@@ -1294,6 +1323,7 @@ bindRoutingControls({
   moveRoutingRule: () => {},
   moveRoutingRuleInsideGroup: () => {},
   moveRoutingRuleRange: () => {},
+  toggleRouteRuleSelection: () => {},
   groupRoutingRuleWithNext: () => {},
   renameRoutingRuleGroup: () => {},
   openRoutingRuleEditor: () => {},
@@ -1565,6 +1595,7 @@ const checks = [
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing custom group from list', routeCustomGroupWorks],
+  ['routing selected rule bulk actions', routeSelectedDisableWorks && routeSelectedDeleteWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('Patreon') && routeDialogPresetsHtml.includes('Speedtest') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['routing rule target test action', routeRuleTargetTestWorks],

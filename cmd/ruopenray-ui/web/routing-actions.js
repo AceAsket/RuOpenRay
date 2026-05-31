@@ -374,8 +374,8 @@ export function createRoutingActions({
 
   function allRoutePresetEntries() {
     return [
-      ...builtinRoutePresetEntries({ includeHidden: true }),
-      ...customRoutePresetEntries()
+      ...customRoutePresetEntries(),
+      ...builtinRoutePresetEntries({ includeHidden: true })
     ];
   }
 
@@ -911,6 +911,56 @@ export function createRoutingActions({
     render();
   }
 
+  function removeSelectedRoutingRules() {
+    const indexes = selectedRouteRuleIndexes();
+    if (!indexes.length) {
+      state.message = 'Отметьте хотя бы одно правило для удаления';
+      render();
+      return;
+    }
+    const selected = new Set(indexes);
+    const current = routeRules();
+    indexes.forEach((index) => {
+      if (current[index]) delete state.routeNames[routeRuleKey(current[index])];
+    });
+    saveRouteNames();
+    setRoutingDraft(current.filter((_, ruleIndex) => !selected.has(ruleIndex)));
+    state.selectedRouteRuleIndexes = [];
+    state.routeGroupDialog = false;
+    state.message = `Удалено выбранных правил из черновика: ${indexes.length}`;
+    render();
+  }
+
+  function disableSelectedRoutingRules() {
+    const indexes = selectedRouteRuleIndexes();
+    if (!indexes.length) {
+      state.message = 'Отметьте хотя бы одно правило для отключения';
+      render();
+      return;
+    }
+    const selected = new Set(indexes);
+    const current = routeRules();
+    const disabled = indexes.map((index) => {
+      const rule = current[index];
+      if (!rule) return null;
+      const info = describeRouteRule(rule);
+      return {
+        id: `disabled-${Date.now()}-${index}`,
+        rule: JSON.parse(JSON.stringify(rule)),
+        name: routeRuleName(rule, info),
+        disabledAt: new Date().toISOString()
+      };
+    }).filter(Boolean);
+    if (!disabled.length) return;
+    state.disabledRouteRules = [...disabled, ...state.disabledRouteRules].slice(0, 160);
+    saveDisabledRouteRules();
+    setRoutingDraft(current.filter((_, ruleIndex) => !selected.has(ruleIndex)));
+    state.selectedRouteRuleIndexes = [];
+    state.routeGroupDialog = false;
+    state.message = `Отключено выбранных правил без удаления: ${disabled.length}`;
+    render();
+  }
+
   function restoreDisabledRouteRule(id) {
     const item = state.disabledRouteRules.find((entry) => entry.id === id);
     if (!item?.rule) return;
@@ -1151,7 +1201,8 @@ export function createRoutingActions({
     const targetLocked = managed || nested;
     const editLocked = managed;
     const actionLocked = managed || nested;
-    const canGroupWithNext = !managed && !nested && index < rulesLength - 1;
+    const selectableForGroup = !managed && !nested;
+    const selectedForGroup = selectableForGroup && (state.selectedRouteRuleIndexes || []).includes(index);
     const moveUpAttrs = nested
       ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="-1"`
       : `data-route-move="${index}" data-direction="-1"`;
@@ -1176,8 +1227,12 @@ export function createRoutingActions({
     const presetIcon = matchedPreset
       ? routePresetIconView(escapeHtml, matchedPreset.key, matchedPresetData, 'compact route-row-preset-icon')
       : '<span class="route-preset-icon compact route-row-preset-icon route-row-preset-icon-empty" aria-hidden="true"></span>';
-    return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''}" draggable="${dragLocked ? 'false' : 'true'}" ${dragAttrs}>
+    return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''} ${selectedForGroup ? 'route-row-selected' : ''}" draggable="${dragLocked ? 'false' : 'true'}" ${dragAttrs}>
       <div class="route-order">
+        <label class="route-select-check" title="${selectableForGroup ? 'Выбрать правило для новой группы' : 'Служебные правила и строки внутри группы выбираются через настройки группы'}" aria-label="Выбрать правило для новой группы">
+          <input type="checkbox" data-route-select="${index}" ${selectedForGroup ? 'checked' : ''} ${selectableForGroup ? '' : 'disabled'} />
+          <span></span>
+        </label>
         <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
         <span>${index + 1}</span>
       </div>
@@ -1198,7 +1253,6 @@ export function createRoutingActions({
       <div class="route-actions">
         <button class="icon-btn route-action-btn move-up" type="button" ${moveUpAttrs} ${moveUpDisabled ? 'disabled' : ''} title="${nested ? 'Поднять внутри подборки' : 'Поднять выше'}" aria-label="${nested ? 'Поднять правило внутри подборки' : 'Поднять правило выше'}">↑</button>
         <button class="icon-btn route-action-btn move-down" type="button" ${moveDownAttrs} ${moveDownDisabled ? 'disabled' : ''} title="${nested ? 'Опустить внутри подборки' : 'Опустить ниже'}" aria-label="${nested ? 'Опустить правило внутри подборки' : 'Опустить правило ниже'}">↓</button>
-        <button class="icon-btn route-action-btn" type="button" data-route-group-with-next="${index}" ${canGroupWithNext ? '' : 'disabled'} title="Сгруппировать с правилом ниже" aria-label="Сгруппировать правило с нижним">▦</button>
         <button class="icon-btn route-action-btn edit" type="button" data-route-edit="${index}" ${editLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило меняется через DNS, Перехват, Защиту от утечек или Статистику Xray' : nested ? 'Править правило и сохранить как измененную копию подборки' : 'Править'}" aria-label="Править правило">✎</button>
         <button class="icon-btn route-action-btn disable" type="button" data-route-disable="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило нельзя поставить на паузу из общего списка' : nested ? 'Отключайте подборку целиком или раскройте ее в редакторе' : 'Отключить без удаления'}" aria-label="Отключить правило без удаления">⏸</button>
         <button class="icon-btn route-action-btn danger" type="button" data-route-delete="${index}" ${actionLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило удаляется отключением соответствующей функции' : nested ? 'Удаляйте подборку целиком или раскройте ее в редакторе' : 'Удалить'}" aria-label="Удалить правило">×</button>
@@ -1438,6 +1492,113 @@ export function createRoutingActions({
     render();
   }
 
+  function selectableRouteRuleIndexes() {
+    const rules = routeRules();
+    return new Set(rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => rule && !isRuOpenRayManagedRoute(rule))
+      .map(({ index }) => index));
+  }
+
+  function selectedRouteRuleIndexes() {
+    const selectable = selectableRouteRuleIndexes();
+    const seen = new Set();
+    return (state.selectedRouteRuleIndexes || [])
+      .map((index) => Number(index))
+      .filter((index) => Number.isInteger(index) && selectable.has(index) && !seen.has(index) && seen.add(index))
+      .sort((left, right) => left - right);
+  }
+
+  function toggleRouteRuleSelection(index, selected) {
+    const selectable = selectableRouteRuleIndexes();
+    index = Number(index);
+    if (!Number.isInteger(index) || !selectable.has(index)) return;
+    const next = new Set(selectedRouteRuleIndexes());
+    if (selected) next.add(index);
+    else next.delete(index);
+    state.selectedRouteRuleIndexes = [...next].sort((left, right) => left - right);
+    render();
+  }
+
+  function clearRouteRuleSelection() {
+    state.selectedRouteRuleIndexes = [];
+    state.routeGroupDialog = false;
+    state.routeGroupTitle = '';
+    state.routeGroupDetail = '';
+    state.routeGroupIcon = '';
+    render();
+  }
+
+  function openSelectedRouteGroupDialog() {
+    const indexes = selectedRouteRuleIndexes();
+    state.selectedRouteRuleIndexes = indexes;
+    if (indexes.length < 2) {
+      state.message = 'Отметьте хотя бы два правила, чтобы собрать группу';
+      render();
+      return;
+    }
+    const rules = routeRules();
+    const names = indexes
+      .map((index) => state.routeNames?.[routeRuleKey(rules[index])] || '')
+      .filter(Boolean);
+    state.routeGroupTitle = state.routeGroupTitle || names[0] || 'Моя группа правил';
+    state.routeGroupDetail = state.routeGroupDetail || 'Пользовательская группа правил';
+    state.routeGroupIcon = state.routeGroupIcon || '';
+    state.routeGroupDialog = true;
+    state.message = '';
+    render();
+  }
+
+  function closeSelectedRouteGroupDialog() {
+    state.routeGroupDialog = false;
+    state.message = '';
+    render();
+  }
+
+  function createSelectedRouteGroup() {
+    const indexes = selectedRouteRuleIndexes();
+    if (indexes.length < 2) {
+      state.message = 'Отметьте хотя бы два правила, чтобы собрать группу';
+      render();
+      return;
+    }
+    const title = String(state.routeGroupTitle || '').trim();
+    if (!title) {
+      state.message = 'Укажите название группы правил';
+      render();
+      return;
+    }
+    const selected = new Set(indexes);
+    const rules = routeRules();
+    const groupRules = indexes.map((index) => JSON.parse(JSON.stringify(rules[index]))).filter(Boolean);
+    const insertAt = rules.slice(0, indexes[0]).filter((_, index) => !selected.has(index)).length;
+    const remaining = rules.filter((_, index) => !selected.has(index));
+    remaining.splice(insertAt, 0, ...groupRules);
+    groupRules.forEach((rule) => {
+      state.routeNames[routeRuleKey(rule)] = title;
+    });
+    const id = title;
+    state.customRoutePresets[id] = {
+      title,
+      detail: String(state.routeGroupDetail || '').trim(),
+      icon: String(state.routeGroupIcon || '').trim(),
+      rules: groupRules,
+      preserveMixed: true,
+      source: 'local',
+      updatedAt: new Date().toISOString()
+    };
+    saveRouteNames();
+    saveCustomRoutePresets();
+    setRoutingDraft(remaining);
+    state.selectedRouteRuleIndexes = [];
+    state.routeGroupDialog = false;
+    state.routeGroupTitle = '';
+    state.routeGroupDetail = '';
+    state.routeGroupIcon = '';
+    state.message = `Группа «${title}» собрана: ${groupRules.length} правил. Проверьте порядок и примените изменения.`;
+    render();
+  }
+
   function groupRoutingRuleWithNext(index) {
     const rules = routeRules();
     const rule = rules[index];
@@ -1537,6 +1698,8 @@ export function createRoutingActions({
     removeRoutingRuleRange,
     disableRoutingRule,
     disableRoutingRuleRange,
+    removeSelectedRoutingRules,
+    disableSelectedRoutingRules,
     restoreDisabledRouteRule,
     deleteDisabledRouteRule,
     visibleRoutingRuleItems,
@@ -1554,6 +1717,12 @@ export function createRoutingActions({
     reorderRoutingRuleRange,
     moveRoutingRuleRange,
     renameRoutingRule,
+    selectedRouteRuleIndexes,
+    toggleRouteRuleSelection,
+    clearRouteRuleSelection,
+    openSelectedRouteGroupDialog,
+    closeSelectedRouteGroupDialog,
+    createSelectedRouteGroup,
     groupRoutingRuleWithNext,
     renameRoutingRuleGroup
   };

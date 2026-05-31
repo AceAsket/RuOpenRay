@@ -351,6 +351,57 @@ function routeBalancerDialog() {
   `;
 }
 
+function selectedRouteGroupDialog() {
+  if (!state.routeGroupDialog) return '';
+  const selectedCount = (state.selectedRouteRuleIndexes || []).length;
+  const iconPreview = routePresetIconView(escapeHtml, `custom:${state.routeGroupTitle || 'group'}`, {
+    title: state.routeGroupTitle || 'Моя группа правил',
+    detail: state.routeGroupDetail,
+    icon: state.routeGroupIcon
+  }, 'preset-editor-icon-preview');
+  const normalizedIcon = normalizeIconifyIcon(state.routeGroupIcon);
+  return `
+    <div class="modal-backdrop" data-action="closeSelectedRouteGroupDialog">
+      <section class="modal route-group-dialog" role="dialog" aria-modal="true" aria-labelledby="routeGroupTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="routeGroupTitle">Новая группа правил</h2>
+            <span>Отмеченные правила будут собраны рядом и сохранены как локальная подборка. Иконку можно оставить пустой или указать Iconify ID.</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeSelectedRouteGroupDialog" aria-label="Закрыть">×</button>
+        </div>
+        <div class="preset-editor route-group-editor">
+          <div class="preset-editor-grid">
+            <label>
+              <span>Название</span>
+              <input id="routeGroupTitleInput" value="${escapeHtml(state.routeGroupTitle)}" placeholder="Например, Мои медиа через proxy" />
+            </label>
+            <label>
+              <span>Описание</span>
+              <input id="routeGroupDetailInput" value="${escapeHtml(state.routeGroupDetail)}" placeholder="Коротко, что входит в группу" />
+            </label>
+            <label class="preset-icon-field">
+              <span>Иконка Iconify</span>
+              <input id="routeGroupIconInput" value="${escapeHtml(state.routeGroupIcon)}" placeholder="simple-icons:youtube или https://icon-sets.iconify.design/..." />
+              <small>${normalizedIcon ? `Будет использована ${escapeHtml(normalizedIcon)}` : 'Необязательно: если поле пустое, RuOpenRay подберет нейтральную иконку.'}</small>
+            </label>
+            <div class="preset-icon-preview">
+              ${iconPreview}
+              <em>${selectedCount} правил выбрано</em>
+            </div>
+          </div>
+          <div class="preset-editor-hint">После создания группа появится в списке правил как единый блок. Порядок выбранных правил сохранится, а остальные правила останутся вокруг него.</div>
+        </div>
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        <div class="modal-actions">
+          <button class="btn secondary" type="button" data-action="closeSelectedRouteGroupDialog">Отмена</button>
+          <button class="btn warning" type="button" data-action="createSelectedRouteGroup" ${selectedCount >= 2 ? '' : 'disabled'}>Создать группу</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function routePresetDialog() {
   if (!state.routePresetDialog) return '';
   const editorOpen = Boolean(state.routePresetEditor);
@@ -416,6 +467,7 @@ function routePresetDialog() {
   return {
     routeRuleDialog,
     routeBalancerDialog,
+    selectedRouteGroupDialog,
     routePresetDialog,
   };
 }
