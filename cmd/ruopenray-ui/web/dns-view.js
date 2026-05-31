@@ -240,6 +240,21 @@ function dnsServersSection(dns) {
           <label>DNS-сервер</label>
           <input id="dnsAddress" value="${escapeHtml(state.dnsAddress)}" placeholder="https://dns.google:443/dns-query" />
         </div>
+        <label class="check-row">
+          <input id="dnsAuthEnabled" type="checkbox" ${state.dnsAuthEnabled ? 'checked' : ''} />
+          <span>Basic Auth для DoH</span>
+        </label>
+        ${state.dnsAuthEnabled ? `<div class="form-grid two">
+          <div class="form-row">
+            <label>Логин</label>
+            <input id="dnsAuthUser" value="${escapeHtml(state.dnsAuthUser)}" autocomplete="username" placeholder="user" />
+          </div>
+          <div class="form-row">
+            <label>Пароль</label>
+            <input id="dnsAuthPassword" type="password" value="${escapeHtml(state.dnsAuthPassword)}" autocomplete="current-password" placeholder="password" />
+          </div>
+        </div>
+        <p class="muted">Панель соберет DoH URL вида https://user:pass@host/dns-query. В списке DNS пароль будет скрыт.</p>` : ''}
         <div class="form-row">
           <label>Только для доменов</label>
           <input id="dnsDomains" value="${escapeHtml(state.dnsDomains)}" placeholder="dns.google, dns.opendns.com" />

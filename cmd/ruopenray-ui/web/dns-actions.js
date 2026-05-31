@@ -30,6 +30,23 @@ export function createDnsActions({
     return String(dnsServerAddress(server)).toLowerCase().startsWith('https://');
   }
 
+  function dnsAddressWithAuth(address) {
+    const raw = String(address || '').trim();
+    if (!state.dnsAuthEnabled) return raw;
+    const user = String(state.dnsAuthUser || '').trim();
+    const password = String(state.dnsAuthPassword || '');
+    if (!user && !password) return raw;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== 'https:') return raw;
+      url.username = user;
+      url.password = password;
+      return url.toString();
+    } catch {
+      return raw;
+    }
+  }
+
   function dnsServerToObject(server) {
     if (server && typeof server === 'object' && !Array.isArray(server)) return { ...server };
     return { address: dnsServerAddress(server) };
@@ -50,9 +67,14 @@ export function createDnsActions({
   }
 
   function addDnsServer() {
-    const address = String(state.dnsAddress || '').trim();
+    const address = dnsAddressWithAuth(state.dnsAddress);
     if (!address) {
       state.message = 'Укажите DNS-сервер, например https://dns.google:443/dns-query';
+      render();
+      return;
+    }
+    if (state.dnsAuthEnabled && !String(address).toLowerCase().startsWith('https://')) {
+      state.message = 'DNS-авторизация поддержана только для DoH URL https://...';
       render();
       return;
     }
@@ -237,10 +259,10 @@ export function createDnsActions({
   }
 
   async function checkDnsServer() {
-    const normalized = normalizeDnsAddressInput(state.dnsAddress);
+    const normalized = normalizeDnsAddressInput(dnsAddressWithAuth(state.dnsAddress));
     const result = await request('/api/dns/check', {
       method: 'POST',
-      body: JSON.stringify({ server: normalized.check || state.dnsAddress, host: state.dnsCheckHost })
+      body: JSON.stringify({ server: normalized.check || dnsAddressWithAuth(state.dnsAddress), host: state.dnsCheckHost })
     });
     state.dnsCheckResult = result;
     state.message = result.ok ? 'DNS проверен' : 'DNS не ответил';

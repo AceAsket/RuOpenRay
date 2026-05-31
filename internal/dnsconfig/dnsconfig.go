@@ -198,6 +198,11 @@ func dohLookup(endpoint string, host string, qtype uint16) ([]string, error) {
 	req.Header.Set("accept", "application/dns-message")
 	req.Header.Set("content-type", "application/dns-message")
 	req.Header.Set("user-agent", "RuOpenRay UI")
+	if req.URL != nil && req.URL.User != nil {
+		user := req.URL.User.Username()
+		password, _ := req.URL.User.Password()
+		req.SetBasicAuth(user, password)
+	}
 	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
 	if err != nil {
 		return nil, err

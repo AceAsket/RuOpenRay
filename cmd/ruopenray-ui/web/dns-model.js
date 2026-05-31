@@ -8,12 +8,12 @@ export function createDnsModel({ state }) {
 
   function describeDnsServer(server) {
     if (typeof server === 'string') {
-      return { address: server, domains: [], port: '', network: '', raw: server };
+      return { address: maskDnsAddress(server), domains: [], port: '', network: '', raw: server };
     }
     if (server && typeof server === 'object') {
       const address = [server.address, server.port].filter(Boolean).join(':') || 'DNS';
       return {
-        address,
+        address: maskDnsAddress(address),
         domains: Array.isArray(server.domains) ? server.domains : [],
         port: server.port || '',
         network: server.network || '',
@@ -21,6 +21,21 @@ export function createDnsModel({ state }) {
       };
     }
     return { address: 'DNS', domains: [], port: '', network: '', raw: '' };
+  }
+
+  function maskDnsAddress(value) {
+    const text = String(value || '');
+    if (!/^https:\/\//i.test(text)) return text;
+    try {
+      const url = new URL(text);
+      if (!url.username && !url.password) return text;
+      const user = url.username ? decodeURIComponent(url.username) : 'auth';
+      url.username = user;
+      url.password = '***';
+      return url.toString();
+    } catch {
+      return text.replace(/^(https:\/\/)([^/@:\s]+)(?::[^/@\s]*)?@/i, '$1$2:***@');
+    }
   }
 
   function dnsAddressHasPort(value) {
@@ -88,6 +103,7 @@ export function createDnsModel({ state }) {
   return {
     dnsConfig,
     describeDnsServer,
+    maskDnsAddress,
     dnsAddressHasPort,
     normalizeDnsAddressInput,
     dnsStats,

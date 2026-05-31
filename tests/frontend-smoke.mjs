@@ -1102,6 +1102,9 @@ const dnsModel = createDnsModel({
 const dnsActionState = {
   config: { dns: { servers: [], hosts: {} }, routing: { rules: [] } },
   dnsAddress: '192.168.1.1',
+  dnsAuthEnabled: false,
+  dnsAuthUser: '',
+  dnsAuthPassword: '',
   dnsDomains: 'lan',
   dnsHostName: 'router.lan',
   dnsHostValue: '192.168.1.1',
@@ -1134,6 +1137,16 @@ dnsActions.addDnsServer();
 dnsActionState.dnsAddress = 'https://dns.google/dns-query';
 dnsActionState.dnsDomains = '';
 dnsActions.addDnsServer();
+dnsActionState.dnsAddress = 'https://secure-dns.example/dns-query';
+dnsActionState.dnsAuthEnabled = true;
+dnsActionState.dnsAuthUser = 'user@example';
+dnsActionState.dnsAuthPassword = 'secret value';
+dnsActions.addDnsServer();
+const dnsAuthServer = dnsActionState.config.dns.servers.find((server) => String(server).includes('secure-dns.example'));
+const dnsAuthServerMasked = dnsAuthServer?.includes('user%40example:secret%20value@')
+  && dnsActionModel.describeDnsServer(dnsAuthServer).address.includes('user%40example:***@')
+  && !dnsActionModel.describeDnsServer(dnsAuthServer).address.includes('secret');
+dnsActionState.dnsAuthEnabled = false;
 dnsActions.moveDnsServer(0, 1);
 dnsActions.prioritizeDohDnsServers();
 dnsActions.saveDnsHost();
@@ -1620,8 +1633,8 @@ const checks = [
   ['routing dialog multi value textarea', routeDialogMultiValueHtml.includes('route-value-editor') && routeDialogMultiValueHtml.includes('3 знач.') && routeDialogMultiValueHtml.includes('data-route-value-multiline="0"')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
-  ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1'],
-  ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers[1]?.address === '192.168.1.1'],
+  ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1' && dnsAuthServerMasked],
+  ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers.findIndex((server) => server?.address === '192.168.1.1') > 0],
   ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft && firewallActiveStatusHydrates],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],
   ['firewall model ignores dns inbound as transparent', !dnsOnlyFirewallModel.firewallInfo().ready && dnsOnlyFirewallModel.firewallInfo().transparent.length === 0 && dnsOnlyFirewallModel.firewallPolicyPreview().warnings.some((item) => item.includes('Нет transparent inbound'))],

@@ -48,6 +48,16 @@ export function bindDnsControls({
   document.querySelector('#dnsAddress')?.addEventListener('input', (event) => {
     state.dnsAddress = event.target.value;
   });
+  document.querySelector('#dnsAuthEnabled')?.addEventListener('change', (event) => {
+    state.dnsAuthEnabled = event.target.checked;
+    render();
+  });
+  document.querySelector('#dnsAuthUser')?.addEventListener('input', (event) => {
+    state.dnsAuthUser = event.target.value;
+  });
+  document.querySelector('#dnsAuthPassword')?.addEventListener('input', (event) => {
+    state.dnsAuthPassword = event.target.value;
+  });
   document.querySelector('#dnsDomains')?.addEventListener('input', (event) => {
     state.dnsDomains = event.target.value;
   });
