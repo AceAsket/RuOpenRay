@@ -108,6 +108,21 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/routing/presets" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveRoutePresets(payload))
+	case path == "/routing/preset-sources/check" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.routePresetSourceCheck(payload))
+	case path == "/routing/preset-sources" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.saveRoutePresetSource(payload))
+	case path == "/routing/preset-sources/update" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.updateRoutePresetSources(payload))
+	case path == "/routing/preset-sources/delete" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.deleteRoutePresetSource(payload))
+	case path == "/routing/preset-sources/toggle" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.toggleRoutePresetSource(payload))
 	case path == "/server-meta" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serverMetaReport())
 	case path == "/server-meta" && r.Method == http.MethodPost:

@@ -77,7 +77,17 @@ function presetIconPair(key, preset = {}) {
 }
 
 export function routePresetIconView(escapeHtml, key, preset = {}, className = '') {
-  const iconify = normalizeIconifyIcon(preset.icon || preset.iconify || preset.iconUrl || '');
+  const objectIcon = preset.icon && typeof preset.icon === 'object' && !Array.isArray(preset.icon) ? preset.icon : null;
+  if (objectIcon?.type === 'svg' && safeInlineSvg(objectIcon.svg)) {
+    const background = safeIconColor(objectIcon.background) || '';
+    const foreground = safeIconColor(objectIcon.foreground) || '';
+    const style = [
+      background ? `--route-icon-bg:${escapeHtml(background)}` : '',
+      foreground ? `--route-icon-fg:${escapeHtml(foreground)}` : ''
+    ].filter(Boolean).join(';');
+    return `<span class="route-preset-icon route-preset-inline-svg ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${objectIcon.svg}</span>`;
+  }
+  const iconify = normalizeIconifyIcon(objectIcon?.name || preset.icon || preset.iconify || preset.iconUrl || '');
   if (iconify) {
     return `<span class="route-preset-icon route-preset-iconify ${className}" style="--route-icon-url: url('https://api.iconify.design/${escapeHtml(iconify)}.svg')" aria-hidden="true"><span class="route-preset-iconify-glyph"></span></span>`;
   }
@@ -85,6 +95,19 @@ export function routePresetIconView(escapeHtml, key, preset = {}, className = ''
   const icon = presetIconSvg(key, tone);
   const brandClass = icon && icon.includes('brand-icon') ? 'route-preset-icon-brand' : '';
   return `<span class="route-preset-icon tone-${escapeHtml(tone)} ${brandClass} ${className}" aria-hidden="true">${icon || `<span class="route-preset-text">${escapeHtml(label)}</span>`}</span>`;
+}
+
+function safeInlineSvg(value = '') {
+  const svg = String(value || '');
+  return svg.length <= 20000
+    && /<svg[\s>]/i.test(svg)
+    && !/<\s*(script|iframe|object|embed|foreignObject|audio|video|canvas|link|meta|style)\b/i.test(svg)
+    && !/on[a-z]+\s*=|javascript:/i.test(svg);
+}
+
+function safeIconColor(value = '') {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(color) || /^[a-zA-Z][a-zA-Z0-9_-]{0,24}$/.test(color) ? color : '';
 }
 
 export function normalizeIconifyIcon(value = '') {

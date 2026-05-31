@@ -410,7 +410,7 @@ export function createRoutingActions({
   }
 
   function applySelectedRoutingPresets() {
-    const selectedPresets = state.selectedRoutePresets.filter((key) => routePresets[key] || routeBundles[key]);
+    const selectedPresets = state.selectedRoutePresets.filter((key) => externalRoutePreset(key) || routePresets[key] || routeBundles[key]);
     const selectedCustom = state.selectedRoutePresets.filter((key) => customRoutePreset(key));
     const selected = [...selectedPresets, ...selectedCustom];
     if (!selected.length) {
@@ -453,6 +453,8 @@ export function createRoutingActions({
   function routePresetRules(key) {
     const custom = customRoutePreset(key);
     if (custom) return expandRoutePresetRules(custom.rules || [], Boolean(custom.preserveMixed));
+    const external = externalRoutePreset(key);
+    if (external) return expandRoutePresetRules(external.rules || [], Boolean(external.preserveMixed));
     if (routeBundles[key]) return expandRoutePresetRules(routeBundles[key].rules || [], Boolean(routeBundles[key].preserveMixed));
     if (routePresets[key]) return expandRoutePresetRules([routePresets[key].rule], Boolean(routePresets[key].preserveMixed));
     return [];
@@ -461,12 +463,16 @@ export function createRoutingActions({
   function routePresetTitle(key) {
     const custom = customRoutePreset(key);
     if (custom) return custom.title || key;
+    const external = externalRoutePreset(key);
+    if (external) return external.title || key;
     return routeBundles[key]?.title || routePresets[key]?.title || key;
   }
 
   function routePresetDetail(key) {
     const custom = customRoutePreset(key);
     if (custom) return custom.detail || ruleCountLabel((custom.rules || []).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0));
+    const external = externalRoutePreset(key);
+    if (external) return external.detail || ruleCountLabel((external.rules || []).reduce((sum, rule) => sum + routeRuleConditionCount(rule), 0));
     const preset = routeBundles[key] || routePresets[key];
     if (!preset) return '';
     if (preset.detail) return preset.detail;
@@ -491,9 +497,17 @@ export function createRoutingActions({
   }
 
   function builtinRoutePresetEntries({ includeHidden = false } = {}) {
+    const externalKeys = new Set(Object.keys(state.externalRoutePresets || {}));
+    const externalEntries = Object.entries(state.externalRoutePresets || {})
+      .map(([key, preset]) => [key, { ...preset, source: preset.source || 'github' }]);
     return [
-      ...Object.entries(routeBundles),
+      ...externalEntries,
+      ...Object.entries(routeBundles)
+        .filter(([key]) => !externalKeys.has(key))
+        .map(([key, preset]) => [key, { ...preset, source: 'builtin' }]),
       ...Object.entries(routePresets)
+        .filter(([key]) => !externalKeys.has(key))
+        .map(([key, preset]) => [key, { ...preset, source: 'builtin' }])
     ].filter(([key]) => includeHidden || !hiddenBuiltinRoutePresetKeys.has(key));
   }
 
@@ -514,10 +528,143 @@ export function createRoutingActions({
     return id ? state.customRoutePresets[id] : null;
   }
 
+  function externalRoutePreset(key) {
+    const id = String(key || '').replace(/^external:/, '');
+    return id ? state.externalRoutePresets?.[id] : null;
+  }
+
   function customRoutePresetEntries() {
     return Object.entries(state.customRoutePresets)
       .sort(([, left], [, right]) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
       .map(([id, preset]) => [`custom:${id}`, preset]);
+  }
+
+  function applyRoutePresetSourceResult(result) {
+    if (!result) return;
+    if (result.externalPresets && typeof result.externalPresets === 'object' && !Array.isArray(result.externalPresets)) {
+      state.externalRoutePresets = result.externalPresets;
+    }
+    if (Array.isArray(result.sources)) state.routePresetSources = result.sources;
+    if (result.embedded) state.routePresetEmbedded = result.embedded;
+  }
+
+  async function checkRoutePresetSource() {
+    const url = String(state.routePresetSourceUrl || '').trim();
+    if (!url) {
+      state.message = 'Укажите URL JSON-каталога сценариев';
+      render();
+      return;
+    }
+    state.busyAction = 'checkRoutePresetSource';
+    state.message = 'Проверяю источник сценариев...';
+    render();
+    try {
+      const result = await request('/api/routing/preset-sources/check', {
+        method: 'POST',
+        body: JSON.stringify({ url })
+      });
+      state.routePresetSourceCheck = result;
+      if (result.ok) {
+        state.routePresetSourceUrl = result.url || url;
+        state.routePresetSourceName = state.routePresetSourceName || result.name || '';
+        state.message = `Источник проверен: ${result.count || 0} сценариев, ${result.rules || 0} правил`;
+      } else {
+        state.message = result.error || 'Источник сценариев не прошел проверку';
+      }
+    } catch (error) {
+      state.routePresetSourceCheck = { ok: false, error: error.message || String(error) };
+      state.message = error.message || 'Не удалось проверить источник сценариев';
+    } finally {
+      state.busyAction = '';
+      render();
+    }
+  }
+
+  async function saveRoutePresetSource() {
+    const url = String(state.routePresetSourceUrl || '').trim();
+    if (!url) {
+      state.message = 'Укажите URL JSON-каталога сценариев';
+      render();
+      return;
+    }
+    state.busyAction = 'saveRoutePresetSource';
+    state.message = 'Сохраняю источник сценариев...';
+    render();
+    try {
+      const result = await request('/api/routing/preset-sources', {
+        method: 'POST',
+        body: JSON.stringify({
+          url,
+          name: state.routePresetSourceName,
+          enabled: true,
+          autoUpdate: Boolean(state.routePresetSourceAutoUpdate)
+        })
+      });
+      applyRoutePresetSourceResult(result);
+      state.routePresetSourceCheck = result.ok ? { ...result, ok: true } : result;
+      state.message = result.ok ? 'Источник сценариев сохранен и подключен' : (result.error || 'Не удалось сохранить источник');
+    } catch (error) {
+      state.message = error.message || 'Не удалось сохранить источник сценариев';
+    } finally {
+      state.busyAction = '';
+      render();
+    }
+  }
+
+  async function updateRoutePresetSources(id = '') {
+    state.routePresetSourcesUpdating = true;
+    state.busyAction = id ? `updateRoutePresetSource:${id}` : 'updateRoutePresetSources';
+    state.message = id ? 'Обновляю источник сценариев...' : 'Обновляю все источники сценариев...';
+    render();
+    try {
+      const result = await request('/api/routing/preset-sources/update', {
+        method: 'POST',
+        body: JSON.stringify({ id })
+      });
+      applyRoutePresetSourceResult(result);
+      state.message = result.ok ? 'Источники сценариев обновлены' : (result.error || 'Не удалось обновить источники');
+    } catch (error) {
+      state.message = error.message || 'Не удалось обновить источники сценариев';
+    } finally {
+      state.routePresetSourcesUpdating = false;
+      state.busyAction = '';
+      render();
+    }
+  }
+
+  async function deleteRoutePresetSource(id) {
+    if (!id) return;
+    state.busyAction = `deleteRoutePresetSource:${id}`;
+    render();
+    try {
+      const result = await request('/api/routing/preset-sources/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id })
+      });
+      applyRoutePresetSourceResult(result);
+      state.message = result.ok ? 'Источник сценариев удален' : (result.error || 'Не удалось удалить источник');
+    } catch (error) {
+      state.message = error.message || 'Не удалось удалить источник сценариев';
+    } finally {
+      state.busyAction = '';
+      render();
+    }
+  }
+
+  async function toggleRoutePresetSource(id, enabled) {
+    if (!id) return;
+    try {
+      const result = await request('/api/routing/preset-sources/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ id, enabled })
+      });
+      applyRoutePresetSourceResult(result);
+      state.message = enabled ? 'Источник сценариев включен' : 'Источник сценариев выключен';
+    } catch (error) {
+      state.message = error.message || 'Не удалось изменить источник сценариев';
+    } finally {
+      render();
+    }
   }
 
   function saveCustomRoutePresets() {
@@ -1025,7 +1172,7 @@ export function createRoutingActions({
         : `data-route-index="${index}" data-route-range-start="${index}" data-route-range-end="${index + 1}"`;
     const matchedPreset = !nested && presets.length ? presets[0] : null;
     const matchedPresetData = matchedPreset
-      ? (routeBundles[matchedPreset.key] || routePresets[matchedPreset.key] || customRoutePreset(matchedPreset.key) || { title: matchedPreset.title })
+      ? (externalRoutePreset(matchedPreset.key) || routeBundles[matchedPreset.key] || routePresets[matchedPreset.key] || customRoutePreset(matchedPreset.key) || { title: matchedPreset.title })
       : null;
     const presetIcon = matchedPreset
       ? routePresetIconView(escapeHtml, matchedPreset.key, matchedPresetData, 'compact route-row-preset-icon')
@@ -1382,6 +1529,11 @@ export function createRoutingActions({
     applyRoutePresetEdit,
     saveRoutePresetEdit,
     deleteCustomRoutePreset,
+    checkRoutePresetSource,
+    saveRoutePresetSource,
+    updateRoutePresetSources,
+    deleteRoutePresetSource,
+    toggleRoutePresetSource,
     removeRoutingRule,
     removeRoutingRuleRange,
     disableRoutingRule,

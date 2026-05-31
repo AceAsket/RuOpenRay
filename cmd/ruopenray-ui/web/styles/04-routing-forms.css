@@ -695,6 +695,19 @@
   mask: var(--route-icon-url) center / contain no-repeat;
 }
 
+.route-preset-inline-svg {
+  color: var(--route-icon-fg, currentColor);
+  background: var(--route-icon-bg, linear-gradient(135deg, #92f1e6, #64d8ff));
+  overflow: hidden;
+}
+
+.route-preset-inline-svg svg {
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+  box-sizing: border-box;
+}
+
 .preset-check strong,
 .preset-check small {
   display: block;

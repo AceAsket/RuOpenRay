@@ -4,6 +4,9 @@ export function bindRoutingControls({
   addRoutingPreset,
   editRoutingPreset,
   deleteCustomRoutePreset,
+  deleteRoutePresetSource,
+  toggleRoutePresetSource,
+  updateRoutePresetSources,
   removeRoutingRule,
   removeRoutingRuleRange,
   disableRoutingRule,
@@ -80,6 +83,15 @@ export function bindRoutingControls({
       event.stopPropagation();
       deleteCustomRoutePreset(button.dataset.routePresetDelete);
     });
+  });
+  document.querySelectorAll('[data-route-preset-source-delete]').forEach((button) => {
+    button.addEventListener('click', () => deleteRoutePresetSource(button.dataset.routePresetSourceDelete));
+  });
+  document.querySelectorAll('[data-route-preset-source-update]').forEach((button) => {
+    button.addEventListener('click', () => updateRoutePresetSources(button.dataset.routePresetSourceUpdate));
+  });
+  document.querySelectorAll('[data-route-preset-source-enabled]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (event) => toggleRoutePresetSource(checkbox.dataset.routePresetSourceEnabled, event.target.checked));
   });
   document.querySelectorAll('[data-route-delete]').forEach((button) => {
     button.addEventListener('click', () => removeRoutingRule(Number(button.dataset.routeDelete)));
@@ -666,6 +678,16 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeName = event.target.value;
   }));
+  document.querySelector('#routePresetSourceUrl')?.addEventListener('input', (event) => {
+    state.routePresetSourceUrl = event.target.value;
+    state.routePresetSourceCheck = null;
+  });
+  document.querySelector('#routePresetSourceName')?.addEventListener('input', (event) => {
+    state.routePresetSourceName = event.target.value;
+  });
+  document.querySelector('#routePresetSourceAutoUpdate')?.addEventListener('change', (event) => {
+    state.routePresetSourceAutoUpdate = event.target.checked;
+  });
   document.querySelectorAll('#routeValue').forEach((input) => input.addEventListener('input', (event) => {
     state.routeValue = event.target.value;
     state.routeRuleTestResult = null;

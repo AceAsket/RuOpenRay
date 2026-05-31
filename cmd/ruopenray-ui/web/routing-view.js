@@ -129,14 +129,49 @@ function routingRulesPanel() {
 function routingScenariosPanel() {
   const presetEntries = builtinRoutePresetEntries();
   const customEntries = customRoutePresetEntries();
+  const sourceBadge = (source) => {
+    const clean = source === 'github' ? 'github' : source === 'local' ? 'local' : 'builtin';
+    return `<em class="scenario-source-badge source-${escapeHtml(clean)}">${escapeHtml(clean)}</em>`;
+  };
+  const presetSource = (preset, fallback = 'builtin') => preset?.source || fallback;
+  const sourceCheck = state.routePresetSourceCheck;
+  const embeddedCount = Number(state.routePresetEmbedded?.count || 0);
   return `
     <section class="panel routing-scenarios-panel">
       <div class="panel-title">
         <div><h2>Сценарии маршрутизации</h2><span>Подборки правил можно открыть в редакторе, сохранить как свои или добавить через окно “Подборки”.</span></div>
         <div class="split-actions">
+          <button class="btn secondary ${state.routePresetSourcesUpdating ? 'is-busy' : ''}" data-action="updateRoutePresetSources" ${state.routePresetSourcesUpdating ? 'disabled' : ''}>${state.routePresetSourcesUpdating ? 'Обновляю...' : 'Обновить источники'}</button>
           <button class="btn secondary" data-action="newRoutePreset">Добавить подборку</button>
         </div>
       </div>
+      <details class="scenario-source-box" ${state.routePresetSources.length || state.routePresetSourceCheck ? 'open' : ''}>
+        <summary>
+          <strong>Источники сценариев</strong>
+          <span>${state.routePresetSources.length} git/raw · встроено в бинарник: ${embeddedCount}</span>
+        </summary>
+        <div class="scenario-source-form">
+          <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
+          <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
+          <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять</label>
+          <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
+          <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
+        </div>
+        ${sourceCheck ? `<div class="scenario-source-check ${sourceCheck.ok ? 'ok' : 'bad'}">
+          <strong>${escapeHtml(sourceCheck.ok ? `${sourceCheck.name || 'Источник'} · ${sourceCheck.version || 'без версии'}` : 'Источник не прошел проверку')}</strong>
+          <span>${escapeHtml(sourceCheck.ok ? `${sourceCheck.count || 0} сценариев · ${sourceCheck.rules || 0} правил` : sourceCheck.error || 'Ошибка проверки')}</span>
+          ${(sourceCheck.warnings || []).length ? `<ul>${sourceCheck.warnings.slice(0, 8).map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>` : ''}
+          ${Array.isArray(sourceCheck.presets) && sourceCheck.presets.length ? `<div class="scenario-source-preview">${sourceCheck.presets.map((item) => `<span>${escapeHtml(item.title || item.id)} · ${escapeHtml(String(item.rules || 0))}</span>`).join('')}</div>` : ''}
+        </div>` : ''}
+        ${state.routePresetSources.length ? `<div class="scenario-source-list">
+          ${state.routePresetSources.map((source) => `<article>
+            <label class="check-row compact"><input type="checkbox" data-route-preset-source-enabled="${escapeHtml(source.id)}" ${source.enabled === false ? '' : 'checked'} /> ${escapeHtml(source.name || source.url)}</label>
+            <span>${escapeHtml(source.version || 'без версии')} · ${escapeHtml(String(source.count || 0))} сценариев${source.error ? ` · ошибка: ${escapeHtml(source.error)}` : ''}</span>
+            <button class="btn secondary compact" data-route-preset-source-update="${escapeHtml(source.id)}">Обновить</button>
+            <button class="btn danger compact" data-route-preset-source-delete="${escapeHtml(source.id)}">Удалить</button>
+          </article>`).join('')}
+        </div>` : ''}
+      </details>
       ${customEntries.length ? `
         <div class="scenario-section-title">Мои подборки</div>
         <div class="scenario-grid">
@@ -147,7 +182,7 @@ function routingScenariosPanel() {
             ${routePresetIconView(escapeHtml, key, preset)}
             <div>
               <strong>${escapeHtml(preset.title)}</strong>
-              <span>${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
+              <span>${sourceBadge('local')} ${escapeHtml(preset.detail || 'Пользовательская подборка маршрутизации.')}</span>
             </div>
             <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
             ${label ? `<em class="scenario-install-badge">${escapeHtml(label)}</em>` : ''}
@@ -168,7 +203,7 @@ function routingScenariosPanel() {
           ${routePresetIconView(escapeHtml, key, preset)}
           <div>
             <strong>${escapeHtml(preset.title)}</strong>
-            <span>${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>
+            <span>${sourceBadge(presetSource(preset))} ${escapeHtml(preset.detail || 'Один набор условий для правила маршрутизации.')}</span>
           </div>
           <small>${ruleCountLabel(routePresetConditionCount(key))}</small>
           ${label ? `<em class="scenario-install-badge">${escapeHtml(label)}</em>` : ''}

@@ -164,6 +164,137 @@
   margin-top: 0;
 }
 
+.scenario-source-box {
+  margin: 14px 0 18px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(10, 21, 24, 0.5);
+}
+
+.scenario-source-box summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.scenario-source-box summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scenario-source-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 260px) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.check-row.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.scenario-source-check {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(49, 210, 189, 0.22);
+  background: rgba(49, 210, 189, 0.08);
+}
+
+.scenario-source-check.bad {
+  border-color: rgba(255, 120, 120, 0.35);
+  background: rgba(255, 120, 120, 0.08);
+}
+
+.scenario-source-check span,
+.scenario-source-check li {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.scenario-source-preview,
+.scenario-source-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.scenario-source-preview {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.scenario-source-preview span {
+  padding: 7px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scenario-source-list article {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, auto) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.scenario-source-list article > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scenario-source-list .btn.compact {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.scenario-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin: 0 6px 0 0;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(49, 210, 189, 0.15);
+  color: var(--green);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.scenario-source-badge.source-local {
+  background: rgba(104, 222, 118, 0.16);
+  color: #68de76;
+}
+
+.scenario-source-badge.source-builtin {
+  background: rgba(163, 185, 181, 0.18);
+  color: var(--muted);
+}
+
 .scenario-card .route-preset-icon {
   align-self: center;
 }

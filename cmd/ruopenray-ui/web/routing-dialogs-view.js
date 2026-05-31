@@ -50,6 +50,10 @@ function routeRuleDialog() {
   const defaultMode = state.routeKind === 'default';
   const selected = new Set(state.selectedRoutePresets);
   const customEntries = customRoutePresetEntries();
+  const sourceBadge = (source) => {
+    const clean = source === 'github' ? 'github' : source === 'local' ? 'local' : 'builtin';
+    return `<em class="scenario-source-badge source-${escapeHtml(clean)}">${escapeHtml(clean)}</em>`;
+  };
   const routeValueItems = splitRouteValues(state.routeValue);
   const useRouteValueTextarea = !defaultMode && (state.routeValueMultiline || routeValueItems.length > 1 || String(state.routeValue || '').length > 90 || String(state.routeValue || '').includes('\n'));
   const routeValueEditorText = useRouteValueTextarea && !String(state.routeValue || '').includes('\n')
@@ -87,7 +91,7 @@ function routeRuleDialog() {
                 ${routePresetIconView(escapeHtml, key, preset)}
                 <span class="preset-check-copy">
                   <strong>${escapeHtml(preset.title)}</strong>
-                  <small>${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
+                  <small>${sourceBadge('local')} ${escapeHtml(preset.detail ? `${preset.detail} · ${ruleCountLabel(routePresetConditionCount(key))}` : ruleCountLabel(routePresetConditionCount(key)))}</small>
                   ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
                 </span>
                 <span class="preset-check-actions">
@@ -109,7 +113,7 @@ function routeRuleDialog() {
               ${routePresetIconView(escapeHtml, key, preset)}
               <span class="preset-check-copy">
                 <strong>${escapeHtml(preset.title)}</strong>
-                <small>${escapeHtml(`${preset.detail || describeRouteRule(preset.rule || routePresetRules(key)[0]).fullValue} · ${ruleCountLabel(routePresetConditionCount(key))}`)}</small>
+                <small>${sourceBadge(preset.source)} ${escapeHtml(`${preset.detail || describeRouteRule(preset.rule || routePresetRules(key)[0]).fullValue} · ${ruleCountLabel(routePresetConditionCount(key))}`)}</small>
                 ${label ? `<em class="preset-install-badge">${escapeHtml(label)}</em>` : ''}
               </span>
               <button class="preset-edit" type="button" data-route-preset-edit="${key}">Править</button>
