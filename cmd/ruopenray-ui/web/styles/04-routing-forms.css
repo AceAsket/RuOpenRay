@@ -1575,6 +1575,308 @@
   margin-top: 16px;
 }
 
+.setup-page {
+  gap: 18px;
+}
+
+.setup-page-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 18px 20px;
+  border-color: rgba(52, 211, 198, 0.2);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(52, 211, 198, 0.1), transparent 54%),
+    rgba(13, 21, 26, 0.72);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
+}
+
+.setup-page-head h2 {
+  font-size: 22px;
+  line-height: 1.16;
+}
+
+.setup-page-head p {
+  max-width: 920px;
+  font-size: 13px;
+}
+
+.setup-guided-layout {
+  grid-template-columns: minmax(260px, 304px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.setup-guide-workspace {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.setup-guide-rail {
+  top: 16px;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(52, 211, 198, 0.08), transparent 44%),
+    rgba(10, 17, 22, 0.76);
+  box-shadow: var(--shadow);
+}
+
+.setup-rail-title span {
+  font-size: 12px;
+}
+
+.setup-guide-rail .setup-stepper {
+  position: relative;
+  gap: 2px;
+}
+
+.setup-guide-rail .setup-stepper::before {
+  content: "";
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  left: 22px;
+  width: 1px;
+  background: var(--line);
+}
+
+.setup-stepper button {
+  position: relative;
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-height: 46px;
+  padding: 6px 8px;
+  border-radius: 12px;
+}
+
+.setup-stepper button:hover {
+  border-color: rgba(52, 211, 198, 0.24);
+  background: rgba(52, 211, 198, 0.06);
+}
+
+.setup-stepper button.active {
+  border-color: rgba(52, 211, 198, 0.5);
+  background:
+    linear-gradient(135deg, rgba(52, 211, 198, 0.16), rgba(15, 28, 34, 0.78)),
+    rgba(11, 21, 27, 0.86);
+  box-shadow: none;
+}
+
+.setup-stepper button.ok {
+  border-color: transparent;
+  background: transparent;
+}
+
+.setup-stepper span {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(10, 17, 22, 0.86);
+}
+
+.setup-stepper button.pending span {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.setup-stepper strong {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.setup-stepper small {
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.setup-step-summary {
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(8, 16, 21, 0.66);
+}
+
+.setup-step-summary-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.setup-step-summary-head em {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(52, 211, 198, 0.22);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: rgba(52, 211, 189, 0.08);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.setup-progress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.setup-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+}
+
+.setup-step-summary p {
+  font-size: 12px;
+}
+
+.setup-guide-rail .setup-step-summary p {
+  display: none;
+}
+
+.setup-step-panel {
+  gap: 16px;
+  padding: 20px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(52, 211, 198, 0.07), transparent 180px),
+    rgba(13, 21, 26, 0.82);
+  box-shadow: var(--shadow);
+}
+
+.setup-step-panel h3 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.setup-step-panel p {
+  font-size: 13px;
+}
+
+.setup-readiness {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.setup-readiness article,
+.setup-result-list article {
+  min-height: 68px;
+  padding: 12px;
+  border-color: var(--line-soft);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.setup-readiness article > span,
+.setup-result-list article > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.setup-choice-grid {
+  gap: 10px;
+}
+
+.setup-choice-grid article,
+.setup-mode-grid article {
+  min-height: 96px;
+  border-color: var(--line-soft);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.setup-choice-grid strong {
+  margin: 4px 0;
+  font-size: 20px;
+}
+
+.setup-mode-grid article {
+  min-height: 136px;
+}
+
+.setup-mode-grid article.active {
+  background:
+    linear-gradient(135deg, rgba(98, 210, 111, 0.12), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow: inset 3px 0 0 rgba(98, 210, 111, 0.8);
+}
+
+.setup-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 0;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(10, 17, 22, 0.64);
+}
+
+.setup-step-actions .btn {
+  min-width: 150px;
+}
+
+.setup-step-actions .btn.warning {
+  min-width: 260px;
+}
+
+@media (max-width: 920px) {
+  .setup-page-head {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-guided-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-guide-rail {
+    position: static;
+  }
+
+  .setup-guide-rail .setup-stepper {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .setup-guide-rail .setup-stepper::before {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .setup-page-head,
+  .setup-guide-rail,
+  .setup-step-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .setup-step-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .setup-step-actions .btn,
+  .setup-step-actions .btn.warning {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .chain-diagnostics {
   display: grid;
   gap: 16px;

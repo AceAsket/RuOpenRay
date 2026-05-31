@@ -152,11 +152,16 @@ function setupWizardSummary(steps) {
   const current = steps[activeIndex] || steps[0];
   const done = steps.filter((step) => step.ok).length;
   const left = Math.max(0, steps.length - done);
+  const progress = Math.round((done / Math.max(1, steps.length)) * 100);
   return `<section class="setup-step-summary">
-    <div>
+    <div class="setup-step-summary-head">
+      <div>
       <span>${current?.ok ? 'Шаг готов' : 'Проверьте шаг'}</span>
       <strong>${escapeHtml(current?.title || 'Проверка')}</strong>
+      </div>
+      <em>${done}/${steps.length}</em>
     </div>
+    <div class="setup-progress" aria-hidden="true"><span style="width: ${progress}%"></span></div>
     <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}. Если что-то опасно применять, мастер остановится и покажет причину.` : 'Все ключевые пункты готовы, можно запускать финальную проверку.'}</p>
   </section>`;
 }

@@ -314,6 +314,10 @@ body[data-theme="light"] .app-version-pill.has-update {
   color: #6e4a08;
 }
 
+body[data-theme="light"] .pending-more {
+  color: #9a6408;
+}
+
 body[data-theme="light"] .settings-warning.danger,
 body[data-theme="light"] .notice.danger {
   color: #8b1f2b;
@@ -756,6 +760,104 @@ body[data-theme="light"] .dashboard-server-action:hover:not(:disabled) {
   color: var(--accent-strong);
   border-color: rgba(10, 159, 139, 0.34);
   background: #dff2ee;
+}
+
+body[data-theme="light"] .setup-page-head {
+  background:
+    linear-gradient(135deg, rgba(10, 159, 139, 0.09), transparent 56%),
+    #ffffff;
+  box-shadow: 0 16px 40px rgba(31, 53, 57, 0.1);
+}
+
+body[data-theme="light"] .setup-guide-workspace {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-theme="light"] .setup-guide-rail {
+  background:
+    linear-gradient(180deg, rgba(10, 159, 139, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.92);
+}
+
+body[data-theme="light"] .setup-guide-rail .setup-stepper::before {
+  background: #d6e5e1;
+}
+
+body[data-theme="light"] .setup-stepper button {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-theme="light"] .setup-stepper button:hover {
+  border-color: rgba(10, 159, 139, 0.2);
+  background: rgba(10, 159, 139, 0.06);
+}
+
+body[data-theme="light"] .setup-stepper button.active {
+  border-color: rgba(10, 159, 139, 0.34);
+  background:
+    linear-gradient(135deg, rgba(10, 159, 139, 0.13), rgba(255, 255, 255, 0.92)),
+    #ffffff;
+  box-shadow: none;
+}
+
+body[data-theme="light"] .setup-stepper button.ok {
+  border-color: transparent;
+  background: transparent;
+}
+
+body[data-theme="light"] .setup-stepper span {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.95);
+}
+
+body[data-theme="light"] .setup-stepper button.pending span {
+  color: #6f8580;
+  border-color: #c7d8d4;
+  background: #ffffff;
+}
+
+body[data-theme="light"] .setup-step-summary {
+  background: #f7fbfa;
+  box-shadow: none;
+}
+
+body[data-theme="light"] .setup-step-summary-head em {
+  color: var(--accent-strong);
+  border-color: rgba(10, 159, 139, 0.2);
+  background: rgba(10, 159, 139, 0.08);
+}
+
+body[data-theme="light"] .setup-progress {
+  background: #e4efec;
+}
+
+body[data-theme="light"] .setup-step-panel {
+  background:
+    linear-gradient(180deg, rgba(10, 159, 139, 0.05), transparent 180px),
+    #ffffff;
+  box-shadow: 0 16px 40px rgba(31, 53, 57, 0.1);
+}
+
+body[data-theme="light"] .setup-readiness article,
+body[data-theme="light"] .setup-result-list article,
+body[data-theme="light"] .setup-choice-grid article,
+body[data-theme="light"] .setup-mode-grid article {
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: none;
+}
+
+body[data-theme="light"] .setup-mode-grid article.active {
+  background:
+    linear-gradient(135deg, rgba(22, 139, 62, 0.08), rgba(255, 255, 255, 0.94)),
+    #ffffff;
+}
+
+body[data-theme="light"] .setup-step-actions {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 30px rgba(31, 53, 57, 0.08);
 }
 
 body[data-theme="light"] .server-action-icon.warning,
