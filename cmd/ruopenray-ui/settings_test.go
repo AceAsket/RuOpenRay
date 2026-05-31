@@ -120,9 +120,20 @@ func TestRotateLogFileKeepsSingleCopy(t *testing.T) {
 	if err := os.WriteFile(path+".1", []byte("old"), 0o600); err != nil {
 		t.Fatalf("write old rotated log: %v", err)
 	}
+	beforeInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat active log before rotate: %v", err)
+	}
 
 	if err := rotateLogFile(path, 1, 256); err != nil {
 		t.Fatalf("rotateLogFile returned error: %v", err)
+	}
+	afterInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat active log after rotate: %v", err)
+	}
+	if !os.SameFile(beforeInfo, afterInfo) {
+		t.Fatalf("active log was replaced; rotation must truncate in place so Xray keeps writing to the visible log")
 	}
 	if body, err := os.ReadFile(path); err != nil || len(body) != 0 {
 		t.Fatalf("active log was not recreated empty: len=%d err=%v", len(body), err)

@@ -175,17 +175,20 @@ function routeRuleDialog() {
               <button type="button" class="${state.routeTargetType === 'balancer' ? 'active' : ''}" data-route-target-type="balancer" ${balancers.length ? '' : 'disabled'}>Балансировщик</button>
             </div>
           </div>
-          <div class="form-row">
+          <div class="form-row route-target-row">
             <label>Куда отправляем</label>
-            ${state.routeTargetType === 'balancer' ? `
-              <select id="routeBalancer">
-                ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
-              </select>
-            ` : `
-              <select id="routeOutbound" class="route-outbound" data-route-outbound-picker>
-                ${outboundTargetOptions.map((option) => `<option value="${escapeHtml(option.tag)}" ${state.routeOutbound === option.tag ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-              </select>
-            `}
+            <div class="route-target-control">
+              ${state.routeTargetType === 'balancer' ? `
+                <select id="routeBalancer">
+                  ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
+                </select>
+              ` : `
+                <select id="routeOutbound" class="route-outbound" data-route-outbound-picker>
+                  ${outboundTargetOptions.map((option) => `<option value="${escapeHtml(option.tag)}" ${state.routeOutbound === option.tag ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                </select>
+              `}
+              <button class="btn secondary icon-btn route-target-test-btn ${state.busyAction === 'testRouteRuleTarget' ? 'is-busy' : ''}" type="button" data-action="testRouteRuleTarget" title="Проверить через выбранный сервер" aria-label="Проверить через выбранный сервер" ${state.busyAction === 'testRouteRuleTarget' ? 'disabled' : ''}>${state.busyAction === 'testRouteRuleTarget' ? '…' : '✓'}</button>
+            </div>
           </div>
           ${routeRuleTestResultView(state.routeRuleTestResult)}
         </div>
@@ -203,7 +206,6 @@ function routeRuleDialog() {
             <button class="btn secondary ${state.busyAction === 'previewRouteDsl' ? 'is-busy' : ''}" type="button" data-action="previewRouteDsl" ${state.busyAction === 'previewRouteDsl' ? 'disabled' : ''}>${state.busyAction === 'previewRouteDsl' ? 'Проверяю...' : 'Проверить список'}</button>
             <button class="btn warning ${state.busyAction === 'appendRouteDslFromDialog' ? 'is-busy' : ''}" type="button" data-action="appendRouteDslFromDialog" ${state.busyAction === 'appendRouteDslFromDialog' ? 'disabled' : ''}>${state.busyAction === 'appendRouteDslFromDialog' ? 'Добавляю...' : 'Добавить список'}</button>
           ` : `
-            <button class="btn secondary ${state.busyAction === 'testRouteRuleTarget' ? 'is-busy' : ''}" type="button" data-action="testRouteRuleTarget" ${state.busyAction === 'testRouteRuleTarget' ? 'disabled' : ''}>${state.busyAction === 'testRouteRuleTarget' ? 'Тест...' : 'Тест'}</button>
             <button class="btn warning ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'is-busy' : ''}" type="button" data-action="${editing ? 'saveRouteEdit' : 'addRoute'}" ${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'disabled' : ''}>${state.busyAction === (editing ? 'saveRouteEdit' : 'addRoute') ? 'Сохраняю...' : editing ? 'Сохранить правило' : 'Добавить правило'}</button>
           `}
         </div>

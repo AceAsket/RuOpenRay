@@ -251,7 +251,7 @@
 
 .scenario-source-list article {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(160px, auto) auto auto;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 8px;
@@ -259,9 +259,38 @@
   border-radius: 8px;
 }
 
-.scenario-source-list article > span {
+.scenario-source-toggle {
+  justify-content: center;
+  width: 32px;
+  min-height: 32px;
+}
+
+.scenario-source-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.scenario-source-main strong,
+.scenario-source-main em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-source-main strong {
+  color: var(--text);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.scenario-source-main em {
   color: var(--muted);
   font-size: 12px;
+  font-style: normal;
+  font-weight: 750;
 }
 
 .scenario-source-list .btn.compact {

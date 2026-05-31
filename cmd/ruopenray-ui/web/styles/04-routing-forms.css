@@ -701,11 +701,20 @@
   overflow: hidden;
 }
 
+.route-preset-icon.route-preset-inline-svg.route-preset-icon-brand {
+  background: transparent;
+  box-shadow: none;
+}
+
 .route-preset-inline-svg svg {
   width: 100%;
   height: 100%;
   padding: 7px;
   box-sizing: border-box;
+}
+
+.route-preset-icon.route-preset-inline-svg.route-preset-icon-brand svg.brand-icon {
+  padding: 0;
 }
 
 .preset-check strong,
@@ -1728,6 +1737,21 @@
   min-height: 30px;
   padding: 0 10px;
   font-size: 12px;
+}
+
+.route-target-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.route-target-test-btn {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  font-size: 18px;
+  font-weight: 950;
 }
 
 .route-value-editor {

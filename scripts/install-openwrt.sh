@@ -25,6 +25,7 @@ START_DELAY="${RUOPENRAY_START_DELAY:-0}"
 APPLY_DELAY="${RUOPENRAY_APPLY_DELAY:-0}"
 DOWNLOAD_MIRROR="${RUOPENRAY_DOWNLOAD_MIRROR:-direct}"
 MIRROR_PREFIX="${RUOPENRAY_MIRROR_PREFIX:-}"
+KEEP_BINARY_BACKUPS="${RUOPENRAY_KEEP_BINARY_BACKUPS:-2}"
 
 log() {
 	printf '%s\n' "$*"
@@ -198,6 +199,16 @@ download_binary() {
 	[ -s "$tmp" ] || die "скачанный файл пустой"
 	chmod 0755 "$tmp"
 	mv "$tmp" "$INSTALL_DIR/$APP_NAME"
+	prune_binary_backups
+}
+
+prune_binary_backups() {
+	index=0
+	for backup in $(ls -1t "$INSTALL_DIR/$APP_NAME".backup-* 2>/dev/null || true); do
+		index=$((index + 1))
+		[ "$index" -le "$KEEP_BINARY_BACKUPS" ] && continue
+		rm -f "$backup" || true
+	done
 }
 
 write_uci_file() {

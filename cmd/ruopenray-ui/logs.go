@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -71,10 +72,12 @@ func (s *serverState) readLogsUncached(query url.Values) string {
 	if kind == "access" || kind == "all" {
 		settings := s.loggingSettings()
 		paths = append(paths, s.normalizeManagedLogPath(fmt.Sprint(settings["accessPath"]), s.defaultAccessLogPath()), s.defaultAccessLogPath(), legacyAccessLogPath, filepath.Join(s.cfg.DataDir, "access.log"))
+		paths = append(paths, xrayDeletedLogFDPaths("access.log")...)
 	}
 	if kind == "error" || kind == "all" || kind == "system" {
 		settings := s.loggingSettings()
 		paths = append(paths, s.normalizeManagedLogPath(fmt.Sprint(settings["errorPath"]), s.defaultErrorLogPath()), s.defaultErrorLogPath(), legacyErrorLogPath, filepath.Join(s.cfg.DataDir, "error.log"))
+		paths = append(paths, xrayDeletedLogFDPaths("error.log")...)
 	}
 	seen := map[string]bool{}
 	for _, path := range paths {
@@ -108,6 +111,37 @@ func emptyLogMessage(kind string) string {
 
 func readLogTailLines(path string, maxLines int) (string, error) {
 	return logview.TailFile(path, maxLines)
+}
+
+func xrayDeletedLogFDPaths(name string) []string {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	output, err := exec.CommandContext(ctx, "pidof", "xray").Output()
+	cancel()
+	if err != nil {
+		return nil
+	}
+	paths := []string{}
+	for _, pid := range strings.Fields(string(output)) {
+		fdDir := filepath.Join("/proc", pid, "fd")
+		entries, err := os.ReadDir(fdDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			fdPath := filepath.Join(fdDir, entry.Name())
+			target, err := os.Readlink(fdPath)
+			if err != nil {
+				continue
+			}
+			if strings.Contains(target, name) && strings.Contains(target, "(deleted)") {
+				paths = append(paths, fdPath)
+			}
+		}
+	}
+	return paths
 }
 
 func lastLines(text string, maxLines int) string {

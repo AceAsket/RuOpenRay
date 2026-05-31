@@ -31,7 +31,7 @@ import {
   splitMixedRouteRule
 } from '../cmd/ruopenray-ui/web/routing-rule-helpers.js';
 import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
-import { routePresetExportIcon } from '../cmd/ruopenray-ui/web/route-visuals.js';
+import { routePresetExportIcon, routePresetIconView } from '../cmd/ruopenray-ui/web/route-visuals.js';
 import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
@@ -1017,6 +1017,12 @@ const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'presetGro
 const routePatreonExportIcon = routePresetExportIcon('patreon', { title: 'Patreon' });
 const routeIntelExportIcon = routePresetExportIcon('intel', { title: 'Intel' });
 const routeTorrentExportIcon = routePresetExportIcon('torrentTrackers', { title: 'Торрент-трекеры' });
+const routeExternalBrandIconView = routePresetIconView(escapeHtml, 'external:linkedin', {
+  icon: {
+    type: 'svg',
+    svg: '<svg class="brand-icon" viewBox="0 0 24 24" focusable="false"><rect width="24" height="24" fill="#0a66c2"></rect></svg>'
+  }
+});
 routeGroupActions.editRoutingPreset('telegramFull');
 routeGroupState.routePresetEditTitle = 'Telegram export';
 routeGroupActions.saveRoutePresetEdit();
@@ -1027,7 +1033,9 @@ const routePresetEditorKeepsFallbackIcon = routeGroupState.customRoutePresets['t
   && routeIntelExportIcon?.type === 'svg'
   && routeIntelExportIcon.svg.includes('#0068b5')
   && routeTorrentExportIcon?.type === 'svg'
-  && routeTorrentExportIcon.svg.includes('#17b26a');
+  && routeTorrentExportIcon.svg.includes('#17b26a')
+  && routeExternalBrandIconView.includes('route-preset-inline-svg')
+  && routeExternalBrandIconView.includes('route-preset-icon-brand');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',

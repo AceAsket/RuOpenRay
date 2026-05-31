@@ -668,14 +668,41 @@ func rotateLogFile(logPath string, copies int, maxBytes int64) error {
 		}
 		_ = os.Rename(fromPlain, toPlain)
 	}
-	if err := os.Rename(logPath, logPath+".1"); err != nil {
+	if err := copyLogFileTail(logPath, logPath+".1", maxBytes); err != nil {
 		return err
 	}
-	if maxBytes > 0 {
-		_ = trimFileTail(logPath+".1", maxBytes)
+	if err := os.Truncate(logPath, 0); err != nil {
+		return err
 	}
 	compressLogIfPossible(logPath + ".1")
-	return os.WriteFile(logPath, []byte{}, 0o644)
+	return nil
+}
+
+func copyLogFileTail(src string, dst string, maxBytes int64) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if maxBytes > 0 && info.Size() > maxBytes {
+		if _, err := in.Seek(-maxBytes, io.SeekEnd); err != nil {
+			return err
+		}
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func maintainRotatedLogCopies(logPath string, copies int, maxBytes int64) error {

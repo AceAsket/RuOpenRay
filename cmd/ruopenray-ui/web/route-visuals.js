@@ -103,13 +103,15 @@ export function routePresetExportIcon(key, preset = {}) {
 export function routePresetIconView(escapeHtml, key, preset = {}, className = '') {
   const objectIcon = preset.icon && typeof preset.icon === 'object' && !Array.isArray(preset.icon) ? preset.icon : null;
   if (objectIcon?.type === 'svg' && safeInlineSvg(objectIcon.svg)) {
+    const svg = String(objectIcon.svg);
+    const brandClass = svg.includes('brand-icon') ? 'route-preset-icon-brand' : '';
     const background = safeIconColor(objectIcon.background) || '';
     const foreground = safeIconColor(objectIcon.foreground) || '';
     const style = [
       background ? `--route-icon-bg:${escapeHtml(background)}` : '',
       foreground ? `--route-icon-fg:${escapeHtml(foreground)}` : ''
     ].filter(Boolean).join(';');
-    return `<span class="route-preset-icon route-preset-inline-svg ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${objectIcon.svg}</span>`;
+    return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${svg}</span>`;
   }
   const iconify = normalizeIconifyIcon(objectIcon?.name || preset.icon || preset.iconify || preset.iconUrl || '');
   if (iconify) {

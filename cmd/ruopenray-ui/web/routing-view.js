@@ -168,12 +168,16 @@ function routingScenariosPanel() {
           ${Array.isArray(sourceCheck.presets) && sourceCheck.presets.length ? `<div class="scenario-source-preview">${sourceCheck.presets.map((item) => `<span>${escapeHtml(item.title || item.id)} · ${escapeHtml(String(item.rules || 0))}</span>`).join('')}</div>` : ''}
         </div>` : ''}
         ${state.routePresetSources.length ? `<div class="scenario-source-list">
-          ${state.routePresetSources.map((source) => `<article>
-            <label class="check-row compact"><input type="checkbox" data-route-preset-source-enabled="${escapeHtml(source.id)}" ${source.enabled === false ? '' : 'checked'} /> ${escapeHtml(source.name || source.url)}</label>
-            <span>${escapeHtml(source.version || 'без версии')} · ${escapeHtml(String(source.count || 0))} сценариев${source.error ? ` · ошибка: ${escapeHtml(source.error)}` : ''}</span>
-            <button class="btn secondary compact" data-route-preset-source-update="${escapeHtml(source.id)}">Обновить</button>
-            <button class="btn danger compact" data-route-preset-source-delete="${escapeHtml(source.id)}">Удалить</button>
-          </article>`).join('')}
+          ${state.routePresetSources.map((source) => {
+            const title = source.name || source.url;
+            const meta = `${source.version || 'без версии'} · ${String(source.count || 0)} сценариев${source.error ? ` · ошибка: ${source.error}` : ''}`;
+            return `<article>
+              <label class="check-row compact scenario-source-toggle" title="${escapeHtml(source.enabled === false ? 'Источник отключен' : 'Источник включен')}"><input type="checkbox" data-route-preset-source-enabled="${escapeHtml(source.id)}" ${source.enabled === false ? '' : 'checked'} /></label>
+              <span class="scenario-source-main"><strong>${escapeHtml(title)}</strong><em>${escapeHtml(meta)}</em></span>
+              <button class="btn secondary compact" data-route-preset-source-update="${escapeHtml(source.id)}">Обновить</button>
+              <button class="btn danger compact" data-route-preset-source-delete="${escapeHtml(source.id)}">Удалить</button>
+            </article>`;
+          }).join('')}
         </div>` : ''}
       </details>
       ${customEntries.length ? `
