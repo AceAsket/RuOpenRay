@@ -39,6 +39,8 @@ function dashboard() {
   const routes = routeStats();
   const devices = deviceStats();
   const dns = dnsStats();
+  const deviceRuleCount = deviceRules().length;
+  const lanDeviceCount = state.leases.length || deviceRuleCount;
   const serviceRunning = Boolean(s.service?.running);
   const coreReady = Boolean(s.core?.available);
   const coreInfo = coreUpdateInfo();
@@ -60,7 +62,7 @@ function dashboard() {
     ${xrayCoreDashboard(s, coreReady, coreInfo)}
 
     <section class="flow-strip">
-      ${flowStep('Устройства', deviceRules().length || state.leases.length, `${devices.proxy} через proxy`)}
+      ${flowStep('Устройства', lanDeviceCount, state.leases.length ? `${deviceRuleCount} правил LAN · ${devices.proxy} через proxy` : `${devices.proxy} через proxy`)}
       ${flowStep('Маршруты', c.routingRules ?? 0, `proxy ${routes.proxy} / direct ${routes.direct}`)}
       ${flowStep('Proxy', proxyServers.length, proxyServers[0] ? outboundAddress(proxyServers[0]) : 'не добавлен')}
       ${flowStep('DNS', dns.servers, dns.doh ? `${dns.doh} DoH` : 'системный')}
@@ -249,6 +251,10 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
   const groups = stats.groups || {};
   const active = xrayActiveStats(stats);
   const proxyTraffic = groups.proxy || {};
+  const directTraffic = groups.direct || {};
+  const blockTraffic = groups.block || {};
+  const directTrafficText = `${byteSize(directTraffic.downlink)} принято · ${byteSize(directTraffic.uplink)} отправлено`;
+  const blockTrafficText = `${byteSize(blockTraffic.downlink)} принято · ${byteSize(blockTraffic.uplink)} отброшено`;
   return `
     <section class="xray-dashboard-strip">
       <article>
@@ -263,8 +269,8 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
       </article>
       <article>
         <span>Напрямую / блокировка</span>
-        <strong>${escapeHtml(byteSize(groups.direct?.downlink))} · ${escapeHtml(byteSize(groups.block?.downlink))}</strong>
-        <small>${escapeHtml(`всего сейчас: прием ${byteRate(totals.downRate)} · отдача ${byteRate(totals.upRate)}`)}</small>
+        <strong>Напрямую: ${escapeHtml(directTrafficText)}</strong>
+        <small>${escapeHtml(`Блокировка: ${blockTrafficText} · всего сейчас: прием ${byteRate(totals.downRate)} · отдача ${byteRate(totals.upRate)}`)}</small>
       </article>
     </section>
   `;
@@ -281,9 +287,12 @@ function xrayCoreDashboard(status = state.status || {}, available, info) {
   const totals = xrayStatsTotals(stats);
   const groups = stats.groups || {};
   const proxyTraffic = groups.proxy || {};
+  const directTraffic = groups.direct || {};
+  const blockTraffic = groups.block || {};
   const active = xrayActiveStats(stats);
   const activeAddress = active?.tag ? outboundAddress(xrayStatsOutboundConfig(active.tag)) : '';
-  const directBlockText = `${byteSize(groups.direct?.downlink)} напрямую · ${byteSize(groups.block?.downlink)} блокировка`;
+  const directBlockText = `Напрямую: ${byteSize(directTraffic.downlink)} принято · ${byteSize(directTraffic.uplink)} отправлено`;
+  const directBlockDetail = `Блокировка: ${byteSize(blockTraffic.downlink)} принято · ${byteSize(blockTraffic.uplink)} отброшено · всего сейчас ${byteRate(totals.downRate)} прием · ${byteRate(totals.upRate)} отдача`;
   const proxyTrafficText = `${byteSize(proxyTraffic.downlink)} принято · ${byteSize(proxyTraffic.uplink)} отправлено`;
   const proxyTrafficRateText = `${byteRate(proxyTraffic.downRate)} прием · ${byteRate(proxyTraffic.upRate)} отдача`;
   return `
@@ -318,7 +327,7 @@ function xrayCoreDashboard(status = state.status || {}, available, info) {
         <article>
           <span>Напрямую / блокировка</span>
           <strong>${escapeHtml(statsEnabled ? directBlockText : 'нет данных')}</strong>
-          <small>${escapeHtml(statsEnabled ? `${byteRate(totals.downRate)} прием всего · ${byteRate(totals.upRate)} отдача всего` : 'без учета трафика по outbound')}</small>
+          <small>${escapeHtml(statsEnabled ? directBlockDetail : 'без учета трафика по outbound')}</small>
         </article>
       </div>
       ${statsEnabled ? '' : `<div class="xray-core-foot"><button class="btn secondary" type="button" data-action="enableXrayStats">Включить статистику Xray</button></div>`}
