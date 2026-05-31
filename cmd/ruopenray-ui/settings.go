@@ -584,6 +584,9 @@ func (s *serverState) clearLogFiles() map[string]any {
 			cleared = append(cleared, map[string]any{"path": rotated, "previousSize": info.Size(), "removed": true})
 		}
 	}
+	deletedFds, deletedFDErrors := s.truncateDeletedXrayLogFDs()
+	cleared = append(cleared, deletedFds...)
+	errors = append(errors, deletedFDErrors...)
 	return map[string]any{
 		"ok":       len(errors) == 0,
 		"cleared":  cleared,
@@ -621,7 +624,8 @@ func (s *serverState) maintainLogFiles(restart bool) map[string]any {
 	maxSizeMb := number(settings["maxSizeMb"], 2)
 	rotateCopies := number(settings["rotateCopies"], 1)
 	if maxSizeMb <= 0 || rotateCopies <= 0 {
-		return map[string]any{"ok": true, "rotated": []any{}}
+		deletedFds, deletedFDErrors := s.truncateDeletedXrayLogFDs()
+		return map[string]any{"ok": len(deletedFDErrors) == 0, "rotated": []any{}, "deletedFds": deletedFds, "errors": deletedFDErrors, "stderr": strings.Join(deletedFDErrors, "\n")}
 	}
 	maxBytes := int64(maxSizeMb) * 1024 * 1024
 	rotated := []map[string]any{}
@@ -645,7 +649,36 @@ func (s *serverState) maintainLogFiles(restart bool) map[string]any {
 			errors = append(errors, fmt.Sprintf("%s: %s", path, err.Error()))
 		}
 	}
-	return map[string]any{"ok": len(errors) == 0, "rotated": rotated, "errors": errors, "stderr": strings.Join(errors, "\n")}
+	deletedFds, deletedFDErrors := s.truncateDeletedXrayLogFDs()
+	errors = append(errors, deletedFDErrors...)
+	return map[string]any{"ok": len(errors) == 0, "rotated": rotated, "deletedFds": deletedFds, "errors": errors, "stderr": strings.Join(errors, "\n")}
+}
+
+func (s *serverState) truncateDeletedXrayLogFDs() ([]map[string]any, []string) {
+	cleared := []map[string]any{}
+	errors := []string{}
+	seen := map[string]bool{}
+	for _, name := range []string{"access.log", "error.log"} {
+		for _, fdPath := range xrayDeletedLogFDPaths(name) {
+			if seen[fdPath] {
+				continue
+			}
+			seen[fdPath] = true
+			info, err := os.Stat(fdPath)
+			if err != nil || info.IsDir() {
+				if err != nil && !os.IsNotExist(err) {
+					errors = append(errors, fmt.Sprintf("%s: %s", fdPath, err.Error()))
+				}
+				continue
+			}
+			if err := os.Truncate(fdPath, 0); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %s", fdPath, err.Error()))
+				continue
+			}
+			cleared = append(cleared, map[string]any{"path": fdPath, "previousSize": info.Size(), "deletedFd": true})
+		}
+	}
+	return cleared, errors
 }
 
 func rotateLogFile(logPath string, copies int, maxBytes int64) error {
