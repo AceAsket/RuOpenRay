@@ -8,14 +8,15 @@ import (
 
 func TestOutboundCheckResultsKeepLastPerTag(t *testing.T) {
 	state := &serverState{cfg: appConfig{DataDir: t.TempDir()}}
+	base := time.Now().UTC().Add(-2 * time.Minute)
 	if err := state.saveOutboundCheckResults([]map[string]any{
-		{"tag": "one", "ok": false, "latencyMs": 100, "checkedAt": "2026-05-24T10:00:00Z"},
+		{"tag": "one", "ok": false, "latencyMs": 100, "checkedAt": base.Format(time.RFC3339)},
 	}); err != nil {
 		t.Fatalf("save first result: %v", err)
 	}
 	if err := state.saveOutboundCheckResults([]map[string]any{
-		{"tag": "one", "ok": true, "latencyMs": 25, "checkedAt": "2026-05-24T10:01:00Z"},
-		{"tag": "two", "ok": true, "latencyMs": 50, "checkedAt": "2026-05-24T10:02:00Z"},
+		{"tag": "one", "ok": true, "latencyMs": 25, "checkedAt": base.Add(time.Minute).Format(time.RFC3339)},
+		{"tag": "two", "ok": true, "latencyMs": 50, "checkedAt": base.Add(2 * time.Minute).Format(time.RFC3339)},
 	}); err != nil {
 		t.Fatalf("save second result: %v", err)
 	}
@@ -79,13 +80,14 @@ func TestLimitOutboundCheckResults(t *testing.T) {
 
 func TestOutboundCheckHistorySettingsPruneByLimit(t *testing.T) {
 	state := &serverState{cfg: appConfig{DataDir: t.TempDir()}}
+	base := time.Now().UTC().Add(-4 * time.Minute)
 	result := state.saveOutboundCheckHistorySettings(map[string]any{"limit": 2, "retentionHours": 168})
 	if result["ok"] != true {
 		t.Fatalf("save settings failed: %#v", result)
 	}
 	for i := 0; i < 4; i++ {
 		if err := state.saveOutboundCheckResults([]map[string]any{
-			{"tag": "one", "ok": i%2 == 0, "latencyMs": i + 1, "checkedAt": fmt.Sprintf("2026-05-24T10:0%d:00Z", i)},
+			{"tag": "one", "ok": i%2 == 0, "latencyMs": i + 1, "checkedAt": base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339)},
 		}); err != nil {
 			t.Fatalf("save result %d: %v", i, err)
 		}

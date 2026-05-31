@@ -97,6 +97,8 @@ Usage:
   ruopenray-ui diagnostics
   ruopenray-ui backup
   ruopenray-ui update [version] [--backup]
+  ruopenray-ui route-presets add-source [url] [--name name] [--auto-update]
+  ruopenray-ui route-presets update [source-id]
   ruopenray-ui start|stop|restart
   ruopenray-ui uninstall [--purge]
 
@@ -134,6 +136,13 @@ All operational commands print JSON. The web service is the default when no comm
 			}
 		}
 		result := s.updateApp(version, keepBackup)
+		printJSON(result)
+		if result["ok"] != true {
+			return 1
+		}
+		return 0
+	case "route-presets", "scenarios":
+		result := s.routePresetSourcesCLI(args[1:])
 		printJSON(result)
 		if result["ok"] != true {
 			return 1

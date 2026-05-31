@@ -7,16 +7,22 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
+
+	"github.com/AceAsket/RuOpenRay/internal/geodata"
 )
 
 const routePresetsLimit = 200
 const routePresetRulesLimit = 1000
 const routePresetSourcesLimit = 20
 const routePresetSourceBodyLimit = 2 * 1024 * 1024
+const defaultRoutePresetSourceURL = "https://raw.githubusercontent.com/AceAsket/RuOpenRay-scenarios/main/scenarios.json"
+const defaultRoutePresetSourceName = "RuOpenRay scenarios"
 
 var routePresetSourceIDPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
 var routePresetSVGUnsafePattern = regexp.MustCompile(`(?is)<\s*(script|iframe|object|embed|foreignObject|audio|video|canvas|link|meta|style)\b|on[a-z]+\s*=|javascript:`)
@@ -211,13 +217,12 @@ func routePresetsFromPayload(payload map[string]any) map[string]any {
 }
 
 func (s *serverState) routePresetsReport() map[string]any {
-	external, sources, embedded := s.externalRoutePresets()
+	external, sources := s.externalRoutePresets()
 	return map[string]any{
 		"ok":              true,
 		"presets":         s.routePresets(),
 		"externalPresets": external,
 		"sources":         sources,
-		"embedded":        embedded,
 	}
 }
 
@@ -334,8 +339,7 @@ func routePresetSourceID(rawURL string) string {
 	return id
 }
 
-func (s *serverState) externalRoutePresets() (map[string]any, []map[string]any, map[string]any) {
-	embedded := embeddedRoutePresetCatalog()
+func (s *serverState) externalRoutePresets() (map[string]any, []map[string]any) {
 	merged := map[string]any{}
 	sources := s.routePresetSources()
 	for _, source := range sources {
@@ -349,14 +353,7 @@ func (s *serverState) externalRoutePresets() (map[string]any, []map[string]any, 
 			}
 		}
 	}
-	if embeddedPresets, ok := embedded["presets"].(map[string]any); ok {
-		for id, preset := range embeddedPresets {
-			if _, exists := merged[id]; !exists {
-				merged[id] = preset
-			}
-		}
-	}
-	return merged, sources, embedded
+	return merged, sources
 }
 
 func routePresetsFromCatalog(payload map[string]any) (map[string]any, string, string) {
@@ -369,6 +366,53 @@ func routePresetsFromCatalog(payload map[string]any) (map[string]any, string, st
 	name := optionalRoutePresetString(payload["name"])
 	version := optionalRoutePresetString(payload["version"])
 	return sanitizeRoutePresets(raw), name, version
+}
+
+func (s *serverState) routePresetSourcesCLI(args []string) map[string]any {
+	if len(args) == 0 {
+		return map[string]any{"ok": false, "stderr": "usage: ruopenray-ui route-presets add-source [url] [--name name] [--auto-update]"}
+	}
+	command := strings.ToLower(strings.TrimSpace(args[0]))
+	switch command {
+	case "add-source", "install-source", "import-source", "install-default":
+		urlValue := defaultRoutePresetSourceURL
+		nameValue := defaultRoutePresetSourceName
+		autoUpdate := false
+		for index := 1; index < len(args); index++ {
+			arg := strings.TrimSpace(args[index])
+			switch arg {
+			case "--name":
+				if index+1 < len(args) {
+					index++
+					nameValue = strings.TrimSpace(args[index])
+				}
+			case "--auto-update":
+				autoUpdate = true
+			case "--no-auto-update":
+				autoUpdate = false
+			default:
+				if !strings.HasPrefix(arg, "-") && arg != "" {
+					urlValue = arg
+				}
+			}
+		}
+		result := s.saveRoutePresetSource(map[string]any{
+			"url":        urlValue,
+			"name":       nameValue,
+			"enabled":    true,
+			"autoUpdate": autoUpdate,
+		})
+		result["url"] = normalizeRoutePresetSourceURL(urlValue)
+		return result
+	case "update", "update-sources":
+		id := ""
+		if len(args) > 1 {
+			id = strings.TrimSpace(args[1])
+		}
+		return s.updateRoutePresetSources(map[string]any{"id": id})
+	default:
+		return map[string]any{"ok": false, "stderr": "unknown route-presets command: " + command}
+	}
 }
 
 func (s *serverState) routePresetSourceCheck(payload map[string]any) map[string]any {
@@ -432,19 +476,45 @@ func (s *serverState) saveRoutePresetSource(payload map[string]any) map[string]a
 	if err := s.writeRoutePresetSources(sources); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
 	}
-	external, saved, embedded := s.externalRoutePresets()
-	return map[string]any{"ok": true, "sources": saved, "externalPresets": external, "embedded": embedded, "warnings": append(warnings, s.routePresetOutboundWarnings(presets)...)}
+	external, saved := s.externalRoutePresets()
+	return map[string]any{"ok": true, "sources": saved, "externalPresets": external, "warnings": append(warnings, s.routePresetOutboundWarnings(presets)...)}
 }
 
 func (s *serverState) updateRoutePresetSources(payload map[string]any) map[string]any {
 	targetID := optionalRoutePresetString(payload["id"])
+	sources := s.refreshRoutePresetSources(targetID, false)
+	if err := s.writeRoutePresetSources(sources); err != nil {
+		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
+	}
+	external, saved := s.externalRoutePresets()
+	return map[string]any{"ok": true, "sources": saved, "externalPresets": external}
+}
+
+func (s *serverState) runScheduledRoutePresetSourceUpdate() map[string]any {
+	sources := s.refreshRoutePresetSources("", true)
+	if err := s.writeRoutePresetSources(sources); err != nil {
+		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
+	}
+	updated := 0
+	for _, source := range sources {
+		if boolValue(source["enabled"], true) && boolValue(source["autoUpdate"], false) {
+			updated++
+		}
+	}
+	return map[string]any{"ok": true, "updated": updated, "sources": sources}
+}
+
+func (s *serverState) refreshRoutePresetSources(targetID string, autoOnly bool) []map[string]any {
 	sources := s.routePresetSources()
 	now := time.Now().Format(time.RFC3339)
 	for index, source := range sources {
 		if targetID != "" && source["id"] != targetID {
 			continue
 		}
-		if targetID == "" && !boolValue(source["enabled"], true) {
+		if !boolValue(source["enabled"], true) {
+			continue
+		}
+		if autoOnly && !boolValue(source["autoUpdate"], false) {
 			continue
 		}
 		presets, name, version, _, err := s.fetchRoutePresetCatalog(optionalRoutePresetString(source["url"]))
@@ -464,11 +534,7 @@ func (s *serverState) updateRoutePresetSources(payload map[string]any) map[strin
 		source["presets"] = presets
 		sources[index] = source
 	}
-	if err := s.writeRoutePresetSources(sources); err != nil {
-		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
-	}
-	external, saved, embedded := s.externalRoutePresets()
-	return map[string]any{"ok": true, "sources": saved, "externalPresets": external, "embedded": embedded}
+	return sources
 }
 
 func annotateRoutePresets(presets map[string]any, sourceKind, sourceName, sourceID string) {
@@ -499,8 +565,8 @@ func (s *serverState) deleteRoutePresetSource(payload map[string]any) map[string
 	if err := s.writeRoutePresetSources(next); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
 	}
-	external, saved, embedded := s.externalRoutePresets()
-	return map[string]any{"ok": true, "sources": saved, "externalPresets": external, "embedded": embedded}
+	external, saved := s.externalRoutePresets()
+	return map[string]any{"ok": true, "sources": saved, "externalPresets": external}
 }
 
 func (s *serverState) toggleRoutePresetSource(payload map[string]any) map[string]any {
@@ -515,8 +581,8 @@ func (s *serverState) toggleRoutePresetSource(payload map[string]any) map[string
 	if err := s.writeRoutePresetSources(sources); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
 	}
-	external, saved, embedded := s.externalRoutePresets()
-	return map[string]any{"ok": true, "sources": saved, "externalPresets": external, "embedded": embedded}
+	external, saved := s.externalRoutePresets()
+	return map[string]any{"ok": true, "sources": saved, "externalPresets": external}
 }
 
 func (s *serverState) writeRoutePresetSources(sources []map[string]any) error {
@@ -527,7 +593,53 @@ func (s *serverState) writeRoutePresetSources(sources []map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.routePresetSourcesPath(), body, 0o600)
+	if err := os.WriteFile(s.routePresetSourcesPath(), body, 0o600); err != nil {
+		return err
+	}
+	s.installRoutePresetSourcesCron(sources)
+	return nil
+}
+
+func (s *serverState) installRoutePresetSourcesCron(sources []map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": true, "stdout": "dev-mode: route preset source schedule saved without cron"}
+	}
+	const marker = "# RuOpenRay route preset sources update"
+	rootCrontab := "/etc/crontabs/root"
+	body, _ := os.ReadFile(rootCrontab)
+	var lines []string
+	for _, line := range strings.Split(string(body), "\n") {
+		if strings.Contains(line, marker) || strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	enabled := false
+	for _, source := range sources {
+		if boolValue(source["enabled"], true) && boolValue(source["autoUpdate"], false) {
+			enabled = true
+			break
+		}
+	}
+	if enabled {
+		binary := os.Args[0]
+		if !filepath.IsAbs(binary) {
+			binary = "/usr/bin/ruopenray-ui"
+		}
+		env := fmt.Sprintf("RUOPENRAY_DATA_DIR=%s RUOPENRAY_GEO_DIR=%s RUOPENRAY_BACKUP_DIR=%s RUOPENRAY_XRAY_SERVICE=%s", geodata.ShellQuote(s.cfg.DataDir), geodata.ShellQuote(s.cfg.GeoDir), geodata.ShellQuote(s.cfg.BackupDir), geodata.ShellQuote(s.cfg.ServiceName))
+		lines = append(lines, fmt.Sprintf("35 4 * * * %s %s --route-presets-update-scheduled >/tmp/ruopenray-route-presets-update.log 2>&1 %s", env, geodata.ShellQuote(binary), marker))
+	}
+	content := strings.Join(lines, "\n")
+	if strings.TrimSpace(content) != "" {
+		content += "\n"
+	}
+	if err := os.WriteFile(rootCrontab, []byte(content), 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	if err := exec.Command("/etc/init.d/cron", "restart").Run(); err != nil {
+		return map[string]any{"ok": true, "stdout": "cron updated, but restart failed: " + err.Error()}
+	}
+	return map[string]any{"ok": true, "stdout": "route preset source schedule updated"}
 }
 
 func (s *serverState) fetchRoutePresetCatalog(rawURL string) (map[string]any, string, string, []string, error) {

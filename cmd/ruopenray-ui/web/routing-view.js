@@ -135,7 +135,6 @@ function routingScenariosPanel() {
   };
   const presetSource = (preset, fallback = 'builtin') => preset?.source || fallback;
   const sourceCheck = state.routePresetSourceCheck;
-  const embeddedCount = Number(state.routePresetEmbedded?.count || 0);
   return `
     <section class="panel routing-scenarios-panel">
       <div class="panel-title">
@@ -148,12 +147,12 @@ function routingScenariosPanel() {
       <details class="scenario-source-box" ${state.routePresetSources.length || state.routePresetSourceCheck ? 'open' : ''}>
         <summary>
           <strong>Источники сценариев</strong>
-          <span>${state.routePresetSources.length} git/raw · встроено в бинарник: ${embeddedCount}</span>
+          <span>${state.routePresetSources.length} git/raw · сценарии не вшиваются в бинарник</span>
         </summary>
         <div class="scenario-source-form">
           <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
           <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
-          <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять</label>
+          <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять ежедневно</label>
           <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
           <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
         </div>

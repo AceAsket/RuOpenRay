@@ -24,6 +24,12 @@ func main() {
 		fmt.Println(string(body))
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--route-presets-update-scheduled" {
+		payload := state.runScheduledRoutePresetSourceUpdate()
+		body, _ := json.MarshalIndent(payload, "", "  ")
+		fmt.Println(string(body))
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] != "serve" {
 		os.Exit(state.runCLI(os.Args[1:]))
 	}

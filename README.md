@@ -185,6 +185,10 @@ http://127.0.0.1:9090/
 | `RUOPENRAY_DATA_DIR` | `./data` локально, `/etc/ruopenray-ui` на OpenWrt | данные панели |
 | `RUOPENRAY_ACTIVE_CONFIG` | `./data/config.json` локально, `/etc/xray/config.json` на OpenWrt | активный config Xray |
 | `RUOPENRAY_XRAY_SERVICE` | `xray` | имя сервиса Xray |
+| `RUOPENRAY_INSTALL_SCENARIOS` | `1` | импортировать дефолтный Git/raw-источник сценариев при установке |
+| `RUOPENRAY_SCENARIOS_URL` | `https://raw.githubusercontent.com/AceAsket/RuOpenRay-scenarios/main/scenarios.json` | URL каталога сценариев |
+| `RUOPENRAY_SCENARIOS_NAME` | `RuOpenRay scenarios` | название дефолтного источника сценариев |
+| `RUOPENRAY_SCENARIOS_AUTO_UPDATE` | `0` | включить ежедневное автообновление источника сценариев |
 
 ## Проверки
 

@@ -233,7 +233,6 @@ export function createInitialState() {
   customRoutePresets: {},
   externalRoutePresets: {},
   routePresetSources: [],
-  routePresetEmbedded: null,
   routePresetSourceUrl: '',
   routePresetSourceName: '',
   routePresetSourceAutoUpdate: false,

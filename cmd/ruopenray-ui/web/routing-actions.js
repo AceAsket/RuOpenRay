@@ -545,7 +545,6 @@ export function createRoutingActions({
       state.externalRoutePresets = result.externalPresets;
     }
     if (Array.isArray(result.sources)) state.routePresetSources = result.sources;
-    if (result.embedded) state.routePresetEmbedded = result.embedded;
   }
 
   async function checkRoutePresetSource() {

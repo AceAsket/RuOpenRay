@@ -314,7 +314,6 @@ export function createRuntimeController({
         state.externalRoutePresets = {};
       }
       state.routePresetSources = Array.isArray(routePresets?.sources) ? routePresets.sources : [];
-      state.routePresetEmbedded = routePresets?.embedded || null;
       state.legacyCustomRoutePresets = {};
       if (serverMeta?.items && typeof serverMeta.items === 'object' && !Array.isArray(serverMeta.items)) {
         state.serverMeta = Object.fromEntries(

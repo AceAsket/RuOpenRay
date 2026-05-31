@@ -15,6 +15,10 @@ PASSWORD_REUSED=0
 ACTIVE_CONFIG="${RUOPENRAY_ACTIVE_CONFIG:-/etc/xray/config.json}"
 XRAY_SERVICE="${RUOPENRAY_XRAY_SERVICE:-xray}"
 RELEASE_BASE_URL="${RUOPENRAY_RELEASE_BASE_URL:-https://github.com/AceAsket/RuOpenRay/releases/latest/download}"
+SCENARIOS_URL="${RUOPENRAY_SCENARIOS_URL:-https://raw.githubusercontent.com/AceAsket/RuOpenRay-scenarios/main/scenarios.json}"
+SCENARIOS_NAME="${RUOPENRAY_SCENARIOS_NAME:-RuOpenRay scenarios}"
+INSTALL_SCENARIOS="${RUOPENRAY_INSTALL_SCENARIOS:-1}"
+SCENARIOS_AUTO_UPDATE="${RUOPENRAY_SCENARIOS_AUTO_UPDATE:-0}"
 INSTALL_XRAY="${RUOPENRAY_INSTALL_XRAY:-0}"
 MIN_FREE_KB="${RUOPENRAY_MIN_FREE_KB:-12288}"
 START_DELAY="${RUOPENRAY_START_DELAY:-0}"
@@ -81,6 +85,8 @@ uninstall_openwrt() {
 	fi
 	if [ -f /etc/crontabs/root ]; then
 		grep -v 'RuOpenRay geo update' /etc/crontabs/root > /tmp/ruopenray-cron.$$ || true
+		grep -v 'RuOpenRay route preset sources update' /tmp/ruopenray-cron.$$ > /tmp/ruopenray-cron2.$$ || true
+		mv /tmp/ruopenray-cron2.$$ /tmp/ruopenray-cron.$$
 		cat /tmp/ruopenray-cron.$$ > /etc/crontabs/root
 		rm -f /tmp/ruopenray-cron.$$
 		[ -x /etc/init.d/cron ] && /etc/init.d/cron restart >/dev/null 2>&1 || true
@@ -595,6 +601,20 @@ EOF
 	chmod 0600 "$ACTIVE_CONFIG"
 }
 
+install_route_scenarios() {
+	[ "$INSTALL_SCENARIOS" = "1" ] || return 0
+	[ -n "$SCENARIOS_URL" ] || return 0
+	[ -x "$INSTALL_DIR/$APP_NAME" ] || return 0
+	auto_arg="--no-auto-update"
+	if [ "$SCENARIOS_AUTO_UPDATE" = "1" ]; then
+		auto_arg="--auto-update"
+	fi
+	log "РџРѕРґРєР»СЋС‡Р°СЋ СЃС†РµРЅР°СЂРёРё RuOpenRay: $SCENARIOS_URL"
+	if ! RUOPENRAY_DATA_DIR="$DATA_DIR" RUOPENRAY_GEO_DIR="$GEO_DIR" RUOPENRAY_BACKUP_DIR="$BACKUP_DIR" RUOPENRAY_XRAY_SERVICE="$XRAY_SERVICE" "$INSTALL_DIR/$APP_NAME" route-presets add-source "$SCENARIOS_URL" --name "$SCENARIOS_NAME" "$auto_arg" >/tmp/ruopenray-scenarios-install.log 2>&1; then
+		log "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ: РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃС†РµРЅР°СЂРёРё. РС… РјРѕР¶РЅРѕ РїРѕРґРєР»СЋС‡РёС‚СЊ РїРѕР·Р¶Рµ РІ РІРµР±-РїР°РЅРµР»Рё. Р›РѕРі: /tmp/ruopenray-scenarios-install.log"
+	fi
+}
+
 enable_xray_service_config() {
 	command -v xray >/dev/null 2>&1 || return 0
 	[ -x "/etc/init.d/$XRAY_SERVICE" ] || return 0
@@ -675,6 +695,7 @@ write_uci
 write_init
 write_luci_launcher
 write_first_config
+install_route_scenarios
 enable_xray_service_config
 start_service
 print_summary
