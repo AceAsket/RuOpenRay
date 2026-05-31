@@ -1,4 +1,4 @@
-import { routePresetIconView } from './route-visuals.js';
+import { routePresetExportIcon, routePresetIconView } from './route-visuals.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -533,6 +533,30 @@ export function createRoutingActions({
     return id ? state.externalRoutePresets?.[id] : null;
   }
 
+  function routePresetData(key) {
+    const custom = customRoutePreset(key);
+    if (custom) return custom;
+    const external = externalRoutePreset(key);
+    if (external) return external;
+    return routeBundles[key] || routePresets[key] || null;
+  }
+
+  function routePresetExportKey(key) {
+    return String(key || '').replace(/^(custom|external):/, '');
+  }
+
+  function routePresetIconFieldValue(key, preset = {}) {
+    if (typeof preset.icon === 'string') return preset.icon;
+    const exportedIcon = routePresetExportIcon(routePresetExportKey(key), preset);
+    return typeof exportedIcon === 'string' ? exportedIcon : '';
+  }
+
+  function routePresetIconForSave(key) {
+    const typedIcon = state.routePresetEditIcon.trim();
+    if (typedIcon) return typedIcon;
+    return routePresetExportIcon(routePresetExportKey(key), routePresetData(key) || {});
+  }
+
   function customRoutePresetEntries() {
     return Object.entries(state.customRoutePresets)
       .sort(([, left], [, right]) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
@@ -744,7 +768,7 @@ export function createRoutingActions({
     state.routePresetEditor = key;
     state.routePresetEditTitle = title;
     state.routePresetEditDetail = routePresetDetail(key);
-    state.routePresetEditIcon = customRoutePreset(key)?.icon || '';
+    state.routePresetEditIcon = routePresetIconFieldValue(key, routePresetData(key) || {});
     state.routePresetEditDsl = [`# ${title}`, ...rules.flatMap(routeRuleToDslLines)].join('\n');
     state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
     state.routePresetEditChecked = false;
@@ -820,13 +844,14 @@ export function createRoutingActions({
     const key = state.routePresetEditor || 'custom:new';
     const existingId = key.startsWith('custom:') && key !== 'custom:new' ? key.slice(7) : '';
     const id = existingId || scenarioIdFromTitle(title);
+    const icon = routePresetIconForSave(key);
     state.customRoutePresets[id] = {
       title,
       detail: state.routePresetEditDetail.trim(),
-      icon: state.routePresetEditIcon.trim(),
       rules: parsed.rules.map((rule) => JSON.parse(JSON.stringify(rule))),
       updatedAt: new Date().toISOString()
     };
+    if (icon) state.customRoutePresets[id].icon = icon;
     saveCustomRoutePresets();
     state.routePresetEditor = '';
     state.routePresetDialog = false;

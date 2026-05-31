@@ -31,6 +31,7 @@ import {
   splitMixedRouteRule
 } from '../cmd/ruopenray-ui/web/routing-rule-helpers.js';
 import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
+import { routePresetExportIcon } from '../cmd/ruopenray-ui/web/route-visuals.js';
 import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
@@ -992,6 +993,17 @@ const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'presetGro
   && routeMixedItems[0]?.items?.length === 2
   && routeGroupState.config.routing.rules.some((rule) => rule.domain?.includes('domain:chatgpt.com') && !rule.ip)
   && routeGroupState.config.routing.rules.some((rule) => rule.ip?.includes('172.64.150.0/24') && !rule.domain);
+const routePatreonExportIcon = routePresetExportIcon('patreon', { title: 'Patreon' });
+const routeIntelExportIcon = routePresetExportIcon('intel', { title: 'Intel' });
+routeGroupActions.editRoutingPreset('telegramFull');
+routeGroupState.routePresetEditTitle = 'Telegram export';
+routeGroupActions.saveRoutePresetEdit();
+const routePresetEditorKeepsFallbackIcon = routeGroupState.customRoutePresets['telegram-export']?.icon?.type === 'svg'
+  && routeGroupState.customRoutePresets['telegram-export']?.icon?.svg?.includes('brand-icon')
+  && routePatreonExportIcon?.type === 'svg'
+  && routePatreonExportIcon.svg.includes('#ff6854')
+  && routeIntelExportIcon?.type === 'svg'
+  && routeIntelExportIcon.svg.includes('#0068b5');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -1597,6 +1609,7 @@ const checks = [
   ['routing custom group from list', routeCustomGroupWorks],
   ['routing selected rule bulk actions', routeSelectedDisableWorks && routeSelectedDeleteWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
+  ['routing preset editor exports fallback icons', routePresetEditorKeepsFallbackIcon],
   ['routing dialog presets render', routeDialogPresetsHtml.includes('ChatGPT') && routeDialogPresetsHtml.includes('Patreon') && routeDialogPresetsHtml.includes('Speedtest') && routeDialogPresetsHtml.includes('data-route-preset-check')],
   ['routing rule target test action', routeRuleTargetTestWorks],
   ['routing rule target list test action', routeRuleTargetListTestWorks],

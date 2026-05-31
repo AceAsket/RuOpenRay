@@ -17,6 +17,7 @@ const presetIcons = {
   googleNetwork: ['G', 'google'],
   googleWebRtcFallback: ['RTC', 'google'],
   instagram: ['IG', 'meta'],
+  intel: ['IN', 'intel'],
   kinopubIps: ['KP', 'media'],
   linkedin: ['IN', 'linkedin'],
   mediaComms: ['M', 'media'],
@@ -54,6 +55,7 @@ const titleIconHints = [
   [/patreon/i, ['PT', 'media']],
   [/speedtest|ookla/i, ['ST', 'speedtest']],
   [/microsoft|windows|xbox/i, ['MS', 'microsoft']],
+  [/intel/i, ['IN', 'intel']],
   [/google|gemini/i, ['G', 'google']],
   [/github/i, ['GH', 'dev']],
   [/twitter|\bx\b/i, ['X', 'media']],
@@ -74,6 +76,26 @@ function presetIconPair(key, preset = {}) {
   const title = `${preset.title || ''} ${preset.detail || ''}`;
   const found = titleIconHints.find(([pattern]) => pattern.test(title));
   return found ? found[1] : ['R', 'default'];
+}
+
+export function routePresetExportIcon(key, preset = {}) {
+  const objectIcon = preset.icon && typeof preset.icon === 'object' && !Array.isArray(preset.icon) ? preset.icon : null;
+  if (objectIcon?.type === 'svg' && safeInlineSvg(objectIcon.svg)) {
+    const icon = {
+      type: 'svg',
+      svg: String(objectIcon.svg)
+    };
+    const background = safeIconColor(objectIcon.background);
+    const foreground = safeIconColor(objectIcon.foreground);
+    if (background) icon.background = background;
+    if (foreground) icon.foreground = foreground;
+    return icon;
+  }
+  const iconify = normalizeIconifyIcon(objectIcon?.name || preset.icon || preset.iconify || preset.iconUrl || '');
+  if (iconify) return iconify;
+  const [, tone] = presetIconPair(key, preset);
+  const fallbackSvg = presetIconSvg(String(key || '').replace(/^(custom|external):/, ''), tone);
+  return fallbackSvg && safeInlineSvg(fallbackSvg) ? { type: 'svg', svg: fallbackSvg } : '';
 }
 
 export function routePresetIconView(escapeHtml, key, preset = {}, className = '') {
@@ -142,6 +164,7 @@ function presetIconSvg(key, tone) {
   if (group.includes('patreon')) return iconPatreon();
   if (group.includes('speedtest') || group.includes('ookla')) return iconSpeedtest();
   if (group.includes('microsoft')) return iconMicrosoft();
+  if (group.includes('intel')) return iconIntel();
   if (group.includes('github')) return iconGitHub();
   if (group.includes('xtwitter')) return iconX();
   if (group.includes('tiktok')) return iconTikTok();
@@ -234,6 +257,10 @@ function iconSpeedtest() {
 
 function iconMicrosoft() {
   return brandSvg('0 0 256 256', '<path fill="#f1511b" d="M121.666 121.666H0V0h121.666z"></path><path fill="#80cc28" d="M256 121.666H134.335V0H256z"></path><path fill="#00adef" d="M121.663 256.002H0V134.336h121.663z"></path><path fill="#fbbc09" d="M256 256.002H134.335V134.336H256z"></path>');
+}
+
+function iconIntel() {
+  return brandSvg('0 0 24 24', '<rect width="24" height="24" rx="6" fill="#0068b5"></rect><path fill="#fff" d="M20.42 7.345v9.18h1.651v-9.18zM0 7.475v1.737h1.737V7.474zm9.78.352v6.053q0 .77.13 1.292q.131.511.44.828c.203.21.475.359.803.451q.502.138 1.255.136h.216v-1.533c-.24 0-.445-.012-.593-.037a.67.67 0 0 1-.39-.173a.7.7 0 0 1-.173-.377a4 4 0 0 1-.037-.606v-2.182h1.193v-1.416h-1.193V7.827zm-3.505 2.312c-.396 0-.76.08-1.082.241q-.49.242-.822.668l-.087.117v-.902H2.658v6.256h1.639v-3.214q.025-.881.433-1.299c.29-.297.642-.445 1.044-.445c.476 0 .841.149 1.082.433c.235.284.359.686.359 1.2v3.324h1.663V12.97c.006-.89-.229-1.595-.686-2.09s-1.1-.742-1.917-.742zm10.065.006a3.25 3.25 0 0 0-2.306.946c-.29.29-.525.637-.692 1.033a3.15 3.15 0 0 0-.254 1.273q0 .679.241 1.274c.161.395.39.742.674 1.032s.637.526 1.045.693c.408.173.86.26 1.342.26c1.397 0 2.262-.637 2.782-1.23l-1.187-.904c-.248.297-.841.699-1.583.699c-.464 0-.847-.105-1.138-.321a1.6 1.6 0 0 1-.593-.872l-.019-.056h4.915v-.587q-.001-.676-.235-1.267a3.4 3.4 0 0 0-.661-1.033a3 3 0 0 0-1.02-.692a3.35 3.35 0 0 0-1.311-.248m-16.297.118v6.256h1.651v-6.256zm16.278 1.286c1.132 0 1.664.797 1.664 1.255l-3.32.006c0-.458.525-1.255 1.656-1.261m7.073 3.814a.606.606 0 0 0-.606.606a.606.606 0 0 0 .606.606a.606.606 0 0 0 .606-.606a.606.606 0 0 0-.606-.606m-.008.105h.002a.5.5 0 0 1 .5.501a.5.5 0 0 1-.5.5a.5.5 0 0 1-.5-.5a.5.5 0 0 1 .498-.5zm-.233.155v.699h.13v-.285h.093l.173.285h.136l-.18-.297a.2.2 0 0 0 .118-.056c.03-.03.05-.074.05-.136q0-.1-.063-.154c-.037-.038-.105-.056-.185-.056zm.13.099h.154q.028.001.056.012a.06.06 0 0 1 .037.031c.013.013.012.031.012.056a.1.1 0 0 1-.012.055a.2.2 0 0 1-.037.031q-.028.011-.056.013h-.154Z"></path>');
 }
 
 function iconGoogle() {
