@@ -35,6 +35,7 @@ const presetIcons = {
   telegramFull: ['TG', 'telegram'],
   telegramMtproto: ['MT', 'telegram'],
   tiktok: ['TT', 'media'],
+  torrentTrackers: ['TR', 'torrent'],
   tuya: ['TY', 'tuya'],
   tuyaSmartLife: ['TY', 'tuya'],
   whatsapp: ['WA', 'meta'],
@@ -60,6 +61,7 @@ const titleIconHints = [
   [/github/i, ['GH', 'dev']],
   [/twitter|\bx\b/i, ['X', 'media']],
   [/tiktok/i, ['TT', 'media']],
+  [/torrent|tracker|rutracker|rutor|kinozal|nnm|lostfilm|tapochek/i, ['TR', 'torrent']],
   [/tuya|smart life/i, ['TY', 'tuya']],
   [/netflix/i, ['NF', 'media']],
   [/cloudflare|cdn/i, ['CF', 'media']],
@@ -168,6 +170,7 @@ function presetIconSvg(key, tone) {
   if (group.includes('github')) return iconGitHub();
   if (group.includes('xtwitter')) return iconX();
   if (group.includes('tiktok')) return iconTikTok();
+  if (group.includes('torrent') || group.includes('tracker') || tone === 'torrent') return iconTorrentTrackers();
   if (group.includes('tuya')) return iconTuya();
   if (group.includes('netflix')) return iconNetflix();
   if (group.includes('cloudflare')) return iconCloudflare();
@@ -205,6 +208,10 @@ function iconX() {
 
 function iconTikTok() {
   return brandSvg('0 0 24 24', '<rect width="24" height="24" rx="6" fill="#050505"></rect><path fill="#25f4ee" d="M14.6 2.2c.35 2.42 1.7 3.86 4.05 4.01v2.75a7.1 7.1 0 0 1-4.01-1.24v6.64c0 8.43-9.2 8.05-10.83 3.66c-1.05-2.8.4-6.97 5.37-7.14v2.9c-.82.13-1.7.43-2.17 1.02c-1.03 1.27-.72 3.55 1.1 4.02c3.28.85 3.77-2.6 3.77-4.44V2.2z"></path><path fill="#fe2c55" d="M15.35 2.2c.35 2.42 1.7 3.86 4.05 4.01v2.75a7.1 7.1 0 0 1-4.01-1.24v6.64c0 8.43-9.2 8.05-10.83 3.66c-.27-.72-.34-1.52-.2-2.28c.36 1.22 1.25 2.21 2.5 2.54c3.28.85 3.77-2.6 3.77-4.44V2.2z"></path>');
+}
+
+function iconTorrentTrackers() {
+  return brandSvg('0 0 24 24', '<rect width="24" height="24" rx="6" fill="#17b26a"></rect><path fill="#062319" d="M13.684 23.94a12.01 12.01 0 0 0 9.599-7.79c-.118.044-.26.096-.432.147c-2 .59-3.404-.466-3.687-.649c-.283-.18-.587-.48-.643-.464c-.183 1.132-1.218 2.706-3.58 3.42c-1.295.391-2.687.4-3.681-.157l.328.822c.13.328.351.866.488 1.192c0 0 .858 2.044 1.608 3.48M2.723 7.153l3.54-.66c.323-.059.68.124.794.407l2.432 6.07c.332.633.399.773.615 1.043c0 0 1.68 2.398 4.24 1.812c1.726-.394 2.532-1.69 2.587-2.612c.057-.296-.032-.669-.185-1.016L13.832 5.61c-.117-.266.022-.527.306-.581l2.953-.55a.69.69 0 0 1 .706.376l3.227 6.91c.13.276.394.712.588.966c0 0 .671.964 1.747.78c.266 0 .569-.143.569-.143q.071-.645.072-1.31c0-6.627-5.373-12-12.002-12C5.372.06 0 5.433 0 12.06c0 5.319 3.46 9.827 8.252 11.402a25 25 0 0 1-.919-2.121L2.298 7.808c-.111-.297.083-.59.425-.654"></path>');
 }
 
 function iconTuya() {

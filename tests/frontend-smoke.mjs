@@ -995,6 +995,7 @@ const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'presetGro
   && routeGroupState.config.routing.rules.some((rule) => rule.ip?.includes('172.64.150.0/24') && !rule.domain);
 const routePatreonExportIcon = routePresetExportIcon('patreon', { title: 'Patreon' });
 const routeIntelExportIcon = routePresetExportIcon('intel', { title: 'Intel' });
+const routeTorrentExportIcon = routePresetExportIcon('torrentTrackers', { title: 'Торрент-трекеры' });
 routeGroupActions.editRoutingPreset('telegramFull');
 routeGroupState.routePresetEditTitle = 'Telegram export';
 routeGroupActions.saveRoutePresetEdit();
@@ -1003,7 +1004,9 @@ const routePresetEditorKeepsFallbackIcon = routeGroupState.customRoutePresets['t
   && routePatreonExportIcon?.type === 'svg'
   && routePatreonExportIcon.svg.includes('#ff6854')
   && routeIntelExportIcon?.type === 'svg'
-  && routeIntelExportIcon.svg.includes('#0068b5');
+  && routeIntelExportIcon.svg.includes('#0068b5')
+  && routeTorrentExportIcon?.type === 'svg'
+  && routeTorrentExportIcon.svg.includes('#17b26a');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
