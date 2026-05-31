@@ -83,8 +83,7 @@ applyUiTheme();
 
 function clearAuth() {
   state.token = '';
-  state.rememberPassword = false;
-  clearAuthToken();
+  clearAuthToken({ preserveRemember: true });
   state.message = 'Сессия устарела. Войдите заново.';
   render();
 }

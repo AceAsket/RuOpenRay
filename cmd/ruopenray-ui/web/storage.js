@@ -3,6 +3,7 @@ export const disabledRouteRulesStorageKey = 'ruopenray_disabled_route_rules';
 export const customRoutePresetsStorageKey = 'ruopenray_custom_route_presets';
 export const savedPasswordStorageKey = 'ruopenray_saved_password';
 export const authTokenStorageKey = 'openray_token';
+export const authRememberStorageKey = 'ruopenray_remember_login';
 export const firewallBypassModeStorageKey = 'ruopenray_firewall_bypass_mode';
 export const firewallRouterModeStorageKey = 'ruopenray_firewall_router_mode';
 export const firewallDeviceModeStorageKey = 'ruopenray_firewall_device_mode';
@@ -61,8 +62,20 @@ export function loadAuthToken() {
   if (remembered) return { token: remembered, remembered: true };
   return {
     token: globalThis.sessionStorage?.getItem(authTokenStorageKey) || '',
-    remembered: false
+    remembered: loadAuthRememberPreference()
   };
+}
+
+export function loadAuthRememberPreference() {
+  return globalThis.localStorage?.getItem(authRememberStorageKey) === '1';
+}
+
+export function saveAuthRememberPreference(remember = false) {
+  if (remember) {
+    globalThis.localStorage?.setItem(authRememberStorageKey, '1');
+  } else {
+    globalThis.localStorage?.removeItem(authRememberStorageKey);
+  }
 }
 
 export function saveAuthToken(token, remember = false) {
@@ -70,6 +83,7 @@ export function saveAuthToken(token, remember = false) {
     clearAuthToken();
     return;
   }
+  saveAuthRememberPreference(remember);
   if (remember) {
     globalThis.localStorage?.setItem(authTokenStorageKey, token);
     globalThis.sessionStorage?.removeItem(authTokenStorageKey);
@@ -79,9 +93,10 @@ export function saveAuthToken(token, remember = false) {
   globalThis.localStorage?.removeItem(authTokenStorageKey);
 }
 
-export function clearAuthToken() {
+export function clearAuthToken({ preserveRemember = false } = {}) {
   globalThis.sessionStorage?.removeItem(authTokenStorageKey);
   globalThis.localStorage?.removeItem(authTokenStorageKey);
+  if (!preserveRemember) saveAuthRememberPreference(false);
 }
 
 export function normalizeUiTheme(value) {

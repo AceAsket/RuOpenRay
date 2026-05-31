@@ -104,6 +104,15 @@ if (!app.innerHTML.includes('login-card')) {
   throw new Error('app.js did not render login view on cold boot');
 }
 
+storage.clear();
+globalThis.sessionStorage.clear();
+storage.setItem('ruopenray_remember_login', '1');
+app.innerHTML = '';
+await import(`../cmd/ruopenray-ui/web/app.js?boot-remember=${Date.now()}`);
+if (!app.innerHTML.includes('id="rememberPassword" type="checkbox" checked')) {
+  throw new Error('app.js did not preserve remember-login checkbox without a token');
+}
+
 function jsonResponse(payload) {
   return {
     ok: true,

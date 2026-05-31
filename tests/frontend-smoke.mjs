@@ -45,6 +45,7 @@ import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.
 import { createSetupActions } from '../cmd/ruopenray-ui/web/setup-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
+import { authRememberStorageKey, clearAuthToken, loadAuthToken } from '../cmd/ruopenray-ui/web/storage.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
 import { createSniActions } from '../cmd/ruopenray-ui/web/sni-actions.js';
 import { createUpdatesActions } from '../cmd/ruopenray-ui/web/updates-actions.js';
@@ -368,10 +369,12 @@ await settingsActions.saveServiceSettings();
 await settingsActions.service('restart');
 settingsActionState.token = 'test-token';
 localStorage.setItem('openray_token', 'test-token');
+localStorage.setItem(authRememberStorageKey, '1');
 sessionStorage.setItem('openray_token', 'test-token');
 settingsActions.logout();
 const logoutClearedSession = !settingsActionState.token
   && !localStorage.getItem('openray_token')
+  && !localStorage.getItem(authRememberStorageKey)
   && !sessionStorage.getItem('openray_token')
   && settingsActionState.tab === 'dashboard';
 
@@ -686,6 +689,7 @@ globalThis.document = {
 await loginActions.login({ preventDefault: () => {} });
 const loginStoresSessionOnly = sessionStorage.getItem('openray_token') === 'login-token'
   && !localStorage.getItem('openray_token')
+  && !localStorage.getItem(authRememberStorageKey)
   && localStorage.getItem('ruopenray:test:login-password') === null;
 const loginReturnedBeforeRefresh = loginRefreshStarted && !loginRefreshResolved && loginActionState.token === 'login-token' && loginRenderCount > 0;
 await new Promise((resolve) => setTimeout(resolve, 35));
@@ -705,7 +709,12 @@ globalThis.document = {
 await loginActions.login({ preventDefault: () => {} });
 const loginRememberStoresLocalOnly = localStorage.getItem('openray_token') === 'login-token'
   && !sessionStorage.getItem('openray_token')
+  && localStorage.getItem(authRememberStorageKey) === '1'
   && localStorage.getItem('ruopenray:test:login-password') === null;
+clearAuthToken({ preserveRemember: true });
+const expiredRememberLoginPreserved = !localStorage.getItem('openray_token')
+  && !sessionStorage.getItem('openray_token')
+  && loadAuthToken().remembered;
 
 const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
 const initialState = createInitialState();
@@ -1628,6 +1637,7 @@ const checks = [
   ['settings actions login is nonblocking', loginReturnedBeforeRefresh && loginRefreshResolved],
   ['settings actions login stores session token without password', loginStoresSessionOnly],
   ['settings actions remember login stores local token without password', loginRememberStoresLocalOnly],
+  ['settings actions expired session preserves remember login', expiredRememberLoginPreserved],
   ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
   ['diagnostics domain mode switch', domainModeSwitchWorks],
   ['diagnostics domain event window switch', domainEventWindowSwitchWorks],
