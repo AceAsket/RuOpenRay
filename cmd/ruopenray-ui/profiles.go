@@ -176,8 +176,26 @@ func (s *serverState) importLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func subscriptionLinks(rawURL string) ([]string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	user := parsed.User
+	if user != nil {
+		parsed.User = nil
+	}
+	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if user != nil {
+		username := user.Username()
+		password, _ := user.Password()
+		req.SetBasicAuth(username, password)
+	}
 	client := &http.Client{Timeout: 12 * time.Second}
-	resp, err := client.Get(rawURL)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +203,7 @@ func subscriptionLinks(rawURL string) ([]string, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("subscription HTTP %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	return rproxy.DecodeSubscription(string(body)), nil
 }
 

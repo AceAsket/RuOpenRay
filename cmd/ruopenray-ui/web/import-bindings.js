@@ -37,6 +37,19 @@ export function bindImportControls({ state, render }) {
     state.subscriptionUrl = event.target.value;
     state.subscriptionPreview = null;
   });
+  document.querySelector('#subscriptionAuthEnabled')?.addEventListener('change', (event) => {
+    state.subscriptionAuthEnabled = event.target.checked;
+    state.subscriptionPreview = null;
+    render();
+  });
+  document.querySelector('#subscriptionAuthUser')?.addEventListener('input', (event) => {
+    state.subscriptionAuthUser = event.target.value;
+    state.subscriptionPreview = null;
+  });
+  document.querySelector('#subscriptionAuthPassword')?.addEventListener('input', (event) => {
+    state.subscriptionAuthPassword = event.target.value;
+    state.subscriptionPreview = null;
+  });
   document.querySelector('#subscriptionAutoBalancer')?.addEventListener('change', (event) => {
     state.subscriptionAutoBalancer = event.target.checked;
     render();

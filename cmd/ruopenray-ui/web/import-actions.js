@@ -76,6 +76,23 @@ export function createImportActions({
     return slugTag(state.subscriptionBalancerTag || state.profileName || state.subscriptionPreview?.items?.[0]?.tag || state.subscriptionUrl, 'subscription-auto');
   }
 
+  function subscriptionUrlWithAuth() {
+    const raw = String(state.subscriptionUrl || '').trim();
+    if (!raw || !state.subscriptionAuthEnabled) return raw;
+    const user = String(state.subscriptionAuthUser || '');
+    const password = String(state.subscriptionAuthPassword || '');
+    if (!user && !password) return raw;
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return raw;
+      parsed.username = user;
+      parsed.password = password;
+      return parsed.toString();
+    } catch {
+      return raw;
+    }
+  }
+
   function isCatchAllRoute(rule) {
     if (!rule) return false;
     const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
@@ -203,6 +220,7 @@ export function createImportActions({
     if (!state.subscriptionPreview?.outbounds?.length) await previewSubscription();
     const outbounds = state.subscriptionPreview?.outbounds || [];
     if (!outbounds.length) return;
+    const subscriptionUrl = subscriptionUrlWithAuth();
     let stableTag = '';
     if (state.subscriptionAutoBalancer) {
       stableTag = suggestedSubscriptionBalancerTag();
@@ -210,7 +228,7 @@ export function createImportActions({
       syncConfig(mergeOutboundsIntoConfig(state.config, [stableOutbound]));
       await request('/api/subscriptions/pool', {
         method: 'POST',
-        body: JSON.stringify({ tag: stableTag, url: state.subscriptionUrl, outbounds, active: 0 })
+        body: JSON.stringify({ tag: stableTag, url: subscriptionUrl, outbounds, active: 0 })
       });
       await persistInferredServerMeta([stableOutbound]);
     } else {
@@ -221,6 +239,7 @@ export function createImportActions({
     else if (makeActive && outbounds[0]?.tag) setActiveProxyDraft(outbounds[0].tag);
     await saveCurrentProfileConfig();
     state.subscriptionUrl = '';
+    state.subscriptionAuthPassword = '';
     state.subscriptionPreview = null;
     state.subscriptionBalancerTag = '';
     state.importDialog = '';
@@ -244,7 +263,7 @@ export function createImportActions({
   async function previewSubscription() {
     const result = await request('/api/import/preview', {
       method: 'POST',
-      body: JSON.stringify({ url: state.subscriptionUrl })
+      body: JSON.stringify({ url: subscriptionUrlWithAuth() })
     });
     state.subscriptionPreview = result;
     state.message = `В подписке найдено серверов: ${result.links}`;
@@ -254,9 +273,10 @@ export function createImportActions({
   async function importSubscription() {
     const result = await request('/api/import/subscription', {
       method: 'POST',
-      body: JSON.stringify({ url: state.subscriptionUrl, profileName: state.profileName })
+      body: JSON.stringify({ url: subscriptionUrlWithAuth(), profileName: state.profileName })
     });
     state.subscriptionUrl = '';
+    state.subscriptionAuthPassword = '';
     state.subscriptionPreview = null;
     state.importDialog = '';
     state.message = `Импортировано серверов: ${result.imported.length}. Профиль: ${result.profile}`;
@@ -271,6 +291,7 @@ export function createImportActions({
     mergeOutboundsIntoConfig,
     slugTag,
     suggestedSubscriptionBalancerTag,
+    subscriptionUrlWithAuth,
     setActiveProxyDraft,
     setActiveProxyBalancerDraft,
     saveCurrentProfileConfig,

@@ -56,3 +56,11 @@ func TestPublicPoolActiveCandidate(t *testing.T) {
 		t.Fatalf("unexpected active candidate: %#v", public["activeCandidate"])
 	}
 }
+
+func TestPublicPoolMasksURLPassword(t *testing.T) {
+	pool := Pool{Tag: "private", URL: "https://user:secret@example.com/sub"}
+	public := PublicPool(pool)
+	if public["url"] != "https://user:masked@example.com/sub" {
+		t.Fatalf("url = %v, want masked password", public["url"])
+	}
+}

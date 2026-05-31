@@ -431,11 +431,16 @@ const importActionState = {
   },
   subscriptionAutoBalancer: true,
   subscriptionBalancerTag: '',
+  subscriptionAuthEnabled: false,
+  subscriptionAuthUser: '',
+  subscriptionAuthPassword: '',
   subscriptionUrl: '',
+  requestLog: [],
 };
 const importActions = createImportActions({
   state: importActionState,
-  request: async (path) => {
+  request: async (path, options = {}) => {
+    importActionState.requestLog.push({ path, options });
     if (path === '/api/import/preview') {
       return {
         links: 1,
@@ -464,6 +469,22 @@ const importActions = createImportActions({
 });
 await importActions.previewImport();
 await importActions.importToCurrent(true);
+const importActiveOk = importActionState.applied
+  && importActionState.activeServerTag === 'proxy-new'
+  && importActionState.config.outbounds[0]?.tag === 'proxy-new';
+importActionState.subscriptionUrl = 'https://subscriptions.example/list';
+importActionState.subscriptionAuthEnabled = true;
+importActionState.subscriptionAuthUser = 'alice@example.com';
+importActionState.subscriptionAuthPassword = 'p a/s';
+await importActions.previewSubscription();
+await importActions.importSubscriptionToCurrent(false);
+const subscriptionPreviewRequest = importActionState.requestLog.findLast((item) => item.path === '/api/import/preview');
+const subscriptionPoolRequest = importActionState.requestLog.findLast((item) => item.path === '/api/subscriptions/pool');
+const subscriptionPreviewBody = JSON.parse(subscriptionPreviewRequest?.options?.body || '{}');
+const subscriptionPoolBody = JSON.parse(subscriptionPoolRequest?.options?.body || '{}');
+const subscriptionAuthUrlOk = subscriptionPreviewBody.url === 'https://alice%40example.com:p%20a%2Fs@subscriptions.example/list'
+  && subscriptionPoolBody.url === subscriptionPreviewBody.url
+  && importActionState.subscriptionAuthPassword === '';
 
 const splitRouteSwitchState = {
   config: {
@@ -1603,7 +1624,8 @@ const checks = [
   ['diagnostics domain mode switch', domainModeSwitchWorks],
   ['diagnostics domain event window switch', domainEventWindowSwitchWorks],
   ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
-  ['import actions active', importActionState.applied && importActionState.activeServerTag === 'proxy-new' && importActionState.config.outbounds[0]?.tag === 'proxy-new'],
+  ['import actions active', importActiveOk],
+  ['import actions subscription basic auth', subscriptionAuthUrlOk],
   ['import actions preserve pinned route targets', splitRouteSwitchState.config.routing.rules[0]?.outboundTag === 'vpn-a' && splitRouteSwitchState.config.routing.rules[1]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[2]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[3]?.outboundTag === 'vpn-b'],
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed && serverActionState.selectedSubscription],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],

@@ -4,7 +4,7 @@
 
 RuOpenRay запускается как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель.
 
-Актуальная публичная версия: `v0.3.2`.
+Актуальная публичная версия: `v0.3.3`.
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 

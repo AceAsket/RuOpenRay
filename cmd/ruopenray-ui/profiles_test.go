@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -68,6 +72,28 @@ func TestProfileNameFromURL(t *testing.T) {
 				t.Fatalf("profileNameFromURL(%q) = %q, want %q", tt.raw, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSubscriptionLinksUsesBasicAuthFromURL(t *testing.T) {
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:secret"))
+	gotAuth := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte("vless://client@example.com:443?security=reality#client"))
+	}))
+	defer server.Close()
+
+	rawURL := "http://user:secret@" + strings.TrimPrefix(server.URL, "http://")
+	links, err := subscriptionLinks(rawURL)
+	if err != nil {
+		t.Fatalf("subscriptionLinks returned error: %v", err)
+	}
+	if gotAuth != wantAuth {
+		t.Fatalf("Authorization = %q, want %q", gotAuth, wantAuth)
+	}
+	if len(links) != 1 {
+		t.Fatalf("links = %d, want 1", len(links))
 	}
 }
 

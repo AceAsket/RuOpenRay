@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -43,6 +44,20 @@ func SaveStore(path string, store Store) error {
 	return os.WriteFile(path, body, 0o600)
 }
 
+func MaskURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.User == nil {
+		return rawURL
+	}
+	username := parsed.User.Username()
+	if _, hasPassword := parsed.User.Password(); hasPassword {
+		parsed.User = url.UserPassword(username, "masked")
+	} else {
+		parsed.User = url.User(username)
+	}
+	return parsed.String()
+}
+
 func PublicPool(pool Pool) map[string]any {
 	candidates := []map[string]any{}
 	for _, candidate := range pool.Candidates {
@@ -53,7 +68,7 @@ func PublicPool(pool Pool) map[string]any {
 		active = proxy.OutboundSummary(pool.Candidates[pool.Active])
 	}
 	return map[string]any{
-		"tag": pool.Tag, "url": pool.URL, "active": pool.Active, "updatedAt": pool.UpdatedAt,
+		"tag": pool.Tag, "url": MaskURL(pool.URL), "active": pool.Active, "updatedAt": pool.UpdatedAt,
 		"count": len(pool.Candidates), "activeCandidate": active, "candidates": candidates,
 	}
 }

@@ -97,6 +97,22 @@ function importDialog(kind) {
               <label>URL подписки</label>
               <input id="subscriptionUrl" placeholder="https://..." value="${escapeHtml(state.subscriptionUrl)}" />
             </div>
+            <label class="settings-check compact ${state.subscriptionAuthEnabled ? 'active' : ''}">
+              <input id="subscriptionAuthEnabled" type="checkbox" ${state.subscriptionAuthEnabled ? 'checked' : ''} />
+              <span><strong>Basic Auth</strong><em>Добавит Authorization при загрузке подписки. Пароль будет скрыт в списке подписок.</em></span>
+            </label>
+            ${state.subscriptionAuthEnabled ? `
+              <div class="route-form">
+                <div class="form-row">
+                  <label>Логин</label>
+                  <input id="subscriptionAuthUser" autocomplete="username" value="${escapeHtml(state.subscriptionAuthUser)}" />
+                </div>
+                <div class="form-row">
+                  <label>Пароль</label>
+                  <input id="subscriptionAuthPassword" type="password" autocomplete="current-password" value="${escapeHtml(state.subscriptionAuthPassword)}" />
+                </div>
+              </div>
+            ` : ''}
             <label class="settings-check compact ${state.subscriptionAutoBalancer ? 'active' : ''}">
               <input id="subscriptionAutoBalancer" type="checkbox" ${state.subscriptionAutoBalancer ? 'checked' : ''} />
               <span><strong>Создать стабильную цель подписки</strong><em>В правилах останется один тег направления, а RuOpenRay сможет менять сервер внутри него при резервном переключении.</em></span>

@@ -1772,11 +1772,24 @@ function decodeSubscription(body) {
   return [];
 }
 
+async function fetchSubscriptionLinks(rawUrl) {
+  const parsed = new URL(String(rawUrl).trim());
+  const headers = {};
+  if (parsed.username || parsed.password) {
+    const user = decodeURIComponent(parsed.username || '');
+    const password = decodeURIComponent(parsed.password || '');
+    parsed.username = '';
+    parsed.password = '';
+    headers.authorization = `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+  }
+  const response = await fetch(parsed.toString(), { headers, signal: AbortSignal.timeout(12000) });
+  if (!response.ok) throw new Error(`Subscription HTTP ${response.status}`);
+  return decodeSubscription(await response.text());
+}
+
 async function importPreview(payload) {
   if (payload.url) {
-    const response = await fetch(String(payload.url), { signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error(`Subscription HTTP ${response.status}`);
-    const links = decodeSubscription(await response.text());
+    const links = await fetchSubscriptionLinks(payload.url);
     const outbounds = [];
     const items = [];
     for (const link of links.slice(0, 50)) {
@@ -1807,9 +1820,7 @@ async function importLink(link, profileName = '') {
 }
 
 async function importSubscription({ url, profileName = '' }) {
-  const response = await fetch(String(url), { signal: AbortSignal.timeout(12000) });
-  if (!response.ok) throw new Error(`Subscription HTTP ${response.status}`);
-  const links = decodeSubscription(await response.text());
+  const links = await fetchSubscriptionLinks(url);
   if (!links.length) throw new Error('В подписке не найдены поддерживаемые ссылки');
   const config = await readActiveConfig();
   config.outbounds = Array.isArray(config.outbounds) ? config.outbounds : [];
