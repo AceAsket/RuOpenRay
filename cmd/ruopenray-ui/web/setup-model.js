@@ -122,6 +122,19 @@ export function createSetupModel({
     return ['10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/3', '::1/128', 'fc00::/7', 'fe80::/10'];
   }
 
+  function isPrivateBypassRule(rule, ips, domains, sources, inbound) {
+    const allowed = new Set(privateBypassCidrs());
+    allowed.add('geoip:private');
+    return rule?.outboundTag === 'direct' &&
+      inbound.includes('transparent_ipv4') &&
+      ips.length > 0 &&
+      !domains.length &&
+      !sources.length &&
+      !rule?.port &&
+      !rule?.balancerTag &&
+      ips.every((item) => allowed.has(String(item || '').trim().toLowerCase()));
+  }
+
   function setupRuleSignature(rule) {
     const normalize = (value) => {
       if (Array.isArray(value)) return value.map(normalize).sort();
@@ -182,7 +195,7 @@ export function createSetupModel({
       !rule?.network &&
       !rule?.port;
     if (transparentCatchAll) return true;
-    if (rule?.outboundTag === 'direct' && inbound.includes('transparent_ipv4') && ips.some((item) => privateBypassCidrs().includes(item) || item === 'geoip:private')) return true;
+    if (isPrivateBypassRule(rule, ips, domains, sources, inbound)) return true;
     if (rule?.outboundTag === 'dns-out' && inbound.includes('ruopenray_dns_in')) return true;
     if (rule?.outboundTag === 'dns-out' && String(rule?.port || '') === '53') return true;
     if (rule?.outboundTag === 'direct' && domains.length && domains.every((item) => bootstrapDomains.includes(item))) return true;

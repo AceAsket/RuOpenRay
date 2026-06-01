@@ -203,6 +203,7 @@ function logsPanel(compact = false) {
           <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
         </div>
       </div>
+      ${state.logLive ? `<div class="settings-warning compact"><strong>Live-лог</strong><span>Панель перечитывает логи каждые ${escapeHtml(state.logIntervalSec)} сек. Это не пишет новые файлы, но для постоянной вкладки лучше выключить Live после диагностики.</span></div>` : ''}
       <div class="log-filters">
         <div class="form-row">
           <label>Источник</label>

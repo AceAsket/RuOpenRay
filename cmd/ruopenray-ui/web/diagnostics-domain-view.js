@@ -60,7 +60,7 @@ function domainMonitorStatusItems() {
   const snifferOk = Boolean(sniffing.enabled && (destOverride.includes('tls') || destOverride.includes('http') || destOverride.includes('quic')));
   const accessPath = state.loggingAccessPath || state.config?.log?.access || '';
   const accessConfigured = Boolean(state.loggingAccessLog || state.config?.log?.access);
-  const sourceSeesAccess = Boolean((accessPath && sourcePath.includes(accessPath)) || sourcePath.includes('access') || monitor.source === 'b4sni');
+  const sourceSeesAccess = Boolean((accessPath && sourcePath.includes(accessPath)) || sourcePath.includes('access'));
   const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const lanDns = state.lanDnsStatus || {};
   const lanDnsXray = Boolean(lanDns.mode === 'xray' && lanDns.readiness?.ready);
@@ -74,7 +74,7 @@ function domainMonitorStatusItems() {
       tone: monitor.running ? 'ok' : 'bad',
       title: 'Монитор',
       value: monitor.running ? 'запущен' : 'остановлен',
-      detail: monitor.running ? 'RuOpenRay читает access/DNS-логи Xray и b4sni-совместимые файлы.' : 'Нажмите «Запустить», чтобы начать читать события.'
+      detail: monitor.running ? 'RuOpenRay читает access/DNS-логи Xray и logread роутера.' : 'Нажмите «Запустить», чтобы начать читать события.'
     },
     {
       tone: accessConfigured && sourceSeesAccess ? 'ok' : accessConfigured ? 'warn' : 'bad',
@@ -138,6 +138,13 @@ function domainMonitorStatusPanel() {
   const frozenMonitor = (typeof currentDomainMonitor === 'function' ? currentDomainMonitor() : state.domainMonitor) || {};
   const dnsmasq = frozenMonitor?.dnsmasq || {};
   const dnsmasqLogqueries = dnsmasq.logqueries === true;
+  const runtimeWarnings = [];
+  if (frozenMonitor.running) {
+    runtimeWarnings.push('Монитор нужен для диагностики доменов, но в рабочем режиме он регулярно читает access/DNS-логи. Остановите его после проверки.');
+  }
+  if (dnsmasqLogqueries) {
+    runtimeWarnings.push('dnsmasq logqueries пишет каждый DNS-запрос в системный logread. Выключите parser после диагностики устройств.');
+  }
   const dnsmasqAction = dnsmasqLogqueries ? 'disableDnsmasqLogqueries' : 'enableDnsmasqLogqueries';
   const dnsmasqBusy = state.busyAction === dnsmasqAction;
   return `
@@ -152,6 +159,7 @@ function domainMonitorStatusPanel() {
         </span>
       </summary>
     <div class="domain-monitor-health">
+      ${runtimeWarnings.length ? `<div class="settings-warning compact"><strong>Диагностика</strong><span>${escapeHtml(runtimeWarnings.join(' '))}</span></div>` : ''}
       <div class="domain-monitor-health-grid">
         ${cards.map((item) => `<article class="${item.tone}">
           <span>${escapeHtml(item.title)}</span>
@@ -446,7 +454,6 @@ function domainMonitorFlowText(item = {}) {
   const protocols = domainMonitorProtocols(item).join('/');
   const outbound = item.outbound || sample.outbound || (Array.isArray(item.outbounds) ? item.outbounds.find(Boolean) : '');
   if (source.includes('dnsmasq')) return 'DNS: устройство -> dnsmasq';
-  if (source.includes('b4sni')) return 'SNI: устройство -> b4sni';
   if (source.includes('xray-dns')) return 'DNS: Xray -> dns-out';
   if (outbound) return `${protocols || 'TCP'} -> ${outbound}`;
   return `${protocols || 'TCP'} -> Xray`;
@@ -506,7 +513,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
       <button class="btn secondary compact" data-domain-device-events="${escapeHtml(deviceKey)}">${selected?.ip === deviceKey ? 'Фильтр включен' : 'События'}</button>
       ${expanded ? `<div class="domain-monitor-device-details">${domainMonitorDeviceRowsHtml(deviceRows)}</div>` : ''}
     </article>`;
-    }).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи или b4sni-совместимый лог.</p>';
+    }).join('') || '<p class="muted">Устройства пока не определены. Нужны access-логи Xray или dnsmasq parser.</p>';
     return `<div class="domain-monitor-scroll-window ${windowSize} devices">${deviceHtml}</div>`;
   }
   if (state.domainMonitorMode === 'events') {
@@ -529,7 +536,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
     </div>
     <em>${escapeHtml(info.outbound)}</em>
     <button class="btn secondary" data-route-focus="${index}">Найти</button>
-  </article>`).join('') || '<p class="muted">Домены пока не пойманы. Включите access-логи Xray или подключите b4sni-совместимый лог.</p>';
+  </article>`).join('') || '<p class="muted">Домены пока не пойманы. Включите access/DNS-логи Xray или dnsmasq parser.</p>';
   return `<div class="domain-monitor-scroll-window ${windowSize} domains">${domainHtml}</div>`;
 }
 
@@ -550,7 +557,7 @@ function diagnosticsDomainMonitorView() {
   return `
     <section class="panel">
       <div class="panel-title">
-        <div><h2>Мониторинг доменов</h2><span>SNI/домены как в B4SNI: живой поток, группировка по устройствам и быстрое добавление в маршрутизацию.</span></div>
+        <div><h2>Мониторинг доменов</h2><span>SNI/домены из логов Xray и dnsmasq: живой поток, группировка по устройствам и быстрое добавление в маршрутизацию.</span></div>
         <div class="split-actions">
           ${running
             ? `<button class="btn danger ${state.busyAction === 'stopDomainMonitor' ? 'is-busy' : ''}" data-action="stopDomainMonitor" ${state.busyAction === 'stopDomainMonitor' ? 'disabled' : ''}>${state.busyAction === 'stopDomainMonitor' ? 'Останавливаю...' : 'Остановить'}</button>`
@@ -564,6 +571,7 @@ function diagnosticsDomainMonitorView() {
         <strong>${running ? 'SNI-монитор запущен' : 'SNI-монитор остановлен'}</strong>
         <span>${escapeHtml(monitor?.hint || 'Запуск включает сбор и чтение SNI/domain событий, остановка выключает мониторинг.')}</span>
       </div>
+      ${running ? `<div class="settings-warning compact"><strong>Логи Xray</strong><span>Монитор читает access/DNS-логи для живых событий. Для постоянной работы выключите монитор и подробное логирование после проверки.</span></div>` : ''}
       ${domainMonitorStatusPanel()}
       <section class="stats route-stats domain-monitor-stats">
         ${stat('Источник', monitorSourceLabel(), `${monitor?.running ? 'монитор запущен' : 'лог-файл'}${sourcePath}`)}

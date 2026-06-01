@@ -87,6 +87,46 @@
   margin-top: 8px;
 }
 
+.settings-warning.compact.dashboard-log-warning {
+  align-items: start;
+  margin-top: 14px;
+}
+
+.dashboard-log-warning strong {
+  padding-top: 1px;
+  white-space: nowrap;
+}
+
+.dashboard-log-warning ul {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-log-warning li {
+  min-width: 0;
+  position: relative;
+  padding-left: 14px;
+  color: var(--muted);
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-log-warning li::before {
+  content: "";
+  position: absolute;
+  top: 0.68em;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--amber);
+  transform: translateY(-50%);
+}
+
 .metric-stat {
   min-width: 154px;
   display: inline-flex;
@@ -179,6 +219,14 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     justify-content: stretch;
+  }
+
+  .dashboard-log-warning {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-log-warning strong {
+    white-space: normal;
   }
 
   .router-health-metrics {

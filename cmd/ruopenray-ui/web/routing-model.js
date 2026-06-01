@@ -1,6 +1,21 @@
 import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
 import { isFragmentOutboundTag } from './outbound-tags.js';
 
+const privateBypassValues = new Set([
+  'geoip:private',
+  '0.0.0.0/8',
+  '10.0.0.0/8',
+  '100.64.0.0/10',
+  '127.0.0.0/8',
+  '169.254.0.0/16',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '224.0.0.0/3',
+  '::1/128',
+  'fc00::/7',
+  'fe80::/10'
+]);
+
 export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, checkForTag, checkLabel, outboundAddress, persistRouteNames }) {
   function routeRules() {
     if (!state.config.routing || typeof state.config.routing !== 'object') state.config.routing = {};
@@ -170,6 +185,25 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     return Array.isArray(rule?.inboundTag) && rule.inboundTag.includes(tag);
   }
 
+  function isPrivateBypassValue(value) {
+    return privateBypassValues.has(String(value || '').trim().toLowerCase());
+  }
+
+  function isTransparentLocalBypassRoute(rule) {
+    const ips = Array.isArray(rule?.ip) ? rule.ip : [];
+    const hasUserTargets = Boolean(
+      (Array.isArray(rule?.domain) && rule.domain.length) ||
+      (Array.isArray(rule?.source) && rule.source.length) ||
+      rule?.port ||
+      rule?.balancerTag
+    );
+    return rule?.outboundTag === 'direct' &&
+      routeHasInbound(rule, 'transparent_ipv4') &&
+      ips.length > 0 &&
+      !hasUserTargets &&
+      ips.every(isPrivateBypassValue);
+  }
+
   function isTransparentCatchAllRoute(rule) {
     if (!routeHasInbound(rule, 'transparent_ipv4')) return false;
     return !(
@@ -187,7 +221,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return true;
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return true;
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return true;
-    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return true;
+    if (isTransparentLocalBypassRoute(rule)) return true;
     if (isTransparentCatchAllRoute(rule)) return true;
     return false;
   }
@@ -196,7 +230,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Статистика Xray';
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'DNS через RuOpenRay';
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'DNS-запросы на Xray';
-    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Локальная сеть и роутер напрямую';
+    if (isTransparentLocalBypassRoute(rule)) return 'Локальная сеть и роутер напрямую';
     if (isTransparentCatchAllRoute(rule)) return 'Лишнее правило перехвата LAN';
     return '';
   }
@@ -205,7 +239,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (rule.outboundTag === 'ruopenray-api' && routeHasInbound(rule, 'ruopenray-api')) return 'Служебный маршрут для локального Xray StatsService API';
     if (rule.outboundTag === 'dns-out' && routeHasInbound(rule, 'ruopenray_dns_in')) return 'Служебный маршрут: DNS с 127.0.0.1:10535 отправляется в DNS-выход Xray';
     if (rule.outboundTag === 'dns-out' && String(rule.port || '') === '53') return 'Служебный маршрут для DNS-запросов';
-    if (rule.outboundTag === 'direct' && routeHasInbound(rule, 'transparent_ipv4')) return 'Когда firewall перехватил LAN-пакет и отправил его в transparent_ipv4, это правило пропускает локальные и приватные адреса напрямую, чтобы не ломать доступ к роутеру и домашней сети.';
+    if (isTransparentLocalBypassRoute(rule)) return 'Когда firewall перехватил LAN-пакет и отправил его в transparent_ipv4, это правило пропускает локальные и приватные адреса напрямую, чтобы не ломать доступ к роутеру и домашней сети.';
     if (isTransparentCatchAllRoute(rule)) return 'Это старое или ручное правило отправляет весь LAN-трафик из transparent inbound сразу в один outbound и мешает обычным правилам Xray. Подготовка черновика перехвата удалит его.';
     return '';
   }
@@ -283,14 +317,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeStats() {
     const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
-    const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
-    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean), ...subscriptionTags]);
     for (const rule of routeRules()) {
-      if (isRuOpenRayManagedRoute(rule)) continue;
-      if (rule.balancerTag || proxyTags.has(rule.outboundTag)) stats.proxy += 1;
-      else if (rule.outboundTag === 'direct') stats.direct += 1;
-      else if (rule.outboundTag === 'block') stats.block += 1;
-      else stats.other += 1;
+      const category = routeCategoryForRule(rule);
+      stats[category] = (stats[category] || 0) + 1;
     }
     return stats;
   }
@@ -305,6 +334,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function routeCategoryForRule(rule) {
+    if (isRuOpenRayManagedRoute(rule)) return 'other';
     if (rule?.balancerTag) return 'proxy';
     const outbound = rule?.outboundTag || '';
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
@@ -332,13 +362,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeStatsFor(rules) {
     const stats = { proxy: 0, direct: 0, block: 0, other: 0 };
-    const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
-    const proxyTags = new Set(['proxy', ...proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean), ...subscriptionTags]);
     for (const rule of rules || []) {
-      if (rule.balancerTag || proxyTags.has(rule.outboundTag)) stats.proxy += 1;
-      else if (rule.outboundTag === 'direct') stats.direct += 1;
-      else if (rule.outboundTag === 'block') stats.block += 1;
-      else stats.other += 1;
+      const category = routeCategoryForRule(rule);
+      stats[category] = (stats[category] || 0) + 1;
     }
     return stats;
   }

@@ -74,16 +74,6 @@ func (s *serverState) domainMonitor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *serverState) domainMonitorEvents(devices map[string]string, limit int) ([]domainmon.Event, string, string) {
-	for _, path := range b4sniLogPaths(s.cfg.DataDir) {
-		body, err := os.ReadFile(path)
-		if err != nil || len(bytes.TrimSpace(body)) == 0 {
-			continue
-		}
-		events := domainmon.ParseB4SNILines(string(body), devices)
-		if len(events) > 0 {
-			return domainmon.TrimEvents(events, limit), "b4sni", path
-		}
-	}
 	content, path := s.monitorLogContent()
 	events := domainmon.ParseXrayDomainLines(content, devices)
 	dnsmasqContent, dnsmasqPath := s.dnsmasqLogContent()
@@ -97,15 +87,6 @@ func (s *serverState) domainMonitorEvents(devices map[string]string, limit int) 
 		return domainmon.TrimEvents(events, limit), "xray-access+dnsmasq", path
 	}
 	return domainmon.TrimEvents(events, limit), "xray-access", path
-}
-
-func b4sniLogPaths(dataDir string) []string {
-	return []string{
-		filepath.Join(dataDir, "b4sni.log"),
-		"/var/log/ruopenray/b4sni.log",
-		"/usr/share/xrayui/logs/b4sni.log",
-		"/opt/share/xrayui/logs/b4sni.log",
-	}
 }
 
 type domainMonitorRuntime struct {
@@ -140,26 +121,11 @@ func (s *serverState) setDomainMonitorEnabled(enabled bool) error {
 	return os.WriteFile(s.domainMonitorStatePath(), []byte(value+"\n"), 0o600)
 }
 
-func b4sniServiceScript() string {
-	for _, path := range []string{"/etc/init.d/b4sni", "/opt/etc/init.d/S99b4sni", "/opt/etc/init.d/S90b4sni"} {
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			return path
-		}
-	}
-	return ""
-}
-
 func (s *serverState) domainMonitorRuntime() domainMonitorRuntime {
 	enabled := s.domainMonitorEnabled()
-	external := b4sniRunning()
-	service := b4sniServiceScript()
-	available := service != "" || commandExists("b4sni")
-	hint := "Режим наблюдения: RuOpenRay читает b4sni-совместимые файлы и access/logread Xray."
-	if available {
-		hint = "Найдена b4sni-служба; start/stop будет управлять ей и чтением логов RuOpenRay."
-	}
+	hint := "Режим наблюдения: RuOpenRay читает access/error/DNS-логи Xray и logread роутера."
 	return domainMonitorRuntime{
-		Running: enabled || external, Enabled: enabled, External: external, Available: available, Service: service, Hint: hint,
+		Running: enabled, Enabled: enabled, External: false, Available: true, Service: "", Hint: hint,
 	}
 }
 
@@ -171,16 +137,10 @@ func (s *serverState) controlDomainMonitor(payload map[string]any) map[string]an
 		if err := s.setDomainMonitorEnabled(true); err != nil {
 			return map[string]any{"ok": false, "stderr": err.Error(), "status": s.domainMonitorRuntime()}
 		}
-		if service := b4sniServiceScript(); service != "" {
-			result["service"] = run(service, "start")
-		}
 		result["stdout"] = "SNI-монитор включен"
 	case "stop":
 		if err := s.setDomainMonitorEnabled(false); err != nil {
 			return map[string]any{"ok": false, "stderr": err.Error(), "status": s.domainMonitorRuntime()}
-		}
-		if service := b4sniServiceScript(); service != "" {
-			result["service"] = run(service, "stop")
 		}
 		result["stdout"] = "SNI-монитор остановлен"
 	case "clear":
@@ -236,41 +196,10 @@ func (s *serverState) setDnsmasqLogqueries(enabled bool) map[string]any {
 }
 
 func (s *serverState) clearDomainMonitorLogs() map[string]any {
-	deleted := 0
-	var freed int64
-	for _, path := range b4sniLogPaths(s.cfg.DataDir) {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		if err := os.Remove(path); err != nil {
-			continue
-		}
-		deleted++
-		freed += info.Size()
-	}
 	return map[string]any{
-		"ok": true, "deleted": deleted, "freed": freed, "status": s.domainMonitorRuntime(),
-		"stdout": fmt.Sprintf("Очищено b4sni-логов: %d, освобождено %.1f KB", deleted, float64(freed)/1024),
+		"ok": true, "deleted": 0, "freed": int64(0), "status": s.domainMonitorRuntime(),
+		"stdout": "Монитор доменов читает текущие логи Xray и logread. Файлы не очищались; для очистки используйте Настройки -> Логи.",
 	}
-}
-
-func b4sniRunning() bool {
-	for _, path := range []string{"/var/log/ruopenray/b4sni.pid", "/usr/share/xrayui/logs/b4sni.pid", "/opt/share/xrayui/logs/b4sni.pid"} {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		pid := strings.TrimSpace(string(body))
-		if pid != "" && exec.Command("kill", "-0", pid).Run() == nil {
-			return true
-		}
-	}
-	if runtime.GOOS == "windows" {
-		return false
-	}
-	output, err := exec.Command("pidof", "b4sni").Output()
-	return err == nil && strings.TrimSpace(string(output)) != ""
 }
 
 func (s *serverState) monitorLogContent() (string, string) {

@@ -214,7 +214,6 @@ export function createDiagnosticsModel({
   function monitorSourceLabel() {
     const monitor = currentDomainMonitor();
     if (!monitor) return 'нет данных';
-    if (monitor.source === 'b4sni') return 'B4SNI';
     return 'Xray access';
   }
   

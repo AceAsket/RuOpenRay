@@ -53,8 +53,11 @@ func (s *serverState) changePassword(payload map[string]any) map[string]any {
 }
 
 const (
-	legacyAccessLogPath = "/var/log/xray/access.log"
-	legacyErrorLogPath  = "/var/log/xray/error.log"
+	legacyAccessLogPath       = "/var/log/xray/access.log"
+	legacyErrorLogPath        = "/var/log/xray/error.log"
+	debugLogMaintenanceEvery  = time.Minute
+	infoLogMaintenanceEvery   = 5 * time.Minute
+	normalLogMaintenanceEvery = 15 * time.Minute
 )
 
 func (s *serverState) defaultAccessLogPath() string {
@@ -453,7 +456,7 @@ func (s *serverState) loggingSettings() map[string]any {
 		"maxSizeMb":        intSetting(runtimeSettings, "maxSizeMb", 2),
 		"rotateCopies":     intSetting(runtimeSettings, "rotateCopies", 1),
 		"clearOnRestart":   boolPayload(runtimeSettings, "clearOnRestart", false),
-		"maintenanceEvery": "15 мин",
+		"maintenanceEvery": logMaintenanceLabel(validLogLevel(fmt.Sprint(logConfig["loglevel"]))),
 	}
 }
 
@@ -599,13 +602,36 @@ func (s *serverState) clearLogFiles() map[string]any {
 
 func (s *serverState) startLogMaintenance() {
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(debugLogMaintenanceEvery)
 		defer ticker.Stop()
 		s.maintainLogFiles(false)
+		last := time.Now()
 		for range ticker.C {
+			settings := s.loggingSettings()
+			interval := normalLogMaintenanceEvery
+			switch settings["level"] {
+			case "debug":
+				interval = debugLogMaintenanceEvery
+			case "info":
+				interval = infoLogMaintenanceEvery
+			}
+			if time.Since(last)+time.Second < interval {
+				continue
+			}
 			s.maintainLogFiles(false)
+			last = time.Now()
 		}
 	}()
+}
+
+func logMaintenanceLabel(level string) string {
+	if level == "debug" {
+		return "1 мин"
+	}
+	if level == "info" {
+		return "5 мин"
+	}
+	return "15 мин"
 }
 
 func (s *serverState) maintainLogFiles(restart bool) map[string]any {

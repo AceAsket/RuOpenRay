@@ -11,6 +11,7 @@ function settingsPanel() {
   ];
   const accessSize = byteSize(state.loggingSettings?.accessSize || 0);
   const errorSize = byteSize(state.loggingSettings?.errorSize || 0);
+  const maintenanceEvery = state.loggingSettings?.maintenanceEvery || (state.loggingLevel === 'debug' ? '1 мин' : state.loggingLevel === 'info' ? '5 мин' : '15 мин');
   const storageReport = state.storageReport || {};
   const storageItems = storageReport.items || {};
   const storageDisk = storageReport.disk || state.status?.system?.disk || {};
@@ -95,7 +96,7 @@ function settingsPanel() {
 
     <section class="panel settings-section">
       <div class="panel-title">
-        <div><h2>Обслуживание логов</h2><span>RuOpenRay следит за размером файлов каждые 15 минут и перед рестартом Xray.</span></div>
+        <div><h2>Обслуживание логов</h2><span>Сейчас проверка размера каждые ${escapeHtml(maintenanceEvery)}: debug — 1 мин, info — 5 мин, остальные уровни — 15 мин.</span></div>
       </div>
       <div class="settings-maintenance">
         <div class="settings-field">

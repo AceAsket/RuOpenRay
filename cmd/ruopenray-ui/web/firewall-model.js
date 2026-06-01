@@ -1,3 +1,18 @@
+const localBypassValues = new Set([
+  'geoip:private',
+  '0.0.0.0/8',
+  '10.0.0.0/8',
+  '100.64.0.0/10',
+  '127.0.0.0/8',
+  '169.254.0.0/16',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '224.0.0.0/3',
+  '::1/128',
+  'fc00::/7',
+  'fe80::/10'
+]);
+
 export function createFirewallModel({ state, configInbounds, configOutbounds, routeRules, splitRouteValues, deviceRules, routeRuleName, describeRouteRule }) {
   function firewallInfo() {
     const transparent = configInbounds().filter((item) => {
@@ -8,10 +23,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
     });
     const dnsIn = configInbounds().filter((item) => item?.tag === 'ruopenray_dns_in');
     const dnsOut = configOutbounds().filter((item) => item?.protocol === 'dns' || String(item?.tag || '').includes('dns'));
-    const localBypass = routeRules().filter((rule) => {
-      const ips = Array.isArray(rule.ip) ? rule.ip.join(' ') : '';
-      return rule.outboundTag === 'direct' && /geoip:private|127\.0\.0\.1|192\.168|10\.0\.0|172\.16|::1/.test(ips);
-    });
+    const localBypass = routeRules().filter((rule) => isLocalBypassRule(rule));
     const sourceRules = routeRules().filter((rule) => Array.isArray(rule.source) && rule.source.length);
     const transparentPort = transparent.find((item) => item?.streamSettings?.sockopt?.tproxy)?.port || transparent[0]?.port || 52345;
 
@@ -24,6 +36,22 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
       transparentPort,
       ready: Boolean(transparent.length && dnsOut.length && localBypass.length)
     };
+  }
+
+  function isLocalBypassRule(rule) {
+    const ips = Array.isArray(rule?.ip) ? rule.ip : [];
+    const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
+    const hasUserTargets = Boolean(
+      (Array.isArray(rule?.domain) && rule.domain.length) ||
+      (Array.isArray(rule?.source) && rule.source.length) ||
+      rule?.port ||
+      rule?.balancerTag
+    );
+    return rule?.outboundTag === 'direct' &&
+      ips.length > 0 &&
+      !hasUserTargets &&
+      (!inbound.length || inbound.includes('transparent_ipv4')) &&
+      ips.every((item) => localBypassValues.has(String(item || '').trim().toLowerCase()));
   }
 
   function firewallPorts() {

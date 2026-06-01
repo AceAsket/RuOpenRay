@@ -65,6 +65,7 @@ function dashboard() {
         <span class="eyebrow">Ресурсы роутера</span>
         ${dashboardSystemStats(s.system)}
         ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
+        ${dashboardLogWarnings()}
       </div>
       ${configDirty ? `<div class="dash-actions">
         <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
@@ -103,6 +104,26 @@ function dashboard() {
       </aside>
     </div>
   `;
+}
+
+function dashboardLogWarnings() {
+  const items = [];
+  const level = String(state.loggingLevel || state.loggingSettings?.level || state.config?.log?.loglevel || '').toLowerCase();
+  const accessLog = Boolean(state.loggingAccessLog || state.config?.log?.access);
+  const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
+  const monitor = state.domainMonitor || {};
+  const dnsmasqLogqueries = monitor?.dnsmasq?.logqueries === true;
+  if (level === 'debug') {
+    items.push('Xray пишет подробный debug-log. После проверки лучше вернуть warning или error.');
+  } else if (level === 'info') {
+    items.push('Xray пишет info-log. Для постоянной работы обычно тише warning или error.');
+  }
+  if (accessLog) items.push('Access-log включен: на активном трафике он быстро растет.');
+  if (dnsLog) items.push('DNS-лог Xray включен: доменные ответы могут добавлять много строк.');
+  if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
+  if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
+  if (!items.length) return '';
+  return `<div class="settings-warning compact dashboard-log-warning"><strong>Диагностика логов</strong><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
 }
 
 function stat(label, value, detail) {

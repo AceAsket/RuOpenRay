@@ -64,7 +64,7 @@ const state = {
     devices: [{ name: 'phone', ip: '192.168.1.2', hits: 2, topDomains: [{ host: 'chatgpt.com' }] }],
     domains: [{ host: 'chatgpt.com', hits: 2, protocols: ['TCP'], lastSeenTs: 2 }],
     events: [{ host: 'chatgpt.com', protocol: 'TCP', timestamp: 2 }],
-    source: 'b4sni',
+    source: 'xray-access',
   },
   domainMonitorFilter: 'all',
   domainMonitorMode: 'domains',
@@ -192,7 +192,7 @@ state.domainMonitorPausedSnapshot = {
   domains: [{ host: 'paused.example', hits: 1, protocols: ['DNS'], lastSeenTs: 1 }],
   devices: [{ name: 'paused-phone', ip: '192.168.1.50', hits: 1 }],
   events: [{ host: 'paused.example', protocol: 'DNS', timestamp: 1 }],
-  source: 'b4sni',
+  source: 'xray-access',
 };
 const pausedMonitorFrozen = model.monitoredEvents()[0]?.host === 'paused.example'
   && model.monitoredDomains()[0]?.host === 'paused.example'
@@ -847,6 +847,34 @@ const routingModel = createRoutingModel({
   routePresets: {},
   proxyOutbounds: () => [{ tag: 'proxy' }],
 });
+const managedRoutingModel = createRoutingModel({
+  state: {
+    config: {
+      routing: {
+        rules: [
+          { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
+          { type: 'field', inboundTag: ['ruopenray-api'], outboundTag: 'ruopenray-api' },
+          { type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'direct' },
+          { type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'direct', ip: ['10.0.0.0/8', '192.168.0.0/16'] },
+          { type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'direct', domain: ['domain:apple.com'] },
+          { type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'direct', ip: ['192.168.50.157'] },
+          { type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'direct', ip: ['107.155.0.0/16'] },
+        ]
+      },
+      outbounds: [
+        { tag: 'direct', protocol: 'freedom' },
+        { tag: 'dns-out', protocol: 'dns' },
+        { tag: 'ruopenray-api', protocol: 'freedom' },
+      ],
+    },
+    routeNames: {},
+  },
+  managedRouteTags: { direct: 'direct', 'dns-out': 'DNS', 'ruopenray-api': 'API' },
+  routeBundles: {},
+  routeKinds: {},
+  routePresets: {},
+  proxyOutbounds: () => [],
+});
 const subscriptionRoutingModel = createRoutingModel({
   state: {
     config: { routing: { rules: [{ domain: ['domain:telegram.org'], outboundTag: 'sub-main', type: 'field' }] }, outbounds: [] },
@@ -1086,6 +1114,24 @@ const routeValuesDrawerWorks = routePresetGroupHtmlClosed.includes('route-value-
   && routePresetGroupHtmlOpen.includes('route-values-drawer')
   && routePresetGroupHtmlOpen.includes('--route-values-drawer-top:120px')
   && routePresetGroupHtmlOpen.includes('domain:telegram.org');
+routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
+  { type: 'field', outboundTag: 'dns-out', port: '53' },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:two.example'] },
+  { type: 'field', outboundTag: 'ruopenray-api', inboundTag: ['ruopenray-api'] },
+  { type: 'field', outboundTag: 'direct', inboundTag: ['transparent_ipv4'], ip: ['10.0.0.0/8', '192.168.0.0/16'] },
+  { type: 'field', outboundTag: 'direct', inboundTag: ['transparent_ipv4'], domain: ['domain:direct.example'] },
+  { type: 'field', outboundTag: 'vpn-b', domain: ['domain:three.example'] },
+];
+routeGroupState.routeNames = {};
+const routeVisibleNumberingHtml = routeGroupActions.orderedRouteList(
+  routeGroupActions.visibleRoutingRuleItems(80),
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+const routeVisibleNumbering = [...routeVisibleNumberingHtml.matchAll(/<\/button>\s*<span>([^<]+)<\/span>\s*<\/div>/g)]
+  .map((match) => match[1]);
+const routeVisibleNumberingSkipsManaged = routeVisibleNumbering.slice(0, 4).join(',') === '1,2,3,4';
 routeGroupState.config.routing.rules = [
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:two.example'] },
@@ -1332,7 +1378,8 @@ const firewallState = {
     inbounds: [{ tag: 'transparent_ipv4', protocol: 'dokodemo-door', port: 52345, streamSettings: { sockopt: { tproxy: 'tproxy' } } }],
     outbounds: [{ tag: 'dns-out', protocol: 'dns' }],
     routing: { rules: [
-      { outboundTag: 'direct', ip: ['geoip:private'], domain: ['domain:router.lan'] },
+      { outboundTag: 'direct', ip: ['geoip:private'] },
+      { outboundTag: 'direct', domain: ['domain:router.lan'] },
       { outboundTag: 'proxy', domain: ['domain:telegram.org', 'geosite:youtube'] },
     ] },
   },
@@ -1798,11 +1845,13 @@ const checks = [
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
   ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
+  ['routing model managed stats', managedRoutingModel.routeStats().other === 4 && managedRoutingModel.routeStats().direct === 3 && managedRoutingModel.routeSectionDefinitions()[3]?.count === 4],
   ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main') && subscriptionRoutingModel.routeStats().proxy === 1],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
+  ['routing visible order skips managed rules', routeVisibleNumberingSkipsManaged],
   ['routing custom group from list', routeCustomGroupWorks],
   ['routing selected rule bulk actions', routeSelectedDisableWorks && routeSelectedDeleteWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],

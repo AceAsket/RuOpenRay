@@ -1215,6 +1215,7 @@ export function createRoutingActions({
   function routeRowHtml(item, options, rulesLength) {
     const { index, info, name, source, presets = [] } = item;
     const nested = Boolean(item.nested);
+    const displayOrder = Number.isFinite(Number(item.displayOrderStart)) ? Number(item.displayOrderStart) : index + 1;
     const groupStart = Number.isFinite(Number(item.groupStart)) ? Number(item.groupStart) : -1;
     const groupEnd = Number.isFinite(Number(item.groupEnd)) ? Number(item.groupEnd) : -1;
     const canMoveNestedUp = nested && groupStart >= 0 && index > groupStart;
@@ -1259,7 +1260,7 @@ export function createRoutingActions({
           <span></span>
         </label>
         <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
-        <span>${index + 1}</span>
+        <span>${displayOrder}</span>
       </div>
       <div class="route-kind-stack">
         <span class="route-category route-category-${escapeHtml(category)}">${escapeHtml(section?.title || 'Другое')}</span>
@@ -1296,6 +1297,8 @@ export function createRoutingActions({
     const customGroup = item.kind === 'customGroup';
     const start = item.index + 1;
     const end = item.index + item.items.length;
+    const displayStart = Number.isFinite(Number(item.displayOrderStart)) ? Number(item.displayOrderStart) : start;
+    const displayEnd = Number.isFinite(Number(item.displayOrderEnd)) ? Number(item.displayOrderEnd) : end;
     const icon = routePresetIconView(escapeHtml, item.key, item.preset || {}, 'compact');
     const detail = customGroup ? (item.preset?.detail || 'Пользовательская группа правил') : routePresetDetail(item.key);
     const encodedTargets = [...new Set(item.items.map(({ rule }) => encodedRouteTarget(rule)).filter(Boolean))];
@@ -1312,7 +1315,7 @@ export function createRoutingActions({
       <summary>
         <div class="route-preset-group-order">
           <button class="route-drag-handle" type="button" title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
-          <span>${start === end ? start : `${start}–${end}`}</span>
+          <span>${displayStart === displayEnd ? displayStart : `${displayStart}–${displayEnd}`}</span>
         </div>
         ${icon}
         <div class="route-preset-group-title">
@@ -1333,19 +1336,28 @@ export function createRoutingActions({
         </div>
       </summary>
       <div class="route-preset-group-children">
-        ${item.items.map((child) => routeRowHtml({ ...child, nested: true, groupStart: startIndex, groupEnd: endIndex }, options, rulesLength)).join('')}
+        ${item.items.map((child, childOffset) => routeRowHtml({ ...child, nested: true, groupStart: startIndex, groupEnd: endIndex, displayOrderStart: displayStart + childOffset }, options, rulesLength)).join('')}
       </div>
     </details>`;
   }
 
   function orderedRouteList(items, options, rulesLength, managedItems = managedRoutingRuleItems()) {
+    let displayOrder = 1;
+    const numberedItems = items.map((item) => {
+      const span = (item.kind === 'presetGroup' || item.kind === 'customGroup')
+        ? Math.max(1, item.items?.length || 1)
+        : 1;
+      const numbered = { ...item, displayOrderStart: displayOrder, displayOrderEnd: displayOrder + span - 1 };
+      displayOrder += span;
+      return numbered;
+    });
     const userList = items.length ? `<section class="route-ordered-list">
       <header class="route-order-head">
         <strong>Порядок выполнения Xray</strong>
         <span>Сверху вниз: правило №1 проверяется первым. Перетаскивание меняет реальный порядок в конфигурации.</span>
       </header>
       <div class="route-section-list">
-        ${items.map((item) => (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
+        ${numberedItems.map((item) => (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
     </section>` : `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
     return `${userList}${managedRoutesPanel(managedItems)}${routeValuesDrawer()}`;
