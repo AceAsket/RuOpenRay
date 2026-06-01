@@ -108,7 +108,7 @@ function dashboard() {
 
 function dashboardLogWarnings() {
   const items = [];
-  const level = String(state.loggingLevel || state.loggingSettings?.level || state.config?.log?.loglevel || '').toLowerCase();
+  const level = String(state.loggingSettings?.appliedLevel || state.loggingSettings?.level || state.config?.log?.loglevel || '').toLowerCase();
   const accessLog = Boolean(state.loggingAccessLog || state.config?.log?.access);
   const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const monitor = state.domainMonitor || {};

@@ -78,6 +78,40 @@ func TestPrepareActiveLogFilesKeepsPersistentCustomPath(t *testing.T) {
 	}
 }
 
+func TestLoggingSettingsPrefersSavedLevel(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "data")
+	state := &serverState{cfg: appConfig{
+		DataDir:      dataDir,
+		ActiveConfig: filepath.Join(dataDir, "config.json"),
+	}}
+	if err := state.writeActiveConfigRaw(map[string]any{
+		"log": map[string]any{
+			"loglevel": "debug",
+		},
+	}); err != nil {
+		t.Fatalf("write active config: %v", err)
+	}
+	if err := state.writeLoggingRuntimeSettings(map[string]any{
+		"level": "warning",
+	}); err != nil {
+		t.Fatalf("write logging settings: %v", err)
+	}
+
+	settings := state.loggingSettings()
+	if settings["ok"] != true {
+		t.Fatalf("loggingSettings failed: %#v", settings)
+	}
+	if got := settings["level"]; got != "warning" {
+		t.Fatalf("level = %v, want warning", got)
+	}
+	if got := settings["appliedLevel"]; got != "debug" {
+		t.Fatalf("appliedLevel = %v, want debug", got)
+	}
+	if got := settings["levelPending"]; got != true {
+		t.Fatalf("levelPending = %v, want true", got)
+	}
+}
+
 func TestClearLogFilesRemovesRotatedArchives(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data")
 	state := &serverState{cfg: appConfig{

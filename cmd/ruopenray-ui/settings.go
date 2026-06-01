@@ -443,9 +443,16 @@ func (s *serverState) loggingSettings() map[string]any {
 	errorRaw := strings.TrimSpace(fmt.Sprint(logConfig["error"]))
 	accessPath := s.normalizeManagedLogPath(accessRaw, s.defaultAccessLogPath())
 	errorPath := s.normalizeManagedLogPath(errorRaw, s.defaultErrorLogPath())
+	configLevel := validLogLevel(fmt.Sprint(logConfig["loglevel"]))
+	level := configLevel
+	if savedLevel, ok := runtimeSettings["level"]; ok {
+		level = validLogLevel(fmt.Sprint(savedLevel))
+	}
 	return map[string]any{
 		"ok":               true,
-		"level":            validLogLevel(fmt.Sprint(logConfig["loglevel"])),
+		"level":            level,
+		"appliedLevel":     configLevel,
+		"levelPending":     level != configLevel,
 		"accessLog":        accessRaw != "" && accessRaw != "<nil>",
 		"accessPath":       accessPath,
 		"accessSize":       fileSize(accessPath),
@@ -456,7 +463,7 @@ func (s *serverState) loggingSettings() map[string]any {
 		"maxSizeMb":        intSetting(runtimeSettings, "maxSizeMb", 2),
 		"rotateCopies":     intSetting(runtimeSettings, "rotateCopies", 1),
 		"clearOnRestart":   boolPayload(runtimeSettings, "clearOnRestart", false),
-		"maintenanceEvery": logMaintenanceLabel(validLogLevel(fmt.Sprint(logConfig["loglevel"]))),
+		"maintenanceEvery": logMaintenanceLabel(configLevel),
 	}
 }
 
@@ -509,6 +516,7 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 	if rotateCopies > 5 {
 		rotateCopies = 5
 	}
+	runtimeSettings["level"] = level
 	runtimeSettings["maxSizeMb"] = maxSizeMb
 	runtimeSettings["rotateCopies"] = rotateCopies
 	runtimeSettings["clearOnRestart"] = boolPayload(payload, "clearOnRestart", false)
@@ -609,7 +617,7 @@ func (s *serverState) startLogMaintenance() {
 		for range ticker.C {
 			settings := s.loggingSettings()
 			interval := normalLogMaintenanceEvery
-			switch settings["level"] {
+			switch settings["appliedLevel"] {
 			case "debug":
 				interval = debugLogMaintenanceEvery
 			case "info":
