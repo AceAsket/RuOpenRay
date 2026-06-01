@@ -87,8 +87,7 @@ export function routePresetExportIcon(key, preset = {}) {
       type: 'svg',
       svg: String(objectIcon.svg)
     };
-    const background = safeIconColor(objectIcon.background);
-    const foreground = safeIconColor(objectIcon.foreground);
+    const { background, foreground } = routePresetIconColors(key, preset, objectIcon);
     if (background) icon.background = background;
     if (foreground) icon.foreground = foreground;
     return icon;
@@ -105,13 +104,13 @@ export function routePresetIconView(escapeHtml, key, preset = {}, className = ''
   if (objectIcon?.type === 'svg' && safeInlineSvg(objectIcon.svg)) {
     const svg = String(objectIcon.svg);
     const brandClass = svg.includes('brand-icon') ? 'route-preset-icon-brand' : '';
-    const background = safeIconColor(objectIcon.background) || '';
-    const foreground = safeIconColor(objectIcon.foreground) || '';
+    const { background, foreground } = routePresetIconColors(key, preset, objectIcon);
+    const framedClass = brandClass && background ? 'route-preset-icon-framed' : '';
     const style = [
       background ? `--route-icon-bg:${escapeHtml(background)}` : '',
       foreground ? `--route-icon-fg:${escapeHtml(foreground)}` : ''
     ].filter(Boolean).join(';');
-    return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${svg}</span>`;
+    return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${framedClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${svg}</span>`;
   }
   const iconify = normalizeIconifyIcon(objectIcon?.name || preset.icon || preset.iconify || preset.iconUrl || '');
   if (iconify) {
@@ -134,6 +133,19 @@ function safeInlineSvg(value = '') {
 function safeIconColor(value = '') {
   const color = String(value || '').trim();
   return /^#[0-9a-fA-F]{3,8}$/.test(color) || /^[a-zA-Z][a-zA-Z0-9_-]{0,24}$/.test(color) ? color : '';
+}
+
+function routePresetIconColors(key, preset = {}, objectIcon = {}) {
+  const background = safeIconColor(objectIcon.background);
+  const foreground = safeIconColor(objectIcon.foreground);
+  const hint = `${key || ''} ${preset.title || ''} ${preset.detail || ''}`.toLowerCase();
+  if (/chatgpt|openai/.test(hint)) {
+    return {
+      background: background || '#10a37f',
+      foreground: foreground || '#ffffff'
+    };
+  }
+  return { background, foreground };
 }
 
 export function normalizeIconifyIcon(value = '') {

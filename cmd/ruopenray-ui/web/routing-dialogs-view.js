@@ -26,6 +26,7 @@ export function createRoutingDialogsView({
   routePresetCheckResultView,
   describeRouteRule,
   routePresetRules,
+  routeTargetReplacementSummary = () => ({ sources: [], targets: [], selectedCount: 0, affectedCount: 0, sample: [], fromLabel: '', toLabel: '' }),
 }) {
 function routeRuleTestResultView(result) {
   if (!result) return '';
@@ -404,6 +405,70 @@ function selectedRouteGroupDialog() {
   `;
 }
 
+function routeTargetReplaceDialog() {
+  if (!state.routeTargetReplaceDialog) return '';
+  const summary = routeTargetReplacementSummary();
+  const selectedAvailable = summary.selectedCount > 0;
+  return `
+    <div class="modal-backdrop" data-action="closeRouteTargetReplaceDialog">
+      <section class="modal route-replace-dialog" role="dialog" aria-modal="true" aria-labelledby="routeReplaceTitle" data-modal>
+        <div class="modal-head route-replace-head">
+          <div>
+            <h2 id="routeReplaceTitle">Заменить серверы в правилах</h2>
+            <span>Массово меняет цель правил в черновике маршрутизации. Служебные правила RuOpenRay не затрагиваются.</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeRouteTargetReplaceDialog" aria-label="Закрыть">×</button>
+        </div>
+        <div class="route-replace-grid">
+          <label>
+            <span>Что заменить</span>
+            <select id="routeReplaceFrom" ${summary.sources.length ? '' : 'disabled'}>
+              ${summary.sources.length
+                ? summary.sources.map((option) => `<option value="${escapeHtml(option.value)}" ${state.routeReplaceFrom === option.value ? 'selected' : ''}>${escapeHtml(option.label)} · ${option.count}</option>`).join('')
+                : '<option value="">Нет целей в пользовательских правилах</option>'}
+            </select>
+          </label>
+          <label>
+            <span>На что заменить</span>
+            <select id="routeReplaceTo" ${summary.targets.length ? '' : 'disabled'}>
+              ${summary.targets.length
+                ? summary.targets.map((option) => `<option value="${escapeHtml(option.value)}" ${state.routeReplaceTo === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
+                : '<option value="">Нет доступных целей</option>'}
+            </select>
+          </label>
+        </div>
+        <div class="route-replace-scope" role="radiogroup" aria-label="Область замены">
+          <label class="${state.routeReplaceScope !== 'selected' ? 'active' : ''}">
+            <input type="radio" name="routeReplaceScope" value="all" ${state.routeReplaceScope !== 'selected' ? 'checked' : ''} />
+            <span>Все пользовательские правила</span>
+          </label>
+          <label class="${state.routeReplaceScope === 'selected' ? 'active' : ''} ${selectedAvailable ? '' : 'disabled'}">
+            <input type="radio" name="routeReplaceScope" value="selected" ${state.routeReplaceScope === 'selected' ? 'checked' : ''} ${selectedAvailable ? '' : 'disabled'} />
+            <span>Только отмеченные${selectedAvailable ? ` · ${summary.selectedCount}` : ''}</span>
+          </label>
+        </div>
+        <div class="route-replace-preview">
+          <div>
+            <strong>${escapeHtml(summary.fromLabel || 'не выбрано')} → ${escapeHtml(summary.toLabel || 'не выбрано')}</strong>
+            <span>Будет изменено правил: ${summary.affectedCount}</span>
+          </div>
+          ${summary.sample.length ? `
+            <ul>
+              ${summary.sample.map((item) => `<li><span>#${item.index + 1}</span><strong>${escapeHtml(item.name)}</strong><em>${escapeHtml(item.detail)}</em></li>`).join('')}
+              ${summary.affectedCount > summary.sample.length ? `<li><span>+${summary.affectedCount - summary.sample.length}</span><strong>еще правила</strong><em>они тоже попадут в замену</em></li>` : ''}
+            </ul>
+          ` : '<p class="muted">Нет правил, подходящих под выбранную замену.</p>'}
+        </div>
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        <div class="modal-actions">
+          <button class="btn secondary" type="button" data-action="closeRouteTargetReplaceDialog">Отмена</button>
+          <button class="btn warning" type="button" data-action="applyRouteTargetReplacement" ${summary.affectedCount && state.routeReplaceFrom && state.routeReplaceTo && state.routeReplaceFrom !== state.routeReplaceTo ? '' : 'disabled'}>Заменить в черновике</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function routePresetDialog() {
   if (!state.routePresetDialog) return '';
   const editorOpen = Boolean(state.routePresetEditor);
@@ -470,6 +535,7 @@ function routePresetDialog() {
     routeRuleDialog,
     routeBalancerDialog,
     selectedRouteGroupDialog,
+    routeTargetReplaceDialog,
     routePresetDialog,
   };
 }

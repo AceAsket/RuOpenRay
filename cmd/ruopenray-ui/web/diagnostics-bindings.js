@@ -230,6 +230,19 @@ export function bindDiagnosticsControls(deps) {
   document.querySelector('#clientTrafficUrl')?.addEventListener('input', (event) => {
     state.clientTrafficUrl = event.target.value;
   });
+  document.querySelector('#dpiTarget')?.addEventListener('input', (event) => {
+    state.dpiTarget = event.target.value;
+  });
+  document.querySelector('#dpiTarget')?.addEventListener('keydown', async (event) => {
+    if (event.key === 'Enter' && typeof deps.runDpiDiagnostics === 'function') {
+      state.dpiTarget = event.target.value;
+      await deps.runDpiDiagnostics();
+    }
+  });
+  document.querySelector('#dpiProxyTag')?.addEventListener('change', (event) => {
+    state.dpiProxyTag = event.target.value;
+    render();
+  });
   document.querySelector('#domainProbeTag')?.addEventListener('change', (event) => {
     state.domainProbeTag = event.target.value;
     render();

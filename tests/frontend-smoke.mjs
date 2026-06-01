@@ -12,6 +12,7 @@ import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js'
 import { createDnsActions } from '../cmd/ruopenray-ui/web/dns-actions.js';
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
 import { createDnsModel } from '../cmd/ruopenray-ui/web/dns-model.js';
+import { createDashboardView } from '../cmd/ruopenray-ui/web/dashboard-view.js';
 import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { createFirewallActions } from '../cmd/ruopenray-ui/web/firewall-actions.js';
 import { bindGeoControls } from '../cmd/ruopenray-ui/web/geo-bindings.js';
@@ -115,6 +116,70 @@ const aux = createAuxPanelsView({
   formatDuration: () => '',
   leaseByIp: () => null,
 });
+
+const dashboardState = {
+  config: {
+    outbounds: [
+      { tag: 'cloudtwo', protocol: 'vless', settings: { vnext: [{ address: 'cloudtwo.example', port: 443 }] } },
+      { tag: 'direct', protocol: 'freedom' },
+      { tag: 'block', protocol: 'blackhole' },
+    ],
+    routing: { rules: [
+      { outboundTag: 'cloudtwo', domain: ['domain:telegram.org'] },
+      { outboundTag: 'direct', ip: ['geoip:private'] },
+    ] },
+    dns: { servers: ['https://dns.google/dns-query'] },
+  },
+  status: {
+    service: { running: true },
+    core: { available: true, version: 'Xray test' },
+    config: { path: '/etc/xray/config.json', inbounds: 6, outbounds: 7, routingRules: 61 },
+  },
+  leases: [{ ip: '192.168.1.10' }],
+  logs: '',
+  serverCheckMode: 'http',
+  serverChecks: {},
+  serverCheckingTags: [],
+  dashboardSelectedServerTag: '',
+};
+const dashboardView = createDashboardView({
+  state: dashboardState,
+  labels: { available: 'Доступно', missing: 'Не найден' },
+  escapeHtml,
+  routeStats: () => ({ proxy: dashboardState.config.routing?.rules?.filter((rule) => rule.outboundTag === 'cloudtwo').length || 0, direct: 1, block: 0, other: 0 }),
+  deviceStats: () => ({ proxy: 3, direct: 0, block: 0, other: 0 }),
+  dnsStats: () => ({ servers: dashboardState.config.dns?.servers?.length || 0, doh: 1 }),
+  coreUpdateInfo: () => ({}),
+  proxyOutbounds: () => (dashboardState.config.outbounds || []).filter((outbound) => outbound.tag === 'cloudtwo'),
+  deviceRules: () => [{ source: ['192.168.1.10'] }],
+  outboundAddress: (outbound) => outbound?.settings?.vnext?.[0]?.address || '',
+  logsPanel: () => '',
+  byteSize: formatByteSize,
+  fmtUptime: () => '',
+  byteRate: (value) => `${Number(value || 0)} B/s`,
+  numberValue: (value) => Number(value || 0),
+  activeProxyTag: () => 'cloudtwo',
+  configOutbounds: () => dashboardState.config.outbounds || [],
+  releaseDate: () => '',
+  coreReleaseBadge: () => '',
+  outboundTransport: () => 'tcp',
+  proxyDirectionSummary: () => ({ outbounds: new Map([['cloudtwo', { rules: 33 }]]), balancers: new Map(), total: 33 }),
+  proxyDirectionTitle: () => 'Proxy-направления',
+  proxyDirectionDetail: () => '1 активное направление',
+  dashboardProxyDirectionCards: () => '',
+  checkForTag: () => null,
+  checkLabel: () => '',
+  checkMethodLabel: () => '',
+  serverLocationChip: () => '',
+  configHasUnappliedChanges: () => false,
+});
+const dashboardWarmHtml = dashboardView.dashboard();
+dashboardState.config = { outbounds: [], routing: { rules: [] }, dns: { servers: [] } };
+const dashboardAfterTransientEmptyConfig = dashboardView.dashboard();
+const dashboardKeepsLastSnapshot = dashboardWarmHtml.includes('cloudtwo')
+  && dashboardAfterTransientEmptyConfig.includes('cloudtwo')
+  && dashboardAfterTransientEmptyConfig.includes('proxy 1 / direct 1')
+  && !dashboardAfterTransientEmptyConfig.includes('Серверы пока не добавлены');
 
 const model = createDiagnosticsModel({
   state,
@@ -381,11 +446,15 @@ const logoutClearedSession = !settingsActionState.token
 let loginRefreshStarted = false;
 let loginRefreshResolved = false;
 let loginRenderCount = 0;
+const loginBodies = [];
 const loginActionState = { password: '', rememberPassword: false, message: '' };
 const loginActions = createSettingsActions({
   state: loginActionState,
-  request: async (path) => {
-    if (path === '/api/login') return { token: 'login-token' };
+  request: async (path, options = {}) => {
+    if (path === '/api/login') {
+      loginBodies.push(JSON.parse(options.body || '{}'));
+      return { token: 'login-token' };
+    }
     return { ok: true };
   },
   render: () => { loginRenderCount += 1; },
@@ -409,10 +478,43 @@ const loginActions = createSettingsActions({
 const profileActionState = {
   jsonDraft: JSON.stringify({ outbounds: [] }),
 };
+const profileDownloaded = {};
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
+URL.createObjectURL = (blob) => {
+  profileDownloaded.blob = blob;
+  return 'blob:profile-test';
+};
+URL.revokeObjectURL = () => {};
+globalThis.document = {
+  querySelector: () => null,
+  querySelectorAll: () => [],
+  createElement: () => ({
+    set href(value) { profileDownloaded.href = value; },
+    set download(value) { profileDownloaded.filename = value; },
+    set rel(value) { profileDownloaded.rel = value; },
+    click: () => { profileDownloaded.clicked = true; },
+    remove: () => {},
+  }),
+  body: { appendChild: () => {} },
+};
 const profileActions = createProfileActions({
   state: profileActionState,
   request: async (path) => {
     if (path === '/api/profiles/activate') return { ok: true };
+    if (path.startsWith('/api/profiles/get')) {
+      return {
+        name: 'diag',
+        config: {
+          outbounds: [{
+            tag: 'real-proxy',
+            protocol: 'vless',
+            settings: { vnext: [{ address: 'secret.example', users: [{ id: 'real-uuid' }] }] }
+          }],
+          routing: { rules: [{ type: 'field', outboundTag: 'real-proxy', domain: ['domain:example.com'] }] }
+        }
+      };
+    }
     if (path === '/api/backup') return { path: '/tmp/backup.json' };
     return { ok: true };
   },
@@ -421,6 +523,17 @@ const profileActions = createProfileActions({
 });
 await profileActions.activateProfile('default');
 await profileActions.backup();
+await profileActions.downloadProfile('diag', { anonymized: true });
+const profileAnonymizedDownload = JSON.parse(await profileDownloaded.blob.text());
+const profileAnonymizedDownloadWorks = profileDownloaded.clicked
+  && profileDownloaded.filename === 'diag-anonymized.json'
+  && profileAnonymizedDownload.outbounds[0]?.tag === 'proxy-1'
+  && profileAnonymizedDownload.routing.rules[0]?.outboundTag === 'proxy-1'
+  && profileAnonymizedDownload.outbounds[0]?.settings?.vnext?.[0]?.address?.startsWith('[masked')
+  && profileAnonymizedDownload.outbounds[0]?.settings?.vnext?.[0]?.users?.[0]?.id?.startsWith('[masked')
+  && profileAnonymizedDownload._ruopenray_export?.anonymized;
+URL.createObjectURL = originalCreateObjectURL;
+URL.revokeObjectURL = originalRevokeObjectURL;
 
 const importActionState = {
   importLink: 'link-placeholder',
@@ -690,6 +803,7 @@ await loginActions.login({ preventDefault: () => {} });
 const loginStoresSessionOnly = sessionStorage.getItem('openray_token') === 'login-token'
   && !localStorage.getItem('openray_token')
   && !localStorage.getItem(authRememberStorageKey)
+  && loginBodies.at(-1)?.remember === false
   && localStorage.getItem('ruopenray:test:login-password') === null;
 const loginReturnedBeforeRefresh = loginRefreshStarted && !loginRefreshResolved && loginActionState.token === 'login-token' && loginRenderCount > 0;
 await new Promise((resolve) => setTimeout(resolve, 35));
@@ -710,6 +824,7 @@ await loginActions.login({ preventDefault: () => {} });
 const loginRememberStoresLocalOnly = localStorage.getItem('openray_token') === 'login-token'
   && !sessionStorage.getItem('openray_token')
   && localStorage.getItem(authRememberStorageKey) === '1'
+  && loginBodies.at(-1)?.remember === true
   && localStorage.getItem('ruopenray:test:login-password') === null;
 clearAuthToken({ preserveRemember: true });
 const expiredRememberLoginPreserved = !localStorage.getItem('openray_token')
@@ -854,7 +969,7 @@ const routeRuleTargetListTestWorks = routeRuleProbeRequests.length === 2
   && routeRuleProbeRequests[1]?.payload?.host === 'two.example'
   && routingActionState.routeRuleTestResult?.title?.includes('2/2');
 const routeGroupState = {
-  config: { routing: { rules: [
+  config: { outbounds: [{ tag: 'vpn-a', protocol: 'vless' }, { tag: 'vpn-b', protocol: 'vless' }], routing: { rules: [
     { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
     { type: 'field', outboundTag: 'vpn-a', network: 'udp', ip: ['91.108.4.0/22'] },
   ] } },
@@ -1015,6 +1130,21 @@ routeGroupActions.removeSelectedRoutingRules();
 const routeSelectedDeleteWorks = routeGroupState.config.routing.rules.length === 1
   && routeGroupState.config.routing.rules[0]?.domain?.includes('domain:keep.example')
   && routeGroupState.selectedRouteRuleIndexes.length === 0;
+routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:a.example'] },
+  { type: 'field', outboundTag: 'vpn-b', domain: ['domain:b.example'] },
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:c.example'] },
+];
+routeGroupState.selectedRouteRuleIndexes = [];
+routeGroupActions.openRouteTargetReplaceDialog();
+const routeReplaceInitialSummary = routeGroupActions.routeTargetReplacementSummary();
+routeGroupState.routeReplaceFrom = 'outbound:vpn-a';
+routeGroupState.routeReplaceTo = 'outbound:vpn-b';
+routeGroupActions.applyRouteTargetReplacement();
+const routeTargetReplaceWorks = routeReplaceInitialSummary.sources.some((option) => option.value === 'outbound:vpn-a' && option.count === 2)
+  && routeGroupState.config.routing.rules.filter((rule) => rule.outboundTag === 'vpn-b').length === 3
+  && !routeGroupState.routeTargetReplaceDialog
+  && /2/.test(routeGroupState.message || '');
 routeGroupState.config.routing.rules = [];
 routeGroupState.selectedRoutePresets = ['mixedOpenai'];
 routeGroupActions.applySelectedRoutingPresets();
@@ -1032,6 +1162,13 @@ const routeExternalBrandIconView = routePresetIconView(escapeHtml, 'external:lin
     svg: '<svg class="brand-icon" viewBox="0 0 24 24" focusable="false"><rect width="24" height="24" fill="#0a66c2"></rect></svg>'
   }
 });
+const routeChatGptBrandIconView = routePresetIconView(escapeHtml, 'external:chatgpt', {
+  title: 'ChatGPT / OpenAI',
+  icon: {
+    type: 'svg',
+    svg: '<svg class="brand-icon" viewBox="0 0 16 16" focusable="false"><path fill="#fff" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1"></path></svg>'
+  }
+});
 routeGroupActions.editRoutingPreset('telegramFull');
 routeGroupState.routePresetEditTitle = 'Telegram export';
 routeGroupActions.saveRoutePresetEdit();
@@ -1044,7 +1181,9 @@ const routePresetEditorKeepsFallbackIcon = routeGroupState.customRoutePresets['t
   && routeTorrentExportIcon?.type === 'svg'
   && routeTorrentExportIcon.svg.includes('#17b26a')
   && routeExternalBrandIconView.includes('route-preset-inline-svg')
-  && routeExternalBrandIconView.includes('route-preset-icon-brand');
+  && routeExternalBrandIconView.includes('route-preset-icon-brand')
+  && routeChatGptBrandIconView.includes('route-preset-icon-framed')
+  && routeChatGptBrandIconView.includes('--route-icon-bg:#10a37f');
 const routeDialogState = {
   routeRuleDialog: true,
   routeRuleMode: 'presets',
@@ -1618,6 +1757,7 @@ const routingHelpersKeyIgnoresValueOrder = routeRuleConditionKey({ domain: ['b',
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
+  ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
@@ -1626,6 +1766,7 @@ const checks = [
   ['routing helpers split mixed rules', routingHelpersSplitMixed],
   ['routing helpers preserve mixed flag', routingHelpersPreserveMixed],
   ['routing helpers set matching', routingHelpersSetMatches && routingHelpersKeyIgnoresValueOrder],
+  ['routing target bulk replace', routeTargetReplaceWorks],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
@@ -1641,7 +1782,7 @@ const checks = [
   ['action bindings busy state', actionBusySeen && actionBusyDuringHandler && actionBusyState.busyAction === '' && actionBusyState.message.includes('exit status 1')],
   ['diagnostics domain mode switch', domainModeSwitchWorks],
   ['diagnostics domain event window switch', domainEventWindowSwitchWorks],
-  ['profile actions', profileActionState.refreshed && profileActionState.message?.includes('/tmp/backup.json')],
+  ['profile actions', profileActionState.refreshed && profileAnonymizedDownloadWorks],
   ['import actions active', importActiveOk],
   ['import actions subscription basic auth', subscriptionAuthUrlOk],
   ['import actions preserve pinned route targets', splitRouteSwitchState.config.routing.rules[0]?.outboundTag === 'vpn-a' && splitRouteSwitchState.config.routing.rules[1]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[2]?.outboundTag === 'vpn-b' && splitRouteSwitchState.config.routing.rules[3]?.outboundTag === 'vpn-b'],

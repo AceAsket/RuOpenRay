@@ -118,23 +118,57 @@ function profilesPanel(compact = false) {
       </div>
       <div class="table-scroll profile-table-scroll">
         <table class="table profile-table">
-          <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th></th></tr></thead>
+          <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th>Действия</th></tr></thead>
           <tbody>
-            ${rows
-              .map(
-                (p) => `<tr>
-                  <td>${escapeHtml(p.name)}</td>
-                  <td>${new Date(p.updatedAt).toLocaleString()}</td>
-                  <td>${Math.round(p.size / 10) / 100} KB</td>
-                  <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
-                  <td><button class="btn secondary" data-profile="${escapeHtml(p.name)}">Активировать</button></td>
-                </tr>`
-              )
-              .join('')}
+            ${rows.map((p) => `<tr>
+              <td>${escapeHtml(p.name)}</td>
+              <td>${new Date(p.updatedAt).toLocaleString()}</td>
+              <td>${Math.round(p.size / 10) / 100} KB</td>
+              <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
+              <td>
+                <div class="profile-row-actions">
+                  <button class="btn secondary" data-profile="${escapeHtml(p.name)}" ${p.active ? 'disabled' : ''}>Активировать</button>
+                  <button class="btn secondary" data-profile-edit="${escapeHtml(p.name)}">Править</button>
+                  <button class="btn secondary" data-profile-download="${escapeHtml(p.name)}">Скачать</button>
+                  <button class="btn secondary" data-profile-download-anonymized="${escapeHtml(p.name)}">Обезличенный</button>
+                  <button class="btn danger" data-profile-delete="${escapeHtml(p.name)}">Удалить</button>
+                </div>
+              </td>
+            </tr>`).join('')}
           </tbody>
         </table>
       </div>
     </section>
+    ${compact ? '' : profileEditorDialog()}
+  `;
+}
+
+function profileEditorDialog() {
+  if (!state.profileEditorOpen) return '';
+  return `
+    <div class="modal-backdrop" data-action="closeProfileEdit">
+      <section class="modal profile-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="profileEditTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="profileEditTitle">Редактирование профиля</h2>
+            <span>Профиль сохраняется как JSON. Перед сохранением RuOpenRay проверит, что JSON читается.</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeProfileEdit">×</button>
+        </div>
+        <div class="form-row">
+          <label>Имя профиля</label>
+          <input id="profileEditName" value="${escapeHtml(state.profileEditName || '')}" placeholder="default" />
+        </div>
+        <div class="form-row profile-editor-row">
+          <label>JSON профиля</label>
+          <textarea id="profileEditDraft" class="code-textarea profile-json-editor" spellcheck="false">${escapeHtml(state.profileEditDraft || '')}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn secondary" type="button" data-action="closeProfileEdit">Отмена</button>
+          <button class="btn warning" type="button" data-action="saveProfileEditor">Сохранить профиль</button>
+        </div>
+      </section>
+    </div>
   `;
 }
 

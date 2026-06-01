@@ -32,6 +32,7 @@ const busyLabels = {
   cleanupUnusedDat: 'Удаляю неиспользуемые DAT',
   refreshLogs: 'Обновляю логи',
   runConnectivityDiagnostics: 'Проверяю цепочку подключения',
+  runDpiDiagnostics: 'Проверяю сайт на DPI',
   refreshDomainMonitor: 'Обновляю монитор доменов',
   startDomainMonitor: 'Запускаю монитор доменов',
   stopDomainMonitor: 'Останавливаю монитор доменов',
@@ -53,6 +54,7 @@ const busyLabels = {
   addRoute: 'Добавляю правило',
   testRouteRuleTarget: 'Проверяю правило',
   saveRouteEdit: 'Сохраняю правило',
+  applyRouteTargetReplacement: 'Заменяю серверы в правилах',
   saveRouteBalancer: 'Сохраняю балансировщик',
   previewRoutePresetEdit: 'Проверяю подборку',
   saveRoutePresetEdit: 'Сохраняю подборку',
@@ -84,6 +86,7 @@ const busyLabels = {
   deleteSubscription: 'Удаляю подписку',
   scanSni: 'Ищу SNI',
   saveProfile: 'Сохраняю профиль',
+  saveProfileEditor: 'Сохраняю профиль',
   backup: 'Создаю резервную копию',
   restoreLatestBackup: 'Возвращаю последнюю резервную копию'
 };

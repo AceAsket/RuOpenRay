@@ -26,8 +26,43 @@ type profileInfo struct {
 	Active    bool   `json:"active"`
 }
 
+func (s *serverState) activeProfilePath() string {
+	return filepath.Join(s.cfg.DataDir, "active-profile")
+}
+
+func (s *serverState) normalizeProfileID(name string) string {
+	return strings.TrimSuffix(cleanProfileName(name), ".json")
+}
+
+func (s *serverState) readActiveProfileName() string {
+	body, err := os.ReadFile(s.activeProfilePath())
+	if err != nil {
+		return ""
+	}
+	name := s.normalizeProfileID(string(body))
+	if name == "" || name == "profile" {
+		return ""
+	}
+	if _, err := os.Stat(s.profilePath(name)); err != nil {
+		return ""
+	}
+	return name
+}
+
+func (s *serverState) writeActiveProfileName(name string) error {
+	clean := s.normalizeProfileID(name)
+	if clean == "" || clean == "profile" {
+		clean = "default"
+	}
+	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(s.activeProfilePath(), []byte(clean+"\n"), 0o600)
+}
+
 func (s *serverState) listProfiles() ([]profileInfo, error) {
 	activeBody, _ := os.ReadFile(s.cfg.ActiveConfig)
+	activeName := s.readActiveProfileName()
 	entries, err := os.ReadDir(s.cfg.ProfilesDir)
 	if err != nil {
 		return nil, err
@@ -43,9 +78,14 @@ func (s *serverState) listProfiles() ([]profileInfo, error) {
 			continue
 		}
 		body, _ := os.ReadFile(path)
+		name := strings.TrimSuffix(entry.Name(), ".json")
+		active := name == activeName
+		if activeName == "" {
+			active = bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(activeBody))
+		}
 		profiles = append(profiles, profileInfo{
-			Name: strings.TrimSuffix(entry.Name(), ".json"), File: entry.Name(), Size: info.Size(),
-			UpdatedAt: info.ModTime().Format(time.RFC3339), Active: bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(activeBody)),
+			Name: name, File: entry.Name(), Size: info.Size(),
+			UpdatedAt: info.ModTime().Format(time.RFC3339), Active: active,
 		})
 	}
 	sort.Slice(profiles, func(i, j int) bool {
@@ -121,6 +161,52 @@ func (s *serverState) profilePath(name string) string {
 	return filepath.Join(s.cfg.ProfilesDir, cleanProfileName(name))
 }
 
+func (s *serverState) currentProfileName() string {
+	if name := s.readActiveProfileName(); name != "" {
+		return name
+	}
+	activeBody, _ := os.ReadFile(s.cfg.ActiveConfig)
+	if entries, err := os.ReadDir(s.cfg.ProfilesDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(s.cfg.ProfilesDir, entry.Name()))
+			if err == nil && bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(activeBody)) {
+				return strings.TrimSuffix(entry.Name(), ".json")
+			}
+		}
+	}
+	return "default"
+}
+
+func (s *serverState) saveProfileConfig(name string, cfg map[string]any) (string, error) {
+	body, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	path := s.profilePath(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(filepath.Base(path), ".json"), nil
+}
+
+func (s *serverState) syncCurrentProfile(cfg map[string]any) (string, error) {
+	name := s.currentProfileName()
+	savedName, err := s.saveProfileConfig(name, cfg)
+	if err != nil {
+		return "", err
+	}
+	if err := s.writeActiveProfileName(savedName); err != nil {
+		return "", err
+	}
+	return savedName, nil
+}
+
 func (s *serverState) saveProfile(w http.ResponseWriter, r *http.Request) {
 	payload, _ := readJSON(w, r)
 	name := fmt.Sprint(payload["name"])
@@ -128,14 +214,44 @@ func (s *serverState) saveProfile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		cfg, _ = s.readActiveConfig()
 	}
-	body, err := json.MarshalIndent(cfg, "", "  ")
+	savedName, err := s.saveProfileConfig(name, cfg)
 	if err != nil {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	writeJSON(w, 200, map[string]any{"ok": true, "profile": savedName})
+}
+
+func (s *serverState) getProfile(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	body, err := os.ReadFile(s.profilePath(name))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "profile not found"})
+		return
+	}
+	var cfg any
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"ok":      true,
+		"name":    strings.TrimSuffix(cleanProfileName(name), ".json"),
+		"config":  cfg,
+		"updated": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (s *serverState) deleteProfile(w http.ResponseWriter, r *http.Request) {
+	payload, _ := readJSON(w, r)
+	name := fmt.Sprint(payload["name"])
 	path := s.profilePath(name)
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "profile not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "profile": strings.TrimSuffix(filepath.Base(path), ".json")})
@@ -149,7 +265,10 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = os.WriteFile(s.cfg.ActiveConfig, body, 0o600)
-	respond(w, map[string]any{"ok": true, "active": payload["name"]}, err)
+	if err == nil {
+		err = s.writeActiveProfileName(fmt.Sprint(payload["name"]))
+	}
+	respond(w, map[string]any{"ok": true, "active": s.normalizeProfileID(fmt.Sprint(payload["name"]))}, err)
 }
 
 func (s *serverState) importLink(w http.ResponseWriter, r *http.Request) {

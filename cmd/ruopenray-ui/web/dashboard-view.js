@@ -36,16 +36,28 @@ export function createDashboardView(deps) {
 function dashboard() {
   const s = state.status || {};
   const c = s.config || {};
-  const routes = routeStats();
-  const devices = deviceStats();
-  const dns = dnsStats();
-  const deviceRuleCount = deviceRules().length;
-  const lanDeviceCount = state.leases.length || deviceRuleCount;
   const serviceRunning = Boolean(s.service?.running);
   const coreReady = Boolean(s.core?.available);
   const coreInfo = coreUpdateInfo();
   const activeConfig = s.config?.path || 'config.json';
-  const proxyServers = proxyOutbounds();
+  const configReady = hasDashboardConfigSurface(state.config, c);
+  const liveSnapshot = configReady ? {
+    routes: routeStats(),
+    devices: deviceStats(),
+    dns: dnsStats(),
+    deviceRuleCount: deviceRules().length,
+    lanDeviceCount: state.leases.length || deviceRules().length,
+    proxyServers: proxyOutbounds()
+  } : null;
+  if (liveSnapshot) state.dashboardConfigSnapshot = liveSnapshot;
+  const snapshot = liveSnapshot || state.dashboardConfigSnapshot || null;
+  const routes = snapshot?.routes || { proxy: 0, direct: 0, block: 0, other: 0 };
+  const devices = snapshot?.devices || { proxy: 0 };
+  const dns = snapshot?.dns || { servers: 0, doh: 0 };
+  const deviceRuleCount = snapshot?.deviceRuleCount || 0;
+  const lanDeviceCount = snapshot?.lanDeviceCount ?? (configReady ? 0 : '…');
+  const proxyServers = snapshot?.proxyServers || [];
+  const loadingConfig = !snapshot && !configReady;
   const configDirty = typeof configHasUnappliedChanges === 'function' ? configHasUnappliedChanges() : false;
   return `
     <section class="dash-hero ${serviceRunning ? 'is-ok' : 'is-warn'}">
@@ -62,16 +74,16 @@ function dashboard() {
     ${xrayCoreDashboard(s, coreReady, coreInfo)}
 
     <section class="flow-strip">
-      ${flowStep('Устройства', lanDeviceCount, state.leases.length ? `${deviceRuleCount} правил LAN · ${devices.proxy} через proxy` : `${devices.proxy} через proxy`)}
-      ${flowStep('Маршруты', c.routingRules ?? 0, `proxy ${routes.proxy} / direct ${routes.direct}`)}
-      ${flowStep('Proxy', proxyServers.length, proxyServers[0] ? outboundAddress(proxyServers[0]) : 'не добавлен')}
-      ${flowStep('DNS', dns.servers, dns.doh ? `${dns.doh} DoH` : 'системный')}
+      ${flowStep('Устройства', lanDeviceCount, loadingConfig ? 'загружаем LAN и правила' : (state.leases.length ? `${deviceRuleCount} правил LAN · ${devices.proxy} через proxy` : `${devices.proxy} через proxy`))}
+      ${flowStep('Маршруты', c.routingRules ?? (loadingConfig ? '…' : 0), loadingConfig ? 'загружаем правила' : `proxy ${routes.proxy} / direct ${routes.direct}`)}
+      ${flowStep('Proxy', loadingConfig ? '…' : proxyServers.length, loadingConfig ? 'загружаем серверы' : (proxyServers[0] ? outboundAddress(proxyServers[0]) : 'не добавлен'))}
+      ${flowStep('DNS', loadingConfig ? '…' : dns.servers, loadingConfig ? 'загружаем DNS' : (dns.doh ? `${dns.doh} DoH` : 'системный'))}
     </section>
 
     <div class="dashboard-layout">
       <div>
         <section class="panel">
-          ${dashboardServerSwitch(proxyServers)}
+          ${dashboardServerSwitch(proxyServers, { loading: loadingConfig })}
         </section>
         <section class="panel config-panel ${state.configExpanded ? 'is-open' : ''}">
           <div class="panel-title">
@@ -95,6 +107,24 @@ function dashboard() {
 
 function stat(label, value, detail) {
   return `<article class="stat"><span>${label}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></article>`;
+}
+
+function hasDashboardConfigSurface(config, statusConfig = {}) {
+  if (!config || typeof config !== 'object') return false;
+  const hasSurface = (
+    Array.isArray(config.outbounds)
+    || Array.isArray(config.inbounds)
+    || (config.routing && typeof config.routing === 'object')
+    || (config.dns && typeof config.dns === 'object')
+  );
+  if (!hasSurface) return false;
+  const activeOutbounds = Number(statusConfig.outbounds || 0);
+  const activeRules = Number(statusConfig.routingRules || 0);
+  const localOutbounds = Array.isArray(config.outbounds) ? config.outbounds.length : 0;
+  const localRules = Array.isArray(config.routing?.rules) ? config.routing.rules.length : 0;
+  if (activeOutbounds > 0 && localOutbounds === 0) return false;
+  if (activeRules > 0 && localRules === 0) return false;
+  return true;
 }
 
 function dashboardSystemStats(system = {}) {
@@ -713,10 +743,22 @@ function operationProgressView() {
   return '';
 }
 
-function dashboardServerSwitch(servers) {
+function dashboardServerSwitch(servers, options = {}) {
   const active = activeProxyTag();
   const summary = proxyDirectionSummary();
   if (!servers.length) {
+    if (options.loading) {
+      return `
+        <div class="dashboard-action-block">
+          <div class="dashboard-action-head">
+            <div>
+              <strong>Proxy-направления</strong>
+              <span>Загружаем список серверов из активной конфигурации.</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="dashboard-action-block">
         <div class="dashboard-action-head">

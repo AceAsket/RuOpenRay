@@ -2679,8 +2679,13 @@
     content: none;
   }
 
-  .profile-table td .btn,
-  .profile-table td button {
+  .profile-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .profile-row-actions .btn {
     width: 100%;
   }
 }

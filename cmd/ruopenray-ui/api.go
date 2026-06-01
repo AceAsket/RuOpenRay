@@ -2,19 +2,25 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
 )
 
 const maxJSONBodyBytes = 2 * 1024 * 1024
+const rememberSessionTTL = 30 * 24 * time.Hour
 
 func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("content-type", "application/json; charset=utf-8")
@@ -55,9 +61,18 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 401, map[string]any{"ok": false, "error": "Неверный пароль"})
 			return
 		}
+		remember, _ := payload["remember"].(bool)
 		token := randomToken()
+		if remember {
+			token = signedRememberToken(s.cfg.Password, time.Now().Add(rememberSessionTTL))
+		}
 		s.addSession(token)
-		http.SetCookie(w, &http.Cookie{Name: "openray_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		cookie := &http.Cookie{Name: "openray_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode}
+		if remember {
+			cookie.Expires = time.Now().Add(rememberSessionTTL)
+			cookie.MaxAge = int(rememberSessionTTL.Seconds())
+		}
+		http.SetCookie(w, cookie)
 		writeJSON(w, 200, map[string]any{"ok": true, "token": token})
 		return
 	}
@@ -202,6 +217,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/diagnostics/domain-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.domainProxyProbe(payload))
+	case path == "/diagnostics/dpi-probe" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.dpiProbe(payload))
 	case path == "/geo/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.geoStatus())
 	case path == "/geo/catalog" && r.Method == http.MethodGet:
@@ -242,6 +260,10 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		respond(w, profiles, err)
 	case path == "/profiles" && r.Method == http.MethodPost:
 		s.saveProfile(w, r)
+	case path == "/profiles/get" && r.Method == http.MethodGet:
+		s.getProfile(w, r)
+	case path == "/profiles/delete" && r.Method == http.MethodPost:
+		s.deleteProfile(w, r)
 	case path == "/profiles/activate" && r.Method == http.MethodPost:
 		s.activateProfile(w, r)
 	case path == "/import" && r.Method == http.MethodPost:
@@ -321,14 +343,51 @@ func respond(w http.ResponseWriter, payload any, err error) {
 
 func (s *serverState) authed(r *http.Request) bool {
 	if header := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return s.hasSession(strings.TrimSpace(header[7:]))
+		token := strings.TrimSpace(header[7:])
+		return s.hasSession(token) || validRememberToken(s.cfg.Password, token, time.Now())
 	}
 	cookie, err := r.Cookie("openray_session")
-	return err == nil && s.hasSession(cookie.Value)
+	return err == nil && (s.hasSession(cookie.Value) || validRememberToken(s.cfg.Password, cookie.Value, time.Now()))
 }
 
 func randomToken() string {
 	buf := make([]byte, 24)
 	_, _ = rand.Read(buf)
 	return hex.EncodeToString(buf)
+}
+
+func signedRememberToken(password string, expiresAt time.Time) string {
+	payload := fmt.Sprintf("%d.%s", expiresAt.Unix(), randomToken())
+	encodedPayload := base64.RawURLEncoding.EncodeToString([]byte(payload))
+	mac := hmac.New(sha256.New, []byte(password))
+	mac.Write([]byte(encodedPayload))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return "remember.v1." + encodedPayload + "." + signature
+}
+
+func validRememberToken(password string, token string, now time.Time) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 4 || parts[0] != "remember" || parts[1] != "v1" || parts[2] == "" || parts[3] == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(password))
+	mac.Write([]byte(parts[2]))
+	expected := mac.Sum(nil)
+	got, err := base64.RawURLEncoding.DecodeString(parts[3])
+	if err != nil || !hmac.Equal(got, expected) {
+		return false
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+	payloadParts := strings.SplitN(string(payloadBytes), ".", 2)
+	if len(payloadParts) != 2 {
+		return false
+	}
+	expiresUnix, err := strconv.ParseInt(payloadParts[0], 10, 64)
+	if err != nil {
+		return false
+	}
+	return now.Unix() <= expiresUnix
 }

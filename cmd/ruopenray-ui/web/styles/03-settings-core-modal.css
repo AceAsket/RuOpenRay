@@ -919,7 +919,34 @@ select {
 }
 
 .profile-table {
-  min-width: 620px;
+  min-width: 860px;
+}
+
+.profile-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.profile-row-actions .btn {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.profile-edit-dialog {
+  width: min(980px, calc(100vw - 32px));
+}
+
+.profile-editor-row {
+  gap: 8px;
+}
+
+.profile-json-editor {
+  min-height: min(58vh, 620px);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  line-height: 1.55;
+  resize: vertical;
 }
 
 .table th,

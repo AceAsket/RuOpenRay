@@ -72,6 +72,7 @@ function routingRulesPanel() {
       </div>
       <div class="route-tools">
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
+        <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
         <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу${selectedRuleCount ? ` (${selectedRuleCount})` : ''}</button>
         <button class="btn secondary compact" data-action="disableSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Отключить выбранные</button>

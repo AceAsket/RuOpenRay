@@ -177,9 +177,14 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
 			return
 		}
+		profileName, err := s.syncCurrentProfile(cfg)
+		if err != nil {
+			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
+			return
+		}
 		restart := s.serviceAction("restart")
 		_ = s.clearConfigDraft()
-		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup})
+		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName})
 		return
 	}
 	test := s.validateConfig(nil)

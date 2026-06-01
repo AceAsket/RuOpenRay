@@ -416,6 +416,10 @@ const {
   restoreAllDisabledRouteRules,
   updateRoutingTarget,
   updateRoutingTargetRange,
+  openRouteTargetReplaceDialog,
+  closeRouteTargetReplaceDialog,
+  applyRouteTargetReplacement,
+  routeTargetReplacementSummary,
   moveRoutingRule,
   moveRoutingRuleInsideGroup,
   moveRoutingRuleRange,
@@ -956,6 +960,11 @@ const profileActions = createProfileActions({
 });
 const {
   activateProfile,
+  openProfileEditor,
+  closeProfileEditor,
+  saveProfileEditor,
+  deleteProfile,
+  downloadProfile,
   saveProfile,
   backup
 } = profileActions;
@@ -1339,6 +1348,7 @@ const {
   totalXrayStatsBytes,
   triggerBrowserTraffic,
   runConnectivityDiagnostics,
+  runDpiDiagnostics,
   startClientTrafficTest,
   finishClientTrafficTest
 } = diagnosticsActions;
@@ -1759,6 +1769,7 @@ const routingDialogsView = createRoutingDialogsView({
   routePresetCheckResultView,
   describeRouteRule,
   routePresetRules,
+  routeTargetReplacementSummary,
 });
 
 function routeRuleDialog(...args) {
@@ -1775,6 +1786,10 @@ function routePresetDialog(...args) {
 
 function selectedRouteGroupDialog(...args) {
   return routingDialogsView.selectedRouteGroupDialog(...args);
+}
+
+function routeTargetReplaceDialog(...args) {
+  return routingDialogsView.routeTargetReplaceDialog(...args);
 }
 
 function captureRenderState() {
@@ -1847,6 +1862,7 @@ function render() {
   app.innerHTML = `
     ${routeRuleDialog()}
     ${routeBalancerDialog()}
+    ${routeTargetReplaceDialog()}
     ${importDialog(state.importDialog)}
     <div class="shell">
       <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
@@ -2108,6 +2124,9 @@ function bind() {
       },
       applyRoutePresets: applySelectedRoutingPresets,
       openSelectedRouteGroupDialog,
+      openRouteTargetReplaceDialog,
+      closeRouteTargetReplaceDialog,
+      applyRouteTargetReplacement,
       disableSelectedRouteRules: disableSelectedRoutingRules,
       removeSelectedRouteRules: removeSelectedRoutingRules,
       clearRouteRuleSelection,
@@ -2178,6 +2197,7 @@ function bind() {
       saveGeoCatalogCategory,
       refreshLogs: () => refreshLogs(true, true),
       runConnectivityDiagnostics,
+      runDpiDiagnostics,
       refreshDomainMonitor: () => refreshDomainMonitor(true, { force: true }),
       startDomainMonitor: () => controlDomainMonitor('start'),
       stopDomainMonitor: () => controlDomainMonitor('stop'),
@@ -2258,6 +2278,8 @@ function bind() {
       exportSubscriptionAll: (button) => exportSubscriptionCandidates(button.dataset.subscriptionExport || '', [], { all: true }),
       deleteSubscription: (button) => deleteSubscriptionPool(button.dataset.subscriptionDelete || ''),
       scanSni,
+      closeProfileEdit: closeProfileEditor,
+      saveProfileEditor,
       saveProfile,
       backup,
       restoreLatestBackup,
@@ -2376,13 +2398,14 @@ function bind() {
     render,
     domainMonitorFilterStorageKey,
     activeProxyTag,
+    runDpiDiagnostics,
     probeMonitoredDomain,
     focusSniResult,
     refreshLogs,
     configureLogTimer,
     scrollLogsToBottom,
   });
-  bindProfileControls({ activateProfile });
+  bindProfileControls({ state, activateProfile, openProfileEditor, deleteProfile, downloadProfile });
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
   bindServerCheckControls({ state, render });

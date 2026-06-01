@@ -135,6 +135,207 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	return 0, false, lastErr
 }
 
+func (s *serverState) httpOutboundReadProbe(outbound map[string]any, probeURL string, timeoutMs int, readLimit int64) map[string]any {
+	if timeoutMs < 1000 {
+		timeoutMs = 1000
+	}
+	if timeoutMs > 15000 {
+		timeoutMs = 15000
+	}
+	if readLimit < 1 {
+		readLimit = dpiLargeReadBytes
+	}
+	port, err := freeLocalPort()
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	config := map[string]any{
+		"log": map[string]any{"loglevel": "warning"},
+		"inbounds": []any{map[string]any{
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+		}},
+		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+	}
+	dir := filepath.Join(s.cfg.DataDir, "checks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	file, err := os.CreateTemp(dir, "outbound-read-*.json")
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	path := file.Name()
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	_ = file.Close()
+	defer os.Remove(path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*3)*time.Millisecond+5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
+	cmd.Env = s.xrayEnv()
+	var stderr bytes.Buffer
+	cmd.Stdout = &stderr
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+	if err := waitTCPPort("127.0.0.1", port, 2500); err != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			err = fmt.Errorf("%w: %s", err, lastLine(detail))
+		}
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+
+	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+	client := &http.Client{
+		Timeout: time.Duration(timeoutMs) * time.Millisecond,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+	req, err := newProbeHTTPRequest(probeURL)
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
+	started := time.Now()
+	resp, err := client.Do(req)
+	latency := time.Since(started).Milliseconds()
+	if err != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			err = fmt.Errorf("%w: %s", err, lastLine(detail))
+		}
+		return dpiAnnotate("http", map[string]any{"ok": false, "latencyMs": latency, "targetBytes": readLimit, "error": err.Error()})
+	}
+	defer resp.Body.Close()
+	copied, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, readLimit))
+	result := map[string]any{
+		"ok":          readErr == nil && resp.StatusCode < 500,
+		"status":      resp.StatusCode,
+		"latencyMs":   latency,
+		"bytes":       copied,
+		"targetBytes": readLimit,
+	}
+	if readErr != nil {
+		result["error"] = readErr.Error()
+	} else if resp.StatusCode >= 500 {
+		result["error"] = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return dpiAnnotate("http", result)
+}
+
+func (s *serverState) withOutboundHTTPProbeClient(outbound map[string]any, timeoutMs int, task func(*http.Client, *bytes.Buffer) map[string]any) map[string]any {
+	if timeoutMs < 1000 {
+		timeoutMs = 1000
+	}
+	if timeoutMs > 15000 {
+		timeoutMs = 15000
+	}
+	port, err := freeLocalPort()
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+	config := map[string]any{
+		"log": map[string]any{"loglevel": "warning"},
+		"inbounds": []any{map[string]any{
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+		}},
+		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+	}
+	dir := filepath.Join(s.cfg.DataDir, "checks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+	file, err := os.CreateTemp(dir, "outbound-http-*.json")
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+	path := file.Name()
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+	_ = file.Close()
+	defer os.Remove(path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*5)*time.Millisecond+8*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
+	cmd.Env = s.xrayEnv()
+	var stderr bytes.Buffer
+	cmd.Stdout = &stderr
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	}()
+	if err := waitTCPPort("127.0.0.1", port, 2500); err != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			err = fmt.Errorf("%w: %s", err, lastLine(detail))
+		}
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
+
+	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+	client := &http.Client{
+		Timeout: time.Duration(timeoutMs) * time.Millisecond,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+	return task(client, &stderr)
+}
+
+func (s *serverState) httpOutboundReadProbeSet(outbound map[string]any, probeURL string, timeoutMs int) map[string]any {
+	return s.withOutboundHTTPProbeClient(outbound, timeoutMs, func(client *http.Client, stderr *bytes.Buffer) map[string]any {
+		return dpiReadProbeSet(func(size int64) map[string]any {
+			result := dpiHTTPReadWithClient(client, probeURL, size)
+			if !boolPayload(result, "ok", false) {
+				if detail := strings.TrimSpace(stderr.String()); detail != "" && strings.TrimSpace(fmt.Sprint(result["error"])) != "" {
+					result["error"] = fmt.Sprintf("%s: %s", result["error"], lastLine(detail))
+				}
+			}
+			return result
+		})
+	})
+}
+
+func (s *serverState) httpOutboundRedirectProbe(outbound map[string]any, probeURL string, timeoutMs int) map[string]any {
+	return s.withOutboundHTTPProbeClient(outbound, timeoutMs, func(client *http.Client, stderr *bytes.Buffer) map[string]any {
+		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+		result := dpiRedirectProbeWithClient(client, probeURL)
+		if !boolPayload(result, "ok", false) {
+			if detail := strings.TrimSpace(stderr.String()); detail != "" && strings.TrimSpace(fmt.Sprint(result["error"])) != "" {
+				result["error"] = fmt.Sprintf("%s: %s", result["error"], lastLine(detail))
+			}
+		}
+		return result
+	})
+}
+
 func newProbeHTTPRequest(rawURL string) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {

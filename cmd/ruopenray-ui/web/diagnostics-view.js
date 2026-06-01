@@ -16,6 +16,7 @@ export function createDiagnosticsView(deps) {
   const {
     clientTrafficTestView,
     diagnosticsChainView,
+    diagnosticsDpiView,
     diagnosticsTrafficView
   } = createDiagnosticsTrafficView(deps);
   const { observatoryPanel } = createDiagnosticsObservatoryView(deps);
@@ -39,6 +40,7 @@ export function createDiagnosticsView(deps) {
     const views = {
       live: diagnosticsLiveView,
       chain: diagnosticsChainView,
+      dpi: diagnosticsDpiView,
       traffic: diagnosticsTrafficView,
       sni: sniPanel,
       domains: diagnosticsDomainMonitorView
@@ -61,6 +63,7 @@ export function createDiagnosticsView(deps) {
           ${[
             ['live', 'Live-Xray'],
             ['chain', 'Проверка связи'],
+            ['dpi', 'DPI'],
             ['traffic', 'Трафик'],
             ['sni', 'SNI'],
             ['domains', 'Домены']

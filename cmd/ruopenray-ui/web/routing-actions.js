@@ -1383,6 +1383,134 @@ export function createRoutingActions({
     render();
   }
 
+  function routeRuleTargetValue(rule) {
+    if (rule?.balancerTag) return `balancer:${rule.balancerTag}`;
+    return `outbound:${rule?.outboundTag || 'proxy'}`;
+  }
+
+  function routeTargetOptionMap() {
+    return new Map(routeTargetOptions().map((option) => [option.value, option]));
+  }
+
+  function routeTargetLabel(value) {
+    const option = routeTargetOptionMap().get(value);
+    if (option?.label) return option.label;
+    if (String(value || '').startsWith('balancer:')) return `Балансировщик · ${String(value).slice('balancer:'.length)}`;
+    if (String(value || '').startsWith('outbound:')) return readableRouteTag(String(value).slice('outbound:'.length));
+    return value || 'не задано';
+  }
+
+  function routeTargetReplacementSourceOptions() {
+    const counts = new Map();
+    routeRules().forEach((rule) => {
+      if (!rule || isRuOpenRayManagedRoute(rule)) return;
+      const value = routeRuleTargetValue(rule);
+      if (['outbound:direct', 'outbound:block', 'outbound:dns-out', 'outbound:ruopenray-api'].includes(value)) return;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([value, count]) => ({ value, count, label: routeTargetLabel(value) }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+  }
+
+  function routeTargetReplacementTargetOptions() {
+    return routeTargetOptions()
+      .filter((option) => !option.disabled)
+      .filter((option) => option.value !== 'outbound:dns-out' && option.value !== 'outbound:ruopenray-api')
+      .map((option) => ({ value: option.value, label: option.label }));
+  }
+
+  function routeTargetReplacementIndexes() {
+    const rules = routeRules();
+    const selected = new Set(selectedRouteRuleIndexes());
+    const useSelected = state.routeReplaceScope === 'selected' && selected.size > 0;
+    return rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule, index }) => rule && !isRuOpenRayManagedRoute(rule) && (!useSelected || selected.has(index)))
+      .filter(({ rule }) => routeRuleTargetValue(rule) === state.routeReplaceFrom)
+      .map(({ index }) => index);
+  }
+
+  function ensureRouteTargetReplacementDefaults() {
+    const sources = routeTargetReplacementSourceOptions();
+    const targets = routeTargetReplacementTargetOptions();
+    if (!sources.some((option) => option.value === state.routeReplaceFrom)) {
+      state.routeReplaceFrom = sources[0]?.value || '';
+    }
+    if (!targets.some((option) => option.value === state.routeReplaceTo) || state.routeReplaceTo === state.routeReplaceFrom) {
+      state.routeReplaceTo = targets.find((option) => option.value !== state.routeReplaceFrom)?.value || '';
+    }
+    if (state.routeReplaceScope === 'selected' && !selectedRouteRuleIndexes().length) {
+      state.routeReplaceScope = 'all';
+    }
+  }
+
+  function routeTargetReplacementSummary() {
+    ensureRouteTargetReplacementDefaults();
+    const sources = routeTargetReplacementSourceOptions();
+    const targets = routeTargetReplacementTargetOptions();
+    const indexes = routeTargetReplacementIndexes();
+    const selectedCount = selectedRouteRuleIndexes().length;
+    const sample = indexes.slice(0, 6).map((index) => {
+      const rule = routeRules()[index];
+      const info = describeRouteRule(rule);
+      return {
+        index,
+        name: routeRuleName(rule, info),
+        detail: `${info.kind}: ${info.value}`,
+        target: info.outbound
+      };
+    });
+    return {
+      sources,
+      targets,
+      selectedCount,
+      affectedCount: indexes.length,
+      sample,
+      fromLabel: routeTargetLabel(state.routeReplaceFrom),
+      toLabel: routeTargetLabel(state.routeReplaceTo)
+    };
+  }
+
+  function openRouteTargetReplaceDialog() {
+    ensureRouteTargetReplacementDefaults();
+    state.routeTargetReplaceDialog = true;
+    state.message = '';
+    render();
+  }
+
+  function closeRouteTargetReplaceDialog() {
+    state.routeTargetReplaceDialog = false;
+    state.message = '';
+    render();
+  }
+
+  function applyRouteTargetReplacement() {
+    ensureRouteTargetReplacementDefaults();
+    if (!state.routeReplaceFrom || !state.routeReplaceTo) {
+      state.message = 'Выберите, какой сервер заменить и на что заменить.';
+      render();
+      return;
+    }
+    if (state.routeReplaceFrom === state.routeReplaceTo) {
+      state.message = 'Новый сервер совпадает со старым. Выберите другую цель.';
+      render();
+      return;
+    }
+    const indexes = new Set(routeTargetReplacementIndexes());
+    if (!indexes.size) {
+      state.message = 'Подходящих правил для замены не найдено.';
+      render();
+      return;
+    }
+    const rules = routeRules().map((rule, index) => indexes.has(index) ? routeRuleWithTarget(rule, state.routeReplaceTo) : rule);
+    setRoutingDraft(rules);
+    state.routeTargetReplaceDialog = false;
+    state.selectedRouteRuleIndexes = [];
+    state.message = `Заменено целей в правилах: ${indexes.size}. Проверьте черновик и примените изменения.`;
+    render();
+  }
+
   function routeRuleWithTarget(rule, targetValue) {
     const [kind, ...rest] = String(targetValue || '').split(':');
     const tag = rest.join(':') || 'proxy';
@@ -1735,6 +1863,10 @@ export function createRoutingActions({
     restoreAllDisabledRouteRules,
     updateRoutingTarget,
     updateRoutingTargetRange,
+    openRouteTargetReplaceDialog,
+    closeRouteTargetReplaceDialog,
+    applyRouteTargetReplacement,
+    routeTargetReplacementSummary,
     moveRoutingRule,
     moveRoutingRuleInsideGroup,
     reorderRoutingRuleInsideGroup,

@@ -769,6 +769,21 @@ export function bindRoutingControls({
   document.querySelector('#routeSearch')?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') render();
   });
+  document.querySelector('#routeReplaceFrom')?.addEventListener('change', (event) => {
+    state.routeReplaceFrom = event.target.value;
+    render();
+  });
+  document.querySelector('#routeReplaceTo')?.addEventListener('change', (event) => {
+    state.routeReplaceTo = event.target.value;
+    render();
+  });
+  document.querySelectorAll('input[name="routeReplaceScope"]').forEach((input) => {
+    input.addEventListener('change', (event) => {
+      if (!event.target.checked) return;
+      state.routeReplaceScope = event.target.value === 'selected' ? 'selected' : 'all';
+      render();
+    });
+  });
   document.querySelectorAll('#routeDslName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDslName = event.target.value;
   }));

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +29,108 @@ func TestCleanProfileName(t *testing.T) {
 				t.Fatalf("cleanProfileName(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestProfileGetAndDeleteHandlers(t *testing.T) {
+	dir := t.TempDir()
+	profilesDir := filepath.Join(dir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatalf("create profiles dir: %v", err)
+	}
+	state := &serverState{cfg: appConfig{DataDir: dir, ProfilesDir: profilesDir}}
+
+	saveBody := []byte(`{"name":"custom","config":{"outbounds":[{"tag":"proxy"}]}}`)
+	saveReq := httptest.NewRequest(http.MethodPost, "/api/profiles", bytes.NewReader(saveBody))
+	saveRec := httptest.NewRecorder()
+	state.saveProfile(saveRec, saveReq)
+	if saveRec.Code != http.StatusOK {
+		t.Fatalf("saveProfile status = %d, body %s", saveRec.Code, saveRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/profiles/get?name=custom", nil)
+	getRec := httptest.NewRecorder()
+	state.getProfile(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("getProfile status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+	var got struct {
+		Name   string         `json:"name"`
+		Config map[string]any `json:"config"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode getProfile response: %v", err)
+	}
+	if got.Name != "custom" || got.Config["outbounds"] == nil {
+		t.Fatalf("unexpected profile response: %#v", got)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/profiles/delete", bytes.NewReader([]byte(`{"name":"custom"}`)))
+	deleteRec := httptest.NewRecorder()
+	state.deleteProfile(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("deleteProfile status = %d, body %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(profilesDir, "custom.json")); !os.IsNotExist(err) {
+		t.Fatalf("profile file still exists after delete: %v", err)
+	}
+}
+
+func TestActiveProfileMarkerSurvivesConfigDrift(t *testing.T) {
+	dir := t.TempDir()
+	profilesDir := filepath.Join(dir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatalf("create profiles dir: %v", err)
+	}
+	active := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(active, []byte(`{"routing":{"rules":[{"outboundTag":"proxy"}]}}`), 0o600); err != nil {
+		t.Fatalf("write active config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(profilesDir, "default.json"), []byte(`{"routing":{"rules":[]}}`), 0o600); err != nil {
+		t.Fatalf("write default profile: %v", err)
+	}
+	state := &serverState{cfg: appConfig{DataDir: dir, ProfilesDir: profilesDir, ActiveConfig: active}}
+	if err := state.writeActiveProfileName("default"); err != nil {
+		t.Fatalf("write active profile marker: %v", err)
+	}
+
+	profiles, err := state.listProfiles()
+	if err != nil {
+		t.Fatalf("listProfiles returned error: %v", err)
+	}
+	if len(profiles) != 1 || !profiles[0].Active || profiles[0].Name != "default" {
+		t.Fatalf("profiles = %#v, want default active by marker", profiles)
+	}
+}
+
+func TestSyncCurrentProfileUpdatesMarkedProfile(t *testing.T) {
+	dir := t.TempDir()
+	profilesDir := filepath.Join(dir, "profiles")
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatalf("create profiles dir: %v", err)
+	}
+	active := filepath.Join(dir, "config.json")
+	state := &serverState{cfg: appConfig{DataDir: dir, ProfilesDir: profilesDir, ActiveConfig: active}}
+	if _, err := state.saveProfileConfig("default", map[string]any{"outbounds": []any{}}); err != nil {
+		t.Fatalf("save default profile: %v", err)
+	}
+
+	name, err := state.syncCurrentProfile(map[string]any{"outbounds": []any{map[string]any{"tag": "proxy"}}})
+	if err != nil {
+		t.Fatalf("syncCurrentProfile returned error: %v", err)
+	}
+	if name != "default" {
+		t.Fatalf("syncCurrentProfile name = %q, want default", name)
+	}
+	body, err := os.ReadFile(filepath.Join(profilesDir, "default.json"))
+	if err != nil {
+		t.Fatalf("read default profile: %v", err)
+	}
+	if !bytes.Contains(body, []byte(`"proxy"`)) {
+		t.Fatalf("default profile was not updated: %s", string(body))
+	}
+	if got := state.readActiveProfileName(); got != "default" {
+		t.Fatalf("active profile marker = %q, want default", got)
 	}
 }
 

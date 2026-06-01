@@ -45,7 +45,7 @@ export function createSettingsActions({
     try {
       const result = await request('/api/login', {
         method: 'POST',
-        body: JSON.stringify({ password: state.password })
+        body: JSON.stringify({ password: state.password, remember: state.rememberPassword })
       });
       state.token = result.token;
       saveAuthToken(result.token, state.rememberPassword);

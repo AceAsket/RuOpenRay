@@ -137,7 +137,10 @@ func (s *serverState) ensureData() error {
 	if err := s.prepareActiveLogFiles(); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.cfg.ProfilesDir, "default.json"), body, 0o600)
+	if err := os.WriteFile(filepath.Join(s.cfg.ProfilesDir, "default.json"), body, 0o600); err != nil {
+		return err
+	}
+	return s.writeActiveProfileName("default")
 }
 
 func defaultConfig() map[string]any {

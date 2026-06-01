@@ -123,11 +123,36 @@ export function createDiagnosticsActions({
     render();
   }
 
+  async function runDpiDiagnostics() {
+    state.dpiRunning = true;
+    state.dpiResult = null;
+    render();
+    try {
+      const target = String(state.dpiTarget || '').trim() || 'https://www.gstatic.com/generate_204';
+      const tag = String(state.dpiProxyTag || '').trim();
+      if (!tag) throw new Error('Выберите proxy для сравнения');
+      state.dpiResult = await request('/api/diagnostics/dpi-probe', {
+        method: 'POST',
+        body: JSON.stringify({ target, tag, timeoutMs: 6000, attempts: 2 })
+      });
+      state.message = state.dpiResult?.ok
+        ? `DPI-проверка: ${state.dpiResult.verdict?.label || 'готово'}`
+        : (state.dpiResult?.stderr || state.dpiResult?.error || 'DPI-проверка не выполнена');
+    } catch (error) {
+      state.dpiResult = { ok: false, error: error.message };
+      state.message = error.message;
+    } finally {
+      state.dpiRunning = false;
+      render();
+    }
+  }
+
   return {
     nftBytes,
     totalXrayStatsBytes,
     triggerBrowserTraffic,
     runConnectivityDiagnostics,
+    runDpiDiagnostics,
     startClientTrafficTest,
     finishClientTrafficTest,
   };

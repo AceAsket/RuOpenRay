@@ -1143,6 +1143,9 @@ body[data-theme="light"] .domain-monitor-device-toggle,
 body[data-theme="light"] .domain-monitor-chips span,
 body[data-theme="light"] .domain-monitor-device-domains span,
 body[data-theme="light"] .domain-probe,
+body[data-theme="light"] .dpi-check-card,
+body[data-theme="light"] .dpi-compare-label,
+body[data-theme="light"] .dpi-compare-table,
 body[data-theme="light"] .sni-map-center,
 body[data-theme="light"] .sni-map-point,
 body[data-theme="light"] .sni-row {
@@ -1163,6 +1166,8 @@ body[data-theme="light"] .domain-monitor-device.active,
 body[data-theme="light"] .domain-monitor-device.expanded,
 body[data-theme="light"] .domain-probe.both-ok,
 body[data-theme="light"] .domain-probe.direct-only,
+body[data-theme="light"] .dpi-verdict,
+body[data-theme="light"] .dpi-check-card.ok,
 body[data-theme="light"] .sni-row.focused,
 body[data-theme="light"] .sni-map-point.near {
   color: var(--text);
@@ -1176,7 +1181,8 @@ body[data-theme="light"] .domain-monitor-state.stopped,
 body[data-theme="light"] .domain-monitor-health article.warn,
 body[data-theme="light"] .domain-monitor-events-actions > .btn.active,
 body[data-theme="light"] .observatory-grid article.warn,
-body[data-theme="light"] .domain-probe.pending {
+body[data-theme="light"] .domain-probe.pending,
+body[data-theme="light"] .dpi-check-card.warn {
   color: var(--text);
   border-color: rgba(184, 121, 20, 0.28);
   background: #fff7df;
@@ -1184,7 +1190,8 @@ body[data-theme="light"] .domain-probe.pending {
 
 body[data-theme="light"] .domain-monitor-health article.bad,
 body[data-theme="light"] .domain-probe.down,
-body[data-theme="light"] .domain-probe.bad {
+body[data-theme="light"] .domain-probe.bad,
+body[data-theme="light"] .dpi-check-card.bad {
   color: var(--text);
   border-color: rgba(195, 61, 74, 0.32);
   background: #fff1f3;
@@ -1229,6 +1236,12 @@ body[data-theme="light"] .domain-monitor-count small,
 body[data-theme="light"] .domain-monitor-device-count small,
 body[data-theme="light"] .domain-probe span,
 body[data-theme="light"] .domain-probe small,
+body[data-theme="light"] .dpi-verdict span,
+body[data-theme="light"] .dpi-verdict small,
+body[data-theme="light"] .dpi-check-card span,
+body[data-theme="light"] .dpi-check-card small,
+body[data-theme="light"] .dpi-check-card em,
+body[data-theme="light"] .dpi-compare-head,
 body[data-theme="light"] .sni-map-center span,
 body[data-theme="light"] .sni-map-point small,
 body[data-theme="light"] .sni-map-empty,
@@ -1252,6 +1265,9 @@ body[data-theme="light"] .domain-monitor-device-filter strong,
 body[data-theme="light"] .domain-monitor-main strong,
 body[data-theme="light"] .domain-monitor-flow,
 body[data-theme="light"] .domain-probe strong,
+body[data-theme="light"] .dpi-verdict strong,
+body[data-theme="light"] .dpi-check-card strong,
+body[data-theme="light"] .dpi-compare-label,
 body[data-theme="light"] .sni-map-center strong,
 body[data-theme="light"] .sni-map-point span,
 body[data-theme="light"] .sni-main strong,
