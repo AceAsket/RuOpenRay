@@ -1304,6 +1304,10 @@ body.is-login-page .login {
   min-height: 42px;
 }
 
+.subscription-auth-fields {
+  margin-bottom: 14px;
+}
+
 .import-choice {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

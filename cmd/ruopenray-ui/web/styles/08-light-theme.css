@@ -47,6 +47,8 @@ body[data-theme="light"] .settings-card,
 body[data-theme="light"] .settings-check,
 body[data-theme="light"] .settings-info-grid article,
 body[data-theme="light"] .settings-storage-row,
+body[data-theme="light"] .quick-action,
+body[data-theme="light"] .import-action-bar,
 body[data-theme="light"] .local-proxy-card,
 body[data-theme="light"] .route-card,
 body[data-theme="light"] .route-row,
@@ -1238,6 +1240,7 @@ body[data-theme="light"] .sni-map-grid::after {
 
 body[data-theme="light"] .settings-check em,
 body[data-theme="light"] .settings-field small,
+body[data-theme="light"] .quick-action span,
 body[data-theme="light"] .advanced-card span,
 body[data-theme="light"] .local-proxy-status,
 body[data-theme="light"] .manual-check-settings > span,
@@ -1276,6 +1279,7 @@ body[data-theme="light"] .sni-proximity span {
 }
 
 body[data-theme="light"] .settings-check strong,
+body[data-theme="light"] .quick-action strong,
 body[data-theme="light"] .advanced-card strong,
 body[data-theme="light"] .manual-check-settings > strong,
 body[data-theme="light"] .observatory-grid strong,

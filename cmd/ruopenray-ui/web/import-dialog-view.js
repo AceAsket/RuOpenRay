@@ -102,7 +102,7 @@ function importDialog(kind) {
               <span><strong>Basic Auth</strong><em>Добавит Authorization при загрузке подписки. Пароль будет скрыт в списке подписок.</em></span>
             </label>
             ${state.subscriptionAuthEnabled ? `
-              <div class="route-form">
+              <div class="route-form subscription-auth-fields">
                 <div class="form-row">
                   <label>Логин</label>
                   <input id="subscriptionAuthUser" autocomplete="username" value="${escapeHtml(state.subscriptionAuthUser)}" />
