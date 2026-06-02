@@ -259,7 +259,7 @@ function dnsServersSection(dns) {
           <label>Только для доменов</label>
           <input id="dnsDomains" value="${escapeHtml(state.dnsDomains)}" placeholder="dns.google, dns.opendns.com" />
         </div>
-        <button class="btn" data-action="addDns">Добавить DNS</button>
+        <button class="btn dns-add-button" data-action="addDns">Добавить DNS</button>
       </div>
       <div class="preset-grid dns-presets">
         ${presets.map(([name, address]) => `<button class="preset" type="button" data-dns-preset="${escapeHtml(address)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(address)}</span></button>`).join('')}
