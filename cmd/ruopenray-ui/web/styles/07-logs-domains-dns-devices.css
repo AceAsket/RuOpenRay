@@ -1375,10 +1375,35 @@
 
 .dns-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) auto;
+  grid-template-columns: minmax(320px, 1fr) minmax(220px, 0.35fr) minmax(220px, 0.45fr) auto;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
+}
+
+.dns-address-field {
+  grid-column: 1 / span 2;
+}
+
+.dns-auth-toggle {
+  align-self: end;
+  min-height: 42px;
+}
+
+.dns-auth-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 10px;
+  grid-column: 1 / span 2;
+}
+
+.dns-auth-note {
+  grid-column: 1 / span 2;
+  margin: -4px 0 0;
+}
+
+.dns-domains-field {
+  grid-column: 3;
 }
 
 .dns-check {
@@ -1884,6 +1909,17 @@
   .lan-dns-readiness,
   .dns-check,
   .dns-server-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dns-address-field,
+  .dns-auth-fields,
+  .dns-auth-note,
+  .dns-domains-field {
+    grid-column: auto;
+  }
+
+  .dns-auth-fields {
     grid-template-columns: 1fr;
   }
 

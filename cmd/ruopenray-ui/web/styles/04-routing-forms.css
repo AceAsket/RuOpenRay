@@ -804,15 +804,26 @@
 }
 
 .preset-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   align-self: center;
+  width: 38px;
+  min-width: 38px;
   min-height: 38px;
-  padding: 0 12px;
+  padding: 0;
   border: 1px solid rgba(255, 107, 107, 0.25);
   border-radius: 8px;
   color: #ffd6d6;
   background: rgba(185, 60, 71, 0.14);
-  font-size: 12px;
+  font-size: 0;
   font-weight: 900;
+  line-height: 1;
+}
+
+.preset-delete::before {
+  content: "×";
+  font-size: 20px;
 }
 
 .preset-delete:hover {

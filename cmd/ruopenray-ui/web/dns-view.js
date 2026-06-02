@@ -236,15 +236,15 @@ function dnsServersSection(dns) {
         <div><h2>Добавить DNS</h2><span>Обычный IP, tcp:// или DoH URL. Пресеты ниже только подставляют адрес в поле.</span></div>
       </div>
       <div class="dns-form">
-        <div class="form-row">
+        <div class="form-row dns-address-field">
           <label>DNS-сервер</label>
           <input id="dnsAddress" value="${escapeHtml(state.dnsAddress)}" placeholder="https://dns.google:443/dns-query" />
         </div>
-        <label class="check-row">
+        <label class="check-row dns-auth-toggle">
           <input id="dnsAuthEnabled" type="checkbox" ${state.dnsAuthEnabled ? 'checked' : ''} />
           <span>Basic Auth для DoH</span>
         </label>
-        ${state.dnsAuthEnabled ? `<div class="form-grid two">
+        ${state.dnsAuthEnabled ? `<div class="dns-auth-fields">
           <div class="form-row">
             <label>Логин</label>
             <input id="dnsAuthUser" value="${escapeHtml(state.dnsAuthUser)}" autocomplete="username" placeholder="user" />
@@ -254,8 +254,8 @@ function dnsServersSection(dns) {
             <input id="dnsAuthPassword" type="password" value="${escapeHtml(state.dnsAuthPassword)}" autocomplete="current-password" placeholder="password" />
           </div>
         </div>
-        <p class="muted">Панель соберет DoH URL вида https://user:pass@host/dns-query. В списке DNS пароль будет скрыт.</p>` : ''}
-        <div class="form-row">
+        <p class="muted dns-auth-note">Панель соберет DoH URL вида https://user:pass@host/dns-query. В списке DNS пароль будет скрыт.</p>` : ''}
+        <div class="form-row dns-domains-field">
           <label>Только для доменов</label>
           <input id="dnsDomains" value="${escapeHtml(state.dnsDomains)}" placeholder="dns.google, dns.opendns.com" />
         </div>

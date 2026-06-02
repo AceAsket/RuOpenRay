@@ -117,6 +117,10 @@ body[data-theme="light"] .metric-stat,
 body[data-theme="light"] .traffic-chart,
 body[data-theme="light"] .xray-stats-panel,
 body[data-theme="light"] .xray-stats-meta span,
+body[data-theme="light"] .core-update-banner,
+body[data-theme="light"] .core-arch-strip,
+body[data-theme="light"] .core-release-list button,
+body[data-theme="light"] .core-dialog-release,
 body[data-theme="light"] .nand-plan-grid article,
 body[data-theme="light"] .dashboard-server-option,
 body[data-theme="light"] .server-option-pick,
@@ -129,7 +133,20 @@ body[data-theme="light"] .domain-monitor-mini-chips b {
   background: rgba(255, 255, 255, 0.82);
 }
 
+body[data-theme="light"] .core-dialog-release:disabled,
+body[data-theme="light"] .core-release-list button:disabled {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+body[data-theme="light"] .core-dialog-release.active,
+body[data-theme="light"] .core-release-list button.active {
+  border-color: rgba(10, 159, 139, 0.55);
+  background: rgba(10, 159, 139, 0.13);
+}
+
 body[data-theme="light"] .core-stat.has-update,
+body[data-theme="light"] .core-update-banner.has-update,
 body[data-theme="light"] .traffic-overview-panel .traffic-overview-main,
 body[data-theme="light"] .dashboard-current-server,
 body[data-theme="light"] .lan-dns-readiness article.ok {
@@ -177,6 +194,7 @@ body[data-theme="light"] .domain-monitor-device-table-head {
 
 body[data-theme="light"] .route-drag-handle,
 body[data-theme="light"] .core-icon-action,
+body[data-theme="light"] .modal-head .icon-btn,
 body[data-theme="light"] .route-actions .icon-btn,
 body[data-theme="light"] .dns-order-controls .icon-btn,
 body[data-theme="light"] .dns-server-row > .icon-btn {
@@ -875,10 +893,17 @@ body[data-theme="light"] .dashboard-server-action.active {
 }
 
 body[data-theme="light"] .server-action-icon.danger,
-body[data-theme="light"] .dashboard-server-action.danger {
+body[data-theme="light"] .dashboard-server-action.danger,
+body[data-theme="light"] .preset-delete {
   color: #9b2430;
   border-color: rgba(195, 61, 74, 0.28);
   background: #f9d8dc;
+}
+
+body[data-theme="light"] .preset-delete:hover {
+  color: #7e1d27;
+  border-color: rgba(195, 61, 74, 0.42);
+  background: #f5c3ca;
 }
 
 body[data-theme="light"] .dashboard-server-option.active .server-traffic.muted,
