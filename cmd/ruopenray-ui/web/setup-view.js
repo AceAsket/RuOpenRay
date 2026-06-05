@@ -108,6 +108,7 @@ function setupWizardSteps(readiness) {
   const dnsReady = Boolean(state.lanDnsStatus?.mode === 'xray' && state.lanDnsStatus?.readiness?.ready);
   const fwReady = firewallReadyStatus(state.firewallStatus || {});
   const transparentReady = Boolean(readiness.items.find((item) => item.key === 'transparent')?.ok);
+  const defaultRouteReady = Boolean(readiness.items.find((item) => item.key === 'defaultRoute')?.ok);
   const statsReady = Boolean(state.status?.xrayStats?.enabled);
   return [
     { id: 'environment', title: 'Проверка', detail: 'Xray, geo-файлы, место', ok: xrayReady && geoReady },
@@ -115,6 +116,7 @@ function setupWizardSteps(readiness) {
     { id: 'dns', title: 'DNS', detail: 'dnsmasq, Xray или Pi-hole', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
     { id: 'server', title: 'Сервер', detail: 'Прокси или подписка', ok: proxyReady },
     { id: 'routing', title: 'Правила', detail: 'Маршрутизация и geo', ok: true },
+    { id: 'fallback', title: 'Остальное', detail: 'Куда вести unmatched traffic', ok: defaultRouteReady },
     { id: 'firewall', title: 'Перехват', detail: 'Firewall и LAN', ok: fwReady && transparentReady },
     { id: 'verify', title: 'Запуск', detail: 'Финальная проверка', ok: statsReady || Boolean(state.setupResult?.ok) }
   ];
@@ -173,7 +175,7 @@ function setupStepPrimaryLabel(isLast) {
 }
 
 function setupStepSecondaryAction(step) {
-  if (step === 'routing' || step === 'firewall' || step === 'verify') {
+  if (step === 'routing' || step === 'fallback' || step === 'firewall' || step === 'verify') {
     return `<button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>`;
   }
   return '';
@@ -268,6 +270,23 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
       <div class="setup-inline-actions">
         <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Открыть правила</button>
         <button class="btn secondary" type="button" data-action="setupPrepareDraft">Подготовить служебные правила</button>
+      </div>
+    </section>`;
+  }
+  if (step === 'fallback') {
+    const defaultRoute = readiness.items.find((item) => item.key === 'defaultRoute');
+    const target = defaultRoute?.ok ? defaultRoute.detail : 'Финальное правило еще не подготовлено.';
+    return `<section class="setup-step-panel">
+      <h3>Остальной трафик</h3>
+      <p>Это финальное правило для LAN-трафика, который уже попал в <code>transparent_ipv4</code>, но не совпал ни с одним пользовательским правилом выше. Без явного правила Xray использует первый outbound в конфиге, и это сложно заметить при диагностике.</p>
+      <div class="setup-choice-grid compact">
+        <article class="${defaultRoute?.ok ? 'ok' : 'warn'}"><span>Финальное правило</span><strong>${defaultRoute?.ok ? 'найдено' : 'не найдено'}</strong><small>${escapeHtml(target)}</small></article>
+        <article><span>Порядок</span><strong>последним</strong><small>Правила выше сохраняют приоритет: подборки, свои домены, direct/block и служебные исключения сработают раньше.</small></article>
+        <article><span>Назначение</span><strong>${escapeHtml(activeProxyName())}</strong><small>Мастер направит остальной LAN-трафик в первый пользовательский proxy, если отдельный балансировщик не выбран вручную.</small></article>
+      </div>
+      <div class="setup-inline-actions">
+        <button class="btn" type="button" data-action="setupPrepareDraft">Подготовить правило</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Открыть маршруты</button>
       </div>
     </section>`;
   }

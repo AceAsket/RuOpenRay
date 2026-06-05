@@ -130,8 +130,8 @@ function routeRuleDialog() {
           </div>
           <div class="form-row wide">
             <label>Правила списком</label>
-            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="default: direct&#10;domain(domain:discord.com) -> proxy&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
-            <small>Поддерживается формат строк маршрутизации: <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code>, <code>network(udp)</code> и назначение через <code>-> proxy/direct/block</code>.</small>
+            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="default: direct&#10;discord.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
+            <small>Поддерживается короткий домен без префикса, <code>domain:...</code>, <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code>, <code>network(udp)</code> и назначение через <code>-> proxy/direct/block</code>.</small>
           </div>
           ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
         </div>
@@ -513,7 +513,7 @@ function routePresetDialog() {
             </div>
             <label>
               <span>Правила</span>
-              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="domain(domain:...) -> proxy&#10;ip(.../24) -> proxy&#10;network(udp) &amp;&amp; ip(.../16) -> proxy&#10;source(192.168.1.50) -> direct">${escapeHtml(state.routePresetEditDsl)}</textarea>
+              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="example.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;ip(.../24) -> proxy&#10;network(udp) &amp;&amp; ip(.../16) -> proxy&#10;source(192.168.1.50) -> direct">${escapeHtml(state.routePresetEditDsl)}</textarea>
             </label>
             ${showCheckResult ? routePresetCheckResultView(editorPreview) : '<div class="preset-editor-hint">Проверка покажет, сколько правил распознано, куда они направлены и какие строки требуют внимания.</div>'}
           </div>

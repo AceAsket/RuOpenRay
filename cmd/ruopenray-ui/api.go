@@ -211,6 +211,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
 	case path == "/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.diagnostics())
+	case path == "/diagnostics/package" && r.Method == http.MethodGet:
+		s.downloadDiagnosticsPackage(w, r)
 	case path == "/diagnostics/http-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, routerHTTPProbe(payload))
@@ -286,6 +288,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.exportSubscriptionCandidates(w, r)
 	case path == "/subscriptions/refresh" && r.Method == http.MethodPost:
 		s.refreshSubscriptionPool(w, r)
+	case path == "/subscriptions/refresh-all" && r.Method == http.MethodPost:
+		s.refreshAllSubscriptionsHTTP(w, r)
+	case path == "/subscriptions/schedule" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.saveSubscriptionSchedule(payload))
 	case path == "/subscriptions/fallback" && r.Method == http.MethodPost:
 		s.fallbackSubscription(w, r)
 	case path == "/subscriptions/fallback-progress" && r.Method == http.MethodGet:

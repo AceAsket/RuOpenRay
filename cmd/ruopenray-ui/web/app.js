@@ -948,6 +948,8 @@ const {
   selectSubscriptionCandidate,
   checkSubscriptionCandidate,
   refreshSubscriptionPool,
+  refreshAllSubscriptions,
+  saveSubscriptionSchedule,
   exportSubscriptionCandidates,
   deleteSubscriptionPool
 } = serverActions;
@@ -1670,7 +1672,7 @@ function pendingChangesBanner() {
 }
 
 function setupStepOrder() {
-  return ['environment', 'mode', 'dns', 'server', 'routing', 'firewall', 'verify'];
+  return ['environment', 'mode', 'dns', 'server', 'routing', 'fallback', 'firewall', 'verify'];
 }
 
 function setupStepGate(step) {
@@ -1678,6 +1680,7 @@ function setupStepGate(step) {
   const byKey = new Map((readiness.items || []).map((item) => [item.key, item]));
   const proxyCount = proxyOutbounds().length;
   const transparentReady = Boolean(byKey.get('transparent')?.ok);
+  const defaultRouteReady = Boolean(byKey.get('defaultRoute')?.ok);
   const firewallReady = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(state.firewallStatus || {}) : false;
   const notice = (level, title, detail) => ({ ok: false, notice: { step, level, title, detail } });
   if (step === 'environment') {
@@ -1696,6 +1699,21 @@ function setupStepGate(step) {
   }
   if (step === 'server' && proxyCount < 1) {
     return notice('bad', 'Нет прокси-сервера', 'Добавьте сервер или подписку в разделе “Серверы”, затем вернитесь в мастер.');
+  }
+  if (step === 'fallback' && !defaultRouteReady) {
+    if (proxyCount < 1) {
+      return notice('bad', 'Некуда вести остальной трафик', 'Добавьте хотя бы один proxy: мастер должен явно выбрать направление для LAN-трафика, который не совпал с правилами выше.');
+    }
+    prepareSetupDraft({ message: false });
+    return {
+      ok: true,
+      notice: {
+        step,
+        level: 'warn',
+        title: 'Правило для остального трафика подготовлено',
+        detail: 'Мастер добавил финальное правило transparent_ipv4 в конец маршрутизации. Оно сработает только после пользовательских правил, direct/block и служебных исключений.'
+      }
+    };
   }
   if (step === 'firewall') {
     if (!transparentReady) {
@@ -2098,6 +2116,11 @@ function bind() {
         render();
       },
       openRouteBalancerDialog,
+      openBalancerView: () => {
+        state.tab = 'servers';
+        state.serversView = 'balancers';
+        render();
+      },
       closeRouteBalancerDialog,
       saveRouteBalancer,
       newRoutePreset: newRoutingPreset,
@@ -2270,6 +2293,8 @@ function bind() {
       selectSubscriptionCandidate: (button) => selectSubscriptionCandidate(button.dataset.subscriptionSelect || '', button.dataset.subscriptionCandidateIndex || 0),
       checkSubscriptionCandidate: (button) => checkSubscriptionCandidate(button.dataset.subscriptionCheck || '', button.dataset.subscriptionCandidateIndex || 0),
       refreshSubscription: (button) => refreshSubscriptionPool(button.dataset.subscriptionRefresh || ''),
+      refreshAllSubscriptions,
+      saveSubscriptionSchedule,
       exportSubscriptionSelected: (button) => {
         const tag = button.dataset.subscriptionExport || '';
         const indexes = [...document.querySelectorAll(`[data-subscription-candidate-pick="${CSS.escape(tag)}"]:checked`)].map((item) => Number(item.value));

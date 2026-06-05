@@ -1341,6 +1341,7 @@ body.is-login-page .login {
 .core-result {
   display: grid;
   gap: 6px;
+  margin-top: 12px;
   padding: 12px;
   border: 1px solid rgba(49, 210, 189, 0.24);
   border-radius: 8px;

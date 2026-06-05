@@ -49,6 +49,16 @@
   font-size: 12px;
 }
 
+.route-hero-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+}
+
+.route-hero-actions .btn {
+  width: 100%;
+}
+
 .route-hero-side {
   display: grid;
   gap: 10px;

@@ -264,6 +264,18 @@ function settingsPanel() {
   const appVersion = appInfo.version || 'dev';
   const appTarget = appRelease.tag || 'не загружен';
   const appAsset = appRelease.asset || appInfo.asset || '';
+  const appAssetSize = Number(appRelease.assetSize || 0);
+  const currentAppSize = Number(storageItem('appBinary').size || 0);
+  const appAssetSizeText = appAssetSize >= 1024 * 1024
+    ? byteSize(appAssetSize)
+    : currentAppSize > 0
+      ? byteSize(currentAppSize)
+      : 'неизвестно';
+  const appAssetSizeHint = appAssetSize >= 1024 * 1024
+    ? 'файл обновления'
+    : currentAppSize > 0
+      ? 'установленная версия'
+      : '';
   const appUpdateSection = `
     <section class="panel settings-section">
       <div class="panel-title">
@@ -273,7 +285,7 @@ function settingsPanel() {
         <article><span>Установлено</span><strong>${escapeHtml(appVersion)}</strong></article>
         <article><span>Последний релиз</span><strong>${escapeHtml(appTarget)}</strong></article>
         <article><span>Архитектура</span><strong>${escapeHtml(appAsset || 'не определена')}</strong></article>
-        <article><span>Размер</span><strong>${escapeHtml(appRelease.assetSize ? byteSize(appRelease.assetSize) : 'неизвестно')}</strong></article>
+        <article><span>Размер панели</span><strong>${escapeHtml(appAssetSizeText)}</strong><small>${escapeHtml(appAssetSizeHint)}</small></article>
       </div>
       <div class="settings-maintenance">
         <label class="settings-check compact ${state.appBackup ? 'active' : ''}">

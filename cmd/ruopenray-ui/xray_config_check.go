@@ -77,8 +77,10 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 		}
 	}
 	outbounds := map[string]map[string]any{}
+	outboundList := []map[string]any{}
 	for _, item := range asArray(cfg["outbounds"]) {
 		if outbound, ok := item.(map[string]any); ok {
+			outboundList = append(outboundList, outbound)
 			tag := strings.TrimSpace(fmt.Sprint(outbound["tag"]))
 			if tag != "" && tag != "<nil>" {
 				outbounds[tag] = outbound
@@ -154,6 +156,7 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			burstObservatorySelectors[selector] = true
 		}
 	}
+	hasTransparentCatchAll := false
 	for index, item := range rawBalancers {
 		if balancer, ok := item.(map[string]any); ok {
 			tag := strings.TrimSpace(fmt.Sprint(balancer["tag"]))
@@ -230,6 +233,9 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			}
 			info = append(info, fmt.Sprintf("Правило %d: default/catch-all идет в %s", index+1, target))
 		}
+		if isTransparentCatchAllRoutingRule(rule) {
+			hasTransparentCatchAll = true
+		}
 		for _, value := range asArray(rule["domain"]) {
 			domain := strings.TrimSpace(fmt.Sprint(value))
 			if strings.EqualFold(domain, "default") {
@@ -253,6 +259,13 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 				warnings = append(warnings, fmt.Sprintf("Правило %d: geoip требует %s", index+1, geoipPath))
 			}
 		}
+	}
+	if hasTransparentInbound && !hasTransparentCatchAll {
+		defaultTag := firstNonSystemOutboundTag(outboundList)
+		if defaultTag == "" {
+			defaultTag = "first outbound"
+		}
+		warnings = append(warnings, fmt.Sprintf("transparent_ipv4 не имеет явного catch-all правила. Xray отправит весь unmatched LAN traffic в первый outbound %q; при перехвате всех портов это может увести SSH/RTSP/DNS и служебные соединения через proxy.", defaultTag))
 	}
 	return map[string]any{"ok": len(errors) == 0, "errors": errors, "warnings": warnings, "info": info, "counts": counts}
 }
@@ -280,6 +293,58 @@ func isCatchAllRoutingRule(rule map[string]any) bool {
 	}
 	port := strings.TrimSpace(fmt.Sprint(rule["port"]))
 	return port == "" || port == "<nil>" || port == "0-65535"
+}
+
+func isTransparentCatchAllRoutingRule(rule map[string]any) bool {
+	if rule == nil {
+		return false
+	}
+	tag := strings.TrimSpace(fmt.Sprint(rule["outboundTag"]))
+	if tag == "<nil>" {
+		tag = ""
+	}
+	balancerTag := strings.TrimSpace(fmt.Sprint(rule["balancerTag"]))
+	if balancerTag == "<nil>" {
+		balancerTag = ""
+	}
+	if tag == "" && balancerTag == "" {
+		return false
+	}
+	inbound := asArray(rule["inboundTag"])
+	if len(inbound) == 0 {
+		return false
+	}
+	hasTransparent := false
+	for _, value := range inbound {
+		if strings.TrimSpace(fmt.Sprint(value)) == "transparent_ipv4" {
+			hasTransparent = true
+			break
+		}
+	}
+	if !hasTransparent {
+		return false
+	}
+	if len(asArray(rule["domain"])) > 0 || len(asArray(rule["ip"])) > 0 || len(asArray(rule["source"])) > 0 {
+		return false
+	}
+	if network := strings.TrimSpace(fmt.Sprint(rule["network"])); network != "" && network != "<nil>" && !isAllNetworkRule(network) {
+		return false
+	}
+	port := strings.TrimSpace(fmt.Sprint(rule["port"]))
+	return port == "" || port == "<nil>" || port == "0-65535"
+}
+
+func firstNonSystemOutboundTag(outbounds []map[string]any) string {
+	for _, outbound := range outbounds {
+		if outbound == nil || isSystemOutbound(outbound) {
+			continue
+		}
+		tag := strings.TrimSpace(fmt.Sprint(outbound["tag"]))
+		if tag != "" && tag != "<nil>" {
+			return tag
+		}
+	}
+	return ""
 }
 
 func normalizeCatchAllRoutingRules(cfg map[string]any) int {

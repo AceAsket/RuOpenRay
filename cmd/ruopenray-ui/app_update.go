@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const minRuOpenRayAssetSize = 1024 * 1024
+
 func ruOpenRayAssetName() string {
 	switch runtime.GOARCH {
 	case "amd64":
@@ -87,6 +89,22 @@ func appRelease(version string) (map[string]any, error) {
 	return parseAppRelease(raw), nil
 }
 
+func appReleaseAssetSize(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case json.Number:
+		if n, err := typed.Int64(); err == nil {
+			return int(n)
+		}
+	}
+	return number(value, 0)
+}
+
 func parseAppRelease(raw map[string]any) map[string]any {
 	assetName := ruOpenRayAssetName()
 	assetURL := ""
@@ -97,7 +115,10 @@ func parseAppRelease(raw map[string]any) map[string]any {
 			continue
 		}
 		assetURL = strings.TrimSpace(fmt.Sprint(asset["browser_download_url"]))
-		assetSize = number(asset["size"], 0)
+		assetSize = appReleaseAssetSize(asset["size"])
+		if assetSize > 0 && assetSize < minRuOpenRayAssetSize {
+			assetSize = 0
+		}
 		break
 	}
 	tag := strings.TrimSpace(fmt.Sprint(raw["tag_name"]))
@@ -192,7 +213,7 @@ func (s *serverState) updateApp(version string, keepBackup bool) map[string]any 
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": closeErr.Error(), "release": release}
 	}
-	if size < 1024*1024 {
+	if size < minRuOpenRayAssetSize {
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": "скачанный бинарник слишком маленький", "size": size, "release": release}
 	}

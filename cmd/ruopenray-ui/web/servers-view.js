@@ -114,6 +114,8 @@ function serverCard(outbound, index, activeTag) {
 
 function subscriptionPoolCard(pool) {
   const active = pool?.activeCandidate || {};
+  const missing = pool?.missingCandidate || {};
+  const activeMissing = pool?.activeMissing === true;
   const tag = pool?.tag || '';
   const connecting = state.pendingServerTag === tag;
   const candidates = Array.isArray(pool?.candidates) ? pool.candidates : [];
@@ -169,6 +171,13 @@ function subscriptionPoolCard(pool) {
   });
   const visibleCount = candidateEntries.filter((entry) => entry.visible).length;
   const candidateRows = candidateEntries.map((entry) => entry.markup).join('');
+  const activeText = active?.tag
+    ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}`
+    : activeMissing
+      ? `активный удален из подписки${missing?.tag ? `: ${missing.tag}` : ''}`
+      : 'активный сервер не выбран';
+  const missingText = [missing?.tag, [missing?.address, missing?.port].filter(Boolean).join(':')].filter(Boolean).join(' · ');
+  const canConnect = Boolean(active?.tag) && !activeMissing;
   return `<article class="server-row subscription-pool-row">
     <div class="server-identity">
       <span class="server-protocol">pool</span>
@@ -179,14 +188,14 @@ function subscriptionPoolCard(pool) {
     </div>
     <div class="server-health">
       <span class="check-badge ok">${escapeHtml(`${pool?.count || 0} кандидатов`)}</span>
-      <small>${escapeHtml(active?.tag ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}` : 'активный сервер не выбран')}</small>
+      <small>${escapeHtml(activeText)}</small>
     </div>
     <div class="server-actions">
       ${serverActionButton({ label: 'Обновить список серверов подписки', icon: 'refresh', attrs: `data-action="refreshSubscription" data-subscription-refresh="${escapeHtml(tag)}"` })}
       ${fallbackActive
         ? serverActionButton({ label: 'Остановить поиск доступного сервера', icon: 'stop', tone: 'danger', attrs: 'data-action="cancelSubscriptionFallback"' })
         : serverActionButton({ label: 'Найти доступный сервер', icon: 'search', attrs: `data-action="fallbackSubscription" data-subscription-fallback="${escapeHtml(tag)}"` })}
-      ${serverActionButton({ label: connecting ? 'Подключаю подписку' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting })}
+      ${serverActionButton({ label: activeMissing ? 'Выберите сервер' : connecting ? 'Подключаю подписку' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-route-all="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting || !canConnect })}
       ${serverActionButton({ label: 'Удалить подписку', icon: 'delete', tone: 'danger', attrs: `data-action="deleteSubscription" data-subscription-delete="${escapeHtml(tag)}"` })}
     </div>
     ${fallbackActive ? `<div class="subscription-fallback-progress">
@@ -196,6 +205,10 @@ function subscriptionPoolCard(pool) {
       </div>
       <button class="btn danger compact" data-action="cancelSubscriptionFallback">Остановить</button>
       <i aria-hidden="true"></i>
+    </div>` : ''}
+    ${activeMissing ? `<div class="subscription-missing-active">
+      <strong>Активный сервер больше не найден в подписке</strong>
+      <span>${escapeHtml(missingText ? `Был выбран ${missingText}. Выберите новый сервер вручную или запустите поиск доступного.` : 'Выберите новый сервер вручную или запустите поиск доступного.')}</span>
     </div>` : ''}
     ${candidates.length ? `<details class="subscription-candidates" data-details-key="subscription-candidates-${escapeHtml(tag)}">
       <summary>Серверы подписки · ${candidates.length}</summary>
@@ -210,6 +223,32 @@ function subscriptionPoolCard(pool) {
       <div class="subscription-candidate-list">${candidateRows || '<p class="muted">В подписке нет серверов.</p>'}</div>
     </details>` : ''}
   </article>`;
+}
+
+function subscriptionSchedulePanel() {
+  const schedule = state.subscriptionSchedule || {};
+  const enabled = schedule.enabled === true;
+  const time = schedule.time || '04:10';
+  const lastRunAt = schedule.lastRunAt ? new Date(schedule.lastRunAt) : null;
+  const lastResult = schedule.lastResult || null;
+  const lastText = lastRunAt && !Number.isNaN(lastRunAt.getTime())
+    ? `Последний запуск: ${lastRunAt.toLocaleString('ru-RU')}${lastResult ? ` · обновлено ${lastResult.updated || 0} из ${lastResult.total || 0}` : ''}`
+    : 'Автообновление еще не запускалось.';
+  return `<div class="subscription-schedule">
+    <label class="settings-check compact ${enabled ? 'active' : ''}">
+      <input id="subscriptionScheduleEnabled" type="checkbox" ${enabled ? 'checked' : ''} />
+      <span><strong>Обновлять ежедневно</strong><em>RuOpenRay обновит кандидатов подписок без перезапуска Xray.</em></span>
+    </label>
+    <div class="subscription-schedule-controls">
+    <div class="settings-field subscription-schedule-time">
+      <label for="subscriptionScheduleTime">Время</label>
+      <input id="subscriptionScheduleTime" type="time" value="${escapeHtml(time)}" />
+    </div>
+    <button class="btn warning" data-action="saveSubscriptionSchedule">Сохранить расписание</button>
+    <button class="btn secondary" data-action="refreshAllSubscriptions">Обновить все сейчас</button>
+    </div>
+    <small>${escapeHtml(lastText)}</small>
+  </div>`;
 }
 
 function serverAvailabilityPanel() {
@@ -424,6 +463,7 @@ function serversPanel() {
         <div><h2>Подписки и резерв</h2><span>Стабильный тег направления остается в правилах, а RuOpenRay переключает сервер внутри него.</span></div>
         <button class="btn secondary" data-import-dialog="subscription">Добавить подписку</button>
       </div>
+      ${subscriptionSchedulePanel()}
       <div class="server-list">
         ${state.subscriptionPools.length ? state.subscriptionPools.map(subscriptionPoolCard).join('') : '<p class="muted">Подписок пока нет. Добавьте subscription URL через кнопку добавления сервера.</p>'}
       </div>

@@ -127,6 +127,22 @@
   transform: translateY(-50%);
 }
 
+.settings-warning.compact.dashboard-proxy-warning {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.dashboard-proxy-warning span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-proxy-warning .btn {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
 .metric-stat {
   min-width: 154px;
   display: inline-flex;
@@ -227,6 +243,15 @@
 
   .dashboard-log-warning strong {
     white-space: normal;
+  }
+
+  .settings-warning.compact.dashboard-proxy-warning {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .dashboard-proxy-warning .btn {
+    justify-content: center;
   }
 
   .router-health-metrics {

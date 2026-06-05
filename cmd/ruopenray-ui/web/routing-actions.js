@@ -4,6 +4,10 @@ import {
   routeRuleConditionKey
 } from './routing-rule-helpers.js';
 import {
+  displayRouteDomainValues,
+  normalizeRouteDomainValues
+} from './routing-values.js';
+import {
   routePresetInstallSummaryFor,
   routePresetSequenceAt as findRoutePresetSequenceAt,
   routeRulePresetMatchesFor
@@ -129,6 +133,8 @@ export function createRoutingActions({
     }
     if (state.routeKind === 'port') {
       rule.port = values.join(',');
+    } else if (state.routeKind === 'domain') {
+      rule.domain = normalizeRouteDomainValues(values);
     } else {
       rule[state.routeKind] = values;
     }
@@ -294,6 +300,7 @@ export function createRoutingActions({
       return rule;
     }
     if (state.routeKind === 'port') rule.port = values.join(',');
+    else if (state.routeKind === 'domain') rule.domain = normalizeRouteDomainValues(values);
     else rule[state.routeKind] = values;
     return rule;
   }
@@ -318,7 +325,7 @@ export function createRoutingActions({
     state.routeRuleMode = 'single';
     state.routeName = routeRuleName(rule, info);
     state.routeKind = target.kind;
-    state.routeValue = target.values.join(', ');
+    state.routeValue = (target.kind === 'domain' ? displayRouteDomainValues(target.values) : target.values).join(', ');
     state.routeValueMultiline = target.values.length > 1;
     state.routeTargetType = rule.balancerTag ? 'balancer' : 'outbound';
     state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
@@ -1140,6 +1147,8 @@ export function createRoutingActions({
       const label = routeKinds[kind] || kind;
       const readableValues = kind === 'inboundTag'
         ? list.map((value) => readableRouteTag(value))
+        : kind === 'domain'
+        ? displayRouteDomainValues(list)
         : list;
       groups.push({ kind, label, values: readableValues, rawValues: list });
     };
@@ -1193,7 +1202,7 @@ export function createRoutingActions({
     if (!rule) return '';
     const info = describeRouteRule(rule);
     const groups = routeConditionGroups(rule || {});
-    const values = groups.flatMap((group) => group.rawValues.map((value) => ({ group, value })));
+    const values = groups.flatMap((group) => group.values.map((value) => ({ group, value })));
     const anchor = state.routeValuesDrawerAnchor && typeof state.routeValuesDrawerAnchor === 'object' ? state.routeValuesDrawerAnchor : null;
     const anchorStyle = anchor && Number.isFinite(Number(anchor.top)) && Number.isFinite(Number(anchor.left))
       ? ` style="--route-values-drawer-top:${Math.max(12, Number(anchor.top))}px;--route-values-drawer-left:${Math.max(12, Number(anchor.left))}px;--route-values-drawer-right:auto;--route-values-drawer-max-height:${Math.max(220, Number(anchor.maxHeight) || 420)}px"`

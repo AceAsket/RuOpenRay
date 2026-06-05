@@ -1,3 +1,5 @@
+import { isExplicitRouteDomainValue, looksLikePlainDomain, normalizeRouteDomainValue } from './routing-values.js';
+
 export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, routeStatsFor }) {
   function stripDslComment(line) {
     const trimmed = line.trim();
@@ -18,7 +20,7 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
     }
     if (['domain', 'ip', 'source', 'inboundTag'].includes(key)) {
       if (!Array.isArray(rule[key])) rule[key] = [];
-      rule[key].push(target);
+      rule[key].push(key === 'domain' ? normalizeRouteDomainValue(target) : target);
       return true;
     }
     return false;
@@ -57,6 +59,10 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
         for (const part of parts) {
           const condition = part.match(/^([A-Za-z][A-Za-z0-9_]*)\((.*)\)$/);
           if (!condition) {
+            if (parts.length === 1 && (looksLikePlainDomain(part) || isExplicitRouteDomainValue(part)) && addDslTarget(rule, 'domain', part)) {
+              targets += 1;
+              continue;
+            }
             warnings.push(`Строка ${lineNo}: не понял условие "${part}"`);
             continue;
           }

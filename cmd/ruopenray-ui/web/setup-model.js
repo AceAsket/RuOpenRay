@@ -16,6 +16,7 @@ export function createSetupModel({
     const transparent = firewallInfo();
     const dnsReadiness = lanDns.readiness || {};
     const proxyCount = proxyOutbounds().length;
+    const defaultRoute = transparentCatchAllRoute(state.config || {});
     const firewallMatchesSelection = typeof firewallReadyStatus === 'function'
       ? firewallReadyStatus(firewall)
       : Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix);
@@ -51,6 +52,15 @@ export function createSetupModel({
           : 'Мастер подготовит входящий поток transparent_ipv4, DNS-выход и базовые исключения.'
       },
       {
+        key: 'defaultRoute',
+        ok: Boolean(defaultRoute.target),
+        warn: proxyCount > 0,
+        title: 'Остальной трафик',
+        detail: defaultRoute.target
+          ? `Unmatched LAN-трафик пойдет в ${defaultRoute.target}.`
+          : 'Мастер добавит финальное правило transparent_ipv4 для трафика, который не совпал с правилами выше.'
+      },
+      {
         key: 'firewall',
         ok: firewallMatchesSelection,
         warn: Boolean(firewall.active),
@@ -73,7 +83,7 @@ export function createSetupModel({
             : 'Можно оставить OpenWrt DNS как есть или направить dnsmasq на Xray.'
       }
     ];
-    const required = items.filter((item) => ['core', 'geo', 'servers', 'transparent', 'firewall'].includes(item.key));
+    const required = items.filter((item) => ['core', 'geo', 'servers', 'transparent', 'defaultRoute', 'firewall'].includes(item.key));
     return {
       items,
       ready: required.every((item) => item.ok),
@@ -183,17 +193,49 @@ export function createSetupModel({
     if (!config.dns.hosts['dns.adguard-dns.com']) config.dns.hosts['dns.adguard-dns.com'] = ['94.140.14.14', '94.140.15.15'];
   }
 
+  function firstProxyOutboundTag(config) {
+    const systemTags = new Set(['direct', 'block', 'dns-out']);
+    const systemProtocols = new Set(['freedom', 'blackhole', 'dns']);
+    const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
+    for (const outbound of outbounds) {
+      const tag = String(outbound?.tag || '').trim();
+      const protocol = String(outbound?.protocol || '').trim();
+      if (!tag || systemTags.has(tag) || systemProtocols.has(protocol)) continue;
+      return tag;
+    }
+    return '';
+  }
+
+  function transparentCatchAllRoute(config) {
+    const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
+    for (const rule of rules) {
+      const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
+      if (!inbound.includes('transparent_ipv4')) continue;
+      const hasTargets = ['domain', 'ip', 'source'].some((key) => Array.isArray(rule?.[key]) && rule[key].length);
+      if (hasTargets) continue;
+      const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
+      const port = String(rule?.port || '').trim();
+      if (network && network !== 'tcp,udp' && network !== 'udp,tcp') continue;
+      if (port && port !== '0-65535') continue;
+      const target = String(rule?.balancerTag || rule?.outboundTag || '').trim();
+      if (target) return { target, rule };
+    }
+    return { target: '', rule: null };
+  }
+
   function isSetupManagedRule(rule, bootstrapDomains = []) {
     const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
     const ips = Array.isArray(rule?.ip) ? rule.ip : [];
     const domains = Array.isArray(rule?.domain) ? rule.domain : [];
     const sources = Array.isArray(rule?.source) ? rule.source : [];
+    const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
+    const port = String(rule?.port || '').trim();
     const transparentCatchAll = inbound.includes('transparent_ipv4') &&
       !ips.length &&
       !domains.length &&
       !sources.length &&
-      !rule?.network &&
-      !rule?.port;
+      (!network || network === 'tcp,udp' || network === 'udp,tcp') &&
+      (!port || port === '0-65535');
     if (transparentCatchAll) return true;
     if (isPrivateBypassRule(rule, ips, domains, sources, inbound)) return true;
     if (rule?.outboundTag === 'dns-out' && inbound.includes('ruopenray_dns_in')) return true;
@@ -207,12 +249,16 @@ export function createSetupModel({
     config.routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
     const rules = Array.isArray(config.routing.rules) ? config.routing.rules : [];
     const bootstrapDomains = serverBootstrapDomains(config);
+    const defaultProxyTag = firstProxyOutboundTag(config);
     const managedRules = [
       { type: 'field', outboundTag: 'direct', inboundTag: ['transparent_ipv4'], ip: privateBypassCidrs() },
       ...(bootstrapDomains.length ? [{ type: 'field', outboundTag: 'direct', domain: bootstrapDomains }] : []),
       { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
       { type: 'field', outboundTag: 'dns-out', port: '53' }
     ];
+    const catchAllRules = defaultProxyTag
+      ? [{ type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: defaultProxyTag, network: 'tcp,udp' }]
+      : [];
     const seen = new Set();
     const keptRules = [];
     for (const rule of rules) {
@@ -222,7 +268,7 @@ export function createSetupModel({
       seen.add(signature);
       keptRules.push(rule);
     }
-    config.routing.rules = [...managedRules, ...keptRules];
+    config.routing.rules = [...managedRules, ...keptRules, ...catchAllRules];
   }
 
   function prepareSetupDraft({ message = true } = {}) {
@@ -298,6 +344,8 @@ export function createSetupModel({
     hostnameFromUrl,
     serverBootstrapDomains,
     ensureDnsBootstrapHosts,
+    firstProxyOutboundTag,
+    transparentCatchAllRoute,
     isSetupManagedRule,
     normalizeSetupRules,
     prepareSetupDraft

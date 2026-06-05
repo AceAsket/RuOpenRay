@@ -83,6 +83,8 @@ const busyLabels = {
   fallbackSubscription: 'Ищу доступный сервер подписки',
   checkSubscriptionCandidate: 'Проверяю сервер подписки',
   refreshSubscription: 'Обновляю подписку',
+  refreshAllSubscriptions: 'Обновляю подписки',
+  saveSubscriptionSchedule: 'Сохраняю расписание подписок',
   deleteSubscription: 'Удаляю подписку',
   scanSni: 'Ищу SNI',
   saveProfile: 'Сохраняю профиль',

@@ -25,7 +25,7 @@ func (s *serverState) writeSubscriptionStore(store rsubscription.Store) error {
 
 func (s *serverState) subscriptionReport() map[string]any {
 	store := s.readSubscriptionStore()
-	return map[string]any{"ok": true, "pools": rsubscription.PublicPools(store)}
+	return map[string]any{"ok": true, "pools": rsubscription.PublicPools(store), "schedule": s.subscriptionSchedule()}
 }
 
 func (s *serverState) saveSubscriptionPool(w http.ResponseWriter, r *http.Request) {
@@ -47,11 +47,12 @@ func (s *serverState) saveSubscriptionPool(w http.ResponseWriter, r *http.Reques
 	}
 	active := rsubscription.NormalizeActive(number(payload["active"], 0), len(candidates))
 	pool := rsubscription.Pool{
-		Tag:        tag,
-		URL:        strings.TrimSpace(fmt.Sprint(payload["url"])),
-		Active:     active,
-		UpdatedAt:  time.Now().Format(time.RFC3339),
-		Candidates: candidates,
+		Tag:           tag,
+		URL:           strings.TrimSpace(fmt.Sprint(payload["url"])),
+		Active:        active,
+		ActiveMissing: false,
+		UpdatedAt:     time.Now().Format(time.RFC3339),
+		Candidates:    candidates,
 	}
 	store := rsubscription.UpsertPool(s.readSubscriptionStore(), pool)
 	if err := s.writeSubscriptionStore(store); err != nil {
@@ -113,6 +114,8 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 	}
 
 	pool.Active = selected
+	pool.ActiveMissing = false
+	pool.MissingCandidate = nil
 	pool.UpdatedAt = time.Now().Format(time.RFC3339)
 	store.Pools[poolIndex] = pool
 	if err := s.writeSubscriptionStore(store); err != nil {
@@ -351,19 +354,60 @@ func sameSubscriptionCandidate(a map[string]any, b map[string]any) bool {
 	return fmt.Sprint(left["address"]) == fmt.Sprint(right["address"]) && fmt.Sprint(left["port"]) == fmt.Sprint(right["port"])
 }
 
-func preserveSubscriptionActive(previous rsubscription.Pool, candidates []map[string]any) int {
+type subscriptionActivePreserveResult struct {
+	active           int
+	preserved        bool
+	missingCandidate map[string]any
+}
+
+func preserveSubscriptionActive(previous rsubscription.Pool, candidates []map[string]any) subscriptionActivePreserveResult {
 	if len(candidates) == 0 {
-		return 0
+		return subscriptionActivePreserveResult{active: -1}
 	}
 	if previous.Active >= 0 && previous.Active < len(previous.Candidates) {
 		active := previous.Candidates[previous.Active]
 		for index, candidate := range candidates {
 			if sameSubscriptionCandidate(active, candidate) {
-				return index
+				return subscriptionActivePreserveResult{active: index, preserved: true}
 			}
 		}
+		return subscriptionActivePreserveResult{active: -1, missingCandidate: active}
 	}
-	return rsubscription.NormalizeActive(previous.Active, len(candidates))
+	return subscriptionActivePreserveResult{active: rsubscription.NormalizeActive(previous.Active, len(candidates)), preserved: true}
+}
+
+func (s *serverState) refreshSubscriptionPoolInStore(store rsubscription.Store, poolIndex int, overrideURL string) (rsubscription.Store, map[string]any) {
+	if poolIndex < 0 || poolIndex >= len(store.Pools) {
+		return store, map[string]any{"ok": false, "status": 404, "error": "Subscription pool не найден"}
+	}
+	pool := store.Pools[poolIndex]
+	rawURL := strings.TrimSpace(firstNonEmpty(overrideURL, pool.URL))
+	if rawURL == "" || rawURL == "<nil>" {
+		return store, map[string]any{"ok": false, "status": 400, "tag": pool.Tag, "error": "У подписки нет URL для обновления"}
+	}
+	candidates, links, err := subscriptionOutboundsFromURL(rawURL)
+	if err != nil {
+		return store, map[string]any{"ok": false, "status": 500, "tag": pool.Tag, "error": err.Error()}
+	}
+	if len(candidates) == 0 {
+		return store, map[string]any{"ok": false, "status": 400, "tag": pool.Tag, "error": "В подписке не найдены поддерживаемые серверы", "links": links}
+	}
+	before := len(pool.Candidates)
+	previousActive := store.Pools[poolIndex]
+	preserve := preserveSubscriptionActive(previousActive, candidates)
+	pool.URL = rawURL
+	pool.Candidates = candidates
+	pool.Active = preserve.active
+	pool.ActiveMissing = !preserve.preserved && preserve.missingCandidate != nil
+	pool.MissingCandidate = preserve.missingCandidate
+	pool.UpdatedAt = time.Now().Format(time.RFC3339)
+	store.Pools[poolIndex] = pool
+	result := map[string]any{"ok": true, "tag": pool.Tag, "before": before, "links": links, "count": len(candidates), "pool": rsubscription.PublicPool(pool), "activePreserved": preserve.preserved}
+	if pool.ActiveMissing {
+		result["activeMissing"] = true
+		result["missingCandidate"] = rproxy.OutboundSummary(preserve.missingCandidate)
+	}
+	return store, result
 }
 
 func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Request) {
@@ -371,36 +415,47 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
-	if poolIndex < 0 {
-		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
+	overrideURL := ""
+	if value, ok := payload["url"]; ok {
+		overrideURL = strings.TrimSpace(fmt.Sprint(value))
+	}
+	store, result := s.refreshSubscriptionPoolInStore(store, poolIndex, overrideURL)
+	if result["ok"] != true {
+		writeJSON(w, number(result["status"], 500), result)
 		return
 	}
-	pool := store.Pools[poolIndex]
-	rawURL := strings.TrimSpace(firstNonEmpty(fmt.Sprint(payload["url"]), pool.URL))
-	if rawURL == "" || rawURL == "<nil>" {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": "У подписки нет URL для обновления"})
-		return
-	}
-	candidates, links, err := subscriptionOutboundsFromURL(rawURL)
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
-		return
-	}
-	if len(candidates) == 0 {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": "В подписке не найдены поддерживаемые серверы", "links": links})
-		return
-	}
-	before := len(pool.Candidates)
-	pool.URL = rawURL
-	pool.Candidates = candidates
-	pool.Active = preserveSubscriptionActive(store.Pools[poolIndex], candidates)
-	pool.UpdatedAt = time.Now().Format(time.RFC3339)
-	store.Pools[poolIndex] = pool
 	if err := s.writeSubscriptionStore(store); err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "before": before, "links": links, "count": len(candidates), "pool": rsubscription.PublicPool(pool)})
+	writeJSON(w, 200, result)
+}
+
+func (s *serverState) refreshAllSubscriptions() map[string]any {
+	store := s.readSubscriptionStore()
+	results := []map[string]any{}
+	updated := 0
+	failed := 0
+	for index := range store.Pools {
+		nextStore, result := s.refreshSubscriptionPoolInStore(store, index, "")
+		results = append(results, result)
+		if result["ok"] == true {
+			store = nextStore
+			updated++
+			continue
+		}
+		failed++
+	}
+	if updated > 0 {
+		if err := s.writeSubscriptionStore(store); err != nil {
+			return map[string]any{"ok": false, "error": err.Error(), "updated": updated, "failed": failed, "total": len(results), "results": results, "pools": rsubscription.PublicPools(store)}
+		}
+	}
+	return map[string]any{"ok": failed == 0, "updated": updated, "failed": failed, "total": len(results), "results": results, "pools": rsubscription.PublicPools(store)}
+}
+
+func (s *serverState) refreshAllSubscriptionsHTTP(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.refreshAllSubscriptionsAndRecord())
 }
 
 func (s *serverState) setSubscriptionFallbackProgress(progress map[string]any) {
@@ -507,6 +562,8 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	pool.Active = selected
+	pool.ActiveMissing = false
+	pool.MissingCandidate = nil
 	pool.UpdatedAt = time.Now().Format(time.RFC3339)
 	store.Pools[poolIndex] = pool
 	_ = s.writeSubscriptionStore(store)

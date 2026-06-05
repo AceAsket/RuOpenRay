@@ -188,7 +188,7 @@ export function createServerModel({
         kind: pool ? 'subscription' : 'server',
         title: tag,
         detail: pool
-          ? `${pool.count || 0} кандидатов · активен ${pool.activeCandidate?.tag || 'сервер не выбран'}`
+          ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${pool.activeCandidate.tag}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
           : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
       });
     });

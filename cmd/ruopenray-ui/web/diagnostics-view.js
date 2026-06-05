@@ -52,9 +52,12 @@ export function createDiagnosticsView(deps) {
           <h2>Диагностика</h2>
           <p>SNI-поиск, логи в реальном времени, проверка цепочки и мониторинг доменов.</p>
         </div>
-        <div class="route-score">
-          <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
-          <span>последняя проверка серверов</span>
+        <div class="route-hero-actions">
+          <div class="route-score">
+            <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
+            <span>последняя проверка серверов</span>
+          </div>
+          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать пакет</a>
         </div>
       </section>
 

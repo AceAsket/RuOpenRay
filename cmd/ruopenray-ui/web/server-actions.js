@@ -77,9 +77,10 @@ export function createServerActions({
   }
 
   async function persistPoolActiveCandidateMeta(result, tag) {
-    if (!result?.ok || !result.pool?.activeCandidate) return 0;
-    return persistInferredServerMeta([result.pool.activeCandidate], {
-      tagMap: { [result.pool.activeCandidate.tag]: tag }
+    const active = result?.pool?.activeCandidate || {};
+    if (!result?.ok || !active?.tag) return 0;
+    return persistInferredServerMeta([active], {
+      tagMap: { [active.tag]: tag }
     });
   }
 
@@ -450,9 +451,33 @@ export function createServerActions({
       body: JSON.stringify({ tag })
     });
     state.message = result.ok
-      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}`
+      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}${result.activeMissing ? ', активный сервер исчез из подписки' : ''}`
       : `Подписка ${tag}: ${result.error || 'не удалось обновить список серверов'}`;
     await persistPoolActiveCandidateMeta(result, tag);
+    await refresh();
+  }
+
+  async function refreshAllSubscriptions() {
+    const result = await request('/api/subscriptions/refresh-all', { method: 'POST' });
+    state.subscriptionSchedule = result.schedule || state.subscriptionSchedule;
+    const missing = Array.isArray(result.results) ? result.results.filter((item) => item?.activeMissing).length : 0;
+    state.message = result.ok
+      ? `Подписки обновлены: ${result.updated || 0} из ${result.total || 0}${missing ? `, активных исчезло: ${missing}` : ''}`
+      : `Подписки обновлены с ошибками: ${result.updated || 0} из ${result.total || 0}, ошибок ${result.failed || 0}${missing ? `, активных исчезло: ${missing}` : ''}`;
+    await refresh();
+  }
+
+  async function saveSubscriptionSchedule() {
+    const enabled = Boolean(document.querySelector('#subscriptionScheduleEnabled')?.checked);
+    const time = document.querySelector('#subscriptionScheduleTime')?.value || '04:10';
+    const result = await request('/api/subscriptions/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ enabled, time })
+    });
+    state.subscriptionSchedule = result.schedule || state.subscriptionSchedule;
+    state.message = result.ok
+      ? `Расписание подписок сохранено: ${enabled ? `ежедневно в ${state.subscriptionSchedule?.time || time}` : 'выключено'}`
+      : `Не удалось сохранить расписание подписок: ${result.stderr || result.error || 'ошибка cron'}`;
     await refresh();
   }
 
@@ -503,6 +528,8 @@ export function createServerActions({
     selectSubscriptionCandidate,
     checkSubscriptionCandidate,
     refreshSubscriptionPool,
+    refreshAllSubscriptions,
+    saveSubscriptionSchedule,
     exportSubscriptionCandidates,
     deleteSubscriptionPool
   };

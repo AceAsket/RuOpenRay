@@ -294,6 +294,9 @@ export function createRuntimeController({
       state.firewallStatus = firewallStatus;
       hydrateFirewallDraftFromStatus(state, firewallStatus);
       state.subscriptionPools = Array.isArray(subscriptions?.pools) ? subscriptions.pools : [];
+      if (subscriptions?.schedule && typeof subscriptions.schedule === 'object') {
+        state.subscriptionSchedule = subscriptions.schedule;
+      }
       if (Array.isArray(disabledRoutes?.rules)) {
         state.disabledRouteRules = disabledRoutes.rules.filter((item) => item && item.rule);
       }

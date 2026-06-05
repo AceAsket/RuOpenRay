@@ -1,5 +1,6 @@
 import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
 import { isFragmentOutboundTag } from './outbound-tags.js';
+import { displayRouteDomainValues } from './routing-values.js';
 
 const privateBypassValues = new Set([
   'geoip:private',
@@ -72,7 +73,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const pool = subscriptionPoolByTag(tag);
     const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
     const flag = flagForCountry(location.code);
-    const suffix = pool ? ` · подписка${pool.activeCandidate?.tag ? `: ${pool.activeCandidate.tag}` : ''}` : '';
+    const suffix = pool
+      ? ` · подписка${pool.activeCandidate?.tag ? `: ${pool.activeCandidate.tag}` : pool.activeMissing ? ': активный удален' : ''}`
+      : '';
     return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}${suffix}`;
   }
   
@@ -292,8 +295,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function describeRouteRule(rule) {
     const target = routeTarget(rule || {});
-    const values = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
-    const fullValues = target.values.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
+    const displayValues = target.kind === 'domain' ? displayRouteDomainValues(target.values) : target.values;
+    const values = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
+    const fullValues = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
     const network = rule.network ? ` · ${rule.network}` : '';
     const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
     const managedDetail = managedRouteDetail(rule || {});

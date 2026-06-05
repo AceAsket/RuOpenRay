@@ -47,6 +47,44 @@
   grid-column: 1 / -1;
 }
 
+.subscription-schedule {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, auto);
+  gap: 12px;
+  align-items: center;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(49, 210, 189, 0.08);
+}
+
+.subscription-schedule .settings-check {
+  min-height: 62px;
+}
+
+.subscription-schedule-controls {
+  display: grid;
+  grid-template-columns: minmax(128px, 150px) auto auto;
+  gap: 10px;
+  align-items: end;
+  justify-content: end;
+}
+
+.subscription-schedule .settings-field {
+  min-width: 0;
+}
+
+.subscription-schedule-controls .btn,
+.subscription-schedule-time input {
+  min-height: 42px;
+}
+
+.subscription-schedule > small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
 .subscription-fallback-progress {
   grid-column: 1 / -1;
   display: grid;
@@ -92,6 +130,27 @@
   background: linear-gradient(90deg, var(--accent), var(--amber));
   animation: progress-slide 1.05s ease-in-out infinite;
   content: "";
+}
+
+.subscription-missing-active {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(242, 189, 82, 0.42);
+  border-radius: 8px;
+  background: rgba(242, 189, 82, 0.1);
+}
+
+.subscription-missing-active strong {
+  color: var(--amber);
+  font-size: 13px;
+}
+
+.subscription-missing-active span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .subscription-candidates {
@@ -243,6 +302,15 @@
 }
 
 @media (max-width: 860px) {
+  .subscription-schedule {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .subscription-schedule-controls {
+    justify-content: stretch;
+  }
+
   .subscription-candidate-tools,
   .subscription-candidate {
     grid-template-columns: 1fr;
@@ -251,6 +319,12 @@
   .subscription-candidate-pick,
   .subscription-candidate-flag {
     justify-self: start;
+  }
+}
+
+@media (max-width: 620px) {
+  .subscription-schedule-controls {
+    grid-template-columns: 1fr;
   }
 }
 

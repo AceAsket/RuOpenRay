@@ -10,11 +10,13 @@ import (
 )
 
 type Pool struct {
-	Tag        string           `json:"tag"`
-	URL        string           `json:"url"`
-	Active     int              `json:"active"`
-	UpdatedAt  string           `json:"updatedAt"`
-	Candidates []map[string]any `json:"candidates"`
+	Tag              string           `json:"tag"`
+	URL              string           `json:"url"`
+	Active           int              `json:"active"`
+	ActiveMissing    bool             `json:"activeMissing,omitempty"`
+	MissingCandidate map[string]any   `json:"missingCandidate,omitempty"`
+	UpdatedAt        string           `json:"updatedAt"`
+	Candidates       []map[string]any `json:"candidates"`
 }
 
 type Store struct {
@@ -67,9 +69,14 @@ func PublicPool(pool Pool) map[string]any {
 	if pool.Active >= 0 && pool.Active < len(pool.Candidates) {
 		active = proxy.OutboundSummary(pool.Candidates[pool.Active])
 	}
+	missing := map[string]any{}
+	if pool.ActiveMissing && pool.MissingCandidate != nil {
+		missing = proxy.OutboundSummary(pool.MissingCandidate)
+	}
 	return map[string]any{
 		"tag": pool.Tag, "url": MaskURL(pool.URL), "active": pool.Active, "updatedAt": pool.UpdatedAt,
-		"count": len(pool.Candidates), "activeCandidate": active, "candidates": candidates,
+		"count": len(pool.Candidates), "activeCandidate": active, "activeMissing": pool.ActiveMissing,
+		"missingCandidate": missing, "candidates": candidates,
 	}
 }
 

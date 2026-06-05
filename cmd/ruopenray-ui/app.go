@@ -30,6 +30,12 @@ func main() {
 		fmt.Println(string(body))
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--subscriptions-update-scheduled" {
+		payload := state.runScheduledSubscriptionUpdate()
+		body, _ := json.MarshalIndent(payload, "", "  ")
+		fmt.Println(string(body))
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] != "serve" {
 		os.Exit(state.runCLI(os.Args[1:]))
 	}

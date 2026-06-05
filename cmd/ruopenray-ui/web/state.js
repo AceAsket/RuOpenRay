@@ -134,6 +134,7 @@ export function createInitialState() {
   observatoryInterval: '',
   serversView: 'list',
   subscriptionPools: [],
+  subscriptionSchedule: { enabled: false, time: '04:10', lastRunAt: '', lastResult: null },
   subscriptionCandidateSearch: {},
   subscriptionCandidateChecks: {},
   subscriptionCandidateChecking: '',

@@ -57,6 +57,34 @@ func TestPublicPoolActiveCandidate(t *testing.T) {
 	}
 }
 
+func TestPublicPoolMissingActiveCandidate(t *testing.T) {
+	pool := Pool{
+		Tag:           "proxy",
+		Active:        -1,
+		ActiveMissing: true,
+		MissingCandidate: map[string]any{
+			"tag":      "gone",
+			"protocol": "vless",
+			"settings": map[string]any{
+				"vnext": []any{map[string]any{"address": "gone.example", "port": 443}},
+			},
+		},
+		Candidates: []map[string]any{{"tag": "new", "protocol": "vless"}},
+	}
+	public := PublicPool(pool)
+	if public["activeMissing"] != true {
+		t.Fatalf("activeMissing = %v, want true", public["activeMissing"])
+	}
+	active, ok := public["activeCandidate"].(map[string]any)
+	if !ok || len(active) != 0 {
+		t.Fatalf("active candidate should be empty when missing: %#v", public["activeCandidate"])
+	}
+	missing, ok := public["missingCandidate"].(map[string]any)
+	if !ok || missing["tag"] != "gone" || missing["address"] != "gone.example" {
+		t.Fatalf("unexpected missing candidate: %#v", public["missingCandidate"])
+	}
+}
+
 func TestPublicPoolMasksURLPassword(t *testing.T) {
 	pool := Pool{Tag: "private", URL: "https://user:secret@example.com/sub"}
 	public := PublicPool(pool)

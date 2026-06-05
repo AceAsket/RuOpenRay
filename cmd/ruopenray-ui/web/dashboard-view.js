@@ -764,6 +764,30 @@ function operationProgressView() {
   return '';
 }
 
+function proxyFailureWarning(activeTag) {
+  if (!activeTag) return '';
+  const check = checkForTag(activeTag);
+  if (!check || check.ok !== false || check.skipped) return '';
+  const checkedAt = check.checkedAt ? new Date(check.checkedAt) : null;
+  const checkedText = checkedAt && !Number.isNaN(checkedAt.getTime())
+    ? checkedAt.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : 'последняя проверка';
+  const status = check.httpOk === false
+    ? 'HTTP через proxy не прошел'
+    : check.endpointOk === false
+      ? 'порт proxy-сервера не отвечает'
+      : 'proxy не отвечает';
+  const detail = String(check.error || checkLabel(check) || status).trim();
+  return `
+    <div class="settings-warning compact dashboard-proxy-warning" role="status">
+      <strong>Proxy не работает</strong>
+      <span>${escapeHtml(`${activeTag}: ${status}. ${detail} · ${checkedText}. Проверьте сервер или настройте группу с резервным fallback.`)}</span>
+      <button class="btn secondary compact" data-server-check="${escapeHtml(activeTag)}" ${isCheckingServer(activeTag) ? 'disabled' : ''}>Проверить</button>
+      <button class="btn secondary compact" data-action="openBalancerView">Балансировка</button>
+    </div>
+  `;
+}
+
 function dashboardServerSwitch(servers, options = {}) {
   const active = activeProxyTag();
   const summary = proxyDirectionSummary();
@@ -802,6 +826,7 @@ function dashboardServerSwitch(servers, options = {}) {
         <button class="btn secondary" data-import-dialog="choose">Добавить</button>
       </div>
       ${dashboardProxyDirectionCards(summary)}
+      ${proxyFailureWarning(active)}
       <div class="dashboard-server-switch">
         ${servers.slice(0, 5).map((outbound) => {
           const tag = outbound?.tag || '';
