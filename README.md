@@ -8,6 +8,25 @@ RuOpenRay UI работает как отдельный сервис через 
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 
+## Оглавление
+
+- [Скриншоты](#скриншоты)
+- [Быстрая установка](#быстрая-установка)
+- [Что делает установщик](#что-делает-установщик)
+- [Возможности](#возможности)
+- [Сценарии маршрутизации](#сценарии-маршрутизации)
+- [Перехват трафика и nftables](#перехват-трафика-и-nftables)
+- [Откат перехвата](#откат-перехвата)
+- [Полезные команды](#полезные-команды)
+- [Обновление](#обновление)
+- [Удаление](#удаление)
+- [Опции установки](#опции-установки)
+- [Логи и место на роутере](#логи-и-место-на-роутере)
+- [Слабые роутеры](#слабые-роутеры)
+- [Локальный запуск](#локальный-запуск)
+- [Проверки](#проверки)
+- [Структура проекта](#структура-проекта)
+
 ## Скриншоты
 
 Скриншоты сделаны на локальном демо-конфиге: без реальных маршрутов, подписок и proxy-адресов. Нажмите на картинку, чтобы открыть ее в полном размере.
@@ -39,7 +58,7 @@ RuOpenRay UI работает как отдельный сервис через 
     </td>
     <td width="50%">
       <strong>Диагностика</strong><br>
-      <sub>Live-Xray, проверка цепочки, DPI-пробы, SNI и диагностический пакет.</sub><br><br>
+      <sub>Live-Xray, проверка цепочки, DPI-пробы, SNI и архив диагностики.</sub><br><br>
       <a href="docs/screenshots/diagnostics.png">
         <img src="docs/screenshots/diagnostics.png" alt="Диагностика RuOpenRay UI">
       </a>
@@ -122,7 +141,7 @@ RUOPENRAY_INSTALL_XRAY=1 sh -c "$(wget -O - https://raw.githubusercontent.com/Ac
 - настройка Reality/VLESS, fingerprint Xray и параметры фрагментации рукопожатия с proxy;
 - DPI-проверки: direct/proxy сравнение, redirect-анализ, UDP/QUIC 443 и fat probes;
 - Live-Xray, проверка цепочки, SNI-карта, traffic test и мониторинг доменов;
-- диагностический пакет для передачи в поддержку;
+- архив диагностики для передачи в поддержку;
 - обновление Xray core, geo-файлов и самой панели;
 - профили конфигураций: скачать, скачать обезличенно, редактировать, активировать и удалить;
 - обслуживание логов с ротацией без перезапуска Xray.
@@ -145,6 +164,53 @@ https://raw.githubusercontent.com/AceAsket/RuOpenRay-scenarios/main/scenarios.js
 
 Перед применением RuOpenRay проверяет структуру каталога, количество правил, SVG-иконки и shape правил Xray.
 
+## Перехват трафика и nftables
+
+RuOpenRay включает transparent proxy отдельным набором правил nftables, не переписывая всю конфигурацию firewall4. Активные правила живут в таблице `inet ruopenray`, а постоянный черновик хранится в `/etc/ruopenray-ui/firewall.nft`. При применении старый файл `/etc/nftables.d/ruopenray.nft` удаляется, чтобы правила не дублировались.
+
+В режиме `TPROXY` RuOpenRay:
+
+- принимает LAN-трафик на inbound Xray `transparent_ipv4`, обычно порт `52345`;
+- добавляет nft-правила `prerouting` для выбранного LAN-интерфейса, клиентов и портов;
+- ставит `meta mark 1` и policy routing `fwmark 1/1 -> table 100`;
+- добавляет маршрут `local 0.0.0.0/0 dev lo table 100`, чтобы помеченный трафик попадал в Xray;
+- сохраняет hotplug-скрипты `/etc/hotplug.d/iface/90-ruopenray-tproxy` и `/etc/hotplug.d/firewall/90-ruopenray-tproxy`, чтобы правила переживали reload firewall и события интерфейсов.
+
+В режиме `REDIRECT` используется nat redirect на порт transparent inbound. Это проще, но работает только для TCP; UDP и QUIC в таком режиме либо не перехватываются, либо блокируются защитными правилами, если это включено.
+
+Базовые локальные сети и служебные адреса исключаются из перехвата, чтобы не ломать доступ к роутеру и домашней сети. DNS-перехват, блокировка QUIC, режимы `Direct мимо Xray`, `Только proxy` и защита от утечек добавляют дополнительные правила и, где нужно, `dnsmasq` `nftset`/`address` записи.
+
+Применение firewall не должно перезапускать Xray. Но сам Xray-конфиг должен уже содержать подходящий transparent inbound и маршруты, иначе nftables будет отправлять трафик в порт, который никто не слушает.
+
+## Откат перехвата
+
+Самый безопасный способ вернуть сеть: в панели открыть `Перехват` и нажать `Отключить`. Это удаляет таблицу `inet ruopenray`, policy routing, hotplug-скрипты, DNS/nftset-следы защиты и перезагружает firewall/dnsmasq там, где это нужно.
+
+Если панель недоступна, можно выполнить аварийный откат по SSH:
+
+```sh
+rm -f /etc/ruopenray-ui/firewall.nft
+rm -f /etc/nftables.d/ruopenray.nft
+rm -f /etc/hotplug.d/iface/90-ruopenray-tproxy
+rm -f /etc/hotplug.d/firewall/90-ruopenray-tproxy
+nft delete table inet ruopenray 2>/dev/null || true
+ip rule del fwmark 1/1 table 100 2>/dev/null || true
+ip rule del fwmark 1 table 100 2>/dev/null || true
+ip route flush table 100 2>/dev/null || true
+/etc/init.d/firewall reload 2>/dev/null || true
+```
+
+Если LAN DNS был направлен в Xray, верните `dnsmasq` к системному resolver:
+
+```sh
+uci -q delete dhcp.@dnsmasq[0].noresolv
+uci -q delete dhcp.@dnsmasq[0].server
+uci commit dhcp
+/etc/init.d/dnsmasq restart
+```
+
+После аварийного отката Xray можно оставить запущенным: без nft/policy routing LAN-трафик уже не будет принудительно уходить в transparent inbound.
+
 ## Полезные команды
 
 ```sh
@@ -165,7 +231,7 @@ uci commit ruopenray-ui
 /etc/init.d/ruopenray-ui restart
 ```
 
-Скачать диагностический пакет можно из интерфейса: `Диагностика -> Скачать пакет`.
+Скачать архив диагностики можно из интерфейса: `Диагностика -> Скачать диагностику`.
 
 ## Обновление
 
@@ -184,6 +250,8 @@ sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scr
 Обновить Xray core можно из панели в разделе `Настройки -> Обновление`.
 
 ## Удаление
+
+Перед удалением панели лучше сначала отключить перехват в интерфейсе или выполнить команды из раздела `Откат перехвата`. Иначе при ручном удалении только бинарника можно оставить на роутере активные nft/policy routing правила.
 
 Удалить только панель:
 

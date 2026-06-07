@@ -57,7 +57,7 @@ export function createDiagnosticsView(deps) {
             <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
             <span>последняя проверка серверов</span>
           </div>
-          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать пакет</a>
+          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать диагностику</a>
         </div>
       </section>
 
