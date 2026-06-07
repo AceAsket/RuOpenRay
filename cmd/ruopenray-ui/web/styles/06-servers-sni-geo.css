@@ -64,8 +64,8 @@
 }
 
 .subscription-schedule-controls {
-  display: grid;
-  grid-template-columns: minmax(128px, 150px) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: end;
   justify-content: end;
@@ -78,6 +78,14 @@
 .subscription-schedule-controls .btn,
 .subscription-schedule-time input {
   min-height: 42px;
+}
+
+.subscription-schedule-time {
+  flex: 0 0 150px;
+}
+
+.subscription-schedule-controls .btn {
+  flex: 0 0 auto;
 }
 
 .subscription-schedule > small {
@@ -311,6 +319,11 @@
     justify-content: stretch;
   }
 
+  .subscription-schedule-time,
+  .subscription-schedule-controls .btn {
+    flex: 1 1 180px;
+  }
+
   .subscription-candidate-tools,
   .subscription-candidate {
     grid-template-columns: 1fr;
@@ -324,7 +337,13 @@
 
 @media (max-width: 620px) {
   .subscription-schedule-controls {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .subscription-schedule-time,
+  .subscription-schedule-controls .btn {
+    width: 100%;
   }
 }
 
@@ -753,10 +772,21 @@
   font-size: 16px;
 }
 
+.server-edit-section-note {
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .server-edit-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.server-edit-fields .muted-field {
+  opacity: 0.58;
 }
 
 .server-json-details {

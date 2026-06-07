@@ -410,6 +410,53 @@ func (s *serverState) refreshSubscriptionPoolInStore(store rsubscription.Store, 
 	return store, result
 }
 
+func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store, poolIndexes []int, restart bool) map[string]any {
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	outbounds := asArray(cfg["outbounds"])
+	updated := 0
+	skipped := 0
+	for _, poolIndex := range poolIndexes {
+		if poolIndex < 0 || poolIndex >= len(store.Pools) {
+			skipped++
+			continue
+		}
+		pool := store.Pools[poolIndex]
+		if pool.Tag == "" || pool.ActiveMissing || pool.Active < 0 || pool.Active >= len(pool.Candidates) {
+			skipped++
+			continue
+		}
+		outbounds = rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[pool.Active], pool.Tag, activeOutboundDialerProxy(outbounds, pool.Tag)))
+		updated++
+	}
+	if updated == 0 {
+		return map[string]any{"ok": true, "updated": 0, "skipped": skipped, "restart": map[string]any{"ok": true, "stdout": "Xray не перезапускался"}}
+	}
+	cfg["outbounds"] = outbounds
+	backup, _ := s.backupActive("subscription-refresh")
+	if err := s.writeActiveConfig(cfg); err != nil {
+		return map[string]any{"ok": false, "updated": updated, "skipped": skipped, "backup": backup, "error": err.Error()}
+	}
+	restartResult := map[string]any{"ok": true, "stdout": "Xray не перезапускался"}
+	if restart {
+		restartResult = s.serviceAction("restart")
+	}
+	return map[string]any{"ok": restartResult["ok"], "updated": updated, "skipped": skipped, "backup": backup, "restart": restartResult}
+}
+
+func activeOutboundDialerProxy(outbounds []any, tag string) string {
+	for _, item := range outbounds {
+		outbound, ok := item.(map[string]any)
+		if !ok || fmt.Sprint(outbound["tag"]) != tag {
+			continue
+		}
+		return fragmentDialerProxy(outbound)
+	}
+	return ""
+}
+
 func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Request) {
 	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
@@ -428,12 +475,21 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	if _, ok := payload["applyActive"]; !ok || boolPayload(payload, "applyActive", false) {
+		apply := s.applySubscriptionActiveOutbounds(store, []int{poolIndex}, boolPayload(payload, "restart", true))
+		result["activeApply"] = apply
+		if apply["ok"] == false {
+			writeJSON(w, 500, result)
+			return
+		}
+	}
 	writeJSON(w, 200, result)
 }
 
-func (s *serverState) refreshAllSubscriptions() map[string]any {
+func (s *serverState) refreshAllSubscriptions(applyActive bool, restart bool) map[string]any {
 	store := s.readSubscriptionStore()
 	results := []map[string]any{}
+	updatedIndexes := []int{}
 	updated := 0
 	failed := 0
 	for index := range store.Pools {
@@ -441,6 +497,7 @@ func (s *serverState) refreshAllSubscriptions() map[string]any {
 		results = append(results, result)
 		if result["ok"] == true {
 			store = nextStore
+			updatedIndexes = append(updatedIndexes, index)
 			updated++
 			continue
 		}
@@ -451,11 +508,25 @@ func (s *serverState) refreshAllSubscriptions() map[string]any {
 			return map[string]any{"ok": false, "error": err.Error(), "updated": updated, "failed": failed, "total": len(results), "results": results, "pools": rsubscription.PublicPools(store)}
 		}
 	}
-	return map[string]any{"ok": failed == 0, "updated": updated, "failed": failed, "total": len(results), "results": results, "pools": rsubscription.PublicPools(store)}
+	result := map[string]any{"ok": failed == 0, "updated": updated, "failed": failed, "total": len(results), "results": results, "pools": rsubscription.PublicPools(store)}
+	if applyActive && updated > 0 {
+		apply := s.applySubscriptionActiveOutbounds(store, updatedIndexes, restart)
+		result["activeApply"] = apply
+		if apply["ok"] == false {
+			result["ok"] = false
+			result["error"] = apply["error"]
+		}
+	}
+	return result
 }
 
 func (s *serverState) refreshAllSubscriptionsHTTP(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.refreshAllSubscriptionsAndRecord())
+	payload, _ := readJSON(w, r)
+	applyActive := true
+	if _, ok := payload["applyActive"]; ok {
+		applyActive = boolPayload(payload, "applyActive", false)
+	}
+	writeJSON(w, 200, s.refreshAllSubscriptionsAndRecord(applyActive, boolPayload(payload, "restart", true)))
 }
 
 func (s *serverState) setSubscriptionFallbackProgress(progress map[string]any) {

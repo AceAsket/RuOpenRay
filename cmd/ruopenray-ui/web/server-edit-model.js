@@ -36,6 +36,74 @@ function securitySettings(outbound = {}) {
   return s.realitySettings || s.tlsSettings || {};
 }
 
+const fragmentOutboundTagPrefix = 'ruopenray-fragment-';
+
+export const fragmentPresets = {
+  off: { label: 'Выключено', length: '', interval: '', packets: 'tlshello' },
+  soft: { label: 'Мягко', length: '120-220', interval: '0-8', packets: 'tlshello' },
+  normal: { label: 'Обычно', length: '100-200', interval: '10-20', packets: 'tlshello' },
+  hard: { label: 'Жестко', length: '50-120', interval: '20-40', packets: 'tlshello' },
+  custom: { label: 'Вручную', length: '80-180', interval: '10-30', packets: 'tlshello' }
+};
+
+export const browserFingerprintOptions = [
+  { value: '', label: 'Не задавать' },
+  { value: 'chrome', label: 'Chrome' },
+  { value: 'firefox', label: 'Firefox' },
+  { value: 'safari', label: 'Safari' },
+  { value: 'ios', label: 'iOS' },
+  { value: 'android', label: 'Android' },
+  { value: 'edge', label: 'Edge' },
+  { value: '360', label: '360 Browser' },
+  { value: 'qq', label: 'QQ Browser' },
+  { value: 'random', label: 'Random' },
+  { value: 'randomized', label: 'Randomized' }
+];
+
+function decodeRawUrlBase64(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = `${normalized}${'='.repeat((4 - (normalized.length % 4)) % 4)}`;
+  return atob(padded);
+}
+
+function encodeRawUrlBase64(value) {
+  return btoa(String(value || '')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fragmentSpecFromDialerProxy(tag) {
+  if (!String(tag || '').startsWith(fragmentOutboundTagPrefix)) {
+    return { enabled: false, preset: 'off', length: '', interval: '', packets: 'tlshello', raw: '' };
+  }
+  try {
+    const raw = decodeRawUrlBase64(String(tag).slice(fragmentOutboundTagPrefix.length));
+    const [length = '100-200', interval = '10-20', packets = 'tlshello'] = raw.split(',').map((item) => item.trim()).filter(Boolean);
+    const preset = Object.entries(fragmentPresets).find(([key, spec]) => key !== 'off' && key !== 'custom' && spec.length === length && spec.interval === interval && spec.packets === packets)?.[0] || 'custom';
+    return { enabled: true, preset, length, interval, packets, raw };
+  } catch {
+    return { enabled: true, preset: 'custom', length: '100-200', interval: '10-20', packets: 'tlshello', raw: '' };
+  }
+}
+
+function fragmentTagFromSpec({ length, interval, packets }) {
+  const cleanLength = String(length || '100-200').trim();
+  const cleanInterval = String(interval || '10-20').trim();
+  const cleanPackets = String(packets || 'tlshello').trim();
+  return `${fragmentOutboundTagPrefix}${encodeRawUrlBase64(`${cleanLength},${cleanInterval},${cleanPackets}`)}`;
+}
+
+function setFragmentSpec(outbound, spec) {
+  const next = outbound;
+  const streamSettings = ensureObject(next, 'streamSettings');
+  const sockopt = ensureObject(streamSettings, 'sockopt');
+  if (!spec || spec.preset === 'off') {
+    delete sockopt.dialerProxy;
+    if (Object.keys(sockopt).length === 0) delete streamSettings.sockopt;
+    return next;
+  }
+  sockopt.dialerProxy = fragmentTagFromSpec(spec);
+  return next;
+}
+
 export function parseServerEditJson(json) {
   try {
     const outbound = JSON.parse(json || '{}');
@@ -53,6 +121,7 @@ export function serverEditFields(outbound = {}) {
   const user = primaryUser(outbound);
   const s = stream(outbound);
   const sec = securitySettings(outbound);
+  const fragment = fragmentSpecFromDialerProxy(s?.sockopt?.dialerProxy || '');
   return {
     tag: outbound?.tag || '',
     protocol: outbound?.protocol || 'vless',
@@ -69,7 +138,11 @@ export function serverEditFields(outbound = {}) {
     publicKey: sec?.publicKey || '',
     shortId: Array.isArray(sec?.shortId) ? sec.shortId.join(', ') : (sec?.shortId || ''),
     spiderX: sec?.spiderX || '',
-    path: s?.wsSettings?.path || s?.httpSettings?.path || s?.grpcSettings?.serviceName || ''
+    path: s?.wsSettings?.path || s?.httpSettings?.path || s?.grpcSettings?.serviceName || '',
+    fragmentPreset: fragment.preset,
+    fragmentLength: fragment.length,
+    fragmentInterval: fragment.interval,
+    fragmentPackets: fragment.packets
   };
 }
 
@@ -154,6 +227,22 @@ export function patchServerEditField(outbound, field, value) {
         if (raw) ws.path = raw;
         else delete ws.path;
       }
+    }
+  }
+
+  if (['fragmentPreset', 'fragmentLength', 'fragmentInterval', 'fragmentPackets'].includes(field)) {
+    const current = serverEditFields(next);
+    const preset = field === 'fragmentPreset' ? raw : current.fragmentPreset;
+    if (preset === 'off') {
+      setFragmentSpec(next, { preset: 'off' });
+    } else {
+      const presetSpec = fragmentPresets[preset] || fragmentPresets.custom;
+      setFragmentSpec(next, {
+        preset,
+        length: field === 'fragmentLength' ? raw : (field === 'fragmentPreset' ? presetSpec.length : (preset === 'custom' ? current.fragmentLength : presetSpec.length)),
+        interval: field === 'fragmentInterval' ? raw : (field === 'fragmentPreset' ? presetSpec.interval : (preset === 'custom' ? current.fragmentInterval : presetSpec.interval)),
+        packets: field === 'fragmentPackets' ? raw : (field === 'fragmentPreset' ? presetSpec.packets : (preset === 'custom' ? current.fragmentPackets : presetSpec.packets))
+      });
     }
   }
 

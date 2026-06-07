@@ -43,6 +43,26 @@ func CloneOutboundWithTag(outbound map[string]any, tag string) map[string]any {
 	return cloned
 }
 
+func CloneOutboundWithTagAndDialerProxy(outbound map[string]any, tag string, dialerProxy string) map[string]any {
+	cloned := CloneOutboundWithTag(outbound, tag)
+	dialerProxy = strings.TrimSpace(dialerProxy)
+	if dialerProxy == "" {
+		return cloned
+	}
+	stream, _ := cloned["streamSettings"].(map[string]any)
+	if stream == nil {
+		stream = map[string]any{}
+		cloned["streamSettings"] = stream
+	}
+	sockopt, _ := stream["sockopt"].(map[string]any)
+	if sockopt == nil {
+		sockopt = map[string]any{}
+		stream["sockopt"] = sockopt
+	}
+	sockopt["dialerProxy"] = dialerProxy
+	return cloned
+}
+
 func ReplaceOutboundByTag(items []any, tag string, outbound map[string]any) []any {
 	next := []any{}
 	replaced := false

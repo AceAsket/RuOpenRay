@@ -2294,6 +2294,59 @@
   }
 }
 
+@media (min-width: 1181px) and (max-width: 1500px) {
+  .route-row,
+  .route-row-nested {
+    grid-template-areas:
+      'order kind icon title title actions'
+      'order kind icon main main actions'
+      'target target target target target actions';
+    grid-template-columns: 96px 144px 44px minmax(0, 1fr) minmax(260px, 0.8fr) auto;
+    align-items: center;
+  }
+
+  .route-row > .route-order {
+    grid-area: order;
+  }
+
+  .route-row > .route-kind-stack {
+    grid-area: kind;
+  }
+
+  .route-row > .route-row-preset-icon {
+    grid-area: icon;
+  }
+
+  .route-row > .route-title {
+    grid-area: title;
+  }
+
+  .route-row > .route-main {
+    grid-area: main;
+  }
+
+  .route-row > .route-target-select,
+  .route-row > .route-outbound {
+    grid-area: target;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .route-row > .route-actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  .route-row > .route-main .route-value-chips {
+    max-width: 100%;
+  }
+
+  .route-row > .route-main .route-value-chips code,
+  .route-row > .route-main .route-value-chips button {
+    max-width: min(100%, 420px);
+  }
+}
+
 @media (min-width: 721px) and (max-width: 1180px) {
   .route-row,
   .route-row-nested {

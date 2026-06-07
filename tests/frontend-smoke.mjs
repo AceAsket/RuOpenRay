@@ -39,6 +39,7 @@ import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
+import { patchServerEditField, serverEditFields } from '../cmd/ruopenray-ui/web/server-edit-model.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 import { createServersView } from '../cmd/ruopenray-ui/web/servers-view.js';
@@ -650,16 +651,22 @@ const serverActionState = {
   serverChecking: false,
   serverCheckingTags: [],
   pendingServerTag: '',
+  subscriptionSchedule: { enabled: true, time: '04:10' },
 };
+const serverActionRequests = [];
 const serverActions = createServerActions({
   state: serverActionState,
-  request: async (path) => {
+  request: async (path, options = {}) => {
+    serverActionRequests.push({ path, body: options.body ? JSON.parse(options.body) : null });
     if (path === '/api/outbounds/check') return { results: [{ tag: 'proxy-new', ok: true, latencyMs: 10 }] };
     if (path === '/api/subscriptions/fallback') return { ok: true, selected: { tag: 'proxy-new' } };
     if (path === '/api/subscriptions/select') {
       serverActionState.selectedSubscription = true;
       return { ok: true, selected: { tag: 'sub-candidate-2' } };
     }
+    if (path === '/api/subscriptions/refresh') return { ok: true, before: 1, count: 1, activeApply: { ok: true, updated: 1 } };
+    if (path === '/api/subscriptions/refresh-all') return { ok: true, updated: 1, total: 1, activeApply: { ok: true, updated: 1 } };
+    if (path === '/api/subscriptions/schedule') return { ok: true, schedule: { enabled: false, time: '04:10' } };
     return { ok: true };
   },
   render,
@@ -678,6 +685,37 @@ await serverActions.checkServers(['proxy-new']);
 await serverActions.routeAllToOutbound('proxy-new');
 await serverActions.fallbackSubscriptionPool('subscription');
 await serverActions.selectSubscriptionCandidate('subscription', 1);
+await serverActions.refreshSubscriptionPool('subscription');
+await serverActions.refreshAllSubscriptions();
+await serverActions.setSubscriptionScheduleEnabled(false);
+const subscriptionRefreshAppliesActive = serverActionRequests.some((item) => item.path === '/api/subscriptions/refresh' && item.body?.applyActive === true && item.body?.restart === true);
+const subscriptionRefreshAllAppliesActive = serverActionRequests.some((item) => item.path === '/api/subscriptions/refresh-all' && item.body?.applyActive === true && item.body?.restart === true);
+const subscriptionScheduleCanDisable = serverActionRequests.some((item) => item.path === '/api/subscriptions/schedule' && item.body?.enabled === false);
+
+let fragmentEditOutbound = patchServerEditField({
+  tag: 'proxy',
+  protocol: 'vless',
+  streamSettings: { network: 'tcp', security: 'reality' }
+}, 'fragmentPreset', 'normal');
+const fragmentEditNormalFields = serverEditFields(fragmentEditOutbound);
+fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentPreset', 'custom');
+const fragmentEditCustomPresetFields = serverEditFields(fragmentEditOutbound);
+fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentPackets', '1-2');
+fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentLength', '33-77');
+fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentInterval', '5-9');
+const fragmentEditCustomFields = serverEditFields(fragmentEditOutbound);
+fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentPreset', 'off');
+const fragmentEditOffFields = serverEditFields(fragmentEditOutbound);
+const serverEditFragmentWorks = fragmentEditNormalFields.fragmentPreset === 'normal'
+  && fragmentEditNormalFields.fragmentLength === '100-200'
+  && fragmentEditCustomPresetFields.fragmentPreset === 'custom'
+  && fragmentEditCustomPresetFields.fragmentLength === '80-180'
+  && fragmentEditCustomFields.fragmentPreset === 'custom'
+  && fragmentEditCustomFields.fragmentPackets === '1-2'
+  && fragmentEditCustomFields.fragmentLength === '33-77'
+  && fragmentEditCustomFields.fragmentInterval === '5-9'
+  && fragmentEditOffFields.fragmentPreset === 'off'
+  && !fragmentEditOutbound.streamSettings?.sockopt?.dialerProxy;
 
 const observatoryState = {
   config: {},
@@ -1158,6 +1196,28 @@ const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'presetGroup'
   && routeCustomGroupHtml.includes('Моя группа')
   && routeCustomGroupHtml.includes('route-preset-iconify');
 routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
+  { type: 'field', outboundTag: 'direct', domain: ['domain:two.example'] },
+];
+routeGroupState.routeNames = {};
+routeGroupState.routeNames[routeGroupModel.routeRuleKey(routeGroupState.config.routing.rules[0])] = 'Others';
+routeGroupState.routeNames[routeGroupModel.routeRuleKey(routeGroupState.config.routing.rules[1])] = 'Others';
+routeGroupState.openDetails = {};
+const routeCustomEditableItems = routeGroupActions.visibleRoutingRuleItems(80);
+const routeCustomEditableHtml = routeGroupActions.orderedRouteList(
+  routeCustomEditableItems,
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+const routeCustomEditableKey = routeCustomEditableHtml.match(/data-route-custom-group-edit-key="([^"]+)"/)?.[1] || '';
+routeGroupActions.openRoutingRuleGroupEditor(routeCustomEditableKey, 'Others');
+const routeCustomGroupEditableWorks = routeCustomEditableItems[0]?.kind === 'customGroup'
+  && routeCustomEditableItems[0]?.items?.length === 2
+  && routeCustomEditableHtml.includes('data-route-custom-group-edit-key')
+  && !routeCustomEditableHtml.includes('data-route-target="0" disabled')
+  && !routeCustomEditableHtml.includes('data-route-target="1" disabled')
+  && routeGroupState.openDetails[routeCustomEditableKey] === true;
+routeGroupState.config.routing.rules = [
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:keep.example'] },
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:disable.example'] },
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:delete.example'] },
@@ -1578,6 +1638,7 @@ bindRoutingControls({
   toggleRouteRuleSelection: () => {},
   groupRoutingRuleWithNext: () => {},
   renameRoutingRuleGroup: () => {},
+  openRoutingRuleGroupEditor: () => {},
   openRoutingRuleEditor: () => {},
   openRouteBalancerDialog: () => {},
   removeRouteBalancer: () => {},
@@ -1596,6 +1657,7 @@ bindRoutingControls({
   updateRoutingTargetRange: () => {},
   removeOutbound: () => {},
   routeAllToOutbound: async () => {},
+  setSubscriptionScheduleEnabled: () => {},
   checkServers: async () => {},
   setSnifferDraft: () => {},
   setQuicPolicy: () => {},
@@ -1740,7 +1802,17 @@ const subscriptionViewState = {
   serverCheckingTags: [],
   serverCheckHistory: [],
   serverMeta: [],
-  serverEditDialog: false,
+  serverEditDialog: true,
+  serverEditIndex: 0,
+  serverEditJson: JSON.stringify({
+    tag: 'proxy',
+    protocol: 'vless',
+    settings: { vnext: [{ address: 'proxy.example', port: 443, users: [{ id: '00000000-0000-0000-0000-000000000000', encryption: 'none' }] }] },
+    streamSettings: { security: 'reality', realitySettings: { fingerprint: 'chrome' } }
+  }),
+  serverEditCountry: '',
+  serverEditCountrySearch: '',
+  serverEditError: '',
   subscriptionCandidateSearch: {},
   subscriptionCandidateChecks: {},
   subscriptionCandidateChecking: 'test_subs:0',
@@ -1759,7 +1831,7 @@ const serversView = createServersView({
   stat,
   activeProxyTag: () => '',
   checkForTag: () => null,
-  configOutbounds: () => [],
+  configOutbounds: () => [JSON.parse(subscriptionViewState.serverEditJson)],
   isSystemOutbound: () => false,
   operationProgressView: () => '',
   outboundAddress: (outbound) => [outbound?.address, outbound?.port].filter(Boolean).join(':'),
@@ -1787,6 +1859,11 @@ const subscriptionDetailsKeyPersists = subscriptionCardHtml.includes('data-detai
 const subscriptionCandidateBusyIsLocal = subscriptionCardHtml.includes('data-busy="0"')
   && subscriptionCardHtml.includes('data-subscription-candidate-index="0" disabled>Проверяю</button>')
   && subscriptionCardHtml.includes('data-subscription-candidate-index="1" >Проверить</button>');
+const serverEditDialogHtml = serversView.serverEditDialog();
+const serverEditFingerprintSelectWorks = serverEditDialogHtml.includes('id="serverEdit_fingerprint"')
+  && serverEditDialogHtml.includes('<option value="chrome" selected>Chrome</option>')
+  && serverEditDialogHtml.includes('<option value="firefox" >Firefox</option>')
+  && serverEditDialogHtml.includes('<option value="randomized" >Randomized</option>');
 const mixedRule = { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'], ip: ['172.64.150.0/24'], port: '443' };
 const mixedRuleSplits = splitMixedRouteRule(mixedRule);
 const routingHelpersSplitMixed = mixedRuleSplits.length === 3
@@ -1853,6 +1930,12 @@ const checks = [
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing visible order skips managed rules', routeVisibleNumberingSkipsManaged],
   ['routing custom group from list', routeCustomGroupWorks],
+  ['routing custom group editable after expand', routeCustomGroupEditableWorks],
+  ['subscription refresh applies active proxy', subscriptionRefreshAppliesActive],
+  ['subscription refresh all applies active proxy', subscriptionRefreshAllAppliesActive],
+  ['subscription schedule can be disabled explicitly', subscriptionScheduleCanDisable],
+  ['server editor configures TLS ClientHello fragmentation', serverEditFragmentWorks],
+  ['server editor fingerprint uses Xray options', serverEditFingerprintSelectWorks],
   ['routing selected rule bulk actions', routeSelectedDisableWorks && routeSelectedDeleteWorks],
   ['routing mixed presets split into grouped rules', routeMixedPresetSplitsConditions],
   ['routing preset editor exports fallback icons', routePresetEditorKeepsFallbackIcon],

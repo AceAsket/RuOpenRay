@@ -18,6 +18,23 @@ export function createServerActions({
   let subscriptionFallbackAbort = null;
   let subscriptionFallbackTimer = 0;
 
+  function restoreServerEditScroll(top) {
+    const restore = () => {
+      const modal = typeof document === 'undefined' ? null : document.querySelector('.server-edit-dialog');
+      if (modal) modal.scrollTop = top;
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+    else setTimeout(restore, 0);
+  }
+
+  function renderServerEdit({ preserveScroll = false } = {}) {
+    const modal = typeof document === 'undefined' ? null : document.querySelector('.server-edit-dialog');
+    const top = preserveScroll ? Number(modal?.scrollTop || 0) : 0;
+    state.serverEditScrollTop = top;
+    render();
+    if (preserveScroll && top > 0) restoreServerEditScroll(top);
+  }
+
   function clearSubscriptionFallbackState() {
     if (subscriptionFallbackTimer) clearInterval(subscriptionFallbackTimer);
     subscriptionFallbackTimer = 0;
@@ -93,6 +110,7 @@ export function createServerActions({
     state.serverEditCountry = state.serverMeta?.[outbound.tag]?.country || '';
     state.serverEditCountrySearch = '';
     state.serverEditError = '';
+    state.serverEditScrollTop = 0;
     render();
   }
 
@@ -103,26 +121,27 @@ export function createServerActions({
     state.serverEditCountry = '';
     state.serverEditCountrySearch = '';
     state.serverEditError = '';
+    state.serverEditScrollTop = 0;
     render();
   }
 
   function setServerEditCountry(country) {
     state.serverEditCountry = String(country || '').trim().toUpperCase();
     state.serverEditCountrySearch = '';
-    render();
+    renderServerEdit({ preserveScroll: true });
   }
 
   function updateServerEditField(field, value, { rerender = false } = {}) {
     const parsed = parseServerEditJson(state.serverEditJson || '{}');
     if (parsed.error) {
       state.serverEditError = parsed.error;
-      if (rerender) render();
+      if (rerender) renderServerEdit({ preserveScroll: true });
       return;
     }
     const outbound = patchServerEditField(parsed.outbound, field, value);
     state.serverEditJson = stringifyServerEditOutbound(outbound);
     state.serverEditError = '';
-    if (rerender) render();
+    if (rerender) renderServerEdit({ preserveScroll: true });
   }
 
   function replaceRouteTargetReferences(config, oldTag, newTag) {
@@ -448,28 +467,35 @@ export function createServerActions({
     if (!tag) return;
     const result = await request('/api/subscriptions/refresh', {
       method: 'POST',
-      body: JSON.stringify({ tag })
+      body: JSON.stringify({ tag, applyActive: true, restart: true })
     });
+    const activeApplied = Number(result?.activeApply?.updated || 0);
     state.message = result.ok
-      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}${result.activeMissing ? ', активный сервер исчез из подписки' : ''}`
+      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}${activeApplied ? ', активный proxy обновлен в Xray' : ''}${result.activeMissing ? ', активный сервер исчез из подписки' : ''}`
       : `Подписка ${tag}: ${result.error || 'не удалось обновить список серверов'}`;
     await persistPoolActiveCandidateMeta(result, tag);
     await refresh();
   }
 
   async function refreshAllSubscriptions() {
-    const result = await request('/api/subscriptions/refresh-all', { method: 'POST' });
+    const result = await request('/api/subscriptions/refresh-all', {
+      method: 'POST',
+      body: JSON.stringify({ applyActive: true, restart: true })
+    });
     state.subscriptionSchedule = result.schedule || state.subscriptionSchedule;
     const missing = Array.isArray(result.results) ? result.results.filter((item) => item?.activeMissing).length : 0;
+    const activeApplied = Number(result?.activeApply?.updated || 0);
     state.message = result.ok
-      ? `Подписки обновлены: ${result.updated || 0} из ${result.total || 0}${missing ? `, активных исчезло: ${missing}` : ''}`
-      : `Подписки обновлены с ошибками: ${result.updated || 0} из ${result.total || 0}, ошибок ${result.failed || 0}${missing ? `, активных исчезло: ${missing}` : ''}`;
+      ? `Подписки обновлены: ${result.updated || 0} из ${result.total || 0}${activeApplied ? `, активных proxy в Xray: ${activeApplied}` : ''}${missing ? `, активных исчезло: ${missing}` : ''}`
+      : `Подписки обновлены с ошибками: ${result.updated || 0} из ${result.total || 0}, ошибок ${result.failed || 0}${activeApplied ? `, активных proxy в Xray: ${activeApplied}` : ''}${missing ? `, активных исчезло: ${missing}` : ''}`;
     await refresh();
   }
 
-  async function saveSubscriptionSchedule() {
-    const enabled = Boolean(document.querySelector('#subscriptionScheduleEnabled')?.checked);
-    const time = document.querySelector('#subscriptionScheduleTime')?.value || '04:10';
+  async function saveSubscriptionSchedule(options = {}) {
+    const enabled = typeof options.enabled === 'boolean'
+      ? options.enabled
+      : Boolean(document.querySelector('#subscriptionScheduleEnabled')?.checked);
+    const time = options.time || document.querySelector('#subscriptionScheduleTime')?.value || state.subscriptionSchedule?.time || '04:10';
     const result = await request('/api/subscriptions/schedule', {
       method: 'POST',
       body: JSON.stringify({ enabled, time })
@@ -479,6 +505,10 @@ export function createServerActions({
       ? `Расписание подписок сохранено: ${enabled ? `ежедневно в ${state.subscriptionSchedule?.time || time}` : 'выключено'}`
       : `Не удалось сохранить расписание подписок: ${result.stderr || result.error || 'ошибка cron'}`;
     await refresh();
+  }
+
+  async function setSubscriptionScheduleEnabled(enabled) {
+    return saveSubscriptionSchedule({ enabled: Boolean(enabled) });
   }
 
   async function exportSubscriptionCandidates(tag, indexes = [], { all = false } = {}) {
@@ -530,6 +560,7 @@ export function createServerActions({
     refreshSubscriptionPool,
     refreshAllSubscriptions,
     saveSubscriptionSchedule,
+    setSubscriptionScheduleEnabled,
     exportSubscriptionCandidates,
     deleteSubscriptionPool
   };

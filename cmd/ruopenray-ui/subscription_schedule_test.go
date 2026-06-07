@@ -34,7 +34,7 @@ func TestSubscriptionScheduleCleansSavedTime(t *testing.T) {
 
 func TestRefreshAllSubscriptionsRecordsEmptyRun(t *testing.T) {
 	state := &serverState{cfg: appConfig{DataDir: t.TempDir()}}
-	result := state.refreshAllSubscriptionsAndRecord()
+	result := state.refreshAllSubscriptionsAndRecord(false, false)
 	if result["ok"] != true {
 		t.Fatalf("empty subscription refresh should be ok: %#v", result)
 	}

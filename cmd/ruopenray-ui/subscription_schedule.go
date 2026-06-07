@@ -98,8 +98,8 @@ func (s *serverState) installSubscriptionCron(schedule map[string]any) map[strin
 	return map[string]any{"ok": true, "stdout": "Расписание подписок обновлено"}
 }
 
-func (s *serverState) refreshAllSubscriptionsAndRecord() map[string]any {
-	result := s.refreshAllSubscriptions()
+func (s *serverState) refreshAllSubscriptionsAndRecord(applyActive bool, restart bool) map[string]any {
+	result := s.refreshAllSubscriptions(applyActive, restart)
 	schedule := s.subscriptionSchedule()
 	summary := map[string]any{
 		"ok":      result["ok"],
@@ -120,5 +120,5 @@ func (s *serverState) runScheduledSubscriptionUpdate() map[string]any {
 	if schedule["enabled"] != true {
 		return map[string]any{"ok": true, "stdout": "Расписание подписок выключено", "schedule": schedule}
 	}
-	return s.refreshAllSubscriptionsAndRecord()
+	return s.refreshAllSubscriptionsAndRecord(false, false)
 }

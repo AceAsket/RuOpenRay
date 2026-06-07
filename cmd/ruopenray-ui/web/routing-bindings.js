@@ -20,6 +20,7 @@ export function bindRoutingControls({
   toggleRouteRuleSelection,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup,
+  openRoutingRuleGroupEditor,
   openRoutingRuleEditor,
   openRouteBalancerDialog,
   removeRouteBalancer,
@@ -41,6 +42,7 @@ export function bindRoutingControls({
   openServerEditor,
   setServerEditCountry,
   updateServerEditField,
+  setSubscriptionScheduleEnabled,
   routeAllToOutbound,
   checkServers,
   setSnifferDraft,
@@ -168,6 +170,13 @@ export function bindRoutingControls({
         Number(button.dataset.routeGroupRenameStart),
         Number(button.dataset.routeGroupRenameEnd)
       );
+    });
+  });
+  document.querySelectorAll('[data-route-custom-group-edit-key]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openRoutingRuleGroupEditor(button.dataset.routeCustomGroupEditKey, button.dataset.routeGroupTitle || '');
     });
   });
   document.querySelectorAll('[data-route-edit]').forEach((button) => {
@@ -593,6 +602,16 @@ export function bindRoutingControls({
     button.addEventListener('click', () => setServerEditCountry(button.dataset.countryPick || ''));
   });
   document.querySelector('[data-country-clear="serverEdit"]')?.addEventListener('click', () => setServerEditCountry(''));
+  document.querySelector('[data-subscription-schedule-enabled]')?.addEventListener('change', (event) => {
+    if (typeof setSubscriptionScheduleEnabled === 'function') {
+      const result = setSubscriptionScheduleEnabled(event.target.checked);
+      if (!result || typeof result.catch !== 'function') return;
+      result.catch((error) => {
+        state.message = error.message || String(error);
+        render();
+      });
+    }
+  });
   document.querySelectorAll('[data-route-all]').forEach((button) => {
     button.addEventListener('click', async () => {
       try {

@@ -434,7 +434,8 @@ const {
   closeSelectedRouteGroupDialog,
   createSelectedRouteGroup,
   groupRoutingRuleWithNext,
-  renameRoutingRuleGroup
+  renameRoutingRuleGroup,
+  openRoutingRuleGroupEditor
 } = routingActions;
 
 
@@ -950,6 +951,7 @@ const {
   refreshSubscriptionPool,
   refreshAllSubscriptions,
   saveSubscriptionSchedule,
+  setSubscriptionScheduleEnabled,
   exportSubscriptionCandidates,
   deleteSubscriptionPool
 } = serverActions;
@@ -2382,6 +2384,7 @@ function bind() {
     toggleRouteRuleSelection,
     groupRoutingRuleWithNext,
     renameRoutingRuleGroup,
+    openRoutingRuleGroupEditor,
     openRoutingRuleEditor,
     openRouteBalancerDialog,
     removeRouteBalancer,
@@ -2401,6 +2404,7 @@ function bind() {
     openServerEditor,
     setServerEditCountry,
     updateServerEditField,
+    setSubscriptionScheduleEnabled,
     routeAllToOutbound,
     checkServers,
     setSnifferDraft,

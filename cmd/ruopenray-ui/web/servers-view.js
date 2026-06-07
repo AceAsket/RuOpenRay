@@ -1,6 +1,6 @@
 import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
-import { parseServerEditJson, serverEditFields } from './server-edit-model.js';
+import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 
@@ -236,16 +236,16 @@ function subscriptionSchedulePanel() {
     : 'Автообновление еще не запускалось.';
   return `<div class="subscription-schedule">
     <label class="settings-check compact ${enabled ? 'active' : ''}">
-      <input id="subscriptionScheduleEnabled" type="checkbox" ${enabled ? 'checked' : ''} />
+      <input id="subscriptionScheduleEnabled" type="checkbox" data-subscription-schedule-enabled ${enabled ? 'checked' : ''} />
       <span><strong>Обновлять ежедневно</strong><em>RuOpenRay обновит кандидатов подписок без перезапуска Xray.</em></span>
     </label>
     <div class="subscription-schedule-controls">
-    <div class="settings-field subscription-schedule-time">
-      <label for="subscriptionScheduleTime">Время</label>
-      <input id="subscriptionScheduleTime" type="time" value="${escapeHtml(time)}" />
-    </div>
-    <button class="btn warning" data-action="saveSubscriptionSchedule">Сохранить расписание</button>
-    <button class="btn secondary" data-action="refreshAllSubscriptions">Обновить все сейчас</button>
+      <div class="settings-field subscription-schedule-time">
+        <label for="subscriptionScheduleTime">Время</label>
+        <input id="subscriptionScheduleTime" type="time" value="${escapeHtml(time)}" />
+      </div>
+      <button class="btn warning" data-action="saveSubscriptionSchedule">Сохранить расписание</button>
+      <button class="btn secondary" data-action="refreshAllSubscriptions">Обновить все сейчас</button>
     </div>
     <small>${escapeHtml(lastText)}</small>
   </div>`;
@@ -303,6 +303,11 @@ function serverEditDialog() {
   const protocol = editable.protocol || 'vless';
   const streamSecurity = editable.security || 'none';
   const option = (value, label, selected = editable.protocol) => `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  const fragmentPresetOption = (value, label) => `<option value="${escapeHtml(value)}" ${editable.fragmentPreset === value ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  const fingerprintOptions = browserFingerprintOptions.some((item) => item.value === editable.fingerprint)
+    ? browserFingerprintOptions
+    : [...browserFingerprintOptions, { value: editable.fingerprint, label: `Текущее: ${editable.fingerprint}` }];
+  const fingerprintOption = (item) => `<option value="${escapeHtml(item.value)}" ${editable.fingerprint === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`;
   const field = (name, label, placeholder = '', type = 'text') => `
     <div class="form-row">
       <label for="serverEdit_${escapeHtml(name)}">${escapeHtml(label)}</label>
@@ -361,9 +366,38 @@ function serverEditDialog() {
                   </select>
                 </div>
                 ${field('sni', 'SNI / serverName', 'cloudone.example.com')}
-                ${field('fingerprint', 'Fingerprint', 'chrome')}
+                <div class="form-row">
+                  <label for="serverEdit_fingerprint">Fingerprint</label>
+                  <select id="serverEdit_fingerprint" data-server-edit-field="fingerprint">
+                    ${fingerprintOptions.map(fingerprintOption).join('')}
+                  </select>
+                </div>
                 ${streamSecurity === 'reality' ? `${field('publicKey', 'Reality public key', 'base64url key')}${field('shortId', 'Short ID', '2fb9438cd4858c37')}${field('spiderX', 'SpiderX', '/')}` : ''}
                 ${editable.network && editable.network !== 'tcp' ? field('path', editable.network === 'grpc' ? 'gRPC serviceName' : 'Path', '/') : ''}
+              </div>
+            </div>
+            <div class="server-edit-section">
+              <h3>Рукопожатие с прокси</h3>
+              <p class="server-edit-section-note">Фрагментация TLS ClientHello применяется к соединению Xray до proxy-сервера через sockopt.dialerProxy.</p>
+              <div class="server-edit-fields">
+                <div class="form-row">
+                  <label for="serverEdit_fragmentPreset">Фрагментация</label>
+                  <select id="serverEdit_fragmentPreset" data-server-edit-field="fragmentPreset">
+                    ${Object.entries(fragmentPresets).map(([value, preset]) => fragmentPresetOption(value, preset.label)).join('')}
+                  </select>
+                </div>
+                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
+                  <label for="serverEdit_fragmentPackets">Пакеты</label>
+                  <input id="serverEdit_fragmentPackets" data-server-edit-field="fragmentPackets" value="${escapeHtml(editable.fragmentPackets || 'tlshello')}" placeholder="tlshello, 1-2, 1-5" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                </div>
+                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
+                  <label for="serverEdit_fragmentLength">Длина фрагмента</label>
+                  <input id="serverEdit_fragmentLength" data-server-edit-field="fragmentLength" value="${escapeHtml(editable.fragmentLength || '100-200')}" placeholder="100-200" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                </div>
+                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
+                  <label for="serverEdit_fragmentInterval">Интервал, мс</label>
+                  <input id="serverEdit_fragmentInterval" data-server-edit-field="fragmentInterval" value="${escapeHtml(editable.fragmentInterval || '10-20')}" placeholder="10-20" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                </div>
               </div>
             </div>
             <details class="server-json-details">
