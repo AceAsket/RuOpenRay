@@ -10,15 +10,42 @@ RuOpenRay UI работает как отдельный сервис через 
 
 ## Скриншоты
 
-Скриншоты ниже сделаны на локальном демо-конфиге без реальных маршрутов, подписок и proxy-адресов.
+Скриншоты сделаны на локальном демо-конфиге: без реальных маршрутов, подписок и proxy-адресов. Нажмите на картинку, чтобы открыть ее в полном размере.
 
-![Панель RuOpenRay UI](docs/screenshots/dashboard.png)
-
-![Маршрутизация RuOpenRay UI](docs/screenshots/routing.png)
-
-![DNS RuOpenRay UI](docs/screenshots/dns.png)
-
-![Диагностика RuOpenRay UI](docs/screenshots/diagnostics.png)
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Панель</strong><br>
+      <sub>Состояние Xray, ресурсы роутера, предупреждения по логам и активные proxy-направления.</sub><br><br>
+      <a href="docs/screenshots/dashboard.png">
+        <img src="docs/screenshots/dashboard.png" alt="Панель RuOpenRay UI">
+      </a>
+    </td>
+    <td width="50%">
+      <strong>Маршрутизация</strong><br>
+      <sub>Правила Xray, массовые действия, замена серверов и порядок выполнения сверху вниз.</sub><br><br>
+      <a href="docs/screenshots/routing.png">
+        <img src="docs/screenshots/routing.png" alt="Маршрутизация RuOpenRay UI">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>DNS</strong><br>
+      <sub>DNS-серверы, DoH/UDP/TCP пресеты, проверка резолва и порядок обработки DNS.</sub><br><br>
+      <a href="docs/screenshots/dns.png">
+        <img src="docs/screenshots/dns.png" alt="DNS RuOpenRay UI">
+      </a>
+    </td>
+    <td width="50%">
+      <strong>Диагностика</strong><br>
+      <sub>Live-Xray, проверка цепочки, DPI-пробы, SNI и диагностический пакет.</sub><br><br>
+      <a href="docs/screenshots/diagnostics.png">
+        <img src="docs/screenshots/diagnostics.png" alt="Диагностика RuOpenRay UI">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## Быстрая установка
 
