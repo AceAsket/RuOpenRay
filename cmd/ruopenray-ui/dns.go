@@ -50,6 +50,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	if !available {
 		result["mode"] = "manual"
 		result["hint"] = "UCI недоступен, настройте dnsmasq вручную."
+		result["adguardHome"] = s.adGuardHomeStatus("192.168.1.1", xrayTarget)
 		if plan != nil {
 			result["plan"] = plan
 		}
@@ -75,6 +76,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	result["servers"] = servers
 	result["routerLan"] = lanIP
 	result["readiness"] = s.lanDNSReadiness()
+	result["adguardHome"] = s.adGuardHomeStatus(lanIP, xrayTarget)
 	if plan != nil {
 		result["plan"] = plan
 	}
@@ -110,6 +112,13 @@ func (s *serverState) dnsDiagnostics() map[string]any {
 	}
 	if fmt.Sprint(lan["mode"]) == "xray" && readiness["ready"] != true {
 		warnings = append(warnings, "dnsmasq направлен в Xray DNS, но Xray DNS еще не готов. LAN-клиенты могут остаться без DNS.")
+	}
+	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["running"] == true && adguard["usesXray"] != true {
+		target := strings.TrimSpace(fmt.Sprint(adguard["recommendedLocal"]))
+		if target == "" || target == "<nil>" {
+			target = "127.0.0.1:10535"
+		}
+		warnings = append(warnings, "AdGuard Home запущен, но его upstream не смотрит в Xray DNS. Если AdGuard Home главный DNS, укажите upstream "+target+".")
 	}
 	if systemProbe["ok"] != true && anyDNSProbeOK(autoProbes) {
 		warnings = append(warnings, "Системный DNS роутера не ответил, но WAN DNS из OpenWrt работает. Это обычно значит, что локальный DNS смотрит в неработающий 127.0.0.1/::1.")
@@ -225,6 +234,333 @@ func dnsmasqServerList() []string {
 	return servers
 }
 
+type adGuardHomeStatus struct {
+	Available        bool     `json:"available"`
+	Running          bool     `json:"running"`
+	Service          string   `json:"service,omitempty"`
+	ConfigPath       string   `json:"configPath,omitempty"`
+	BindHost         string   `json:"bindHost,omitempty"`
+	Port             int      `json:"port,omitempty"`
+	Listen           string   `json:"listen,omitempty"`
+	Upstreams        []string `json:"upstreams,omitempty"`
+	UpstreamCount    int      `json:"upstreamCount"`
+	UsesXray         bool     `json:"usesXray"`
+	RecommendedLocal string   `json:"recommendedLocal"`
+	RecommendedLan   string   `json:"recommendedLan"`
+	Hint             string   `json:"hint,omitempty"`
+}
+
+func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string]any {
+	status := adGuardHomeStatus{
+		RecommendedLocal: "127.0.0.1:10535",
+		RecommendedLan:   firstNonEmpty(routerLan, "192.168.1.1") + ":10535",
+	}
+	if runtime.GOOS == "windows" {
+		status.Hint = "AdGuard Home проверяется только на роутере."
+		return adGuardHomeStatusMap(status)
+	}
+	host, port := dnsTargetHostPort(xrayTarget, "127.0.0.1", defaultXrayDNSPort())
+	if port > 0 {
+		status.RecommendedLocal = net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
+		status.RecommendedLan = net.JoinHostPort(firstNonEmpty(routerLan, "192.168.1.1"), fmt.Sprint(port))
+	}
+	if service, running := adGuardHomeServiceStatus(); service != "" || running {
+		status.Available = true
+		status.Service = service
+		status.Running = running
+	}
+	processText := adGuardHomeProcessText()
+	if processText != "" {
+		status.Available = true
+		status.Running = true
+		if path := adGuardHomeConfigPathFromProcess(processText); path != "" {
+			status.ConfigPath = path
+		}
+	}
+	if status.ConfigPath == "" {
+		status.ConfigPath = adGuardHomeConfigPath()
+	}
+	if status.ConfigPath != "" {
+		status.Available = true
+		if cfg := readAdGuardHomeConfig(status.ConfigPath); cfg != nil {
+			status.BindHost = cfg["bindHost"].(string)
+			status.Port = cfg["port"].(int)
+			status.Upstreams = sanitizeAdGuardHomeUpstreams(stringSlice(cfg["upstreams"]))
+			status.UpstreamCount = len(stringSlice(cfg["upstreams"]))
+			status.UsesXray = adGuardHomeUsesXray(stringSlice(cfg["upstreams"]), host, port, routerLan)
+			if status.Port > 0 {
+				status.Listen = net.JoinHostPort(firstNonEmpty(status.BindHost, "0.0.0.0"), fmt.Sprint(status.Port))
+			}
+		}
+	}
+	if status.Available && status.Hint == "" {
+		if status.UsesXray {
+			status.Hint = "AdGuard Home уже отправляет upstream DNS в Xray."
+		} else {
+			status.Hint = "Если AdGuard Home главный DNS, в его upstream DNS укажите " + status.RecommendedLocal + " на этом роутере или " + status.RecommendedLan + " с другого устройства."
+		}
+	}
+	return adGuardHomeStatusMap(status)
+}
+
+func adGuardHomeStatusMap(status adGuardHomeStatus) map[string]any {
+	return map[string]any{
+		"available":        status.Available,
+		"running":          status.Running,
+		"service":          status.Service,
+		"configPath":       status.ConfigPath,
+		"bindHost":         status.BindHost,
+		"port":             status.Port,
+		"listen":           status.Listen,
+		"upstreams":        status.Upstreams,
+		"upstreamCount":    status.UpstreamCount,
+		"usesXray":         status.UsesXray,
+		"recommendedLocal": status.RecommendedLocal,
+		"recommendedLan":   status.RecommendedLan,
+		"hint":             status.Hint,
+	}
+}
+
+func adGuardHomeServiceStatus() (string, bool) {
+	for _, service := range []string{"/etc/init.d/AdGuardHome", "/etc/init.d/adguardhome"} {
+		if _, err := os.Stat(service); err != nil {
+			continue
+		}
+		result := runTimeout(3*time.Second, service, "status")
+		text := strings.ToLower(strings.TrimSpace(fmt.Sprint(result["stdout"]) + "\n" + fmt.Sprint(result["stderr"])))
+		running := adGuardHomeStatusTextRunning(text)
+		return service, running
+	}
+	return "", false
+}
+
+func adGuardHomeStatusTextRunning(text string) bool {
+	text = strings.ToLower(text)
+	if strings.Contains(text, "inactive") || strings.Contains(text, "stopped") || strings.Contains(text, "not running") {
+		return false
+	}
+	return strings.Contains(text, "running") || strings.Contains(text, "started") || strings.Contains(text, " active")
+}
+
+func adGuardHomeProcessText() string {
+	result := runTimeout(3*time.Second, "sh", "-c", "ps w 2>/dev/null | grep -i '[A]dGuardHome'")
+	return strings.TrimSpace(fmt.Sprint(result["stdout"]))
+}
+
+func adGuardHomeConfigPathFromProcess(processText string) string {
+	fields := strings.Fields(processText)
+	for i, field := range fields {
+		switch {
+		case field == "-c" || field == "--config":
+			if i+1 < len(fields) {
+				return strings.Trim(fields[i+1], "'\"")
+			}
+		case strings.HasPrefix(field, "-c="):
+			return strings.Trim(strings.TrimPrefix(field, "-c="), "'\"")
+		case strings.HasPrefix(field, "--config="):
+			return strings.Trim(strings.TrimPrefix(field, "--config="), "'\"")
+		}
+	}
+	return ""
+}
+
+func adGuardHomeConfigPath() string {
+	candidates := []string{
+		"/etc/AdGuardHome.yaml",
+		"/etc/adguardhome.yaml",
+		"/etc/AdGuardHome/AdGuardHome.yaml",
+		"/etc/adguardhome/AdGuardHome.yaml",
+		"/opt/AdGuardHome/AdGuardHome.yaml",
+		"/opt/AdGuardHome/AdGuardHome.yml",
+	}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
+}
+
+func readAdGuardHomeConfig(path string) map[string]any {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	bindHost, port, upstreams := parseAdGuardHomeConfig(string(body))
+	return map[string]any{
+		"bindHost":  bindHost,
+		"port":      port,
+		"upstreams": upstreams,
+	}
+}
+
+func parseAdGuardHomeConfig(body string) (string, int, []string) {
+	bindHost := ""
+	port := 0
+	upstreams := []string{}
+	inDNS := false
+	dnsIndent := 0
+	inUpstreams := false
+	upstreamIndent := 0
+	inBindHosts := false
+	bindHostsIndent := 0
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if trimmed == "dns:" {
+			inDNS = true
+			dnsIndent = indent
+			inUpstreams = false
+			continue
+		}
+		if inDNS && indent <= dnsIndent && strings.HasSuffix(trimmed, ":") {
+			inDNS = false
+			inUpstreams = false
+			inBindHosts = false
+		}
+		if !inDNS {
+			continue
+		}
+		if inBindHosts {
+			if indent <= bindHostsIndent && strings.Contains(trimmed, ":") && !strings.HasPrefix(trimmed, "-") {
+				inBindHosts = false
+			} else if bindHost == "" && strings.HasPrefix(trimmed, "- ") {
+				bindHost = cleanYAMLScalar(strings.TrimPrefix(trimmed, "- "))
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "bind_host:") {
+			bindHost = cleanYAMLScalar(strings.TrimPrefix(trimmed, "bind_host:"))
+			continue
+		}
+		if strings.HasPrefix(trimmed, "bind_hosts:") {
+			inBindHosts = true
+			bindHostsIndent = indent
+			continue
+		}
+		if strings.HasPrefix(trimmed, "port:") {
+			port = number(cleanYAMLScalar(strings.TrimPrefix(trimmed, "port:")), 0)
+			continue
+		}
+		if strings.HasPrefix(trimmed, "upstream_dns:") {
+			inUpstreams = true
+			upstreamIndent = indent
+			continue
+		}
+		if inUpstreams {
+			if indent <= upstreamIndent && strings.Contains(trimmed, ":") && !strings.HasPrefix(trimmed, "-") {
+				inUpstreams = false
+				continue
+			}
+			if strings.HasPrefix(trimmed, "- ") {
+				value := cleanYAMLScalar(strings.TrimPrefix(trimmed, "- "))
+				if value != "" {
+					upstreams = append(upstreams, value)
+				}
+			}
+		}
+	}
+	return bindHost, port, upstreams
+}
+
+func cleanYAMLScalar(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.SplitN(value, " #", 2)[0]
+	return strings.Trim(strings.TrimSpace(value), "'\"")
+}
+
+func sanitizeAdGuardHomeUpstreams(upstreams []string) []string {
+	out := make([]string, 0, len(upstreams))
+	for _, upstream := range upstreams {
+		out = append(out, redactURLUserinfo(strings.TrimSpace(upstream)))
+	}
+	return out
+}
+
+func redactURLUserinfo(value string) string {
+	if !strings.Contains(value, "://") || !strings.Contains(value, "@") {
+		return value
+	}
+	parts := strings.SplitN(value, "://", 2)
+	hostPart := parts[1]
+	at := strings.LastIndex(hostPart, "@")
+	if at <= 0 {
+		return value
+	}
+	return parts[0] + "://***@" + hostPart[at+1:]
+}
+
+func adGuardHomeUsesXray(upstreams []string, host string, port int, routerLan string) bool {
+	if port <= 0 {
+		return false
+	}
+	targets := map[string]bool{
+		fmt.Sprintf("127.0.0.1:%d", port): true,
+		fmt.Sprintf("127.0.0.1#%d", port): true,
+		fmt.Sprintf("localhost:%d", port): true,
+		fmt.Sprintf("localhost#%d", port): true,
+		fmt.Sprintf("%s:%d", host, port):  true,
+		fmt.Sprintf("%s#%d", host, port):  true,
+	}
+	if routerLan != "" {
+		targets[fmt.Sprintf("%s:%d", routerLan, port)] = true
+		targets[fmt.Sprintf("%s#%d", routerLan, port)] = true
+	}
+	for _, upstream := range upstreams {
+		value := normalizeAdGuardHomeUpstream(upstream)
+		if targets[value] {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeAdGuardHomeUpstream(value string) string {
+	value = cleanYAMLScalar(value)
+	if strings.HasPrefix(value, "[/") {
+		if idx := strings.LastIndex(value, "]"); idx >= 0 && idx+1 < len(value) {
+			value = strings.TrimSpace(value[idx+1:])
+		}
+	}
+	if strings.Contains(value, "://") {
+		parts := strings.SplitN(value, "://", 2)
+		value = parts[1]
+		if at := strings.LastIndex(value, "@"); at >= 0 && at+1 < len(value) {
+			value = value[at+1:]
+		}
+		value = strings.SplitN(value, "/", 2)[0]
+	}
+	return strings.Trim(value, "[] ")
+}
+
+func dnsTargetHostPort(target, fallbackHost string, fallbackPort int) (string, int) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return fallbackHost, fallbackPort
+	}
+	if strings.Contains(target, "#") {
+		parts := strings.Split(target, "#")
+		host := strings.Trim(strings.Join(parts[:len(parts)-1], "#"), "[] ")
+		port := number(parts[len(parts)-1], fallbackPort)
+		if host == "" {
+			host = fallbackHost
+		}
+		return host, port
+	}
+	if host, port, err := net.SplitHostPort(target); err == nil {
+		return strings.Trim(host, "[] "), number(port, fallbackPort)
+	}
+	if strings.Count(target, ":") == 1 {
+		parts := strings.Split(target, ":")
+		return strings.Trim(parts[0], "[] "), number(parts[1], fallbackPort)
+	}
+	return fallbackHost, fallbackPort
+}
+
 func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any {
 	if runtime.GOOS == "windows" || !commandExists("uci") {
 		return map[string]any{"ok": false, "available": false, "error": "UCI недоступен на этой системе"}
@@ -255,6 +591,13 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 		status["dryRun"] = true
 		return status
 	}
+	before := s.lanDNSUpstreamStatus(plan)
+	if lanDNSStatusMatchesRequest(before, mode, upstream) {
+		before["ok"] = true
+		before["alreadyApplied"] = true
+		before["steps"] = []map[string]any{}
+		return before
+	}
 	readiness := s.lanDNSReadiness()
 	if mode == "xray" && readiness["ready"] != true {
 		status := s.lanDNSUpstreamStatus(plan)
@@ -281,9 +624,52 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 		}
 	}
 	status := s.lanDNSUpstreamStatus(plan)
+	if !ok && lanDNSStatusMatchesRequest(status, mode, upstream) {
+		ok = true
+		status["warning"] = "Некоторые команды вернули ненулевой код, но итоговая настройка dnsmasq уже соответствует выбранному режиму."
+	}
 	status["ok"] = ok
 	status["steps"] = steps
 	return status
+}
+
+func lanDNSStatusMatchesRequest(status map[string]any, mode, upstream string) bool {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		mode = "xray"
+	}
+	if fmt.Sprint(status["mode"]) != mode {
+		return false
+	}
+	switch mode {
+	case "system":
+		return true
+	case "xray":
+		target := strings.TrimSpace(upstream)
+		if target == "" || target == "<nil>" {
+			target = fmt.Sprint(status["xrayTarget"])
+		}
+		target = dnsconfig.NormalizeDnsmasqServer(target)
+		for _, server := range stringSlice(status["servers"]) {
+			if server == target {
+				return true
+			}
+		}
+		return false
+	case "upstream":
+		target := dnsconfig.NormalizeDnsmasqServer(upstream)
+		if target == "" {
+			return false
+		}
+		for _, server := range stringSlice(status["servers"]) {
+			if server == target {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 func (s *serverState) lanDNSReadiness() map[string]any {

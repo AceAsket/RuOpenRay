@@ -65,7 +65,7 @@ export function createConfigStateHelpers(state, { onDraftChange } = {}) {
   function lanDnsModeLabel(mode) {
     return ({
       xray: 'DNS через Xray',
-      upstream: 'Внешний DNS / Pi-hole',
+      upstream: 'Внешний DNS / Pi-hole / AdGuard',
       system: 'Как в OpenWrt',
       manual: 'Ручная настройка',
       unknown: 'Неизвестно'

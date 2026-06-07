@@ -1632,6 +1632,21 @@
   white-space: pre-wrap;
 }
 
+.adguard-compat-modes {
+  margin-top: 16px;
+  margin-bottom: 14px;
+}
+
+.adguard-compat-modes .advanced-card {
+  align-content: start;
+  gap: 12px;
+}
+
+.adguard-compat-modes .btn {
+  width: 100%;
+  margin-top: 2px;
+}
+
 .dns-server-row {
   grid-template-columns: 132px 88px minmax(0, 1fr) 170px 44px;
   align-items: center;

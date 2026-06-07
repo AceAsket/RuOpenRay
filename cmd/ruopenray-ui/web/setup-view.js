@@ -113,7 +113,7 @@ function setupWizardSteps(readiness) {
   return [
     { id: 'environment', title: 'Проверка', detail: 'Xray, geo-файлы, место', ok: xrayReady && geoReady },
     { id: 'mode', title: 'Режим', detail: 'Как вести LAN-трафик', ok: true },
-    { id: 'dns', title: 'DNS', detail: 'dnsmasq, Xray или Pi-hole', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
+    { id: 'dns', title: 'DNS', detail: 'dnsmasq, Xray, Pi-hole или AdGuard', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
     { id: 'server', title: 'Сервер', detail: 'Прокси или подписка', ok: proxyReady },
     { id: 'routing', title: 'Правила', detail: 'Маршрутизация и geo', ok: true },
     { id: 'fallback', title: 'Остальное', detail: 'Куда вести unmatched traffic', ok: defaultRouteReady },
@@ -239,7 +239,7 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
   if (step === 'dns') {
     return `<section class="setup-step-panel">
       <h3>DNS для LAN</h3>
-      <p>Можно оставить текущий DNS, направить dnsmasq в Xray DNS или использовать внешний DNS/Pi-hole. Для режима через Xray мастер проверит, что DNS-вход Xray действительно слушает порт.</p>
+      <p>Можно оставить текущий DNS, направить dnsmasq в Xray DNS или использовать внешний DNS, Pi-hole либо AdGuard Home. Для режима через Xray мастер проверит, что DNS-вход Xray действительно слушает порт.</p>
       ${setupLanDnsBlock()}
     </section>`;
   }
@@ -323,7 +323,7 @@ function setupLanDnsBlock() {
       ].map(([mode, label]) => `<button type="button" class="${state.setupLanDnsMode === mode ? 'active' : ''}" data-setup-dns-mode="${mode}">${label}</button>`).join('')}
     </div>
     ${state.setupLanDnsMode === 'upstream' ? `<div class="form-row">
-      <label>DNS / Pi-hole</label>
+      <label>DNS / Pi-hole / AdGuard Home</label>
       <input id="setupLanDnsUpstream" value="${escapeHtml(state.setupLanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10:53" />
     </div>` : ''}
     <label class="toggle-row">

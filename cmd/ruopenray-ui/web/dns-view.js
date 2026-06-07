@@ -523,11 +523,33 @@ function lanDnsSection() {
   const dnsPortConflict = status.dnsPortConflict || readiness.udpConflict;
   const conflictOwner = status.dnsPortConflictOwner || readiness.udpOwner || '';
   const suggestedTarget = status.suggestedXrayTarget || '127.0.0.1#10535';
+  const adguard = status.adguardHome || {};
+  const adguardFound = Boolean(adguard.available || adguard.configPath);
+  const adguardRunning = Boolean(adguard.running);
+  const adguardUsesXray = Boolean(adguard.usesXray);
+  const adguardLocalTarget = adguard.recommendedLocal || `127.0.0.1:${xrayPort}`;
+  const adguardLanTarget = adguard.recommendedLan || `${routerLan}:${xrayPort}`;
+  const adguardPort = Number(adguard.port || 53) || 53;
+  const adguardHost = !adguard.bindHost || ['0.0.0.0', '::', '[::]'].includes(String(adguard.bindHost)) ? '127.0.0.1' : String(adguard.bindHost);
+  const dns = dnsConfig();
+  const adguardAfterActive = Boolean((dns.servers || []).some((server) => {
+    if (typeof server === 'string') return server === `${adguardHost}:${adguardPort}` || server === adguardHost;
+    return String(server?.address || '') === adguardHost && Number(server?.port || 53) === adguardPort;
+  }));
+  const adguardBeforeActive = adguardUsesXray && !adguardAfterActive;
+  const adguardDisabledActive = !adguardAfterActive && !adguardBeforeActive;
+  const adguardSummary = adguardFound
+    ? adguardUsesXray
+      ? 'смотрит в Xray'
+      : adguardRunning
+        ? 'запущен'
+        : 'найден, остановлен'
+    : 'не найден';
   const draftMode = state.lanDnsMode || 'xray';
   const draftTarget = draftMode === 'xray'
     ? xrayTarget
     : draftMode === 'upstream'
-      ? (state.lanDnsUpstream || 'адрес Pi-hole/DNS не задан')
+      ? (state.lanDnsUpstream || 'адрес Pi-hole/AdGuard/DNS не задан')
       : 'системные настройки OpenWrt';
   const draftUpstream = String(state.lanDnsUpstream || '').trim();
   const currentMatchesDraft = status.mode === draftMode && (
@@ -550,6 +572,7 @@ function lanDnsSection() {
         <article><span>Upstream dnsmasq</span><strong>${escapeHtml(current)}</strong></article>
         <article><span>Адрес роутера</span><strong>${escapeHtml(routerLan)}</strong></article>
         <article><span>Xray DNS inbound</span><strong>${escapeHtml(xrayTarget)}</strong></article>
+        <article><span>AdGuard Home</span><strong>${escapeHtml(adguardSummary)}</strong><small>${escapeHtml(adguard.listen || adguard.configPath || '')}</small></article>
       </div>
       <div class="apply-state-panel ${currentMatchesDraft ? 'ok' : 'warn'}">
         <div class="apply-state-head">
@@ -575,8 +598,8 @@ function lanDnsSection() {
           <span>LAN → dnsmasq → ${escapeHtml(xrayTarget)} → Xray DNS. Подходит, когда RuOpenRay управляет DNS-маршрутизацией.</span>
         </button>
         <button type="button" class="advanced-card ${state.lanDnsMode === 'upstream' ? 'active' : ''}" data-lan-dns-mode="upstream">
-          <strong>Внешний DNS / Pi-hole</strong>
-          <span>LAN → dnsmasq → Pi-hole или другой DNS. Укажите адрес ниже, порт 53 добавится автоматически.</span>
+          <strong>Внешний DNS / Pi-hole / AdGuard</strong>
+          <span>LAN → dnsmasq → Pi-hole, AdGuard Home или другой DNS. Укажите адрес ниже, порт 53 добавится автоматически.</span>
         </button>
         <button type="button" class="advanced-card ${state.lanDnsMode === 'system' ? 'active' : ''}" data-lan-dns-mode="system">
           <strong>Как в OpenWrt</strong>
@@ -590,7 +613,7 @@ function lanDnsSection() {
           <small>По умолчанию 10535. Порт 5353 на OpenWrt часто занят mDNS/umdns, из-за этого Xray не стартует.</small>
         </div>
         <div class="form-row">
-          <label>Адрес внешнего DNS или Pi-hole</label>
+          <label>Адрес внешнего DNS, Pi-hole или AdGuard Home</label>
           <input id="lanDnsUpstream" value="${escapeHtml(state.lanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10#53" ${state.lanDnsMode === 'upstream' ? '' : 'disabled'} />
         </div>
         <label class="settings-check compact ${state.lanDnsRestart ? 'active' : ''}">
@@ -612,8 +635,29 @@ function lanDnsSection() {
       ${dnsPortConflict ? `<div class="settings-warning"><strong>Порт DNS занят</strong><span>UDP ${escapeHtml(xrayTarget)} уже держит ${escapeHtml(conflictOwner || 'другой процесс')}. При подготовке черновика RuOpenRay выберет запасной порт ${escapeHtml(suggestedTarget)}, а dnsmasq нужно направить туда же.</span></div>` : ''}
       ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт ${escapeHtml(readiness.targetTCP || xrayTarget.replace('#', ':'))} слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
       <div class="settings-warning">
-        <strong>Если Pi-hole главный DNS</strong>
-        <span>DHCP может выдавать клиентам Pi-hole напрямую. Тогда в Pi-hole upstream укажите ${escapeHtml(routerLan)}#${escapeHtml(xrayPort)}, а Xray DNS inbound должен быть доступен с LAN-адреса роутера. Не делайте цепочку Pi-hole → роутер → Pi-hole.</span>
+        <strong>Если Pi-hole или AdGuard Home главный DNS</strong>
+        <span>Если сервис стоит на этом роутере, в его upstream укажите ${escapeHtml(adguardLocalTarget)}. Если он на отдельном устройстве, используйте ${escapeHtml(adguardLanTarget)} и убедитесь, что Xray DNS inbound доступен с LAN-адреса. Не делайте цепочку DNS-сервис → роутер → тот же DNS-сервис.</span>
+      </div>
+      ${adguardFound ? `<div class="settings-warning ${adguardUsesXray ? 'ok' : ''}">
+        <strong>${adguardUsesXray ? 'AdGuard Home уже совместим' : 'AdGuard Home найден'}</strong>
+        <span>${escapeHtml(adguard.hint || `В AdGuard Home upstream DNS укажите ${adguardLocalTarget}, если он работает на этом роутере.`)}</span>
+      </div>` : ''}
+      <div class="advanced-grid three adguard-compat-modes">
+        <article class="advanced-card ${adguardAfterActive ? 'active' : ''}">
+          <strong>AdGuard после Xray</strong>
+          <span>Рекомендуемый режим: LAN → DNS-перехват/Xray DNS → AdGuard Home → внешний DNS. Xray первым видит домены, AdGuard фильтрует ответы.</span>
+          <button class="btn secondary ${state.busyAction === 'prepareAdguardAfterXray' ? 'is-busy' : ''}" data-action="prepareAdguardAfterXray" ${state.busyAction === 'prepareAdguardAfterXray' || !adguardRunning ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardAfterXray' ? 'Готовлю...' : 'Подготовить Xray → AdGuard'}</button>
+        </article>
+        <article class="advanced-card ${adguardBeforeActive ? 'active' : ''}">
+          <strong>AdGuard перед Xray</strong>
+          <span>Для статистики клиентов в AdGuard: LAN → AdGuard Home → Xray DNS. В AdGuard Home upstream укажите ${escapeHtml(adguardLocalTarget)}.</span>
+          <button class="btn secondary ${state.busyAction === 'prepareAdguardBeforeXray' ? 'is-busy' : ''}" data-action="prepareAdguardBeforeXray" ${state.busyAction === 'prepareAdguardBeforeXray' ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardBeforeXray' ? 'Готовлю...' : 'Подготовить AdGuard → Xray'}</button>
+        </article>
+        <article class="advanced-card ${adguardDisabledActive ? 'active' : ''}">
+          <strong>Не использовать AdGuard</strong>
+          <span>RuOpenRay оставит текущие DNS-серверы Xray без локального AdGuard Home. Сам AdGuard и его YAML не меняются.</span>
+          <button class="btn secondary ${state.busyAction === 'disableAdguardCompat' ? 'is-busy' : ''}" data-action="disableAdguardCompat" ${state.busyAction === 'disableAdguardCompat' ? 'disabled' : ''}>${state.busyAction === 'disableAdguardCompat' ? 'Отключаю...' : 'Не использовать AdGuard'}</button>
+        </article>
       </div>
       <div class="toolbar">
         <button class="btn secondary ${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'is-busy' : ''}" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'Проверяю...' : 'Проверить и показать команды'}</button>

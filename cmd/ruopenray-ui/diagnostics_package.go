@@ -123,6 +123,7 @@ func (s *serverState) diagnosticsStatusPayloads() []diagnosticsNamedPayload {
 		{name: "status/log-maintenance.json", payload: s.maintainLogFiles(false)},
 		{name: "status/firewall.json", payload: s.firewallStatus()},
 		{name: "status/lan-dns.json", payload: s.lanDNSUpstreamStatus(nil)},
+		{name: "status/adguard-home.json", payload: s.adGuardHomeStatus("", s.xrayDNSUpstreamTarget())},
 		{name: "status/geo.json", payload: s.geoStatus()},
 		{name: "status/subscriptions.json", payload: redactDiagnosticAny(s.subscriptionReport(), nil, "", "")},
 		{name: "status/subscription-schedule.json", payload: s.subscriptionSchedule()},

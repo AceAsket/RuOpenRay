@@ -149,6 +149,13 @@ export function createXrayDraftActions({
 
   function prepareDnsInboundDraft() {
     const next = JSON.parse(JSON.stringify(state.config || {}));
+    const dnsPort = ensureDnsInbound(next);
+    syncConfig(next);
+    state.message = `DNS inbound подготовлен в черновике. После применения dnsmasq можно направить на 127.0.0.1#${dnsPort}.`;
+    render();
+  }
+
+  function ensureDnsInbound(next) {
     next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
     next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
     next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
@@ -183,8 +190,71 @@ export function createXrayDraftActions({
     if (!next.routing.rules.some((rule) => JSON.stringify(rule) === JSON.stringify(dnsRule))) {
       next.routing.rules.unshift(dnsRule);
     }
+    return dnsPort;
+  }
+
+  function adguardDnsServerFromStatus() {
+    const adguard = state.lanDnsStatus?.adguardHome || {};
+    const port = Number(adguard.port || 53) || 53;
+    let address = String(adguard.bindHost || '').trim();
+    if (!address || address === '0.0.0.0' || address === '::' || address === '[::]') address = '127.0.0.1';
+    return { address, port };
+  }
+
+  function sameDnsServer(a, b) {
+    if (!a || !b) return false;
+    if (typeof a === 'string') return a === b.address || a === `${b.address}:${b.port}`;
+    return String(a.address || '') === String(b.address || '') && Number(a.port || 53) === Number(b.port || 53);
+  }
+
+  function prepareAdguardAfterXrayDraft() {
+    const adguard = state.lanDnsStatus?.adguardHome || {};
+    if (!adguard.available) {
+      state.message = 'AdGuard Home не найден на роутере. Проверьте установку или используйте режим внешнего DNS вручную.';
+      render();
+      return;
+    }
+    if (!adguard.running) {
+      state.message = 'AdGuard Home найден, но не запущен. Режим Xray → AdGuard не подготовлен, чтобы не отправить DNS обратно в dnsmasq.';
+      render();
+      return;
+    }
+    if (adguard.usesXray) {
+      state.message = 'AdGuard Home уже смотрит в Xray. Чтобы поставить его после Xray, сначала уберите Xray из upstream AdGuard Home, иначе получится DNS-петля.';
+      render();
+      return;
+    }
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    ensureDnsInbound(next);
+    next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
+    next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
+    const server = adguardDnsServerFromStatus();
+    next.dns.servers = next.dns.servers.filter((item) => !sameDnsServer(item, server));
+    next.dns.servers.unshift(server);
     syncConfig(next);
-    state.message = `DNS inbound подготовлен в черновике. После применения dnsmasq можно направить на 127.0.0.1#${dnsPort}.`;
+    state.message = `Режим Xray → AdGuard Home подготовлен: Xray DNS будет отправлять запросы в ${server.address}:${server.port}. Проверьте и примените конфигурацию.`;
+    render();
+  }
+
+  function prepareAdguardBeforeXrayDraft() {
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    const dnsPort = ensureDnsInbound(next);
+    syncConfig(next);
+    state.message = `Режим AdGuard Home → Xray подготовлен: после применения укажите в AdGuard Home upstream ${state.lanDnsStatus?.adguardHome?.recommendedLocal || `127.0.0.1:${dnsPort}`}.`;
+    render();
+  }
+
+  function disableAdguardCompatDraft() {
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    next.dns = next.dns && typeof next.dns === 'object' ? next.dns : {};
+    next.dns.servers = Array.isArray(next.dns.servers) ? next.dns.servers : [];
+    const server = adguardDnsServerFromStatus();
+    const before = next.dns.servers.length;
+    next.dns.servers = next.dns.servers.filter((item) => !sameDnsServer(item, server));
+    syncConfig(next);
+    state.message = before === next.dns.servers.length
+      ? 'AdGuard Home не используется в DNS-серверах Xray. Ничего менять не пришлось.'
+      : 'AdGuard Home убран из DNS-серверов Xray в черновике. Проверьте и примените конфигурацию.';
     render();
   }
 
@@ -278,6 +348,9 @@ export function createXrayDraftActions({
     setDnsModeDraft,
     prepareTransparentDraft,
     prepareDnsInboundDraft,
+    prepareAdguardAfterXrayDraft,
+    prepareAdguardBeforeXrayDraft,
+    disableAdguardCompatDraft,
     saveLocalProxyDraft,
     copyFirewallCommands,
     copyInstallCommand
