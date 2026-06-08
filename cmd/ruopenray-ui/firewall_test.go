@@ -178,6 +178,37 @@ func TestFirewallPreviewUsesExpandedGeoTargets(t *testing.T) {
 	}
 }
 
+func TestParseOpenWrtDnatReplyBypass(t *testing.T) {
+	got := parseOpenWrtDnatReplyBypass(`
+firewall.@redirect[0]=redirect
+firewall.@redirect[0].name='GL-unraid reverse proxy'
+firewall.@redirect[0].src='wan'
+firewall.@redirect[0].src_dport='443'
+firewall.@redirect[0].dest='lan'
+firewall.@redirect[0].dest_ip='192.168.50.50'
+firewall.@redirect[0].dest_port='1443'
+firewall.@redirect[0].proto='tcp'
+firewall.@redirect[0].enabled='1'
+firewall.@redirect[1]=redirect
+firewall.@redirect[1].dest='lan'
+firewall.@redirect[1].dest_ip='192.168.50.60'
+firewall.@redirect[1].dest_port='51820'
+firewall.@redirect[1].proto='udp tcp'
+firewall.@redirect[2]=redirect
+firewall.@redirect[2].dest='wan'
+firewall.@redirect[2].dest_ip='192.168.50.70'
+firewall.@redirect[2].dest_port='1234'
+`)
+	want := []map[string]any{
+		{"ip": "192.168.50.50", "proto": "tcp", "port": "1443"},
+		{"ip": "192.168.50.60", "proto": "udp", "port": "51820"},
+		{"ip": "192.168.50.60", "proto": "tcp", "port": "51820"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseOpenWrtDnatReplyBypass() = %#v, want %#v", got, want)
+	}
+}
+
 func writeFirewallGeoFixture(t *testing.T, geoDir string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(geoDir, "geoip.dat"), protoMessage(1, protoRawMessage(

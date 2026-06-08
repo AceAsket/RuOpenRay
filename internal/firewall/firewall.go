@@ -123,6 +123,87 @@ func DportExpression(ports []string, protocol string) string {
 	return " th dport " + NftSet(ports)
 }
 
+type DnatReplyBypass struct {
+	IP    string
+	Port  string
+	Proto string
+}
+
+func DnatReplyBypassList(value any) []DnatReplyBypass {
+	seen := map[string]bool{}
+	out := []DnatReplyBypass{}
+	add := func(ipText, portText, protoText string) {
+		ipText = strings.TrimSpace(ipText)
+		portText = strings.ReplaceAll(strings.TrimSpace(portText), ":", "-")
+		protoText = strings.ToLower(strings.TrimSpace(protoText))
+		ip := net.ParseIP(ipText)
+		if ip == nil || ip.To4() == nil {
+			return
+		}
+		start, end, ok := portRange(portText)
+		if !ok || start == 0 || end == 0 {
+			return
+		}
+		protos := []string{}
+		for _, proto := range strings.Fields(strings.ReplaceAll(protoText, ",", " ")) {
+			if proto == "tcp" || proto == "udp" {
+				protos = append(protos, proto)
+			}
+		}
+		if len(protos) == 0 {
+			protos = []string{"tcp"}
+		}
+		for _, proto := range protos {
+			key := ip.String() + "/" + proto + "/" + portText
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, DnatReplyBypass{IP: ip.String(), Port: portText, Proto: proto})
+		}
+	}
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			switch entry := item.(type) {
+			case map[string]any:
+				add(fmt.Sprint(entry["ip"]), fmt.Sprint(entry["port"]), fmt.Sprint(entry["proto"]))
+			case map[string]string:
+				add(entry["ip"], entry["port"], entry["proto"])
+			case string:
+				parts := strings.Split(entry, "/")
+				if len(parts) == 3 {
+					add(parts[0], parts[2], parts[1])
+				}
+			}
+		}
+	case []map[string]any:
+		for _, entry := range typed {
+			add(fmt.Sprint(entry["ip"]), fmt.Sprint(entry["port"]), fmt.Sprint(entry["proto"]))
+		}
+	case []DnatReplyBypass:
+		for _, entry := range typed {
+			add(entry.IP, entry.Port, entry.Proto)
+		}
+	case string:
+		for _, item := range strings.Split(typed, ",") {
+			parts := strings.Split(strings.TrimSpace(item), "/")
+			if len(parts) == 3 {
+				add(parts[0], parts[2], parts[1])
+			}
+		}
+	}
+	return out
+}
+
+func DnatReplyBypassMeta(items []DnatReplyBypass) []string {
+	out := []string{}
+	for _, item := range items {
+		out = append(out, item.IP+"/"+item.Proto+"/"+item.Port)
+	}
+	return out
+}
+
 func NativeNft(payload map[string]any) (string, map[string]any) {
 	routerMode := PayloadString(payload, "routerMode", "tproxy")
 	if routerMode != "redirect" {
@@ -164,6 +245,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	directDomains := stringList(payload["directDomains"])
 	proxyDomains := stringList(payload["proxyDomains"])
 	routerBypassIPs := CIDRList(payload["routerBypassIps"])
+	dnatReplyBypass := DnatReplyBypassList(payload["dnatReplyBypass"])
 	localBypass := mergeCIDRLists(
 		[]string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"},
 		routerBypassIPs,
@@ -178,6 +260,9 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	chainLines = append(chainLines,
 		fmt.Sprintf("    iifname != %q return", lanInterface),
 	)
+	for _, item := range dnatReplyBypass {
+		chainLines = append(chainLines, fmt.Sprintf("    ip saddr %s %s sport %s return comment \"RuOpenRay DNAT reply bypass\"", item.IP, item.Proto, item.Port))
+	}
 	if deviceMode == "exclude" && len(devices) > 0 {
 		chainLines = append(chainLines, "    ip saddr "+NftSet(devices)+" return")
 	}
@@ -270,12 +355,13 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"directIps":            directIPs,
 		"proxyIps":             proxyIPs,
 		"routerBypassIps":      routerBypassIPs,
+		"dnatReplyBypass":      DnatReplyBypassMeta(dnatReplyBypass),
 		"directDomains":        directDomains,
 		"proxyDomains":         proxyDomains,
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s routerBypassIps=%s directDomains=%s proxyDomains=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s routerBypassIps=%s dnatReplyBypass=%s directDomains=%s proxyDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -295,6 +381,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),
 		strings.Join(routerBypassIPs, ","),
+		strings.Join(DnatReplyBypassMeta(dnatReplyBypass), ","),
 		strings.Join(directDomains, ","),
 		strings.Join(proxyDomains, ","),
 	)

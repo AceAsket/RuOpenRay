@@ -376,7 +376,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "routerBypassIps", "directDomains", "proxyDomains":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "routerBypassIps", "dnatReplyBypass", "directDomains", "proxyDomains":
 				if value == "" {
 					meta[key] = []string{}
 				} else {

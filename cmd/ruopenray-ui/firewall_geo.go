@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -154,6 +155,7 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 	next["directIps"] = directIPs
 	next["proxyIps"] = proxyIPs
 	next["routerBypassIps"] = routerBypassIPs
+	next["dnatReplyBypass"] = openWrtDnatReplyBypass()
 	next["directDomains"] = directDomains
 	next["proxyDomains"] = proxyDomains
 	next["geoExpansion"] = map[string]any{
@@ -191,6 +193,89 @@ func routerBypassIPv4() []string {
 		}
 		seen[ipText] = true
 		items = append(items, ipText)
+	}
+	return items
+}
+
+func openWrtDnatReplyBypass() []map[string]any {
+	if !commandExists("uci") {
+		return []map[string]any{}
+	}
+	out := fmt.Sprint(runTimeout(5*time.Second, "uci", "-q", "show", "firewall")["stdout"])
+	return parseOpenWrtDnatReplyBypass(out)
+}
+
+func parseOpenWrtDnatReplyBypass(uciOutput string) []map[string]any {
+	type redirect struct {
+		Type     string
+		Enabled  string
+		Dest     string
+		DestIP   string
+		DestPort string
+		Proto    string
+	}
+	redirects := map[string]*redirect{}
+	linePattern := regexp.MustCompile(`^firewall\.(@redirect\[\d+\])(?:\.([A-Za-z0-9_]+))?=(.*)$`)
+	for _, raw := range strings.Split(uciOutput, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		matches := linePattern.FindStringSubmatch(line)
+		if len(matches) != 4 {
+			continue
+		}
+		id := matches[1]
+		key := matches[2]
+		value := strings.Trim(strings.TrimSpace(matches[3]), "'\"")
+		item := redirects[id]
+		if item == nil {
+			item = &redirect{}
+			redirects[id] = item
+		}
+		switch key {
+		case "":
+			item.Type = value
+		case "enabled":
+			item.Enabled = value
+		case "dest":
+			item.Dest = value
+		case "dest_ip":
+			item.DestIP = value
+		case "dest_port":
+			item.DestPort = value
+		case "proto":
+			item.Proto = value
+		}
+	}
+	seen := map[string]bool{}
+	items := []map[string]any{}
+	for _, item := range redirects {
+		if item.Type != "redirect" || item.Enabled == "0" || item.DestIP == "" || item.DestPort == "" {
+			continue
+		}
+		if item.Dest != "" && item.Dest != "lan" {
+			continue
+		}
+		ip := net.ParseIP(item.DestIP)
+		if ip == nil || ip.To4() == nil {
+			continue
+		}
+		protos := strings.Fields(strings.ReplaceAll(strings.ToLower(item.Proto), ",", " "))
+		if len(protos) == 0 {
+			protos = []string{"tcp"}
+		}
+		for _, proto := range protos {
+			if proto != "tcp" && proto != "udp" {
+				continue
+			}
+			key := ip.String() + "/" + proto + "/" + item.DestPort
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			items = append(items, map[string]any{"ip": ip.String(), "proto": proto, "port": item.DestPort})
+		}
 	}
 	return items
 }

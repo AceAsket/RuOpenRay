@@ -330,6 +330,27 @@ func TestNativeNftBypassesRouterPublicIPs(t *testing.T) {
 	}
 }
 
+func TestNativeNftBypassesDnatReplyTraffic(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode": "tproxy",
+		"dnatReplyBypass": []any{
+			map[string]any{"ip": "192.168.50.50", "proto": "tcp", "port": "1443"},
+			map[string]any{"ip": "bad", "proto": "tcp", "port": "1443"},
+		},
+	})
+	needle := `ip saddr 192.168.50.50 tcp sport 1443 return comment "RuOpenRay DNAT reply bypass"`
+	if !strings.Contains(body, needle) {
+		t.Fatalf("DNAT reply bypass rule missing:\n%s", body)
+	}
+	if strings.Index(body, needle) > strings.Index(body, "tproxy ip to 127.0.0.1") {
+		t.Fatalf("DNAT reply bypass must be before catch-all tproxy:\n%s", body)
+	}
+	got, ok := meta["dnatReplyBypass"].([]string)
+	if !ok || len(got) != 1 || got[0] != "192.168.50.50/tcp/1443" {
+		t.Fatalf("dnatReplyBypass meta = %#v, want one encoded rule", meta["dnatReplyBypass"])
+	}
+}
+
 func TestStepOKAllowsMissingDeletes(t *testing.T) {
 	if !StepOK(map[string]any{"ok": false, "stderr": "No such file or directory"}) {
 		t.Fatal("StepOK should allow idempotent missing-file errors")
