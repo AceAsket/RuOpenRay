@@ -135,8 +135,11 @@ export function createSetupActions({
       const firewall = await applyFirewallWithRetry(3);
       state.firewallStatus = firewall.status || state.firewallStatus || firewall;
       const firewallOk = Boolean(firewall.ok && firewallReadyStatus(state.firewallStatus));
-      pushStep(firewallOk, 'nftables и policy routing', state.firewallStatus?.routerMode || firewall.status?.routerMode || state.firewallRouterMode);
-      if (!firewallOk) throw new Error(firewall.error || 'Не удалось включить перехват');
+      const firewallDetail = firewall.needsConfirmation
+        ? (firewall.error || 'Найдены сторонние правила Podkop/B4. Примените перехват вручную и подтвердите совместимость.')
+        : (state.firewallStatus?.routerMode || firewall.status?.routerMode || state.firewallRouterMode);
+      pushStep(firewallOk, 'nftables и policy routing', firewallDetail);
+      if (!firewallOk) throw new Error(firewall.needsConfirmation ? firewallDetail : (firewall.error || 'Не удалось включить перехват'));
 
       state.message = 'Активный режим RuOpenRay включен';
       await refresh({ renderAfter: false });

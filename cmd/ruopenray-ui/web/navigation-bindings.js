@@ -12,6 +12,7 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
     state.routeRuleDialog = false;
     state.routeBalancerDialog = false;
     state.routePresetDialog = false;
+    state.firewallPreflightPrompt = null;
   }
 
   document.querySelectorAll('[data-tab]').forEach((button) => {

@@ -113,6 +113,8 @@ function dashboardLogWarnings() {
   const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const monitor = state.domainMonitor || {};
   const dnsmasqLogqueries = monitor?.dnsmasq?.logqueries === true;
+  const podkop = state.status?.podkop || {};
+  const b4 = state.status?.b4 || {};
   if (level === 'debug') {
     items.push('Xray пишет подробный debug-log. После проверки лучше вернуть warning или error.');
   } else if (level === 'info') {
@@ -122,6 +124,8 @@ function dashboardLogWarnings() {
   if (dnsLog) items.push('DNS-лог Xray включен: доменные ответы могут добавлять много строк.');
   if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
   if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
+  if (podkop.active) items.push('Podkop активен: он может управлять DNS, nftables и transparent proxy. Перед применением перехвата выберите, какой сервис будет главным.');
+  if (b4.active) items.push('B4 активен: он может использовать NFQUEUE/firewall для DPI-обхода. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.');
   if (!items.length) return '';
   return `<div class="settings-warning compact dashboard-log-warning"><strong>Диагностика логов</strong><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
 }

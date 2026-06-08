@@ -316,6 +316,20 @@ func TestNativeNftKillSwitchDNSBlockDomainsDoNotCreateSet(t *testing.T) {
 	}
 }
 
+func TestNativeNftBypassesRouterPublicIPs(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":      "tproxy",
+		"routerBypassIps": []any{"95.165.105.220", "bad"},
+	})
+	if !strings.Contains(body, "ip daddr { 0.0.0.0/8") || !strings.Contains(body, "95.165.105.220") {
+		t.Fatalf("router public IP should be included in local bypass:\n%s", body)
+	}
+	got, ok := meta["routerBypassIps"].([]string)
+	if !ok || len(got) != 1 || got[0] != "95.165.105.220" {
+		t.Fatalf("routerBypassIps meta = %#v, want public router IP", meta["routerBypassIps"])
+	}
+}
+
 func TestStepOKAllowsMissingDeletes(t *testing.T) {
 	if !StepOK(map[string]any{"ok": false, "stderr": "No such file or directory"}) {
 		t.Fatal("StepOK should allow idempotent missing-file errors")

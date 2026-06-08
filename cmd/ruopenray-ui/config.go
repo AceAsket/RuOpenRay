@@ -38,6 +38,10 @@ type serverState struct {
 	serviceAt        time.Time
 	xrayStatsCache   map[string]any
 	xrayStatsAt      time.Time
+	podkopCache      map[string]any
+	podkopAt         time.Time
+	b4Cache          map[string]any
+	b4At             time.Time
 	logCacheKey      string
 	logCacheText     string
 	logCacheAt       time.Time

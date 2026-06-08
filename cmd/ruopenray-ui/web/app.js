@@ -605,6 +605,8 @@ const firewallActions = createFirewallActions({
 const {
   applyFirewallWithRetry,
   applyFirewall,
+  closeFirewallPreflight,
+  confirmFirewallPreflight,
   disableFirewall,
   refreshFirewallStatus,
   downloadFirewallRules,
@@ -1845,6 +1847,49 @@ function restoreRenderState(snapshot) {
   requestAnimationFrame(() => window.scrollTo({ top, left: 0 }));
 }
 
+function firewallPreflightDialog() {
+  const prompt = state.firewallPreflightPrompt;
+  if (!prompt) return '';
+  const preflight = prompt.preflight || {};
+  const issues = Array.isArray(preflight.issues) ? preflight.issues : [];
+  const issueHtml = issues.length
+    ? issues.map((issue) => `
+      <article class="firewall-preflight-issue ${escapeHtml(issue.severity || 'warn')}">
+        <strong>${escapeHtml(issue.title || issue.source || 'Предупреждение')}</strong>
+        <span>${escapeHtml(issue.detail || '')}</span>
+      </article>
+    `).join('')
+    : '<article class="firewall-preflight-issue"><strong>Подробностей нет</strong><span>Сервер вернул запрос подтверждения без списка конфликтов.</span></article>';
+  return `
+    <div class="modal-backdrop" data-action="closeFirewallPreflight">
+      <section class="modal firewall-preflight-dialog" role="dialog" aria-modal="true" aria-labelledby="firewallPreflightTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="firewallPreflightTitle">Перед применением перехвата</h2>
+            <span>${escapeHtml(preflight.summary || 'Найдены сторонние правила перехвата.')}</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeFirewallPreflight" aria-label="Закрыть">×</button>
+        </div>
+        <div class="firewall-preflight-body">
+          <p>RuOpenRay обнаружил Podkop/B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
+          <div class="firewall-preflight-meta">
+            <span>Режим: ${escapeHtml(preflight.routerMode || 'неизвестно')}</span>
+            <span>DNS-перехват: ${preflight.dnsIntercept ? 'включен' : 'выключен'}</span>
+          </div>
+          <div class="firewall-preflight-list">
+            ${issueHtml}
+          </div>
+          <p class="firewall-preflight-note">Продолжайте только если вы уже развели зоны ответственности: кто управляет LAN-перехватом, DNS и policy routing.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn secondary" type="button" data-action="closeFirewallPreflight">Отмена</button>
+          <button class="btn warning" type="button" data-action="confirmFirewallPreflight">Применить всё равно</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function render() {
   const renderSnapshot = captureRenderState();
   state.pendingBackgroundRender = false;
@@ -1887,6 +1932,7 @@ function render() {
     ${routeBalancerDialog()}
     ${routeTargetReplaceDialog()}
     ${importDialog(state.importDialog)}
+    ${firewallPreflightDialog()}
     <div class="shell">
       <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
         <div class="brand">
@@ -2084,6 +2130,8 @@ function bind() {
       test: testConfig,
       apply: applyConfigAndFirewall,
       applyFirewall,
+      closeFirewallPreflight,
+      confirmFirewallPreflight,
       disableFirewall,
       refreshFirewallStatus,
       downloadFirewallRules,

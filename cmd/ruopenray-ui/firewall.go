@@ -376,7 +376,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "directDomains", "proxyDomains":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "routerBypassIps", "directDomains", "proxyDomains":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
@@ -535,6 +535,19 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	}
 	payload = s.expandFirewallGeoPayload(payload)
 	body, meta := rfw.NativeNft(payload)
+	preflight := s.firewallCompatibilityPreflight(payload, meta)
+	if preflight["requiresConfirmation"] == true && !boolPayload(payload, firewallCompatibilityConfirmKey, false) {
+		return map[string]any{
+			"ok":                false,
+			"needsConfirmation": true,
+			"error":             fmt.Sprint(preflight["summary"]),
+			"nft":               body,
+			"meta":              meta,
+			"geoExpansion":      payload["geoExpansion"],
+			"preflight":         preflight,
+			"status":            s.firewallStatus(),
+		}
+	}
 	routerMode := fmt.Sprint(meta["routerMode"])
 	steps := []map[string]any{}
 	if err := os.MkdirAll(filepath.Dir(ruOpenRayFirewallNftPath), 0o755); err != nil {
@@ -575,7 +588,7 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 	if routerMode == "tproxy" {
 		ok = ok && status["ipRule"] == true && status["ipRoute"] == true
 	}
-	return map[string]any{"ok": ok, "nft": body, "meta": meta, "geoExpansion": payload["geoExpansion"], "steps": steps, "status": status}
+	return map[string]any{"ok": ok, "nft": body, "meta": meta, "geoExpansion": payload["geoExpansion"], "preflight": preflight, "steps": steps, "status": status}
 }
 
 func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string]any {

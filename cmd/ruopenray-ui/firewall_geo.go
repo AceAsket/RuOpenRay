@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"strings"
+	"time"
 )
 
 const (
@@ -123,6 +125,7 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 	proxyIPs := stringList(next["proxyIps"])
 	directDomains := stringList(next["directDomains"])
 	proxyDomains := stringList(next["proxyDomains"])
+	routerBypassIPs := routerBypassIPv4()
 	killSwitchIPSeen := stringSet(killSwitchIPs)
 	killSwitchDomainSeen := stringSet(killSwitchDomains)
 	directIPSeen := stringSet(directIPs)
@@ -150,6 +153,7 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 	next["killSwitchDomains"] = killSwitchDomains
 	next["directIps"] = directIPs
 	next["proxyIps"] = proxyIPs
+	next["routerBypassIps"] = routerBypassIPs
 	next["directDomains"] = directDomains
 	next["proxyDomains"] = proxyDomains
 	next["geoExpansion"] = map[string]any{
@@ -167,6 +171,28 @@ func (s *serverState) expandFirewallGeoPayload(payload map[string]any) map[strin
 		"domainFormats": "domain/full; regexp/keyword пропускаются для firewall",
 	}
 	return next
+}
+
+func routerBypassIPv4() []string {
+	if !commandExists("ip") {
+		return []string{}
+	}
+	out := fmt.Sprint(runTimeout(5*time.Second, "ip", "-4", "addr", "show", "scope", "global")["stdout"])
+	seen := map[string]bool{}
+	items := []string{}
+	for _, field := range strings.Fields(out) {
+		if !strings.Contains(field, "/") {
+			continue
+		}
+		ipText := strings.SplitN(field, "/", 2)[0]
+		ip := net.ParseIP(ipText)
+		if ip == nil || ip.To4() == nil || seen[ipText] {
+			continue
+		}
+		seen[ipText] = true
+		items = append(items, ipText)
+	}
+	return items
 }
 
 func clonePayloadMap(payload map[string]any) map[string]any {

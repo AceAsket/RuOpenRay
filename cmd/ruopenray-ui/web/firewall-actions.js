@@ -10,15 +10,18 @@ export function createFirewallActions({
   firewallSafetyCheck,
   firewallReadyStatus
 }) {
-  async function applyFirewallWithRetry(attempts = 2) {
+  async function applyFirewallWithRetry(attempts = 2, options = {}) {
     let lastResult = null;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       if (attempt > 0) await delay(1200);
+      const payload = firewallPayload();
+      if (options.compatConfirmed) payload.compatConfirmed = true;
       lastResult = await request('/api/firewall/apply', {
         method: 'POST',
-        body: JSON.stringify(firewallPayload())
+        body: JSON.stringify(payload)
       });
       state.firewallStatus = lastResult.status || lastResult;
+      if (lastResult?.needsConfirmation) return lastResult;
       if (lastResult.ok && firewallReadyStatus(state.firewallStatus)) return lastResult;
 
       await delay(800);
@@ -44,7 +47,19 @@ export function createFirewallActions({
     state.busyLabel = options.busyLabel || '';
     render();
     try {
-      const result = await applyFirewallWithRetry(options.attempts || 3);
+      let result = await applyFirewallWithRetry(options.attempts || 3, { compatConfirmed: options.compatConfirmed });
+      if (result?.needsConfirmation && !options.compatConfirmed) {
+        state.firewallGeoExpansion = result?.geoExpansion || null;
+        state.firewallPreflightPrompt = {
+          preflight: result.preflight || {},
+          attempts: options.attempts || 3,
+          successMessage: options.successMessage || '',
+          busyAction,
+          busyLabel: options.busyLabel || ''
+        };
+        state.message = result.error || 'Найдены сторонние правила перехвата. Проверьте предупреждение перед применением.';
+        return result;
+      }
       state.firewallGeoExpansion = result?.geoExpansion || null;
       const ready = firewallReadyStatus(state.firewallStatus);
       state.message = result.ok && ready
@@ -215,9 +230,30 @@ export function createFirewallActions({
     state.firewallSafetyAccepted = false;
   }
 
+  function closeFirewallPreflight() {
+    state.firewallPreflightPrompt = null;
+    state.message = 'Перехват не применен: подтверждение совместимости отменено.';
+    render();
+  }
+
+  async function confirmFirewallPreflight() {
+    const prompt = state.firewallPreflightPrompt || {};
+    state.firewallPreflightPrompt = null;
+    render();
+    return applyFirewall({
+      attempts: prompt.attempts || 3,
+      successMessage: prompt.successMessage || '',
+      busyAction: prompt.busyAction || 'applyFirewall',
+      busyLabel: prompt.busyLabel || '',
+      compatConfirmed: true
+    });
+  }
+
   return {
     applyFirewallWithRetry,
     applyFirewall,
+    closeFirewallPreflight,
+    confirmFirewallPreflight,
     disableFirewall,
     refreshFirewallStatus,
     downloadFirewallRules,

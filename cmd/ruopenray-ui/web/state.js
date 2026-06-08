@@ -338,6 +338,7 @@ export function createInitialState() {
   firewallGeoExpansion: null,
   firewallSaving: false,
   firewallSafetyAccepted: false,
+  firewallPreflightPrompt: null,
   applySteps: [],
   configExpanded: false,
   configScrollTop: 0,

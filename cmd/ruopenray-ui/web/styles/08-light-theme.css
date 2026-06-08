@@ -1329,6 +1329,28 @@ body[data-theme="light"] .modal-backdrop {
   background: rgba(20, 34, 38, 0.24);
 }
 
+body[data-theme="light"] .firewall-preflight-meta span {
+  color: var(--text);
+  background: rgba(245, 253, 251, 0.96);
+  border-color: var(--line-soft);
+}
+
+body[data-theme="light"] .firewall-preflight-issue {
+  color: var(--text);
+  background: rgba(255, 249, 232, 0.95);
+  border-color: rgba(201, 128, 17, 0.28);
+}
+
+body[data-theme="light"] .firewall-preflight-issue.danger {
+  background: rgba(255, 240, 240, 0.96);
+  border-color: rgba(199, 79, 83, 0.28);
+}
+
+body[data-theme="light"] .firewall-preflight-note {
+  background: rgba(229, 251, 247, 0.96);
+  border-color: rgba(17, 160, 140, 0.28);
+}
+
 @media (max-width: 860px) {
   body[data-theme="light"] .sidebar {
     background: rgba(255, 255, 255, 0.95);

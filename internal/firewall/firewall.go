@@ -163,7 +163,11 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	proxyIPs := CIDRList(payload["proxyIps"])
 	directDomains := stringList(payload["directDomains"])
 	proxyDomains := stringList(payload["proxyDomains"])
-	localBypass := []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"}
+	routerBypassIPs := CIDRList(payload["routerBypassIps"])
+	localBypass := mergeCIDRLists(
+		[]string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/3"},
+		routerBypassIPs,
+	)
 	setLines := []string{}
 	chainLines := []string{"  chain prerouting {"}
 	if routerMode == "redirect" {
@@ -265,12 +269,13 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"killSwitchDomainMode": killSwitchDomainMode,
 		"directIps":            directIPs,
 		"proxyIps":             proxyIPs,
+		"routerBypassIps":      routerBypassIPs,
 		"directDomains":        directDomains,
 		"proxyDomains":         proxyDomains,
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s directDomains=%s proxyDomains=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s routerBypassIps=%s directDomains=%s proxyDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -289,6 +294,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		strings.Join(killSwitchDomains, ","),
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),
+		strings.Join(routerBypassIPs, ","),
 		strings.Join(directDomains, ","),
 		strings.Join(proxyDomains, ","),
 	)
