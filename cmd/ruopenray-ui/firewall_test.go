@@ -194,10 +194,10 @@ firewall.@redirect[1].dest='lan'
 firewall.@redirect[1].dest_ip='192.168.50.60'
 firewall.@redirect[1].dest_port='51820'
 firewall.@redirect[1].proto='udp tcp'
-firewall.@redirect[2]=redirect
-firewall.@redirect[2].dest='wan'
-firewall.@redirect[2].dest_ip='192.168.50.70'
-firewall.@redirect[2].dest_port='1234'
+firewall.cfg1234=redirect
+firewall.cfg1234.dest='wan'
+firewall.cfg1234.dest_ip='192.168.50.70'
+firewall.cfg1234.dest_port='1234'
 `)
 	want := []map[string]any{
 		{"ip": "192.168.50.50", "proto": "tcp", "port": "1443"},

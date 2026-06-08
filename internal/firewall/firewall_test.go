@@ -338,7 +338,7 @@ func TestNativeNftBypassesDnatReplyTraffic(t *testing.T) {
 			map[string]any{"ip": "bad", "proto": "tcp", "port": "1443"},
 		},
 	})
-	needle := `ip saddr 192.168.50.50 tcp sport 1443 return comment "RuOpenRay DNAT reply bypass"`
+	needle := `iifname "br-lan" ip saddr 192.168.50.50 tcp sport 1443 return comment "RuOpenRay DNAT reply bypass"`
 	if !strings.Contains(body, needle) {
 		t.Fatalf("DNAT reply bypass rule missing:\n%s", body)
 	}

@@ -215,7 +215,8 @@ func parseOpenWrtDnatReplyBypass(uciOutput string) []map[string]any {
 		Proto    string
 	}
 	redirects := map[string]*redirect{}
-	linePattern := regexp.MustCompile(`^firewall\.(@redirect\[\d+\])(?:\.([A-Za-z0-9_]+))?=(.*)$`)
+	redirectOrder := []string{}
+	linePattern := regexp.MustCompile(`^firewall\.([^.=]+)(?:\.([A-Za-z0-9_]+))?=(.*)$`)
 	for _, raw := range strings.Split(uciOutput, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" {
@@ -232,6 +233,7 @@ func parseOpenWrtDnatReplyBypass(uciOutput string) []map[string]any {
 		if item == nil {
 			item = &redirect{}
 			redirects[id] = item
+			redirectOrder = append(redirectOrder, id)
 		}
 		switch key {
 		case "":
@@ -250,7 +252,8 @@ func parseOpenWrtDnatReplyBypass(uciOutput string) []map[string]any {
 	}
 	seen := map[string]bool{}
 	items := []map[string]any{}
-	for _, item := range redirects {
+	for _, id := range redirectOrder {
+		item := redirects[id]
 		if item.Type != "redirect" || item.Enabled == "0" || item.DestIP == "" || item.DestPort == "" {
 			continue
 		}

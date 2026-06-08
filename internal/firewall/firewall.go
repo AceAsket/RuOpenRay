@@ -261,7 +261,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		fmt.Sprintf("    iifname != %q return", lanInterface),
 	)
 	for _, item := range dnatReplyBypass {
-		chainLines = append(chainLines, fmt.Sprintf("    ip saddr %s %s sport %s return comment \"RuOpenRay DNAT reply bypass\"", item.IP, item.Proto, item.Port))
+		chainLines = append(chainLines, fmt.Sprintf("    iifname %q ip saddr %s %s sport %s return comment \"RuOpenRay DNAT reply bypass\"", lanInterface, item.IP, item.Proto, item.Port))
 	}
 	if deviceMode == "exclude" && len(devices) > 0 {
 		chainLines = append(chainLines, "    ip saddr "+NftSet(devices)+" return")
