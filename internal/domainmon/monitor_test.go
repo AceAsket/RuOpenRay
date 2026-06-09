@@ -62,6 +62,24 @@ func TestParseXrayDomainLinesIgnoresConnectionIDs(t *testing.T) {
 	}
 }
 
+func TestParseXrayDomainLinesLinksDNSCacheAnswerToClientIP(t *testing.T) {
+	content := "2026/06/08 22:28:46.176532 DOH//dns.google:443 cache HIT: cloudthree.acespace.tech. -> [31.76.80.139]\n" +
+		"2026/06/08 22:28:46.372426 from 192.168.50.146:41518 accepted tcp:31.76.80.139:443 [transparent_ipv4 -> direct]\n"
+	devices := map[string]string{"192.168.50.146": "OnePlus"}
+
+	events := ParseXrayDomainLines(content, devices)
+	if len(events) != 1 {
+		t.Fatalf("expected one correlated client event, got %d: %#v", len(events), events)
+	}
+	event := events[0]
+	if event.Host != "cloudthree.acespace.tech" || event.SourceIP != "192.168.50.146" || event.SourceDevice != "OnePlus" {
+		t.Fatalf("DNS answer should be linked to accepted client flow: %#v", event)
+	}
+	if event.DestinationIP != "31.76.80.139" || event.DestinationPort != "443" || event.Outbound != "direct" {
+		t.Fatalf("destination and outbound should be preserved: %#v", event)
+	}
+}
+
 func TestParseDnsmasqLines(t *testing.T) {
 	content := "Sun May 24 13:30:01 2026 daemon.info dnsmasq[1234]: query[A] telegram.org from 192.168.1.165\n" +
 		"Sun May 24 13:30:02 2026 daemon.info dnsmasq[1234]: query[PTR] 1.1.168.192.in-addr.arpa from 192.168.1.165\n"

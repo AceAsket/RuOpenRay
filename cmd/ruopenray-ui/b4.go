@@ -55,8 +55,8 @@ func (s *serverState) b4Status() map[string]any {
 	}
 	result["service"] = service
 
-	ps := runTimeout(3*time.Second, "sh", "-c", "ps w 2>/dev/null | grep -E '[/ ]b4([[:space:]]|$)|[b]4-web|[b]4_route'")
-	processText := strings.TrimSpace(fmt.Sprint(ps["stdout"]))
+	ps := runTimeout(3*time.Second, "ps", "w")
+	processText := strings.Join(b4ProcessLines(fmt.Sprint(ps["stdout"])), "\n")
 	result["process"] = map[string]any{"found": processText != "", "text": processText}
 	if processText != "" {
 		result["available"] = true
@@ -76,6 +76,9 @@ func (s *serverState) b4Status() map[string]any {
 	result["routing"] = routing
 	ports := b4PortsStatus()
 	result["ports"] = ports
+	if boolMap(ports, "ui") {
+		result["available"] = true
+	}
 	if commandExists("uci") {
 		uci := runTimeout(3*time.Second, "uci", "-q", "show", "b4")
 		result["uci"] = map[string]any{"ok": uci["ok"], "found": strings.TrimSpace(fmt.Sprint(uci["stdout"])) != "", "stdout": fmt.Sprint(uci["stdout"])}
@@ -88,8 +91,7 @@ func (s *serverState) b4Status() map[string]any {
 		boolMap(result["process"].(map[string]any), "found") ||
 		boolMap(nft, "hasB4") ||
 		boolMap(routing, "ipRule") ||
-		boolMap(routing, "route") ||
-		boolMap(ports, "ui")
+		boolMap(routing, "route")
 	result["active"] = active
 	warnings := b4Warnings(result)
 	result["warnings"] = warnings
@@ -167,9 +169,57 @@ func b4RoutingStatus() map[string]any {
 	return map[string]any{
 		"available": true,
 		"ipRule":    strings.Contains(rulesText, "lookup "+b4RouteTable) || strings.Contains(rulesText, "b4"),
-		"route":     routeText != "",
+		"route":     b4RouteOutputActive(route),
 		"table":     b4RouteTable,
+		"stdout":    routeText,
 	}
+}
+
+func b4RouteOutputActive(results ...map[string]any) bool {
+	for _, result := range results {
+		if result == nil || result["ok"] != true {
+			continue
+		}
+		text := strings.TrimSpace(fmt.Sprint(result["stdout"]))
+		if text == "" {
+			continue
+		}
+		lower := strings.ToLower(text)
+		if strings.Contains(lower, "dump terminated") ||
+			strings.Contains(lower, "table id value is invalid") ||
+			strings.Contains(lower, "fib table does not exist") ||
+			strings.Contains(lower, "no such file") ||
+			strings.Contains(lower, "not found") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func b4ProcessLines(output string) []string {
+	lines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		clean := strings.TrimSpace(line)
+		if clean == "" {
+			continue
+		}
+		lower := strings.ToLower(clean)
+		if strings.Contains(lower, "grep ") ||
+			strings.Contains(lower, "awk ") ||
+			strings.Contains(lower, " sh -c ") ||
+			strings.Contains(lower, " ash -c ") {
+			continue
+		}
+		if strings.Contains(lower, "/b4 ") ||
+			strings.HasSuffix(lower, "/b4") ||
+			strings.Contains(lower, " b4 ") ||
+			strings.Contains(lower, "b4-web") ||
+			strings.Contains(lower, "b4_route") {
+			lines = append(lines, clean)
+		}
+	}
+	return lines
 }
 
 func b4PortsStatus() map[string]any {

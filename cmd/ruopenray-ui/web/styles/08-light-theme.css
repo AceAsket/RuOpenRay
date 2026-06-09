@@ -310,6 +310,18 @@ body[data-theme="light"] .mobile-menu-toggle {
   color: var(--text);
 }
 
+body[data-theme="light"] .service-mode-stop {
+  border-color: rgba(17, 153, 134, 0.22);
+  color: var(--text);
+  background: #edf7f4;
+}
+
+body[data-theme="light"] .service-mode-stop:hover:not(:disabled) {
+  border-color: rgba(188, 120, 7, 0.38);
+  color: #5e3b03;
+  background: #fff3d2;
+}
+
 body[data-theme="light"] .btn.secondary,
 body[data-theme="light"] .service-icon:hover,
 body[data-theme="light"] .profile-pill:hover,

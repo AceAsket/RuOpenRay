@@ -2154,6 +2154,91 @@
     width: 100%;
   }
 
+  .domain-monitor-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: start;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .domain-monitor-item .domain-monitor-kind {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    min-width: 96px;
+    max-width: 160px;
+    justify-self: start;
+  }
+
+  .domain-monitor-item .domain-monitor-main {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .domain-monitor-main strong,
+  .domain-monitor-main small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .domain-monitor-device-filter-chips {
+    max-width: 100%;
+  }
+
+  .domain-monitor-device-chip {
+    max-width: 100%;
+  }
+
+  .domain-monitor-item .domain-monitor-chips {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    max-height: none;
+    width: 100%;
+  }
+
+  .domain-monitor-chips span,
+  .domain-monitor-device-domains span {
+    max-width: 100%;
+  }
+
+  .domain-monitor-item .domain-probe {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    width: 100%;
+    max-width: none;
+  }
+
+  .domain-monitor-item .domain-probe.compact {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .domain-monitor-item .domain-probe.compact span,
+  .domain-monitor-item .domain-probe.compact small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .domain-monitor-item .domain-probe.compact .btn {
+    width: 100%;
+  }
+
+  .domain-monitor-count {
+    grid-column: 2;
+    grid-row: 1;
+    justify-items: end;
+    align-self: center;
+  }
+
+  .domain-monitor-item > .btn {
+    grid-column: 1 / -1;
+    grid-row: 5;
+    width: 100%;
+    min-height: 40px;
+  }
+
   .domain-monitor-scroll-window.compact,
   .domain-monitor-scroll-window.medium,
   .domain-monitor-scroll-window.large,
@@ -2573,6 +2658,11 @@
     flex-direction: row;
     justify-content: center;
     padding: 4px;
+  }
+
+  .service-mode-stop {
+    max-width: min(100%, 220px);
+    white-space: normal;
   }
 
   .modal-backdrop {

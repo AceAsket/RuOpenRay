@@ -60,7 +60,7 @@ func (s *serverState) podkopStatus() map[string]any {
 	}
 	result["service"] = service
 
-	ps := runTimeout(3*time.Second, "sh", "-c", "ps w 2>/dev/null | grep -E '[p]odkop|[s]ing-box'")
+	ps := runTimeout(3*time.Second, "sh", "-c", "ps w 2>/dev/null | grep '[p]odkop'")
 	processText := strings.TrimSpace(fmt.Sprint(ps["stdout"]))
 	result["process"] = map[string]any{"found": processText != "", "text": processText}
 	if processText != "" {
@@ -157,11 +157,34 @@ func podkopRoutingStatus() map[string]any {
 	return map[string]any{
 		"available": true,
 		"ipRule":    ipRule,
-		"route":     strings.TrimSpace(routeText) != "",
+		"route":     podkopRouteOutputActive(routeByName, routeByID),
 		"table":     podkopRouteName,
 		"tableID":   podkopRouteTable,
 		"mark":      podkopFirewallMark,
+		"stdout":    routeText,
 	}
+}
+
+func podkopRouteOutputActive(results ...map[string]any) bool {
+	for _, result := range results {
+		if result == nil || result["ok"] != true {
+			continue
+		}
+		text := strings.TrimSpace(fmt.Sprint(result["stdout"]))
+		if text == "" {
+			continue
+		}
+		lower := strings.ToLower(text)
+		if strings.Contains(lower, "dump terminated") ||
+			strings.Contains(lower, "table id value is invalid") ||
+			strings.Contains(lower, "fib table does not exist") ||
+			strings.Contains(lower, "no such file") ||
+			strings.Contains(lower, "not found") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func podkopPortsStatus() map[string]any {

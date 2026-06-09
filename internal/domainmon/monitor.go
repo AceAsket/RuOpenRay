@@ -15,8 +15,10 @@ var (
 	sourceEndpointPattern = regexp.MustCompile(`(?i)\bfrom\s+(?:tcp|udp):((?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::\d+)?)\b`)
 	dnsmasqQueryPattern   = regexp.MustCompile(`(?i)\bquery\[[^\]]+\]\s+([^\s]+)\s+from\s+((?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}))\b`)
 	targetPattern         = regexp.MustCompile(`(?i)\b(tcp|udp):([^:/\s,\[\]\(\)]+)(?::(\d+))?`)
-	domainPattern         = regexp.MustCompile(`(?i)(?:sniffed domain[:\s]+|querying(?: DNS for)?[:\s]+|got answer[:\s]+|domain\s+)([a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?)\.?`)
+	domainPattern         = regexp.MustCompile(`(?i)(?:sniffed domain[:\s]+|querying(?: DNS for)?[:\s]+|got answer[:\s]+|cache HIT[:\s]+|domain\s+)([a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?)\.?`)
+	dnsAnswerPattern      = regexp.MustCompile(`(?i)(?:got answer|cache HIT)[:\s]+([a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?\.[a-z0-9](?:[a-z0-9_.-]*[a-z0-9])?)\.?.*->\s*\[([^\]]+)\]`)
 	outboundPattern       = regexp.MustCompile(`\[([A-Za-z0-9_.:-]+)\](?:\s|$)`)
+	outboundRoutePattern  = regexp.MustCompile(`\[([A-Za-z0-9_.:-]+)\s*->\s*([A-Za-z0-9_.:-]+)\]`)
 	private172Pattern     = regexp.MustCompile(`^172\.(1[6-9]|2\d|3[01])\.`)
 	logLineTimePattern    = regexp.MustCompile(`\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?`)
 )
@@ -110,6 +112,7 @@ func ParseB4SNILines(content string, devices map[string]string) []Event {
 
 func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 	var events []Event
+	dnsAnswers := map[string]string{}
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -122,6 +125,9 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 			sourceIP, sourcePort = splitHostPortLast(match[0])
 		}
 		outbound := ""
+		if match := outboundRoutePattern.FindStringSubmatch(line); len(match) > 2 {
+			outbound = match[2]
+		}
 		for _, match := range outboundPattern.FindAllStringSubmatch(line, -1) {
 			if len(match) <= 1 || isXrayLogLevel(match[1]) || isXrayConnectionID(match[1]) {
 				continue
@@ -132,9 +138,16 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 		if timestamp == 0 {
 			timestamp = time.Now().UnixNano()
 		}
+		answerHost, answerIPs := parseDNSAnswer(line)
+		for _, answerIP := range answerIPs {
+			dnsAnswers[answerIP] = answerHost
+		}
 		if match := domainPattern.FindStringSubmatch(line); len(match) > 1 {
 			host := normalizeHost(match[1])
 			if host != "" && net.ParseIP(host) == nil {
+				if sourceIP == "" && len(answerIPs) > 0 {
+					continue
+				}
 				events = append(events, Event{
 					Time:         formatTime(time.Unix(0, timestamp), ""),
 					Timestamp:    timestamp,
@@ -170,6 +183,12 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 		if host == "" {
 			continue
 		}
+		destinationIP := ipHost(host)
+		if destinationIP != "" {
+			if mappedHost := dnsAnswers[destinationIP]; mappedHost != "" {
+				host = mappedHost
+			}
+		}
 		events = append(events, Event{
 			Time:            formatTime(time.Unix(0, timestamp), ""),
 			Timestamp:       timestamp,
@@ -177,7 +196,7 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 			SourceIP:        sourceIP,
 			SourcePort:      sourcePort,
 			SourceDevice:    devices[sourceIP],
-			DestinationIP:   ipHost(host),
+			DestinationIP:   destinationIP,
 			DestinationPort: port,
 			Host:            host,
 			Outbound:        outbound,
@@ -186,6 +205,27 @@ func ParseXrayDomainLines(content string, devices map[string]string) []Event {
 		})
 	}
 	return events
+}
+
+func parseDNSAnswer(line string) (string, []string) {
+	match := dnsAnswerPattern.FindStringSubmatch(line)
+	if len(match) != 3 {
+		return "", nil
+	}
+	host := normalizeHost(match[1])
+	if host == "" {
+		return "", nil
+	}
+	ips := []string{}
+	for _, field := range strings.FieldsFunc(match[2], func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	}) {
+		value := strings.TrimSpace(strings.Trim(field, "[]"))
+		if net.ParseIP(value) != nil {
+			ips = append(ips, value)
+		}
+	}
+	return host, ips
 }
 
 func ParseDnsmasqLines(content string, devices map[string]string) []Event {

@@ -127,7 +127,10 @@ function dashboardLogWarnings() {
   if (podkop.active) items.push('Podkop активен: он может управлять DNS, nftables и transparent proxy. Перед применением перехвата выберите, какой сервис будет главным.');
   if (b4.active) items.push('B4 активен: он может использовать NFQUEUE/firewall для DPI-обхода. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.');
   if (!items.length) return '';
-  return `<div class="settings-warning compact dashboard-log-warning"><strong>Диагностика логов</strong><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
+  return `<div class="settings-warning compact dashboard-log-warning">
+    <strong>Диагностика логов</strong>
+    <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+  </div>`;
 }
 
 function stat(label, value, detail) {

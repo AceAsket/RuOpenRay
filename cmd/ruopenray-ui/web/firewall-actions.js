@@ -89,6 +89,25 @@ export function createFirewallActions({
     }
   }
 
+  async function stopRuOpenRayMode() {
+    state.firewallSaving = true;
+    state.busyAction = 'stopRuOpenRayMode';
+    render();
+    try {
+      const result = await request('/api/compat/stop-ruopenray', { method: 'POST' });
+      state.firewallStatus = result.status || result.firewall?.status || state.firewallStatus;
+      if (state.status && result.serviceAfter) state.status.service = result.serviceAfter;
+      state.message = result.ok
+        ? 'Режим RuOpenRay остановлен: перехват снят, панель осталась доступна'
+        : (result.error || result.xrayStop?.stderr || 'Не удалось полностью остановить режим RuOpenRay');
+      return result;
+    } finally {
+      state.firewallSaving = false;
+      if (state.busyAction === 'stopRuOpenRayMode') state.busyAction = '';
+      render();
+    }
+  }
+
   async function refreshFirewallStatus() {
     state.busyAction = 'refreshFirewallStatus';
     render();
@@ -255,6 +274,7 @@ export function createFirewallActions({
     closeFirewallPreflight,
     confirmFirewallPreflight,
     disableFirewall,
+    stopRuOpenRayMode,
     refreshFirewallStatus,
     downloadFirewallRules,
     setFirewallBypassMode,

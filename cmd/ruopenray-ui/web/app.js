@@ -608,6 +608,7 @@ const {
   closeFirewallPreflight,
   confirmFirewallPreflight,
   disableFirewall,
+  stopRuOpenRayMode,
   refreshFirewallStatus,
   downloadFirewallRules,
   setFirewallBypassMode,
@@ -1819,7 +1820,7 @@ function routeTargetReplaceDialog(...args) {
 
 function captureRenderState() {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
-    return { tab: state.tab, scrollY: 0, details: { ...(state.openDetails || {}) } };
+    return { tab: state.tab, scrollY: 0, details: { ...(state.openDetails || {}) }, domainMonitorScrollTop: 0 };
   }
   const details = { ...(state.openDetails || {}) };
   document.querySelectorAll('details[data-details-key]').forEach((node) => {
@@ -1827,10 +1828,16 @@ function captureRenderState() {
     if (key) details[key] = node.open;
   });
   state.openDetails = details;
+  const domainMonitorScrollNode = document.querySelector('.domain-monitor-scroll-window');
+  const domainMonitorScrollTop = domainMonitorScrollNode ? Number(domainMonitorScrollNode.scrollTop || 0) : Number(state.domainMonitorScrollTop || 0);
+  state.domainMonitorScrollTop = domainMonitorScrollTop;
   return {
     tab: state.tab,
     scrollY: window.scrollY || 0,
     details,
+    diagnosticsView: state.diagnosticsView,
+    domainMonitorMode: state.domainMonitorMode,
+    domainMonitorScrollTop,
   };
 }
 
@@ -1845,6 +1852,13 @@ function restoreRenderState(snapshot) {
   if (typeof window === 'undefined' || snapshot.tab !== state.tab) return;
   const top = Number(snapshot.scrollY || 0);
   requestAnimationFrame(() => window.scrollTo({ top, left: 0 }));
+  if (state.tab === 'diagnostics' && snapshot.diagnosticsView === state.diagnosticsView && snapshot.domainMonitorMode === state.domainMonitorMode) {
+    const scrollTop = Number(snapshot.domainMonitorScrollTop || state.domainMonitorScrollTop || 0);
+    requestAnimationFrame(() => {
+      const node = document.querySelector('.domain-monitor-scroll-window');
+      if (node) node.scrollTop = scrollTop;
+    });
+  }
 }
 
 function firewallPreflightDialog() {
@@ -1914,7 +1928,16 @@ function render() {
   const hasAppUpdateProgress = state.busyAction === 'checkAppUpdate' || state.appReleaseChecking;
   const hasLocalOperationProgress = state.configApplying || state.configTesting || state.firewallSaving || state.serverChecking || hasApplySteps || hasAppUpdateProgress;
   const showTopActionPill = state.busyAction && !hasAppUpdateProgress;
+  const ruOpenRayModeBusy = state.busyAction === 'stopRuOpenRayMode';
+  const showRuOpenRayStop = statusLoaded && (
+    Boolean(state.firewallStatus?.active || state.firewallStatus?.persistent)
+    || Boolean(running && serviceManaged)
+    || Boolean(state.status?.podkop?.active || state.status?.b4?.active)
+  );
   const serviceButtons = [
+    showRuOpenRayStop
+      ? `<button class="service-mode-stop ${ruOpenRayModeBusy ? 'is-busy' : ''}" data-action="stopRuOpenRayMode" title="Остановить режим RuOpenRay: снять перехват и остановить управляемый Xray" ${state.firewallSaving || ruOpenRayModeBusy ? 'disabled' : ''}>Остановить RuOpenRay</button>`
+      : null,
     !statusLoaded
       ? null
       : running
@@ -2133,6 +2156,7 @@ function bind() {
       closeFirewallPreflight,
       confirmFirewallPreflight,
       disableFirewall,
+      stopRuOpenRayMode,
       refreshFirewallStatus,
       downloadFirewallRules,
       enableXrayStats: () => setXrayStats(true),

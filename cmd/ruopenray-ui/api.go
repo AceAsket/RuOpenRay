@@ -51,6 +51,14 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	path := strings.TrimPrefix(r.URL.Path, "/api")
+	if path == "/version" && r.Method == http.MethodGet {
+		writeJSON(w, 200, apiVersionPayload())
+		return
+	}
+	if path == "/openapi.json" && r.Method == http.MethodGet {
+		writeJSON(w, 200, openAPISpec())
+		return
+	}
 	if path == "/login" && r.Method == http.MethodPost {
 		payload, err := readJSON(w, r)
 		if err != nil {
@@ -81,6 +89,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case path == "/auth/check" && r.Method == http.MethodGet:
+		writeJSON(w, 200, map[string]any{"ok": true, "authenticated": true})
 	case path == "/status" && r.Method == http.MethodGet:
 		s.status(w)
 	case path == "/config" && r.Method == http.MethodGet:
@@ -146,6 +156,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
+	case path == "/compat/stop-ruopenray" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.stopRuOpenRayMode())
 	case path == "/settings/password" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))

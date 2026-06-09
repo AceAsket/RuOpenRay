@@ -113,6 +113,34 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	return result
 }
 
+func (s *serverState) stopRuOpenRayMode() map[string]any {
+	firewall := s.disableFirewall()
+	serviceBefore := s.xrayServiceStatus()
+	result := map[string]any{
+		"ok":            firewall["ok"] == true,
+		"firewall":      firewall,
+		"serviceBefore": serviceBefore,
+		"status":        s.firewallStatus(),
+	}
+	if serviceBefore["running"] == true && serviceBefore["managed"] == true {
+		stop := s.serviceAction("stop")
+		result["xrayStop"] = stop
+		result["ok"] = result["ok"] == true && stop["ok"] == true
+	} else if serviceBefore["external"] == true {
+		result["xrayStop"] = map[string]any{
+			"ok":      true,
+			"skipped": true,
+			"message": "xray запущен сторонним сервисом, RuOpenRay его не останавливает",
+			"owner":   serviceBefore["owner"],
+		}
+	} else {
+		result["xrayStop"] = map[string]any{"ok": true, "skipped": true, "message": "xray уже остановлен"}
+	}
+	result["serviceAfter"] = s.xrayServiceStatus()
+	result["status"] = s.firewallStatus()
+	return result
+}
+
 func (s *serverState) enableXrayServiceConfig() map[string]any {
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: enable xray service config"}

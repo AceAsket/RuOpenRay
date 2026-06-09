@@ -7,6 +7,7 @@ const busyLabels = {
   apply: 'Применяю изменения',
   applyFirewall: 'Применяю правила перехвата',
   disableFirewall: 'Отключаю правила перехвата',
+  stopRuOpenRayMode: 'Останавливаю режим RuOpenRay',
   refreshFirewallStatus: 'Проверяю firewall',
   downloadFirewallRules: 'Готовлю правила firewall',
   enableXrayStats: 'Включаю статистику Xray',

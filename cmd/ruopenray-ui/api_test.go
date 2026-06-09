@@ -34,6 +34,46 @@ func TestAPILoginAndAuth(t *testing.T) {
 	}
 }
 
+func TestAPIVersionAndOpenAPIArePublic(t *testing.T) {
+	state := &serverState{
+		cfg:      appConfig{Password: "secret-pass"},
+		sessions: map[string]bool{},
+	}
+	for _, path := range []string{"/api/version", "/api/openapi.json"} {
+		response := httptest.NewRecorder()
+		state.handleAPI(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s should be public, got %d: %s", path, response.Code, response.Body.String())
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("%s returned invalid JSON: %v", path, err)
+		}
+		if len(payload) == 0 {
+			t.Fatalf("%s returned empty payload", path)
+		}
+	}
+}
+
+func TestAPIAuthCheckRequiresSession(t *testing.T) {
+	state := &serverState{
+		cfg:      appConfig{Password: "secret-pass"},
+		sessions: map[string]bool{"token": true},
+	}
+	unauthorized := httptest.NewRecorder()
+	state.handleAPI(unauthorized, httptest.NewRequest(http.MethodGet, "/api/auth/check", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("auth/check without token got %d", unauthorized.Code)
+	}
+	authorized := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/check", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	state.handleAPI(authorized, req)
+	if authorized.Code != http.StatusOK {
+		t.Fatalf("auth/check with token got %d: %s", authorized.Code, authorized.Body.String())
+	}
+}
+
 func TestAPILoginRejectsWrongPassword(t *testing.T) {
 	state := &serverState{
 		cfg:      appConfig{Password: "secret-pass"},

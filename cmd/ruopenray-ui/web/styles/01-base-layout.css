@@ -458,6 +458,30 @@ button:disabled {
   display: none;
 }
 
+.service-mode-stop {
+  min-height: 32px;
+  max-width: 210px;
+  padding: 0 14px;
+  border: 1px solid rgba(126, 230, 216, 0.2);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(20, 31, 42, 0.96);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.service-mode-stop:hover:not(:disabled) {
+  border-color: rgba(255, 199, 71, 0.45);
+  color: #ffe4a1;
+  background: rgba(255, 199, 71, 0.12);
+}
+
+.service-mode-stop:disabled {
+  opacity: 0.55;
+}
+
 .service-icon {
   position: relative;
   width: 32px;

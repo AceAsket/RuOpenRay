@@ -295,6 +295,9 @@ export function bindDiagnosticsControls(deps) {
   document.querySelector('#domainMonitorQuery')?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') render();
   });
+  document.querySelector('.domain-monitor-scroll-window')?.addEventListener('scroll', (event) => {
+    state.domainMonitorScrollTop = Number(event.currentTarget.scrollTop || 0);
+  }, { passive: true });
 
   document.querySelector('#sniTarget')?.addEventListener('input', (event) => {
     state.sniTarget = event.target.value;

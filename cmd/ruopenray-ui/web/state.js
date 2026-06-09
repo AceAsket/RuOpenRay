@@ -200,6 +200,7 @@ export function createInitialState() {
   domainMonitorPaused: false,
   domainMonitorEventWindow: 'medium',
   domainMonitorListWindow: 'medium',
+  domainMonitorScrollTop: 0,
   domainMonitorFilter: globalThis.localStorage?.getItem(domainMonitorFilterStorageKey) || 'domains',
   domainMonitorDeviceFilter: '',
   domainMonitorExpandedDevices: {},

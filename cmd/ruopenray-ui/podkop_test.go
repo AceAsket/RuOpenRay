@@ -30,3 +30,15 @@ func TestPodkopStatusTextRunning(t *testing.T) {
 		t.Fatal("running service should be treated as running")
 	}
 }
+
+func TestPodkopRouteOutputActiveIgnoresDumpTerminated(t *testing.T) {
+	if podkopRouteOutputActive(map[string]any{"ok": false, "stdout": "Dump terminated"}) {
+		t.Fatal("failed route dump must not make Podkop active")
+	}
+	if podkopRouteOutputActive(map[string]any{"ok": true, "stdout": "Error: argument \"podkop\" is wrong: table id value is invalid"}) {
+		t.Fatal("invalid route table output must not make Podkop active")
+	}
+	if !podkopRouteOutputActive(map[string]any{"ok": true, "stdout": "local default dev lo scope host"}) {
+		t.Fatal("real route output should make Podkop route active")
+	}
+}
