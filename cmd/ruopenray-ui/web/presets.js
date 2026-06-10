@@ -8,7 +8,9 @@ export const nav = [
   ['dns', 'DNS'],
   ['diagnostics', 'Диагностика'],
   ['profiles', 'Профили'],
-  ['settings', 'Настройки']
+  ['settings', 'Настройки'],
+  ['amnezia', 'AmneziaWG'],
+  ['compat', 'Интеграции']
 ];
 
 export const tabTitles = {

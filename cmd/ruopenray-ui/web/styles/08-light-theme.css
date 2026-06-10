@@ -1363,6 +1363,56 @@ body[data-theme="light"] .firewall-preflight-note {
   border-color: rgba(17, 160, 140, 0.28);
 }
 
+body[data-theme="light"] .compat-card {
+  background: #ffffff;
+  border-color: rgba(0, 150, 136, 0.22);
+  box-shadow: 0 14px 32px rgba(15, 39, 35, 0.08);
+}
+
+body[data-theme="light"] .compat-metrics article {
+  background: #f8fdfc;
+  border-color: #d4ebe8;
+}
+
+body[data-theme="light"] .amnezia-interface-card {
+  color: #092027;
+  background: #ffffff;
+  border-color: #d4ebe8;
+  box-shadow: 0 12px 26px rgba(15, 39, 35, 0.07);
+}
+
+body[data-theme="light"] .amnezia-interface-card.ok {
+  background: #f0fff3;
+  border-color: rgba(20, 156, 75, 0.26);
+}
+
+body[data-theme="light"] .amnezia-interface-card code {
+  color: #234c48;
+  background: #f4fbfa;
+}
+
+body[data-theme="light"] .status-chip {
+  color: #31524e;
+  background: #eef8f6;
+  border-color: #c8e5e1;
+}
+
+body[data-theme="light"] .status-chip.ok {
+  color: #053116;
+  background: #69dc76;
+}
+
+body[data-theme="light"] .status-chip.warn {
+  color: #422800;
+  background: #ffc754;
+}
+
+body[data-theme="light"] .empty-state {
+  color: #496560;
+  border-color: #c5e7e3;
+  background: #fbfffe;
+}
+
 @media (max-width: 860px) {
   body[data-theme="light"] .sidebar {
     background: rgba(255, 255, 255, 0.95);

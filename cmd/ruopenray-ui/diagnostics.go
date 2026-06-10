@@ -42,6 +42,7 @@ func (s *serverState) diagnostics() map[string]any {
 		"geo":      s.geoStatus(),
 		"podkop":   s.podkopStatus(),
 		"b4":       s.b4Status(),
+		"amnezia":  s.amneziaStatus(),
 		"firewall": map[string]any{"nft": runTimeout(5*time.Second, "nft", "list", "ruleset"), "iptables": runTimeout(5*time.Second, "iptables-save")},
 		"now":      time.Now().Format(time.RFC3339),
 	}

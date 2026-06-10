@@ -14,6 +14,8 @@ export function createInitialState() {
   tab: 'dashboard',
   mobileNavOpen: false,
   status: null,
+  compatStatus: null,
+  amneziaStatus: null,
   profiles: [],
   profileEditorOpen: false,
   profileEditName: '',

@@ -125,12 +125,34 @@ function dashboardLogWarnings() {
   if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
   if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
   if (podkop.active) items.push('Podkop активен: он может управлять DNS, nftables и transparent proxy. Перед применением перехвата выберите, какой сервис будет главным.');
-  if (b4.active) items.push('B4 активен: он может использовать NFQUEUE/firewall для DPI-обхода. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.');
+  if (b4.active) items.push(`B4 активен: ${b4CompatDetail(b4)}. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.`);
+  else if (b4.service?.enabled) items.push('B4 включен в автозапуск: сейчас он может быть остановлен, но после перезагрузки снова поднимет свой firewall/NFQUEUE. Если RuOpenRay главный, отключите автозапуск B4.');
+  else if (b4.api?.authRequired) items.push('B4 API найден, но защищенные методы требуют токен. RuOpenRay видит только порт/процессы/nft без детальной конфигурации B4.');
   if (!items.length) return '';
   return `<div class="settings-warning compact dashboard-log-warning">
-    <strong>Диагностика логов</strong>
+    <strong>Диагностика</strong>
     <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
   </div>`;
+}
+
+function b4CompatDetail(b4 = {}) {
+  const api = b4.api || {};
+  const parts = [];
+  if (api.available) {
+    const version = api.version ? ` ${api.version}` : '';
+    parts.push(`API отвечает${version}`);
+    if (api.authRequired) parts.push('нужен токен');
+    if (api.running) parts.push('сервис запущен');
+    if (api.queueActive) parts.push('NFQUEUE включен');
+    const sets = Number(api.config?.sets?.enabledCount || api.sets?.enabledCount || 0);
+    if (sets) parts.push(`sets включено: ${sets}`);
+  } else {
+    parts.push('API не отвечает');
+  }
+  if (b4.nft?.hasQueue) parts.push('nft/NFQUEUE найден');
+  if (b4.routing?.ipRule || b4.routing?.route) parts.push('policy routing найден');
+  if (b4.iptables?.hasNFQUEUE) parts.push('iptables NFQUEUE найден');
+  return parts.join(' · ');
 }
 
 function stat(label, value, detail) {

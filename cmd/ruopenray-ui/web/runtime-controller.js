@@ -170,6 +170,9 @@ export function createRuntimeController({
   
   function recordStatusSnapshot(status) {
     state.status = status;
+    if (status?.amnezia && typeof status.amnezia === 'object') {
+      state.amneziaStatus = status.amnezia;
+    }
     if (status?.serverChecks?.results && typeof status.serverChecks.results === 'object' && !Array.isArray(status.serverChecks.results)) {
       state.serverChecks = { ...state.serverChecks, ...status.serverChecks.results };
     }

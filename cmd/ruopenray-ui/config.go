@@ -42,6 +42,8 @@ type serverState struct {
 	podkopAt         time.Time
 	b4Cache          map[string]any
 	b4At             time.Time
+	amneziaCache     map[string]any
+	amneziaAt        time.Time
 	logCacheKey      string
 	logCacheText     string
 	logCacheAt       time.Time

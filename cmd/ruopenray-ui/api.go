@@ -158,6 +158,13 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
 	case path == "/compat/stop-ruopenray" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.stopRuOpenRayMode())
+	case path == "/compat/status" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.compatibilityStatus())
+	case path == "/compat/b4" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.controlB4(payload))
+	case path == "/amnezia/status" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.amneziaStatus())
 	case path == "/settings/password" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))

@@ -45,6 +45,7 @@ func (s *serverState) status(w http.ResponseWriter) {
 		"system":    s.systemMetrics(),
 		"podkop":    s.cachedPodkopStatus(),
 		"b4":        s.cachedB4Status(),
+		"amnezia":   s.cachedAmneziaStatus(),
 		"xrayStats": s.xrayTrafficStats(cfg, false),
 		"serverChecks": map[string]any{
 			"results":                s.readOutboundCheckResults(),

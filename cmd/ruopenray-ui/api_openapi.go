@@ -54,6 +54,7 @@ func openAPISpec() map[string]any {
 			{"name": "Servers", "description": "Outbound servers, subscriptions and proxy checks"},
 			{"name": "Profiles", "description": "Profile storage and activation"},
 			{"name": "Diagnostics", "description": "Probes, live domain monitor and downloadable diagnostic package"},
+			{"name": "AmneziaWG", "description": "AmneziaWG/WireGuard detection and planned split-routing integration"},
 			{"name": "Geo", "description": "GeoIP/geosite files and custom lists"},
 			{"name": "Backups", "description": "Configuration backups and restore"},
 		},
@@ -85,6 +86,9 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/status", "System", "Get router and Xray status", "Main dashboard snapshot: service state, resources, compatibility detectors, versions and warnings.", "", "Object"},
 		{"post", "/service", "System", "Control Xray service", "Start, stop or restart managed Xray service.", "GenericObject", "Object"},
 		{"post", "/compat/stop-ruopenray", "System", "Stop RuOpenRay mode", "Disables RuOpenRay interception and stops managed Xray without deleting third-party services.", "", "Object"},
+		{"get", "/compat/status", "Compatibility", "Get third-party compatibility status", "Reports detected AdGuard Home, Podkop and B4 services with safe web links.", "", "Object"},
+		{"post", "/compat/b4", "Compatibility", "Control B4 service", "Starts, stops, restarts, enables, disables or clears B4 tables on the router.", "GenericObject", "Object"},
+		{"get", "/amnezia/status", "AmneziaWG", "Get AmneziaWG status", "Detects awg/wg interfaces, service state, routes and the future RuOpenRay split-routing plan.", "", "Object"},
 
 		{"get", "/config", "Config", "Get active Xray config", "Returns parsed /etc/xray/config.json.", "", "Object"},
 		{"get", "/config/draft", "Config", "Get config draft", "Returns current UI draft if it exists.", "", "Object"},

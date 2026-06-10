@@ -43,6 +43,10 @@ func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map
 	} else if b4 != nil {
 		nft, _ := b4["nft"].(map[string]any)
 		iptables, _ := b4["iptables"].(map[string]any)
+		service, _ := b4["service"].(map[string]any)
+		if boolMap(service, "enabled") {
+			issues = append(issues, compatibilityIssue("b4", "warn", "B4 включен в автозапуск", "Сейчас активных правил B4 не видно, но после перезагрузки сервис может поднять NFQUEUE/firewall рядом с RuOpenRay. Если RuOpenRay должен быть главным, отключите автозапуск B4."))
+		}
 		if boolMap(nft, "hasQueue") || boolMap(iptables, "hasNFQUEUE") {
 			issues = append(issues, compatibilityIssue("b4", "warn", "Найдены NFQUEUE-правила", "На роутере есть NFQUEUE-правила без явно активного B4. Проверьте, не обрабатывает ли другой сервис те же LAN-пакеты."))
 		}

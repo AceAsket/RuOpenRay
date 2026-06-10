@@ -49,3 +49,19 @@ func TestFirewallCompatibilityPreflightB4NFQUEUE(t *testing.T) {
 		t.Fatalf("b4 preflight = %#v, want confirmation", got)
 	}
 }
+
+func TestFirewallCompatibilityPreflightB4Enabled(t *testing.T) {
+	got := firewallCompatibilityPreflightFromStatuses(
+		map[string]any{"dnsIntercept": false},
+		map[string]any{"routerMode": "tproxy"},
+		nil,
+		map[string]any{
+			"active":  false,
+			"service": map[string]any{"enabled": true},
+			"nft":     map[string]any{"hasQueue": false},
+		},
+	)
+	if got["requiresConfirmation"] != true {
+		t.Fatalf("b4 enabled preflight = %#v, want confirmation", got)
+	}
+}

@@ -1,7 +1,11 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
+import { createAmneziaActions } from './amnezia-actions.js';
+import { createAmneziaView } from './amnezia-view.js';
 import { bindActionControls } from './action-bindings.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
+import { createCompatActions } from './compat-actions.js';
+import { createCompatView } from './compat-view.js';
 import { createConfigActions } from './config-actions.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
@@ -660,6 +664,27 @@ const {
   refresh
 } = runtimeController;
 
+const compatActions = createCompatActions({
+  state,
+  request,
+  render,
+  refresh
+});
+const {
+  refreshCompatibility,
+  controlB4
+} = compatActions;
+
+const amneziaActions = createAmneziaActions({
+  state,
+  request,
+  render
+});
+const {
+  refreshAmnezia,
+  syncAmneziaStatus
+} = amneziaActions;
+
 const setupModel = createSetupModel({
   state,
   byteSize,
@@ -1282,6 +1307,18 @@ const dnsView = createDnsView({
 });
 const { dnsPanel } = dnsView;
 
+const compatView = createCompatView({
+  state,
+  escapeHtml
+});
+const { compatPanel } = compatView;
+
+const amneziaView = createAmneziaView({
+  state,
+  escapeHtml
+});
+const { amneziaPanel } = amneziaView;
+
 const auxPanelsView = createAuxPanelsView({
   state,
   labels,
@@ -1761,12 +1798,33 @@ function content() {
   if (state.tab === 'geo') return geoPanel();
   if (state.tab === 'devices') return devicesPanel();
   if (state.tab === 'dns') return dnsPanel();
+  if (state.tab === 'amnezia') return amneziaPanel();
+  if (state.tab === 'compat') return compatPanel();
   if (state.tab === 'profiles') return profilesPanel();
   if (state.tab === 'logs') return logsPanel();
   if (state.tab === 'routing') return routingPanel();
   if (state.tab === 'firewall') return firewallPanel();
   if (state.tab === 'settings') return settingsPanel();
   return placeholder('Настройки', 'Пароль панели, адрес привязки, имя сервиса и канал обновлений.');
+}
+
+function compatibilityDetected() {
+  const compat = state.compatStatus || {};
+  const adguard = compat.adguardHome || state.lanDnsStatus?.adguardHome || {};
+  const podkop = compat.podkop || state.status?.podkop || {};
+  const b4 = compat.b4 || state.status?.b4 || {};
+  return Boolean(
+    adguard.available || adguard.configPath ||
+    podkop.available || podkop.active || podkop.running ||
+    b4.available || b4.active || b4.running
+  );
+}
+
+function visibleNavItems() {
+  return nav.filter(([key]) => {
+    if (key === 'compat') return state.tab === 'compat' || compatibilityDetected();
+    return true;
+  });
 }
 
 const routingDialogsView = createRoutingDialogsView({
@@ -1966,7 +2024,7 @@ function render() {
           <span>${state.mobileNavOpen ? 'Закрыть меню' : 'Меню'}</span>
         </button>
         <nav class="nav">
-          ${nav.map(([key, title]) => `<button class="${key === state.tab ? 'active' : ''}" data-tab="${key}">${title}</button>`).join('')}
+          ${visibleNavItems().map(([key, title]) => `<button class="${key === state.tab ? 'active' : ''}" data-tab="${key}">${title}</button>`).join('')}
         </nav>
         <div class="sidebar-footer">
           <button class="logout-button" data-action="logout" type="button" title="Выйти из панели" aria-label="Выйти из панели">
@@ -2157,6 +2215,9 @@ function bind() {
       confirmFirewallPreflight,
       disableFirewall,
       stopRuOpenRayMode,
+      refreshCompatibility,
+      refreshAmnezia,
+      controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
       refreshFirewallStatus,
       downloadFirewallRules,
       enableXrayStats: () => setXrayStats(true),

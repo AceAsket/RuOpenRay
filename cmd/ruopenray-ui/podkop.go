@@ -60,8 +60,8 @@ func (s *serverState) podkopStatus() map[string]any {
 	}
 	result["service"] = service
 
-	ps := runTimeout(3*time.Second, "sh", "-c", "ps w 2>/dev/null | grep '[p]odkop'")
-	processText := strings.TrimSpace(fmt.Sprint(ps["stdout"]))
+	ps := runTimeout(3*time.Second, "ps", "w")
+	processText := strings.Join(podkopProcessLines(fmt.Sprint(ps["stdout"])), "\n")
 	result["process"] = map[string]any{"found": processText != "", "text": processText}
 	if processText != "" {
 		result["available"] = true
@@ -187,6 +187,31 @@ func podkopRouteOutputActive(results ...map[string]any) bool {
 	return false
 }
 
+func podkopProcessLines(output string) []string {
+	lines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		clean := strings.TrimSpace(line)
+		if clean == "" {
+			continue
+		}
+		lower := strings.ToLower(clean)
+		if strings.Contains(lower, "grep ") ||
+			strings.Contains(lower, "jq ") ||
+			strings.Contains(lower, " sh -c ") ||
+			strings.Contains(lower, " ash -c ") ||
+			strings.Contains(lower, "ruopenray-ui") {
+			continue
+		}
+		if strings.Contains(lower, "/podkop ") ||
+			strings.HasSuffix(lower, "/podkop") ||
+			strings.Contains(lower, " podkop ") ||
+			strings.Contains(lower, "podkop_") {
+			lines = append(lines, clean)
+		}
+	}
+	return lines
+}
+
 func podkopPortsStatus() map[string]any {
 	out := ""
 	if commandExists("netstat") {
@@ -195,10 +220,42 @@ func podkopPortsStatus() map[string]any {
 		out = fmt.Sprint(runTimeout(3*time.Second, "sh", "-c", "ss -lntup 2>/dev/null | grep -E '127\\.0\\.0\\.42:53|:1602'")["stdout"])
 	}
 	return map[string]any{
-		"dns":    strings.Contains(out, podkopDNSLoopback+":53"),
-		"tproxy": strings.Contains(out, ":1602"),
+		"dns":    podkopPortOutputHasLocal(out, podkopDNSLoopback, podkopDNSPort),
+		"tproxy": podkopPortOutputHasLocal(out, "", podkopTPROXYPort),
 		"text":   strings.TrimSpace(out),
 	}
+}
+
+func podkopPortOutputHasLocal(output string, host string, port int) bool {
+	wantPort := fmt.Sprintf("%d", port)
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		local := fields[3]
+		if !localAddressPortMatches(local, host, wantPort) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func localAddressPortMatches(local string, host string, port string) bool {
+	local = strings.TrimSpace(local)
+	if local == "" {
+		return false
+	}
+	if !strings.HasSuffix(local, ":"+port) && !strings.HasSuffix(local, "."+port) {
+		return false
+	}
+	address := strings.TrimSuffix(strings.TrimSuffix(local, ":"+port), "."+port)
+	address = strings.Trim(address, "[]")
+	if host == "" {
+		return true
+	}
+	return address == host
 }
 
 func podkopWarnings(status map[string]any) []string {
