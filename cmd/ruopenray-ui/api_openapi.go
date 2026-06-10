@@ -89,6 +89,9 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/compat/status", "Compatibility", "Get third-party compatibility status", "Reports detected AdGuard Home, Podkop and B4 services with safe web links.", "", "Object"},
 		{"post", "/compat/b4", "Compatibility", "Control B4 service", "Starts, stops, restarts, enables, disables or clears B4 tables on the router.", "GenericObject", "Object"},
 		{"get", "/amnezia/status", "AmneziaWG", "Get AmneziaWG status", "Detects awg/wg interfaces, service state, routes and the future RuOpenRay split-routing plan.", "", "Object"},
+		{"get", "/amnezia/config", "AmneziaWG", "Get saved AmneziaWG client config", "Returns the saved client config for editing.", "", "Object"},
+		{"post", "/amnezia/config", "AmneziaWG", "Save AmneziaWG client config", "Validates and stores an AmneziaWG client config without starting the tunnel.", "GenericObject", "Object"},
+		{"post", "/amnezia/config/delete", "AmneziaWG", "Delete saved AmneziaWG client config", "", "GenericObject", "Object"},
 
 		{"get", "/config", "Config", "Get active Xray config", "Returns parsed /etc/xray/config.json.", "", "Object"},
 		{"get", "/config/draft", "Config", "Get config draft", "Returns current UI draft if it exists.", "", "Object"},

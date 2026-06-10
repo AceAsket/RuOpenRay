@@ -50,6 +50,76 @@ export function createAmneziaView({ state, escapeHtml }) {
     </div>`;
   }
 
+  function clientConfigView(config = {}) {
+    const warnings = array(config.warnings);
+    const awgOptions = array(config.obfuscationOptions).length ? array(config.obfuscationOptions) : array(config.awgOptions);
+    const iface = config.interface || {};
+    const peer = config.peer || {};
+    const text = state.amneziaConfigText || '';
+    return `<section class="panel amnezia-config-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Клиентский конфиг</h2>
+          <span>Вставьте конфиг AmneziaWG клиента. RuOpenRay сохранит его отдельно и не будет запускать туннель, пока kernel module не готов.</span>
+        </div>
+        <div class="split-actions">
+          ${commandButton('loadAmneziaConfig', 'Загрузить сохраненный')}
+          <button class="btn secondary" type="button" data-action="deleteAmneziaConfig" ${config.exists ? '' : 'disabled'}>Удалить</button>
+        </div>
+      </div>
+      ${config.exists ? `<div class="compat-metrics">
+        ${metric('Конфиг', config.summary || 'сохранен', config.updatedAt || '')}
+        ${metric('Адрес', iface.address || 'нет', iface.dns ? `DNS ${iface.dns}` : '')}
+        ${metric('Endpoint', peer.endpoint || 'нет', peer.allowedIPs ? `AllowedIPs ${peer.allowedIPs}` : '')}
+        ${metric('AWG-параметры', awgOptions.length ? awgOptions.join(', ') : 'не найдены', peer.hasPresharedKey ? 'есть PresharedKey' : '')}
+      </div>` : ''}
+      ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
+        <strong>Проверьте конфиг</strong>
+        <span>${escapeHtml(warnings.join(' '))}</span>
+      </div>` : ''}
+      <textarea class="amnezia-config-textarea code-textarea" data-amnezia-config spellcheck="false" placeholder="[Interface]
+PrivateKey = ...
+Address = ...
+Jc = ...
+
+[Peer]
+PublicKey = ...
+Endpoint = host:port
+AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
+      <div class="toolbar amnezia-config-actions">
+        <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить конфиг</button>
+        <span class="muted">Приватный ключ хранится в файле панели с правами 600 и не попадает в обычный статус.</span>
+      </div>
+    </section>`;
+  }
+
+  function glinetBackendView(glinet = {}) {
+    const warnings = array(glinet.warnings);
+    const packages = array(glinet.packages);
+    const network = array(glinet.network);
+    if (!glinet.found && !packages.length && !network.length) return '';
+    const backend = glinet.recommendedBackend || 'raw-awg';
+    return `<section class="panel amnezia-glinet-panel">
+      <div class="panel-title">
+        <div>
+          <h2>GL.iNet backend</h2>
+          <span>${escapeHtml(glinet.recommendedBackendNote || 'RuOpenRay проверяет, можно ли опереться на родной VPN-клиент GL.iNet.')}</span>
+        </div>
+        <span class="status-chip ${glinet.supportsNativeAmnezia ? 'ok' : ''}">${escapeHtml(backend)}</span>
+      </div>
+      <div class="compat-metrics">
+        ${metric('Прошивка', glinet.version || 'не GL.iNet', glinet.supportsNativeAmnezia ? 'native AmneziaWG 2.0 возможен' : 'native AWG 2.0 не подтвержден')}
+        ${metric('VPN-клиент', glinet.vpnClientService ? (glinet.vpnClientRunning ? 'запущен' : 'найден') : 'нет', 'GL.iNet service')}
+        ${metric('UCI WG', glinet.nativeWireGuard ? (glinet.disabled ? 'есть, выключен' : 'есть') : 'нет', network.slice(0, 2).join(' · '))}
+        ${metric('Пакеты', packages.length ? `${packages.length} найдено` : 'нет', packages.slice(0, 2).join(' · '))}
+      </div>
+      ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
+        <strong>GL.iNet</strong>
+        <span>${escapeHtml(warnings.join(' '))}</span>
+      </div>` : ''}
+    </section>`;
+  }
+
   function amneziaPanel() {
     const status = state.amneziaStatus || state.status?.amnezia || {};
     const interfaces = array(status.interfaces);
@@ -57,6 +127,9 @@ export function createAmneziaView({ state, escapeHtml }) {
     const services = status.services || {};
     const wg = status.wg || {};
     const configs = status.configs || {};
+    const kernel = status.kernel || {};
+    const glinet = status.glinet || {};
+    const clientConfig = status.clientConfig || {};
     const plan = status.routePlan || {};
     return `<section class="amnezia-page">
       <section class="route-hero amnezia-hero">
@@ -73,6 +146,10 @@ export function createAmneziaView({ state, escapeHtml }) {
 
       ${warningsView(status)}
 
+      ${clientConfigView(clientConfig)}
+
+      ${glinetBackendView(glinet)}
+
       <section class="panel amnezia-overview ${statusTone(status)}">
         <div class="panel-title">
           <div>
@@ -85,6 +162,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           ${metric('Интерфейс', status.primaryInterface || (interfaces.length ? `${interfaces.length} найдено` : 'нет'), interfaces.map((item) => item.name).filter(Boolean).join(', '))}
           ${metric('Сервис', services.running ? 'запущен' : (services.found ? 'найден' : 'нет'), array(services.items).map((item) => item.path).join(', '))}
           ${metric('wg/awg', wg.available ? (wg.command || 'доступен') : 'нет', array(wg.interfaces).join(', '))}
+          ${metric('Kernel module', kernel.loaded ? 'загружен' : (kernel.installed || kernel.moduleFile ? 'найден' : 'нет'), kernel.package || array(kernel.files).join(', '))}
           ${metric('Конфиги', configs.found ? `${array(configs.paths).length} найдено` : 'нет', array(configs.paths).join(', '))}
         </div>
       </section>

@@ -67,3 +67,90 @@ func TestAmneziaInterfaceNameLooksRelevant(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAmneziaClientConfig(t *testing.T) {
+	raw := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32
+DNS = 1.1.1.1
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 1
+S3 = 3
+H1 = 10
+I1 = 64
+
+[Peer]
+PublicKey = public
+PresharedKey = shared
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	got := parseAmneziaClientConfig(raw)
+	if len(got.errors) != 0 {
+		t.Fatalf("unexpected errors: %#v", got.errors)
+	}
+	if got.iface["address"] != "10.8.0.2/32" {
+		t.Fatalf("address = %#v", got.iface["address"])
+	}
+	if got.peer["endpoint"] != "vpn.example.com:443" {
+		t.Fatalf("endpoint = %#v", got.peer["endpoint"])
+	}
+	if got.iface["hasPrivateKey"] != true || got.peer["hasPresharedKey"] != true {
+		t.Fatalf("key flags not set: iface=%#v peer=%#v", got.iface, got.peer)
+	}
+	if len(got.awgOptions) < 4 {
+		t.Fatalf("awg options not detected: %#v", got.awgOptions)
+	}
+	if !reflect.DeepEqual(got.awgOptions, []string{"H1", "I1", "Jc", "Jmax", "Jmin", "S1", "S3"}) {
+		t.Fatalf("unexpected awg options: %#v", got.awgOptions)
+	}
+}
+
+func TestParseAmneziaClientConfigValidation(t *testing.T) {
+	got := parseAmneziaClientConfig(`[Interface]
+Address = 10.8.0.2/32`)
+	if len(got.errors) == 0 {
+		t.Fatalf("expected validation errors")
+	}
+}
+
+func TestParseAmneziaClientConfigPlainWireGuardWarning(t *testing.T) {
+	raw := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32
+
+[Peer]
+PublicKey = public
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	got := parseAmneziaClientConfig(raw)
+	if len(got.errors) != 0 {
+		t.Fatalf("unexpected errors: %#v", got.errors)
+	}
+	if len(got.awgOptions) != 0 {
+		t.Fatalf("plain WireGuard must not expose awg options: %#v", got.awgOptions)
+	}
+	if len(got.warnings) == 0 {
+		t.Fatalf("expected plain WireGuard warning")
+	}
+}
+
+func TestVersionAtLeast(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		{"4.8.3-op24", false},
+		{"4.9.0", true},
+		{"4.10.1", true},
+		{"5.0.0", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.version, func(t *testing.T) {
+			if got := versionAtLeast(tc.version, 4, 9); got != tc.want {
+				t.Fatalf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -16,6 +16,8 @@ export function createInitialState() {
   status: null,
   compatStatus: null,
   amneziaStatus: null,
+  amneziaConfigText: '',
+  amneziaConfigLoaded: false,
   profiles: [],
   profileEditorOpen: false,
   profileEditName: '',

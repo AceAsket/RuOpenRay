@@ -1800,6 +1800,34 @@
   margin: 0;
 }
 
+.amnezia-config-panel {
+  gap: 14px;
+}
+
+.amnezia-config-panel .panel-title {
+  align-items: flex-start;
+}
+
+.amnezia-config-panel .split-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.amnezia-config-textarea {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.amnezia-config-actions {
+  align-items: center;
+}
+
+.amnezia-config-actions .muted {
+  min-width: 0;
+}
+
 .compat-actions {
   flex-wrap: wrap;
 }

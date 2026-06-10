@@ -682,7 +682,10 @@ const amneziaActions = createAmneziaActions({
 });
 const {
   refreshAmnezia,
-  syncAmneziaStatus
+  syncAmneziaStatus,
+  loadAmneziaConfig,
+  saveAmneziaConfig,
+  deleteAmneziaConfig
 } = amneziaActions;
 
 const setupModel = createSetupModel({
@@ -2217,6 +2220,9 @@ function bind() {
       stopRuOpenRayMode,
       refreshCompatibility,
       refreshAmnezia,
+      loadAmneziaConfig,
+      saveAmneziaConfig,
+      deleteAmneziaConfig,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
       refreshFirewallStatus,
       downloadFirewallRules,
@@ -2577,6 +2583,11 @@ function bind() {
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
   bindServerCheckControls({ state, render });
+  document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
+    textarea.addEventListener('input', () => {
+      state.amneziaConfigText = textarea.value;
+    });
+  });
 
 }
 

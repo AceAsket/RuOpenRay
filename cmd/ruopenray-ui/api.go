@@ -165,6 +165,13 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.controlB4(payload))
 	case path == "/amnezia/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.amneziaStatus())
+	case path == "/amnezia/config" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.amneziaClientConfig())
+	case path == "/amnezia/config" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.saveAmneziaClientConfig(payload))
+	case path == "/amnezia/config/delete" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.deleteAmneziaClientConfig())
 	case path == "/settings/password" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))
