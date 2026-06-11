@@ -74,6 +74,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 	clientConfig := s.amneziaClientConfigStatus(false)
 	clientConfig["profiles"] = s.amneziaProfiles()
 	result["clientConfig"] = clientConfig
+	result["xrayIntegration"] = s.amneziaXrayIntegrationStatus()
 
 	wgInterfaces, _ := wg["interfaces"].([]string)
 	available := len(amneziaInterfaceNames(interfaces)) > 0 ||
@@ -119,6 +120,49 @@ func amneziaRoutePlan() map[string]any {
 		"mark":        amneziaFwMark,
 		"description": "RuOpenRay сможет помечать выбранный трафик отдельным fwmark и отправлять его в route table AmneziaWG, не включая туннель для всего роутера.",
 	}
+}
+
+func (s *serverState) amneziaXrayIntegrationStatus() map[string]any {
+	result := map[string]any{
+		"configPath":       s.cfg.ActiveConfig,
+		"proxyOutbounds":   0,
+		"balancers":        0,
+		"rules":            0,
+		"transparentReady": false,
+	}
+	body, err := os.ReadFile(s.cfg.ActiveConfig)
+	if err != nil {
+		result["error"] = err.Error()
+		return result
+	}
+	var config map[string]any
+	if err := json.Unmarshal(body, &config); err != nil {
+		result["error"] = err.Error()
+		return result
+	}
+	systemTags := map[string]bool{"direct": true, "block": true, "dns-out": true, "ruopenray-api": true}
+	systemProtocols := map[string]bool{"freedom": true, "blackhole": true, "dns": true}
+	proxyOutbounds := 0
+	for _, outbound := range anySlice(config["outbounds"]) {
+		item, _ := outbound.(map[string]any)
+		tag := strings.TrimSpace(fmt.Sprint(item["tag"]))
+		protocol := strings.TrimSpace(fmt.Sprint(item["protocol"]))
+		if tag != "" && !systemTags[tag] && !systemProtocols[protocol] {
+			proxyOutbounds += 1
+		}
+	}
+	result["proxyOutbounds"] = proxyOutbounds
+	for _, inbound := range anySlice(config["inbounds"]) {
+		item, _ := inbound.(map[string]any)
+		if strings.TrimSpace(fmt.Sprint(item["tag"])) == "transparent_ipv4" {
+			result["transparentReady"] = true
+			break
+		}
+	}
+	routing, _ := config["routing"].(map[string]any)
+	result["rules"] = len(anySlice(routing["rules"]))
+	result["balancers"] = len(anySlice(routing["balancers"]))
+	return result
 }
 
 func (s *serverState) amneziaClientConfigPath() string {
@@ -190,7 +234,7 @@ func (s *serverState) saveAmneziaClientConfig(payload map[string]any) map[string
 	if name == "" {
 		name = "AmneziaWG"
 	}
-	if err := s.saveAmneziaProfile(raw, name, strings.TrimSpace(fmt.Sprint(payload["id"])), true); err != nil {
+	if err := s.saveAmneziaProfile(raw, name, strings.TrimSpace(cleanPayloadString(payload, "id")), true); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	s.metricsMu.Lock()
@@ -213,8 +257,12 @@ func (s *serverState) deleteAmneziaClientConfig() map[string]any {
 }
 
 type amneziaProfileRegistry struct {
-	ActiveID string                 `json:"activeId"`
-	Profiles []amneziaProfileRecord `json:"profiles"`
+	ActiveID    string                 `json:"activeId"`
+	SelectedIDs []string               `json:"selectedIds,omitempty"`
+	Strategy    string                 `json:"strategy,omitempty"`
+	Mode        string                 `json:"mode,omitempty"`
+	Profiles    []amneziaProfileRecord `json:"profiles"`
+	PolicyRules []amneziaPolicyRule    `json:"policyRules,omitempty"`
 }
 
 type amneziaProfileRecord struct {
@@ -225,9 +273,29 @@ type amneziaProfileRecord struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+type amneziaPolicyRule struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name,omitempty"`
+	Type      string   `json:"type,omitempty"`
+	Domain    []string `json:"domain,omitempty"`
+	IP        []string `json:"ip,omitempty"`
+	Source    []string `json:"source,omitempty"`
+	Inbound   []string `json:"inboundTag,omitempty"`
+	Port      string   `json:"port,omitempty"`
+	Network   string   `json:"network,omitempty"`
+	Target    string   `json:"target"`
+	CreatedAt string   `json:"createdAt,omitempty"`
+	UpdatedAt string   `json:"updatedAt,omitempty"`
+}
+
 func (s *serverState) amneziaProfiles() map[string]any {
 	reg := s.loadAmneziaProfileRegistry()
 	items := []map[string]any{}
+	selectedIDs := s.amneziaSelectedProfileIDs(reg)
+	selectedSet := map[string]bool{}
+	for _, id := range selectedIDs {
+		selectedSet[id] = true
+	}
 	for _, profile := range reg.Profiles {
 		path := filepath.Join(s.amneziaProfilesDir(), profile.File)
 		body, err := os.ReadFile(path)
@@ -235,9 +303,10 @@ func (s *serverState) amneziaProfiles() map[string]any {
 			continue
 		}
 		parsed := parseAmneziaClientConfig(string(body))
-		items = append(items, amneziaProfileSummary(profile, parsed, profile.ID == reg.ActiveID, fileModTimeRFC3339(path)))
+		active := profile.ID == reg.ActiveID
+		items = append(items, amneziaProfileSummary(profile, parsed, active, active || selectedSet[profile.ID], fileModTimeRFC3339(path)))
 	}
-	if legacy := s.legacyAmneziaProfile(reg); legacy != nil {
+	if legacy := s.legacyAmneziaProfile(reg, selectedSet); legacy != nil {
 		items = append(items, legacy)
 	}
 	sort.SliceStable(items, func(i, j int) bool {
@@ -247,15 +316,25 @@ func (s *serverState) amneziaProfiles() map[string]any {
 		if items[j]["active"] == true {
 			return false
 		}
+		if items[i]["selected"] == true && items[j]["selected"] != true {
+			return true
+		}
+		if items[j]["selected"] == true && items[i]["selected"] != true {
+			return false
+		}
 		return fmt.Sprint(items[i]["name"]) < fmt.Sprint(items[j]["name"])
 	})
 	return map[string]any{
-		"activeId": reg.ActiveID,
-		"items":    items,
+		"activeId":    reg.ActiveID,
+		"selectedIds": selectedIDs,
+		"strategy":    amneziaProfileStrategy(reg.Strategy),
+		"mode":        amneziaIntegrationMode(reg.Mode),
+		"policyRules": normalizeAmneziaPolicyRules(reg.PolicyRules),
+		"items":       items,
 	}
 }
 
-func (s *serverState) legacyAmneziaProfile(reg amneziaProfileRegistry) map[string]any {
+func (s *serverState) legacyAmneziaProfile(reg amneziaProfileRegistry, selectedSet map[string]bool) map[string]any {
 	path := s.amneziaClientConfigPath()
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -275,14 +354,15 @@ func (s *serverState) legacyAmneziaProfile(reg amneziaProfileRegistry) map[strin
 		File:      filepath.Base(path),
 		CreatedAt: fileModTimeRFC3339(path),
 		UpdatedAt: fileModTimeRFC3339(path),
-	}, parsed, reg.ActiveID == "" || reg.ActiveID == "legacy", fileModTimeRFC3339(path))
+	}, parsed, reg.ActiveID == "" || reg.ActiveID == "legacy", reg.ActiveID == "" || reg.ActiveID == "legacy" || selectedSet["legacy"], fileModTimeRFC3339(path))
 }
 
-func amneziaProfileSummary(profile amneziaProfileRecord, parsed parsedAmneziaClientConfig, active bool, updatedAt string) map[string]any {
+func amneziaProfileSummary(profile amneziaProfileRecord, parsed parsedAmneziaClientConfig, active bool, selected bool, updatedAt string) map[string]any {
 	return map[string]any{
 		"id":                 profile.ID,
 		"name":               profile.Name,
 		"active":             active,
+		"selected":           selected,
 		"summary":            parsed.summary,
 		"interface":          parsed.iface,
 		"peer":               parsed.peer,
@@ -301,7 +381,7 @@ func (s *serverState) loadAmneziaProfileRegistry() amneziaProfileRegistry {
 	if err := json.Unmarshal(body, &reg); err != nil {
 		return amneziaProfileRegistry{}
 	}
-	return reg
+	return normalizeAmneziaProfileRegistry(reg)
 }
 
 func (s *serverState) writeAmneziaProfileRegistry(reg amneziaProfileRegistry) error {
@@ -318,7 +398,7 @@ func (s *serverState) writeAmneziaProfileRegistry(reg amneziaProfileRegistry) er
 func (s *serverState) saveAmneziaProfile(raw, name, id string, active bool) error {
 	reg := s.loadAmneziaProfileRegistry()
 	now := time.Now().Format(time.RFC3339)
-	if id == "" || id == "legacy" {
+	if invalidAmneziaProfileID(id) || id == "legacy" {
 		id = amneziaProfileID(name)
 	}
 	if name == "" {
@@ -345,6 +425,7 @@ func (s *serverState) saveAmneziaProfile(raw, name, id string, active bool) erro
 	}
 	if active {
 		reg.ActiveID = id
+		reg.SelectedIDs = amneziaAppendUnique(reg.SelectedIDs, id)
 	}
 	if err := os.MkdirAll(s.amneziaProfilesDir(), 0o700); err != nil {
 		return err
@@ -401,6 +482,7 @@ func (s *serverState) activateAmneziaProfile(payload map[string]any) map[string]
 	if id == "legacy" {
 		reg.ActiveID = ""
 	}
+	reg.SelectedIDs = amneziaAppendUnique(reg.SelectedIDs, id)
 	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
@@ -435,14 +517,308 @@ func (s *serverState) deleteAmneziaProfile(payload map[string]any) map[string]an
 		reg.ActiveID = ""
 		_ = os.Remove(s.amneziaClientConfigPath())
 	}
+	reg.SelectedIDs = amneziaRemoveID(reg.SelectedIDs, id)
 	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
+func (s *serverState) updateAmneziaProfilePool(payload map[string]any) map[string]any {
+	reg := s.loadAmneziaProfileRegistry()
+	reg.Strategy = amneziaProfileStrategy(fmt.Sprint(payload["strategy"]))
+	if value := cleanPayloadString(payload, "mode"); value != "" {
+		reg.Mode = amneziaIntegrationMode(value)
+	}
+	reg.SelectedIDs = s.cleanAmneziaProfileIDs(stringList(payload["selectedIds"]))
+	if len(reg.SelectedIDs) == 0 {
+		reg.SelectedIDs = s.cleanAmneziaProfileIDs(stringList(payload["ids"]))
+	}
+	if len(reg.SelectedIDs) > 0 && !containsString(reg.SelectedIDs, firstNonEmpty(reg.ActiveID, "legacy")) {
+		reg.ActiveID = reg.SelectedIDs[0]
+	}
+	if reg.ActiveID == "legacy" {
+		reg.ActiveID = ""
+	}
+	if reg.ActiveID != "" {
+		if raw, ok := s.loadAmneziaProfileConfig(reg.ActiveID); ok {
+			if err := os.MkdirAll(filepath.Dir(s.amneziaClientConfigPath()), 0o700); err != nil {
+				return map[string]any{"ok": false, "error": err.Error()}
+			}
+			if err := os.WriteFile(s.amneziaClientConfigPath(), []byte(strings.TrimSpace(raw)+"\n"), 0o600); err != nil {
+				return map[string]any{"ok": false, "error": err.Error()}
+			}
+		}
+	}
+	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	s.metricsMu.Lock()
+	s.amneziaCache = nil
+	s.amneziaAt = time.Time{}
+	s.metricsMu.Unlock()
+	return map[string]any{"ok": true, "status": s.amneziaStatus()}
+}
+
+func (s *serverState) updateAmneziaPolicyRules(payload map[string]any) map[string]any {
+	reg := s.loadAmneziaProfileRegistry()
+	reg.PolicyRules = normalizeAmneziaPolicyRules(amneziaPolicyRulesFromPayload(payload["rules"], reg.PolicyRules))
+	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	s.metricsMu.Lock()
+	s.amneziaCache = nil
+	s.amneziaAt = time.Time{}
+	s.metricsMu.Unlock()
+	return map[string]any{"ok": true, "status": s.amneziaStatus()}
+}
+
+func (s *serverState) amneziaSelectedProfileIDs(reg amneziaProfileRegistry) []string {
+	ids := s.cleanAmneziaProfileIDs(reg.SelectedIDs)
+	if len(ids) > 0 {
+		return ids
+	}
+	if reg.ActiveID != "" {
+		return s.cleanAmneziaProfileIDs([]string{reg.ActiveID})
+	}
+	if _, ok := s.loadAmneziaProfileConfig("legacy"); ok {
+		return []string{"legacy"}
+	}
+	return []string{}
+}
+
+func (s *serverState) cleanAmneziaProfileIDs(ids []string) []string {
+	known := map[string]bool{}
+	for _, profile := range s.loadAmneziaProfileRegistry().Profiles {
+		known[profile.ID] = true
+	}
+	if _, ok := s.loadAmneziaProfileConfig("legacy"); ok {
+		known["legacy"] = true
+	}
+	out := []string{}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || !known[id] || containsString(out, id) {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+func amneziaProfileStrategy(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "round-robin", "roundrobin", "rr":
+		return "round-robin"
+	case "fallback", "failover":
+		return "fallback"
+	case "random", "rand":
+		return "random"
+	default:
+		return "single"
+	}
+}
+
+func amneziaIntegrationMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "mixed", "split", "hybrid":
+		return "mixed"
+	case "amnezia-first", "amnezia", "awg":
+		return "amnezia-first"
+	case "xray-only", "xray":
+		return "xray-only"
+	default:
+		return "standby"
+	}
+}
+
+func normalizeAmneziaProfileRegistry(reg amneziaProfileRegistry) amneziaProfileRegistry {
+	replacements := map[string]string{}
+	used := map[string]bool{}
+	for idx := range reg.Profiles {
+		oldID := strings.TrimSpace(reg.Profiles[idx].ID)
+		if invalidAmneziaProfileID(oldID) || used[oldID] {
+			nextID := stableAmneziaProfileID(reg.Profiles[idx].Name)
+			for suffix := 2; used[nextID]; suffix++ {
+				nextID = fmt.Sprintf("%s-%d", stableAmneziaProfileID(reg.Profiles[idx].Name), suffix)
+			}
+			reg.Profiles[idx].ID = nextID
+			if oldID != "" {
+				replacements[oldID] = nextID
+			}
+		}
+		if strings.TrimSpace(reg.Profiles[idx].File) == "" || strings.TrimSpace(reg.Profiles[idx].File) == "<nil>" {
+			reg.Profiles[idx].File = reg.Profiles[idx].ID + ".conf"
+		}
+		used[reg.Profiles[idx].ID] = true
+	}
+	if next, ok := replacements[reg.ActiveID]; ok {
+		reg.ActiveID = next
+	}
+	for idx, id := range reg.SelectedIDs {
+		if next, ok := replacements[id]; ok {
+			reg.SelectedIDs[idx] = next
+		}
+	}
+	if invalidAmneziaProfileID(reg.ActiveID) {
+		reg.ActiveID = ""
+	}
+	reg.SelectedIDs = amneziaCleanIDList(reg.SelectedIDs)
+	reg.Strategy = amneziaProfileStrategy(reg.Strategy)
+	reg.Mode = amneziaIntegrationMode(reg.Mode)
+	reg.PolicyRules = normalizeAmneziaPolicyRules(reg.PolicyRules)
+	return reg
+}
+
+func invalidAmneziaProfileID(id string) bool {
+	id = strings.TrimSpace(id)
+	return id == "" || id == "<nil>"
+}
+
+func stableAmneziaProfileID(name string) string {
+	return slugID(name, "amneziawg")
+}
+
+func amneziaCleanIDList(values []string) []string {
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if invalidAmneziaProfileID(value) || containsString(out, value) {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func amneziaAppendUnique(values []string, id string) []string {
+	id = strings.TrimSpace(id)
+	if invalidAmneziaProfileID(id) || containsString(values, id) {
+		return values
+	}
+	return append(values, id)
+}
+
+func amneziaRemoveID(values []string, id string) []string {
+	out := values[:0]
+	for _, value := range values {
+		if value != id {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func amneziaPolicyRulesFromPayload(value any, existing []amneziaPolicyRule) []amneziaPolicyRule {
+	created := map[string]string{}
+	for _, rule := range existing {
+		if rule.ID != "" && rule.CreatedAt != "" {
+			created[rule.ID] = rule.CreatedAt
+		}
+	}
+	rawRules, ok := value.([]any)
+	if !ok {
+		return []amneziaPolicyRule{}
+	}
+	now := time.Now().Format(time.RFC3339)
+	out := []amneziaPolicyRule{}
+	for _, raw := range rawRules {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := strings.TrimSpace(fmt.Sprint(item["id"]))
+		name := strings.TrimSpace(cleanPayloadString(item, "name"))
+		if id == "" || invalidAmneziaProfileID(id) {
+			id = slugID(firstNonEmpty(name, fmt.Sprint(item["domain"]), fmt.Sprint(item["ip"]), fmt.Sprint(item["source"])), "awg-rule")
+		}
+		rule := amneziaPolicyRule{
+			ID:        id,
+			Name:      name,
+			Type:      firstNonEmpty(strings.TrimSpace(cleanPayloadString(item, "type")), "field"),
+			Domain:    stringList(item["domain"]),
+			IP:        stringList(item["ip"]),
+			Source:    stringList(item["source"]),
+			Inbound:   stringList(item["inboundTag"]),
+			Port:      strings.TrimSpace(cleanPayloadString(item, "port")),
+			Network:   strings.TrimSpace(cleanPayloadString(item, "network")),
+			Target:    amneziaPolicyTarget(cleanPayloadString(item, "target")),
+			CreatedAt: firstNonEmpty(created[id], strings.TrimSpace(cleanPayloadString(item, "createdAt")), now),
+			UpdatedAt: now,
+		}
+		if clean := strings.TrimSpace(cleanPayloadString(item, "updatedAt")); clean != "" {
+			rule.UpdatedAt = clean
+		}
+		if amneziaPolicyRuleHasCondition(rule) {
+			out = append(out, rule)
+		}
+	}
+	return out
+}
+
+func normalizeAmneziaPolicyRules(rules []amneziaPolicyRule) []amneziaPolicyRule {
+	out := []amneziaPolicyRule{}
+	used := map[string]bool{}
+	for _, rule := range rules {
+		rule.ID = strings.TrimSpace(rule.ID)
+		if invalidAmneziaProfileID(rule.ID) || used[rule.ID] {
+			rule.ID = slugID(firstNonEmpty(rule.Name, strings.Join(rule.Domain, "-"), strings.Join(rule.IP, "-"), strings.Join(rule.Source, "-")), "awg-rule")
+			for suffix := 2; used[rule.ID]; suffix++ {
+				rule.ID = fmt.Sprintf("%s-%d", slugID(firstNonEmpty(rule.Name, "awg-rule"), "awg-rule"), suffix)
+			}
+		}
+		rule.Type = firstNonEmpty(strings.TrimSpace(rule.Type), "field")
+		rule.Target = amneziaPolicyTarget(rule.Target)
+		rule.Domain = amneziaCleanValueList(rule.Domain)
+		rule.IP = amneziaCleanValueList(rule.IP)
+		rule.Source = amneziaCleanValueList(rule.Source)
+		rule.Inbound = amneziaCleanValueList(rule.Inbound)
+		rule.Port = strings.TrimSpace(rule.Port)
+		rule.Network = strings.TrimSpace(rule.Network)
+		if !amneziaPolicyRuleHasCondition(rule) {
+			continue
+		}
+		used[rule.ID] = true
+		out = append(out, rule)
+	}
+	return out
+}
+
+func amneziaCleanValueList(values []string) []string {
+	out := []string{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || containsString(out, value) {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func amneziaPolicyTarget(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "direct", "amnezia-direct", "bypass-xray", "awg-direct":
+		return "bypass-xray"
+	default:
+		return "bypass-xray"
+	}
+}
+
+func amneziaPolicyRuleHasCondition(rule amneziaPolicyRule) bool {
+	return len(rule.Domain) > 0 ||
+		len(rule.IP) > 0 ||
+		len(rule.Source) > 0 ||
+		len(rule.Inbound) > 0 ||
+		rule.Port != "" ||
+		rule.Network != ""
+}
+
 func (s *serverState) amneziaPreflight(payload map[string]any) map[string]any {
-	raw := strings.TrimSpace(fmt.Sprint(payload["config"]))
+	raw := ""
+	if value, ok := payload["config"]; ok {
+		raw = strings.TrimSpace(fmt.Sprint(value))
+	}
 	if raw == "" {
 		id := strings.TrimSpace(fmt.Sprint(payload["id"]))
 		var ok bool
@@ -599,10 +975,10 @@ func amneziaAWGOptionWarnings(parsed parsedAmneziaClientConfig) []string {
 
 func amneziaOptionLooksNumeric(key string) bool {
 	lower := strings.ToLower(strings.TrimSpace(key))
-	if lower == "jc" || lower == "jmin" || lower == "jmax" || lower == "s1" || lower == "s2" {
+	if lower == "jc" || lower == "jmin" || lower == "jmax" {
 		return true
 	}
-	if len(lower) == 2 && (lower[0] == 'h' || lower[0] == 'i') && lower[1] >= '0' && lower[1] <= '9' {
+	if len(lower) == 2 && lower[0] == 's' && lower[1] >= '0' && lower[1] <= '9' {
 		return true
 	}
 	return false

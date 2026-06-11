@@ -45,15 +45,85 @@ export function createAmneziaView({ state, escapeHtml }) {
     return ok ? 'ok' : 'warn';
   }
 
+  function activeProfile(items = [], config = {}) {
+    return items.find((item) => item.active) || items.find((item) => item.id === state.amneziaProfileId) || (config.exists ? {
+      name: config.name || state.amneziaProfileName || 'AmneziaWG',
+      summary: config.summary,
+      peer: config.peer,
+      interface: config.interface,
+      obfuscationOptions: config.obfuscationOptions || config.awgOptions,
+      active: true,
+    } : null);
+  }
+
+  function selectedProfileIds(profiles = {}) {
+    if (Array.isArray(state.amneziaSelectedProfileIds) && state.amneziaSelectedProfileIds.length) {
+      return state.amneziaSelectedProfileIds;
+    }
+    if (Array.isArray(profiles.selectedIds)) return profiles.selectedIds;
+    return array(profiles.items).filter((item) => item.selected || item.active).map((item) => item.id).filter(Boolean);
+  }
+
+  function poolStrategyLabel(value) {
+    switch (value) {
+      case 'round-robin':
+        return 'round-robin';
+      case 'fallback':
+        return 'резерв по порядку';
+      case 'random':
+        return 'случайный выбор';
+      default:
+        return 'один профиль';
+    }
+  }
+
+  function integrationModeLabel(value) {
+    switch (value) {
+      case 'mixed':
+        return 'Xray + AmneziaWG';
+      case 'amnezia-first':
+        return 'AmneziaWG основной';
+      case 'xray-only':
+        return 'Только Xray';
+      default:
+        return 'Резерв';
+    }
+  }
+
+  function integrationModeDetail(value) {
+    switch (value) {
+      case 'mixed':
+        return 'Xray сохраняет свои proxy/balancer правила, AmneziaWG-пул готовится как отдельное направление для policy routing.';
+      case 'amnezia-first':
+        return 'AmneziaWG-пул становится основным направлением, Xray остается для локальных прокси и отдельных правил.';
+      case 'xray-only':
+        return 'AmneziaWG-профили сохраняются, но трафик продолжает идти только по схеме Xray.';
+      default:
+        return 'Профили готовы к проверке и запуску, но не участвуют в общей маршрутизации.';
+    }
+  }
+
   function profileCard(item = {}) {
     const awgOptions = array(item.obfuscationOptions);
     const peer = item.peer || {};
-    return `<article class="amnezia-profile-card ${item.active ? 'ok' : ''}">
-      <div>
+    const iface = item.interface || {};
+    const selected = Array.isArray(state.amneziaSelectedProfileIds) && state.amneziaSelectedProfileIds.length
+      ? state.amneziaSelectedProfileIds.includes(item.id)
+      : Boolean(item.selected || item.active);
+    return `<article class="amnezia-profile-card ${item.active ? 'ok' : ''} ${selected ? 'selected' : ''}">
+      <label class="amnezia-profile-select" title="Добавить профиль в пул">
+        <input type="checkbox" data-amnezia-pool="${escapeHtml(item.id || '')}" ${selected ? 'checked' : ''}>
+        <span></span>
+      </label>
+      <div class="amnezia-profile-main">
         <span class="eyebrow">${escapeHtml(item.active ? 'активный профиль' : 'профиль')}</span>
         <h3>${escapeHtml(item.name || 'AmneziaWG')}</h3>
         <p>${escapeHtml(item.summary || peer.endpoint || 'endpoint не задан')}</p>
-        ${awgOptions.length ? `<small>${escapeHtml(`AWG: ${awgOptions.join(', ')}`)}</small>` : ''}
+        <div class="amnezia-profile-meta">
+          ${iface.address ? `<span>${escapeHtml(iface.address)}</span>` : ''}
+          ${peer.allowedIPs ? `<span>${escapeHtml(`AllowedIPs ${peer.allowedIPs}`)}</span>` : ''}
+          ${awgOptions.length ? `<span>${escapeHtml(`AWG ${awgOptions.length}`)}</span>` : ''}
+        </div>
       </div>
       <div class="split-actions">
         <button class="btn secondary" type="button" data-action="loadAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Открыть</button>
@@ -63,16 +133,70 @@ export function createAmneziaView({ state, escapeHtml }) {
     </article>`;
   }
 
-  function profilesView(profiles = {}) {
+  function profilesView(profiles = {}, config = {}, status = {}, preflight = {}) {
     const items = array(profiles.items);
+    const current = activeProfile(items, config);
+    const selectedIds = selectedProfileIds(profiles);
+    const selectedItems = items.filter((item) => selectedIds.includes(item.id));
+    const strategy = state.amneziaPoolStrategy || profiles.strategy || 'single';
+    const mode = state.amneziaIntegrationMode || profiles.mode || 'standby';
+    const xray = status.xrayIntegration || {};
+    const currentPeer = current?.peer || config.peer || {};
+    const currentIface = current?.interface || config.interface || {};
+    const awgOptions = current ? array(current.obfuscationOptions).length ? array(current.obfuscationOptions) : array(current.awgOptions) : [];
     return `<section class="panel amnezia-profiles-panel">
       <div class="panel-title">
         <div>
-          <h2>Профили AmneziaWG</h2>
-          <span>Можно хранить несколько client.conf и выбирать активный без запуска туннеля.</span>
+          <h2>Управление AmneziaWG</h2>
+          <span>Профили, активный client.conf и готовность backend в одном месте.</span>
+        </div>
+        <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+      </div>
+      <div class="amnezia-control-grid">
+        <article class="amnezia-active-profile ${current ? 'ok' : ''}">
+          <div>
+            <span class="eyebrow">выбранный профиль</span>
+            <h3>${escapeHtml(current?.name || 'профиль не выбран')}</h3>
+            <p>${escapeHtml(current?.summary || currentPeer.endpoint || 'сохраните или выберите client.conf')}</p>
+          </div>
+          <div class="compat-metrics compact">
+            ${metric('Endpoint', currentPeer.endpoint || 'нет', currentPeer.allowedIPs ? `AllowedIPs ${currentPeer.allowedIPs}` : '')}
+            ${metric('Адрес', currentIface.address || 'нет', currentIface.dns ? `DNS ${currentIface.dns}` : '')}
+            ${metric('AWG', awgOptions.length ? awgOptions.join(', ') : 'нет', currentPeer.hasPresharedKey ? 'есть PresharedKey' : '')}
+            ${metric('Preflight', preflight.ok ? 'готово' : 'проверить', array(preflight.warnings).slice(0, 1).join(' '))}
+          </div>
+          <div class="amnezia-pool-editor">
+            <label class="field-label">Пул профилей</label>
+            <strong>${escapeHtml(selectedItems.length ? selectedItems.map((item) => item.name || item.id).join(', ') : 'ничего не выбрано')}</strong>
+            <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
+            <select class="input" data-amnezia-strategy>
+              ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
+            </select>
+          </div>
+          <div class="amnezia-integration-editor">
+            <label class="field-label">Работа вместе с Xray</label>
+            <strong>${escapeHtml(integrationModeLabel(mode))}</strong>
+            <span>${escapeHtml(integrationModeDetail(mode))}</span>
+            <select class="input" data-amnezia-mode>
+              ${['standby', 'mixed', 'amnezia-first', 'xray-only'].map((item) => `<option value="${escapeHtml(item)}" ${mode === item ? 'selected' : ''}>${escapeHtml(integrationModeLabel(item))}</option>`).join('')}
+            </select>
+            <div class="amnezia-integration-metrics">
+              <span>Xray proxy: ${escapeHtml(String(xray.proxyOutbounds ?? 0))}</span>
+              <span>rules: ${escapeHtml(String(xray.rules ?? 0))}</span>
+              <span>${escapeHtml(xray.transparentReady ? 'transparent готов' : 'transparent не найден')}</span>
+            </div>
+          </div>
+          <div class="split-actions">
+            ${commandButton('refreshAmnezia', 'Обновить статус')}
+            <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool" ${items.length ? '' : 'disabled'}>Сохранить пул</button>
+            <button class="btn secondary" type="button" data-action="checkAmneziaPreflight" ${current || config.exists ? '' : 'disabled'}>Проверить</button>
+            <button class="btn secondary" type="button" data-action="prepareAmnezia" ${current || config.exists ? '' : 'disabled'}>Подготовить</button>
+          </div>
+        </article>
+        <div class="amnezia-profile-list">
+          ${items.length ? items.map(profileCard).join('') : `<div class="empty-state">Профилей пока нет. Вставьте client.conf в блоке импорта и сохраните.</div>`}
         </div>
       </div>
-      ${items.length ? `<div class="amnezia-profile-grid">${items.map(profileCard).join('')}</div>` : `<div class="empty-state">Профилей пока нет. Вставьте client.conf ниже и сохраните.</div>`}
     </section>`;
   }
 
@@ -128,8 +252,8 @@ export function createAmneziaView({ state, escapeHtml }) {
     return `<section class="panel amnezia-config-panel">
       <div class="panel-title">
         <div>
-          <h2>Клиентский конфиг</h2>
-          <span>Вставьте конфиг AmneziaWG клиента. RuOpenRay сохранит его отдельно и не будет запускать туннель, пока kernel module не готов.</span>
+          <h2>Импорт client.conf</h2>
+          <span>Сохраненный конфиг становится отдельным профилем и доступен в списке выше.</span>
         </div>
         <div class="split-actions">
           ${commandButton('loadAmneziaConfig', 'Загрузить сохраненный')}
@@ -161,7 +285,6 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить конфиг</button>
         <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить</button>
         <button class="btn secondary" type="button" data-action="prepareAmnezia">Подготовить</button>
-        <span class="muted">Приватный ключ хранится в файле панели с правами 600 и не попадает в обычный статус.</span>
       </div>
     </section>`;
   }
@@ -246,15 +369,23 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
 
       ${warningsView(status)}
 
-      ${profilesView(profiles)}
+      ${profilesView(profiles, clientConfig, status, preflight)}
 
       ${clientConfigView(clientConfig)}
 
       ${preflightView(preflight)}
 
-      ${glinetBackendView(glinet)}
-
-      ${userspaceBackendView(userspace)}
+      <section class="amnezia-system-stack">
+        <div class="panel-title amnezia-system-title">
+          <div>
+            <h2>Состояние стенда</h2>
+            <span>Backend, интерфейсы и будущая схема раздельной маршрутизации.</span>
+          </div>
+        </div>
+        <div class="amnezia-system-grid">
+          ${glinetBackendView(glinet)}
+          ${userspaceBackendView(userspace)}
+        </div>
 
       <section class="panel amnezia-overview ${statusTone(status)}">
         <div class="panel-title">
@@ -301,6 +432,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
           <strong>Как это будет работать</strong>
           <span>RuOpenRay будет резолвить доменные правила в nft-set, ставить отдельную метку и отправлять только выбранные IP в таблицу AmneziaWG. Глобальный default route туннеля для всего роутера лучше не включать.</span>
         </div>
+      </section>
       </section>
     </section>`;
   }

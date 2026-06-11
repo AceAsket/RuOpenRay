@@ -13,6 +13,8 @@ import {
   routeRulePresetMatchesFor
 } from './routing-groups.js';
 
+const amneziaDirectOutboundTag = 'ruopenray-amnezia-direct';
+
 export function createRoutingActions({
   state,
   render,
@@ -102,7 +104,62 @@ export function createRoutingActions({
     render();
   }
 
-  function addRoutingRule() {
+  function amneziaPolicyRules() {
+    return Array.isArray(state.amneziaPolicyRules) ? state.amneziaPolicyRules : [];
+  }
+
+  function isAmneziaDirectTarget(targetValue) {
+    const [kind, ...rest] = String(targetValue || '').split(':');
+    return kind === 'outbound' && rest.join(':') === amneziaDirectOutboundTag;
+  }
+
+  function routeRuleToAmneziaPolicy(rule, name = '') {
+    const cleanName = String(name || '').trim();
+    const seed = [
+      cleanName,
+      ...(Array.isArray(rule.domain) ? rule.domain : []),
+      ...(Array.isArray(rule.ip) ? rule.ip : []),
+      ...(Array.isArray(rule.source) ? rule.source : []),
+      ...(Array.isArray(rule.inboundTag) ? rule.inboundTag : []),
+      rule.port || '',
+      rule.network || ''
+    ].join('-').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 56);
+    return {
+      id: `awg-${seed || Date.now().toString(36)}-${Date.now().toString(36)}`,
+      name: cleanName,
+      type: rule.type || 'field',
+      domain: Array.isArray(rule.domain) ? [...rule.domain] : undefined,
+      ip: Array.isArray(rule.ip) ? [...rule.ip] : undefined,
+      source: Array.isArray(rule.source) ? [...rule.source] : undefined,
+      inboundTag: Array.isArray(rule.inboundTag) ? [...rule.inboundTag] : undefined,
+      port: rule.port || undefined,
+      network: rule.network || undefined,
+      target: 'bypass-xray',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async function saveAmneziaPolicyRules(rules) {
+    const result = await request('/api/amnezia/policy', {
+      method: 'POST',
+      body: JSON.stringify({ rules })
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось сохранить правила AmneziaWG');
+    const profiles = result.status?.clientConfig?.profiles || {};
+    state.amneziaPolicyRules = Array.isArray(profiles.policyRules) ? profiles.policyRules : rules;
+    if (result.status) {
+      state.amneziaStatus = result.status;
+      if (state.status) state.status.amnezia = result.status;
+    }
+    return result;
+  }
+
+  async function addAmneziaPolicyFromRoute(rule, name = '') {
+    await saveAmneziaPolicyRules([routeRuleToAmneziaPolicy(rule, name), ...amneziaPolicyRules()]);
+  }
+
+  async function addRoutingRule() {
     const values = splitRouteValues(state.routeValue);
     if (state.routeKind !== 'default' && !values.length) {
       state.message = 'Укажите сайт, IP, устройство или порт для правила';
@@ -122,6 +179,16 @@ export function createRoutingActions({
     }
     if (state.routeKind === 'default') {
       rule.network = 'tcp,udp';
+      if (rule.outboundTag === amneziaDirectOutboundTag) {
+        delete rule.outboundTag;
+        await addAmneziaPolicyFromRoute(rule, state.routeName);
+        state.routeName = '';
+        state.routeValue = '';
+        state.routeRuleDialog = false;
+        state.message = 'Default-правило сохранено как прямое назначение AmneziaWG. Применение к nft/policy routing будет отдельным шагом AmneziaWG.';
+        render();
+        return;
+      }
       setRouteRuleName(rule, state.routeName);
       setRoutingDraft([...routeRules(), rule]);
       state.routeName = '';
@@ -137,6 +204,16 @@ export function createRoutingActions({
       rule.domain = normalizeRouteDomainValues(values);
     } else {
       rule[state.routeKind] = values;
+    }
+    if (rule.outboundTag === amneziaDirectOutboundTag) {
+      delete rule.outboundTag;
+      await addAmneziaPolicyFromRoute(rule, state.routeName);
+      state.routeName = '';
+      state.routeValue = '';
+      state.routeRuleDialog = false;
+      state.message = 'Правило сохранено как прямое назначение AmneziaWG мимо Xray.';
+      render();
+      return;
     }
     setRouteRuleName(rule, state.routeName);
     setRoutingDraft([rule, ...routeRules()]);
@@ -197,6 +274,17 @@ export function createRoutingActions({
   async function testRouteRuleTarget() {
     state.routeRuleTestResult = null;
     const tag = state.routeTargetType === 'balancer' ? '' : String(state.routeOutbound || '').trim();
+    if (tag === amneziaDirectOutboundTag) {
+      state.routeRuleTestResult = {
+        ok: false,
+        tone: 'pending',
+        title: 'AmneziaWG напрямую',
+        detail: 'Это правило обходит Xray, поэтому проверка outbound недоступна до применения AmneziaWG policy routing.'
+      };
+      state.message = state.routeRuleTestResult.detail;
+      render();
+      return;
+    }
     if (!tag) {
       state.routeRuleTestResult = {
         ok: false,
@@ -335,7 +423,7 @@ export function createRoutingActions({
     render();
   }
 
-  function saveRoutingRuleEdit() {
+  async function saveRoutingRuleEdit() {
     const index = state.routeRuleEditingIndex;
     const current = routeRules();
     const oldRule = current[index];
@@ -352,6 +440,18 @@ export function createRoutingActions({
         : state.routeTargetType === 'balancer' && !state.routeBalancer
         ? 'Выберите балансировщик или переключите цель на сервер'
         : 'Укажите значение правила';
+      render();
+      return;
+    }
+    if (nextRule.outboundTag === amneziaDirectOutboundTag) {
+      delete nextRule.outboundTag;
+      await addAmneziaPolicyFromRoute(nextRule, state.routeName);
+      const nextRules = current.filter((_, ruleIndex) => ruleIndex !== index);
+      delete state.routeNames[routeRuleKey(oldRule)];
+      setRoutingDraft(nextRules);
+      resetRouteRuleForm();
+      state.routeRuleDialog = false;
+      state.message = 'Правило перенесено в прямые правила AmneziaWG и убрано из Xray routing.rules.';
       render();
       return;
     }
@@ -1507,7 +1607,7 @@ export function createRoutingActions({
     render();
   }
 
-  function applyRouteTargetReplacement() {
+  async function applyRouteTargetReplacement() {
     ensureRouteTargetReplacementDefaults();
     if (!state.routeReplaceFrom || !state.routeReplaceTo) {
       state.message = 'Выберите, какой сервер заменить и на что заменить.';
@@ -1525,6 +1625,21 @@ export function createRoutingActions({
       render();
       return;
     }
+    if (isAmneziaDirectTarget(state.routeReplaceTo)) {
+      const moved = [];
+      const kept = [];
+      routeRules().forEach((rule, index) => {
+        if (indexes.has(index)) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule))));
+        else kept.push(rule);
+      });
+      await saveAmneziaPolicyRules([...moved, ...amneziaPolicyRules()]);
+      setRoutingDraft(kept);
+      state.routeTargetReplaceDialog = false;
+      state.selectedRouteRuleIndexes = [];
+      state.message = `В AmneziaWG напрямую перенесено правил: ${moved.length}. Они больше не входят в Xray routing.rules.`;
+      render();
+      return;
+    }
     const rules = routeRules().map((rule, index) => indexes.has(index) ? routeRuleWithTarget(rule, state.routeReplaceTo) : rule);
     setRoutingDraft(rules);
     state.routeTargetReplaceDialog = false;
@@ -1539,22 +1654,47 @@ export function createRoutingActions({
     const next = { ...rule };
     delete next.outboundTag;
     delete next.balancerTag;
+    if (tag === amneziaDirectOutboundTag) return next;
     if (kind === 'balancer') next.balancerTag = tag;
     else next.outboundTag = tag;
     copyRouteRuleName(rule, next);
     return next;
   }
 
-  function updateRoutingTarget(index, targetValue) {
+  async function updateRoutingTarget(index, targetValue) {
     if (targetValue === '__mixed__') return;
+    if (isAmneziaDirectTarget(targetValue)) {
+      const current = routeRules();
+      const rule = current[index];
+      if (!rule) return;
+      await addAmneziaPolicyFromRoute(rule, routeRuleName(rule, describeRouteRule(rule)));
+      setRoutingDraft(current.filter((_, ruleIndex) => ruleIndex !== index));
+      state.message = 'Правило перенесено в AmneziaWG напрямую и убрано из Xray routing.rules.';
+      render();
+      return;
+    }
     const rules = routeRules().map((rule, ruleIndex) => ruleIndex === index ? routeRuleWithTarget(rule, targetValue) : rule);
     setRoutingDraft(rules);
     state.message = 'Цель правила изменена в черновике';
     render();
   }
 
-  function updateRoutingTargetRange(fromStart, fromEnd, targetValue) {
+  async function updateRoutingTargetRange(fromStart, fromEnd, targetValue) {
     if (targetValue === '__mixed__') return;
+    if (isAmneziaDirectTarget(targetValue)) {
+      const moved = [];
+      const kept = [];
+      routeRules().forEach((rule, ruleIndex) => {
+        if (ruleIndex >= fromStart && ruleIndex < fromEnd) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule))));
+        else kept.push(rule);
+      });
+      if (!moved.length) return;
+      await saveAmneziaPolicyRules([...moved, ...amneziaPolicyRules()]);
+      setRoutingDraft(kept);
+      state.message = `Подборка перенесена в AmneziaWG напрямую: ${moved.length} правил.`;
+      render();
+      return;
+    }
     const rules = routeRules().map((rule, ruleIndex) => (
       ruleIndex >= fromStart && ruleIndex < fromEnd ? routeRuleWithTarget(rule, targetValue) : rule
     ));

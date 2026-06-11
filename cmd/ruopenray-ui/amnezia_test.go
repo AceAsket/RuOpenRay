@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -140,6 +142,32 @@ AllowedIPs = 0.0.0.0/0`
 	}
 }
 
+func TestAmneziaAWGOptionWarningsAllowTemplateOptions(t *testing.T) {
+	raw := `[Interface]
+PrivateKey = ` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `
+Address = 10.77.4.2/32
+Jc = 8
+Jmin = 32
+Jmax = 128
+S1 = 76
+S4 = 120
+H1 = 701100000-701199999
+H4 = 701400000-701499999
+I1 = <rc 16><t><r 24>
+I2 = <rd 12><r 32>
+I3 = <r 48>
+
+[Peer]
+PublicKey = ` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `
+PresharedKey = ` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	parsed := parseAmneziaClientConfig(raw)
+	if warnings := amneziaAWGOptionWarnings(parsed); len(warnings) != 0 {
+		t.Fatalf("template H/I options must not warn as numeric: %#v", warnings)
+	}
+}
+
 func TestVersionAtLeast(t *testing.T) {
 	cases := []struct {
 		version string
@@ -194,12 +222,181 @@ AllowedIPs = 0.0.0.0/0`
 	}
 }
 
+func TestAmneziaProfilePoolRoundTrip(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	rawA := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32
+
+[Peer]
+PublicKey = public
+Endpoint = a.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	rawB := strings.ReplaceAll(rawA, "a.example.com", "b.example.com")
+	if err := state.saveAmneziaProfile(rawA, "A", "", true); err != nil {
+		t.Fatalf("save A: %v", err)
+	}
+	if err := state.saveAmneziaProfile(rawB, "B", "", false); err != nil {
+		t.Fatalf("save B: %v", err)
+	}
+	profiles := state.amneziaProfiles()
+	items, _ := profiles["items"].([]map[string]any)
+	if len(items) != 2 {
+		t.Fatalf("profiles = %#v", profiles)
+	}
+	ids := []string{fmt.Sprint(items[0]["id"]), fmt.Sprint(items[1]["id"])}
+	result := state.updateAmneziaProfilePool(map[string]any{
+		"selectedIds": ids,
+		"strategy":    "round-robin",
+		"mode":        "mixed",
+	})
+	if result["ok"] != true {
+		t.Fatalf("pool update failed: %#v", result)
+	}
+	profiles = state.amneziaProfiles()
+	if profiles["strategy"] != "round-robin" {
+		t.Fatalf("strategy = %#v", profiles["strategy"])
+	}
+	if profiles["mode"] != "mixed" {
+		t.Fatalf("mode = %#v", profiles["mode"])
+	}
+	selected, _ := profiles["selectedIds"].([]string)
+	if len(selected) != 2 || !containsString(selected, ids[0]) || !containsString(selected, ids[1]) {
+		t.Fatalf("selectedIds = %#v", profiles["selectedIds"])
+	}
+	if deleteResult := state.deleteAmneziaProfile(map[string]any{"id": ids[1]}); deleteResult["ok"] != true {
+		t.Fatalf("delete profile failed: %#v", deleteResult)
+	}
+	profiles = state.amneziaProfiles()
+	selected, _ = profiles["selectedIds"].([]string)
+	if containsString(selected, ids[1]) {
+		t.Fatalf("deleted profile still selected: %#v", profiles["selectedIds"])
+	}
+}
+
+func TestAmneziaProfileRegistryNormalizesNilID(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	raw := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32
+
+[Peer]
+PublicKey = public
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	if err := os.MkdirAll(state.amneziaProfilesDir(), 0o700); err != nil {
+		t.Fatalf("mkdir profiles: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(state.amneziaProfilesDir(), "<nil>.conf"), []byte(raw), 0o600); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+	reg := amneziaProfileRegistry{
+		ActiveID:    "<nil>",
+		SelectedIDs: []string{"<nil>"},
+		Strategy:    "roundrobin",
+		Mode:        "amnezia",
+		Profiles: []amneziaProfileRecord{{
+			ID:   "<nil>",
+			Name: "Cloud Four",
+			File: "<nil>.conf",
+		}},
+	}
+	if err := state.writeAmneziaProfileRegistry(reg); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+	profiles := state.amneziaProfiles()
+	items, _ := profiles["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("profiles = %#v", profiles)
+	}
+	id := fmt.Sprint(items[0]["id"])
+	if id == "<nil>" || id == "" {
+		t.Fatalf("profile id was not normalized: %#v", profiles)
+	}
+	selected, _ := profiles["selectedIds"].([]string)
+	if len(selected) != 1 || selected[0] != id || profiles["activeId"] != id {
+		t.Fatalf("registry references were not normalized: %#v", profiles)
+	}
+	if profiles["strategy"] != "round-robin" {
+		t.Fatalf("strategy was not normalized: %#v", profiles["strategy"])
+	}
+	if profiles["mode"] != "amnezia-first" {
+		t.Fatalf("mode was not normalized: %#v", profiles["mode"])
+	}
+}
+
+func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	result := state.updateAmneziaPolicyRules(map[string]any{
+		"rules": []any{
+			map[string]any{
+				"id":      "instagram-direct",
+				"name":    "Instagram",
+				"type":    "field",
+				"domain":  []any{"domain:instagram.com", "domain:cdninstagram.com"},
+				"network": "tcp,udp",
+				"target":  "amnezia-direct",
+			},
+			map[string]any{
+				"id":     "empty",
+				"target": "amnezia-direct",
+			},
+		},
+	})
+	if result["ok"] != true {
+		t.Fatalf("policy update failed: %#v", result)
+	}
+	profiles := state.amneziaProfiles()
+	rules, _ := profiles["policyRules"].([]amneziaPolicyRule)
+	if len(rules) != 1 {
+		t.Fatalf("policyRules = %#v", profiles["policyRules"])
+	}
+	if rules[0].ID != "instagram-direct" || rules[0].Target != "bypass-xray" || len(rules[0].Domain) != 2 {
+		t.Fatalf("unexpected policy rule: %#v", rules[0])
+	}
+}
+
 func TestAmneziaPreflightRejectsEmptyConfig(t *testing.T) {
 	state := &serverState{}
 	state.cfg.DataDir = t.TempDir()
 	preflight := state.amneziaPreflightForConfig("")
 	if preflight["ok"] == true {
 		t.Fatalf("empty config must not pass preflight: %#v", preflight)
+	}
+}
+
+func TestAmneziaPreflightLoadsSavedProfileWhenConfigMissing(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	raw := `[Interface]
+PrivateKey = ` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `
+Address = 10.77.4.2/32
+Jc = 8
+Jmin = 32
+Jmax = 128
+
+[Peer]
+PublicKey = ` + base64.StdEncoding.EncodeToString(make([]byte, 32)) + `
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	if result := state.saveAmneziaClientConfig(map[string]any{"name": "Saved", "config": raw}); result["ok"] != true {
+		t.Fatalf("save config failed: %#v", result)
+	}
+	result := state.amneziaPreflight(map[string]any{})
+	preflight, _ := result["preflight"].(map[string]any)
+	checks, _ := preflight["checks"].([]map[string]any)
+	if len(checks) == 0 {
+		t.Fatalf("missing checks: %#v", result)
+	}
+	byID := map[string]map[string]any{}
+	for _, check := range checks {
+		byID[fmt.Sprint(check["id"])] = check
+	}
+	if byID["config"]["ok"] != true || byID["endpoint"]["ok"] != true {
+		t.Fatalf("preflight did not use saved config: %#v", preflight)
 	}
 }
 

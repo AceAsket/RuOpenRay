@@ -45,6 +45,50 @@ export function createRoutingView(deps) {
     geoPanel,
   } = deps;
 
+function amneziaPolicyRuleItems() {
+  return Array.isArray(state.amneziaPolicyRules) ? state.amneziaPolicyRules : [];
+}
+
+function amneziaPolicyRulePseudoRoute(rule) {
+  return {
+    type: rule?.type || 'field',
+    domain: Array.isArray(rule?.domain) ? rule.domain : undefined,
+    ip: Array.isArray(rule?.ip) ? rule.ip : undefined,
+    source: Array.isArray(rule?.source) ? rule.source : undefined,
+    inboundTag: Array.isArray(rule?.inboundTag) ? rule.inboundTag : undefined,
+    port: rule?.port || undefined,
+    network: rule?.network || undefined,
+    outboundTag: 'ruopenray-amnezia-direct'
+  };
+}
+
+function amneziaPolicyRulesPanel() {
+  const rules = amneziaPolicyRuleItems();
+  if (!rules.length) return '';
+  return `
+    <div class="amnezia-route-policy-list">
+      <div class="amnezia-route-policy-head">
+        <div>
+          <strong>AmneziaWG напрямую</strong>
+          <span>${rules.length} правил обходят Xray и будут применяться через отдельный policy routing AmneziaWG.</span>
+        </div>
+      </div>
+      ${rules.map((rule) => {
+        const pseudo = amneziaPolicyRulePseudoRoute(rule);
+        const info = describeRouteRule(pseudo);
+        const name = rule.name || routeRuleName(pseudo, info);
+        return `<article class="disabled-route-row amnezia-policy-row">
+          <div>
+            <strong>${escapeHtml(name)}</strong>
+            <span>${escapeHtml(info.kind)}: ${escapeHtml(info.value)} -> AmneziaWG напрямую</span>
+          </div>
+          <button class="btn danger" data-amnezia-policy-delete="${escapeHtml(rule.id || '')}">Удалить</button>
+        </article>`;
+      }).join('')}
+    </div>
+  `;
+}
+
 function routingRulesPanel() {
   const rules = routeRules();
   const stats = routeStats();
@@ -52,7 +96,10 @@ function routingRulesPanel() {
   const visibleRules = visibleRoutingRuleItems(80);
   const managedRules = managedRoutingRuleItems();
   const userRulesCount = rules.length - managedRules.length;
+  const amneziaPolicyCount = amneziaPolicyRuleItems().length;
   const selectedRuleCount = (state.selectedRouteRuleIndexes || []).length;
+  const hasAmneziaProfile = Boolean(state.amneziaStatus?.clientConfig?.profiles?.items?.length);
+  const hasOutAmnezia = (Array.isArray(state.config?.outbounds) ? state.config.outbounds : []).some((outbound) => outbound?.tag === 'out-amnezia');
 
   return `
     <section class="panel routing-simple-panel">
@@ -63,6 +110,7 @@ function routingRulesPanel() {
         </div>
       </div>
       ${operationProgressView()}
+      ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AmneziaWG напрямую</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся как policy routing мимо Xray.</span></div>` : ''}
       <div class="routing-summary">
         ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
           <span>${escapeHtml(item.title)}</span>
@@ -71,6 +119,7 @@ function routingRulesPanel() {
         </article>`).join('')}
       </div>
       <div class="route-tools">
+        <button class="btn secondary" data-action="prepareAmneziaXrayOutboundDraft" ${hasAmneziaProfile ? '' : 'disabled'}>${hasOutAmnezia ? 'Обновить out-amnezia' : 'Добавить out-amnezia'}</button>
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
@@ -85,6 +134,7 @@ function routingRulesPanel() {
       <div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
       </div>
+      ${amneziaPolicyRulesPanel()}
       ${state.disabledRouteRules.length ? `<div class="disabled-routes">
         <div class="disabled-routes-head">
           <strong>Отключенные правила</strong>

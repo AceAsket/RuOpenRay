@@ -1372,6 +1372,42 @@
   align-items: center;
 }
 
+.amnezia-route-policy-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(126, 230, 216, 0.18);
+  border-radius: 8px;
+  background: rgba(8, 15, 19, 0.46);
+}
+
+.amnezia-route-policy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 6px;
+}
+
+.amnezia-route-policy-head strong,
+.amnezia-route-policy-head span {
+  display: block;
+}
+
+.amnezia-route-policy-head strong {
+  color: var(--text);
+}
+
+.amnezia-route-policy-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.amnezia-policy-row {
+  border-color: rgba(126, 230, 216, 0.2);
+}
+
 .disabled-routes-head span,
 .disabled-route-row span {
   color: var(--muted);

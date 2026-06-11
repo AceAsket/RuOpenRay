@@ -678,7 +678,8 @@ const {
 const amneziaActions = createAmneziaActions({
   state,
   request,
-  render
+  render,
+  syncConfig
 });
 const {
   refreshAmnezia,
@@ -688,9 +689,13 @@ const {
   deleteAmneziaConfig,
   loadAmneziaProfile,
   activateAmneziaProfile,
+  saveAmneziaProfilePool,
+  saveAmneziaPolicyRules,
+  deleteAmneziaPolicyRule,
   deleteAmneziaProfile,
   checkAmneziaPreflight,
-  prepareAmnezia
+  prepareAmnezia,
+  prepareAmneziaXrayOutboundDraft
 } = amneziaActions;
 
 const setupModel = createSetupModel({
@@ -2230,6 +2235,8 @@ function bind() {
       deleteAmneziaConfig,
       loadAmneziaProfile,
       activateAmneziaProfile,
+      saveAmneziaProfilePool,
+      prepareAmneziaXrayOutboundDraft,
       deleteAmneziaProfile,
       checkAmneziaPreflight,
       prepareAmnezia,
@@ -2601,6 +2608,38 @@ function bind() {
   document.querySelectorAll('[data-amnezia-name]').forEach((input) => {
     input.addEventListener('input', () => {
       state.amneziaProfileName = input.value;
+    });
+  });
+  document.querySelectorAll('[data-amnezia-pool]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const id = input.dataset.amneziaPool || '';
+      const selected = new Set(Array.isArray(state.amneziaSelectedProfileIds) ? state.amneziaSelectedProfileIds : []);
+      if (input.checked && id) selected.add(id);
+      if (!input.checked) selected.delete(id);
+      state.amneziaSelectedProfileIds = [...selected];
+      render();
+    });
+  });
+  document.querySelectorAll('[data-amnezia-strategy]').forEach((select) => {
+    select.addEventListener('change', () => {
+      state.amneziaPoolStrategy = select.value || 'single';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-amnezia-mode]').forEach((select) => {
+    select.addEventListener('change', () => {
+      state.amneziaIntegrationMode = select.value || 'standby';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-amnezia-policy-delete]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        await deleteAmneziaPolicyRule(button);
+      } catch (error) {
+        state.message = error.message || String(error);
+        render();
+      }
     });
   });
 

@@ -172,6 +172,11 @@ export function createRuntimeController({
     state.status = status;
     if (status?.amnezia && typeof status.amnezia === 'object') {
       state.amneziaStatus = status.amnezia;
+      const profiles = status.amnezia.clientConfig?.profiles || {};
+      if (Array.isArray(profiles.policyRules)) state.amneziaPolicyRules = profiles.policyRules;
+      if (Array.isArray(profiles.selectedIds)) state.amneziaSelectedProfileIds = profiles.selectedIds.filter(Boolean);
+      if (profiles.strategy) state.amneziaPoolStrategy = profiles.strategy;
+      if (profiles.mode) state.amneziaIntegrationMode = profiles.mode;
     }
     if (status?.serverChecks?.results && typeof status.serverChecks.results === 'object' && !Array.isArray(status.serverChecks.results)) {
       state.serverChecks = { ...state.serverChecks, ...status.serverChecks.results };

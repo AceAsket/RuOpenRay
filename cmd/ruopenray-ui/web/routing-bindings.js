@@ -488,15 +488,22 @@ export function bindRoutingControls({
       picker?.addEventListener('keydown', (event) => event.stopPropagation());
     }
     select.addEventListener('change', (event) => {
+      const run = (result) => {
+        if (!result || typeof result.catch !== 'function') return;
+        result.catch((error) => {
+          state.message = error.message || String(error);
+          render();
+        });
+      };
       if (select.dataset.routeGroupTarget !== undefined) {
-        updateRoutingTargetRange(
+        run(updateRoutingTargetRange(
           Number(select.dataset.routeGroupTargetStart),
           Number(select.dataset.routeGroupTargetEnd),
           event.target.value
-        );
+        ));
         return;
       }
-      updateRoutingTarget(Number(select.dataset.routeTarget), event.target.value);
+      run(updateRoutingTarget(Number(select.dataset.routeTarget), event.target.value));
     });
   });
   document.querySelectorAll('[data-route-values-panel]').forEach((button) => {

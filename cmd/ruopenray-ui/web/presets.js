@@ -47,6 +47,9 @@ export const managedRouteTags = {
   'dns-out': 'DNS-выход Xray'
 };
 
+managedRouteTags['out-amnezia'] = 'AmneziaWG через Xray';
+managedRouteTags['ruopenray-amnezia-direct'] = 'AmneziaWG напрямую';
+
 export const routePlaceholders = {
   domain: 'domain:youtube.com, geosite:youtube',
   ip: '8.8.8.8, 1.1.1.0/24, geoip:telegram',

@@ -1,9 +1,18 @@
-export function createAmneziaActions({ state, request, render }) {
+export function createAmneziaActions({ state, request, render, syncConfig }) {
   function syncAmneziaStatus(result) {
     if (!result || typeof result !== 'object') return;
     state.amneziaStatus = result;
     if (state.status) state.status.amnezia = result;
     if (result.clientConfig?.preflight) state.amneziaPreflight = result.clientConfig.preflight;
+    const profiles = result.clientConfig?.profiles || {};
+    if (Array.isArray(profiles.selectedIds)) {
+      state.amneziaSelectedProfileIds = profiles.selectedIds.filter(Boolean);
+    } else if (Array.isArray(profiles.items)) {
+      state.amneziaSelectedProfileIds = profiles.items.filter((item) => item.selected || item.active).map((item) => item.id).filter(Boolean);
+    }
+    if (profiles.strategy) state.amneziaPoolStrategy = profiles.strategy;
+    if (profiles.mode) state.amneziaIntegrationMode = profiles.mode;
+    state.amneziaPolicyRules = Array.isArray(profiles.policyRules) ? profiles.policyRules : [];
   }
 
   async function refreshAmnezia({ silent = false } = {}) {
@@ -33,6 +42,9 @@ export function createAmneziaActions({ state, request, render }) {
       const activeProfile = result?.profiles?.items?.find((item) => item.active);
       state.amneziaProfileId = activeProfile?.id || '';
       state.amneziaProfileName = activeProfile?.name || state.amneziaProfileName || 'AmneziaWG';
+      if (Array.isArray(result?.profiles?.selectedIds)) state.amneziaSelectedProfileIds = result.profiles.selectedIds.filter(Boolean);
+      if (result?.profiles?.strategy) state.amneziaPoolStrategy = result.profiles.strategy;
+      if (result?.profiles?.mode) state.amneziaIntegrationMode = result.profiles.mode;
       state.amneziaPreflight = result?.preflight || result?.clientConfig?.preflight || null;
       state.amneziaConfigLoaded = true;
       state.message = result?.exists ? 'Конфиг AmneziaWG загружен в форму.' : 'Сохраненного конфига AmneziaWG пока нет.';
@@ -96,7 +108,43 @@ export function createAmneziaActions({ state, request, render }) {
     if (!result?.ok) throw new Error(result?.error || 'Не удалось активировать профиль AmneziaWG');
     syncAmneziaStatus(result.status);
     state.amneziaProfileId = id;
+    if (!state.amneziaSelectedProfileIds.includes(id)) state.amneziaSelectedProfileIds = [...state.amneziaSelectedProfileIds, id].filter(Boolean);
     state.message = 'Профиль AmneziaWG выбран активным. Туннель не запускался.';
+    render();
+  }
+
+  async function saveAmneziaProfilePool() {
+    const result = await request('/api/amnezia/profile/pool', {
+      method: 'POST',
+      body: JSON.stringify({
+        selectedIds: Array.isArray(state.amneziaSelectedProfileIds) ? state.amneziaSelectedProfileIds : [],
+        strategy: state.amneziaPoolStrategy || 'single',
+        mode: state.amneziaIntegrationMode || 'standby'
+      })
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось сохранить пул AmneziaWG');
+    syncAmneziaStatus(result.status);
+    state.message = 'Пул профилей AmneziaWG сохранен.';
+    render();
+  }
+
+  async function saveAmneziaPolicyRules(rules) {
+    const result = await request('/api/amnezia/policy', {
+      method: 'POST',
+      body: JSON.stringify({ rules: Array.isArray(rules) ? rules : [] })
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось сохранить правила AmneziaWG');
+    syncAmneziaStatus(result.status);
+    render();
+    return result;
+  }
+
+  async function deleteAmneziaPolicyRule(button) {
+    const id = button?.dataset?.amneziaPolicyDelete || '';
+    if (!id) return;
+    const rules = (Array.isArray(state.amneziaPolicyRules) ? state.amneziaPolicyRules : []).filter((rule) => rule?.id !== id);
+    await saveAmneziaPolicyRules(rules);
+    state.message = 'Правило AmneziaWG удалено.';
     render();
   }
 
@@ -138,6 +186,46 @@ export function createAmneziaActions({ state, request, render }) {
     render();
   }
 
+  function activeAmneziaProfileSummary() {
+    const profiles = state.amneziaStatus?.clientConfig?.profiles || {};
+    const items = Array.isArray(profiles.items) ? profiles.items : [];
+    const selected = Array.isArray(state.amneziaSelectedProfileIds) ? state.amneziaSelectedProfileIds : [];
+    return items.find((item) => item.active) || items.find((item) => selected.includes(item.id)) || items[0] || null;
+  }
+
+  function amneziaXrayOutboundDraft() {
+    return {
+      tag: 'out-amnezia',
+      protocol: 'freedom',
+      settings: {
+        domainStrategy: 'UseIP'
+      },
+      streamSettings: {
+        sockopt: {
+          mark: 20992
+        }
+      }
+    };
+  }
+
+  async function prepareAmneziaXrayOutboundDraft() {
+    if (typeof syncConfig !== 'function') throw new Error('Редактор конфигурации не готов.');
+    const profile = activeAmneziaProfileSummary();
+    if (!profile) throw new Error('Сначала сохраните или выберите профиль AmneziaWG.');
+    const next = JSON.parse(JSON.stringify(state.config || {}));
+    next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
+    const outbound = amneziaXrayOutboundDraft();
+    const index = next.outbounds.findIndex((item) => item?.tag === outbound.tag);
+    const existed = index >= 0;
+    if (index >= 0) next.outbounds[index] = { ...next.outbounds[index], ...outbound };
+    else next.outbounds.push(outbound);
+    syncConfig(next);
+    state.message = existed
+      ? 'out-amnezia обновлен в черновике Xray. Его можно выбрать в маршрутизации.'
+      : 'out-amnezia добавлен в черновик Xray. Его можно выбрать в маршрутизации.';
+    render();
+  }
+
   return {
     refreshAmnezia,
     syncAmneziaStatus,
@@ -146,8 +234,12 @@ export function createAmneziaActions({ state, request, render }) {
     deleteAmneziaConfig,
     loadAmneziaProfile,
     activateAmneziaProfile,
+    saveAmneziaProfilePool,
+    saveAmneziaPolicyRules,
+    deleteAmneziaPolicyRule,
     deleteAmneziaProfile,
     checkAmneziaPreflight,
-    prepareAmnezia
+    prepareAmnezia,
+    prepareAmneziaXrayOutboundDraft
   };
 }

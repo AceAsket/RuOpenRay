@@ -178,6 +178,12 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/amnezia/profile/activate" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.activateAmneziaProfile(payload))
+	case path == "/amnezia/profile/pool" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.updateAmneziaProfilePool(payload))
+	case path == "/amnezia/policy" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.updateAmneziaPolicyRules(payload))
 	case path == "/amnezia/profile/delete" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.deleteAmneziaProfile(payload))

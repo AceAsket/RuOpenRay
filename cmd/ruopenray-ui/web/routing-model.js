@@ -16,6 +16,7 @@ const privateBypassValues = new Set([
   'fc00::/7',
   'fe80::/10'
 ]);
+const amneziaDirectOutboundTag = 'ruopenray-amnezia-direct';
 
 export function createRoutingModel({ state, managedRouteTags, routeBundles, routeKinds, routePresets, proxyOutbounds, checkForTag, checkLabel, outboundAddress, persistRouteNames }) {
   function routeRules() {
@@ -81,6 +82,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeTargetOptions() {
     return [
+      { value: `outbound:${amneziaDirectOutboundTag}`, label: routeTargetOptionLabel(amneziaDirectOutboundTag) },
       ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: routeTargetOptionLabel(tag) })),
       ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
     ];
@@ -341,6 +343,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (isRuOpenRayManagedRoute(rule)) return 'other';
     if (rule?.balancerTag) return 'proxy';
     const outbound = rule?.outboundTag || '';
+    if (outbound === amneziaDirectOutboundTag) return 'other';
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
     const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean), ...subscriptionTags]);
     if (proxyTags.has(outbound)) return 'proxy';
