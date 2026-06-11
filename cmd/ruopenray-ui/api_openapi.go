@@ -92,6 +92,11 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/amnezia/config", "AmneziaWG", "Get saved AmneziaWG client config", "Returns the saved client config for editing.", "", "Object"},
 		{"post", "/amnezia/config", "AmneziaWG", "Save AmneziaWG client config", "Validates and stores an AmneziaWG client config without starting the tunnel.", "GenericObject", "Object"},
 		{"post", "/amnezia/config/delete", "AmneziaWG", "Delete saved AmneziaWG client config", "", "GenericObject", "Object"},
+		{"post", "/amnezia/profile/load", "AmneziaWG", "Load AmneziaWG profile", "Loads a saved profile config into the editor.", "GenericObject", "Object"},
+		{"post", "/amnezia/profile/activate", "AmneziaWG", "Activate AmneziaWG profile", "Copies a saved profile to the active client config without starting the tunnel.", "GenericObject", "Object"},
+		{"post", "/amnezia/profile/delete", "AmneziaWG", "Delete AmneziaWG profile", "", "GenericObject", "Object"},
+		{"post", "/amnezia/preflight", "AmneziaWG", "Check AmneziaWG preflight", "Validates config, tools, kernel module and route safety without changing the system.", "GenericObject", "Object"},
+		{"post", "/amnezia/prepare", "AmneziaWG", "Prepare AmneziaWG plan", "Dry-run preparation for future AmneziaWG routing. Does not start tunnel or change firewall.", "GenericObject", "Object"},
 
 		{"get", "/config", "Config", "Get active Xray config", "Returns parsed /etc/xray/config.json.", "", "Object"},
 		{"get", "/config/draft", "Config", "Get config draft", "Returns current UI draft if it exists.", "", "Object"},

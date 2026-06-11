@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -150,6 +154,80 @@ func TestVersionAtLeast(t *testing.T) {
 		t.Run(tc.version, func(t *testing.T) {
 			if got := versionAtLeast(tc.version, 4, 9); got != tc.want {
 				t.Fatalf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAmneziaProfileRegistryRoundTrip(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	raw := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32
+Jc = 4
+Jmin = 40
+Jmax = 70
+
+[Peer]
+PublicKey = public
+Endpoint = vpn.example.com:443
+AllowedIPs = 0.0.0.0/0`
+	if err := state.saveAmneziaProfile(raw, "Test AWG", "", true); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+	profiles := state.amneziaProfiles()
+	items, _ := profiles["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("profiles = %#v", profiles)
+	}
+	if items[0]["name"] != "Test AWG" || items[0]["active"] != true {
+		t.Fatalf("unexpected profile: %#v", items[0])
+	}
+	id := items[0]["id"].(string)
+	rawLoaded, ok := state.loadAmneziaProfileConfig(id)
+	if !ok || rawLoaded == "" {
+		t.Fatalf("profile config not loaded")
+	}
+	if info, err := os.Stat(filepath.Join(state.amneziaProfilesDir(), id+".conf")); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
+		t.Fatalf("profile file mode/stat = %#v %v", info, err)
+	}
+}
+
+func TestAmneziaPreflightRejectsEmptyConfig(t *testing.T) {
+	state := &serverState{}
+	state.cfg.DataDir = t.TempDir()
+	preflight := state.amneziaPreflightForConfig("")
+	if preflight["ok"] == true {
+		t.Fatalf("empty config must not pass preflight: %#v", preflight)
+	}
+}
+
+func TestAmneziaLooksLikeWGKey(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	if !amneziaLooksLikeWGKey(key) {
+		t.Fatalf("generated 32-byte base64 key should pass")
+	}
+	if amneziaLooksLikeWGKey("private") {
+		t.Fatalf("plain text must not pass as WireGuard key")
+	}
+}
+
+func TestAmneziaEndpointParts(t *testing.T) {
+	cases := []struct {
+		endpoint string
+		host     string
+		port     string
+	}{
+		{"vpn.example.com:443", "vpn.example.com", "443"},
+		{"[2001:db8::1]:51820", "2001:db8::1", "51820"},
+		{"vpn.example.com", "vpn.example.com", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.endpoint, func(t *testing.T) {
+			host, port := amneziaEndpointParts(tc.endpoint)
+			if host != tc.host || port != tc.port {
+				t.Fatalf("got %q %q want %q %q", host, port, tc.host, tc.port)
 			}
 		})
 	}

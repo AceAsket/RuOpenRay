@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -58,6 +60,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 	commands := amneziaCommandStatus()
 	kernel := amneziaKernelStatus()
 	glinet := amneziaGLInetStatus()
+	userspace := amneziaUserspaceStatus()
 
 	result["interfaces"] = interfaces
 	result["services"] = services
@@ -67,7 +70,10 @@ func (s *serverState) amneziaStatus() map[string]any {
 	result["commands"] = commands
 	result["kernel"] = kernel
 	result["glinet"] = glinet
-	result["clientConfig"] = s.amneziaClientConfigStatus(false)
+	result["userspace"] = userspace
+	clientConfig := s.amneziaClientConfigStatus(false)
+	clientConfig["profiles"] = s.amneziaProfiles()
+	result["clientConfig"] = clientConfig
 
 	wgInterfaces, _ := wg["interfaces"].([]string)
 	available := len(amneziaInterfaceNames(interfaces)) > 0 ||
@@ -77,6 +83,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 		boolMap(kernel, "installed") ||
 		boolMap(kernel, "moduleFile") ||
 		boolMap(commands, "awg") ||
+		boolMap(userspace, "available") ||
 		boolMap(services, "found") ||
 		boolMap(glinet, "nativeWireGuard")
 	running := len(amneziaRunningInterfaceNames(interfaces)) > 0 || boolMap(services, "running") || boolMap(wg, "hasPeer")
@@ -118,6 +125,14 @@ func (s *serverState) amneziaClientConfigPath() string {
 	return filepath.Join(s.cfg.DataDir, "amneziawg", "client.conf")
 }
 
+func (s *serverState) amneziaProfilesDir() string {
+	return filepath.Join(s.cfg.DataDir, "amneziawg", "profiles")
+}
+
+func (s *serverState) amneziaProfilesRegistryPath() string {
+	return filepath.Join(s.cfg.DataDir, "amneziawg", "profiles.json")
+}
+
 func (s *serverState) amneziaClientConfigStatus(includeRaw bool) map[string]any {
 	path := s.amneziaClientConfigPath()
 	result := map[string]any{
@@ -138,6 +153,7 @@ func (s *serverState) amneziaClientConfigStatus(includeRaw bool) map[string]any 
 	result["obfuscationOptions"] = parsed.obfuscationOptions
 	result["rawOptions"] = parsed.rawOptions
 	result["warnings"] = parsed.warnings
+	result["preflight"] = s.amneziaPreflightForConfig(string(body))
 	if includeRaw {
 		result["config"] = string(body)
 	}
@@ -146,6 +162,7 @@ func (s *serverState) amneziaClientConfigStatus(includeRaw bool) map[string]any 
 
 func (s *serverState) amneziaClientConfig() map[string]any {
 	status := s.amneziaClientConfigStatus(true)
+	status["profiles"] = s.amneziaProfiles()
 	status["ok"] = true
 	return status
 }
@@ -169,6 +186,13 @@ func (s *serverState) saveAmneziaClientConfig(payload map[string]any) map[string
 	if err := os.WriteFile(path, []byte(raw+"\n"), 0o600); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
+	name := strings.TrimSpace(fmt.Sprint(payload["name"]))
+	if name == "" {
+		name = "AmneziaWG"
+	}
+	if err := s.saveAmneziaProfile(raw, name, strings.TrimSpace(fmt.Sprint(payload["id"])), true); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
 	s.metricsMu.Lock()
 	s.amneziaCache = nil
 	s.amneziaAt = time.Time{}
@@ -186,6 +210,438 @@ func (s *serverState) deleteAmneziaClientConfig() map[string]any {
 	s.amneziaAt = time.Time{}
 	s.metricsMu.Unlock()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
+}
+
+type amneziaProfileRegistry struct {
+	ActiveID string                 `json:"activeId"`
+	Profiles []amneziaProfileRecord `json:"profiles"`
+}
+
+type amneziaProfileRecord struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	File      string `json:"file"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func (s *serverState) amneziaProfiles() map[string]any {
+	reg := s.loadAmneziaProfileRegistry()
+	items := []map[string]any{}
+	for _, profile := range reg.Profiles {
+		path := filepath.Join(s.amneziaProfilesDir(), profile.File)
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		parsed := parseAmneziaClientConfig(string(body))
+		items = append(items, amneziaProfileSummary(profile, parsed, profile.ID == reg.ActiveID, fileModTimeRFC3339(path)))
+	}
+	if legacy := s.legacyAmneziaProfile(reg); legacy != nil {
+		items = append(items, legacy)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i]["active"] == true {
+			return true
+		}
+		if items[j]["active"] == true {
+			return false
+		}
+		return fmt.Sprint(items[i]["name"]) < fmt.Sprint(items[j]["name"])
+	})
+	return map[string]any{
+		"activeId": reg.ActiveID,
+		"items":    items,
+	}
+}
+
+func (s *serverState) legacyAmneziaProfile(reg amneziaProfileRegistry) map[string]any {
+	path := s.amneziaClientConfigPath()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	if reg.ActiveID != "" {
+		for _, profile := range reg.Profiles {
+			if profile.ID == reg.ActiveID {
+				return nil
+			}
+		}
+	}
+	parsed := parseAmneziaClientConfig(string(body))
+	return amneziaProfileSummary(amneziaProfileRecord{
+		ID:        "legacy",
+		Name:      "Текущий client.conf",
+		File:      filepath.Base(path),
+		CreatedAt: fileModTimeRFC3339(path),
+		UpdatedAt: fileModTimeRFC3339(path),
+	}, parsed, reg.ActiveID == "" || reg.ActiveID == "legacy", fileModTimeRFC3339(path))
+}
+
+func amneziaProfileSummary(profile amneziaProfileRecord, parsed parsedAmneziaClientConfig, active bool, updatedAt string) map[string]any {
+	return map[string]any{
+		"id":                 profile.ID,
+		"name":               profile.Name,
+		"active":             active,
+		"summary":            parsed.summary,
+		"interface":          parsed.iface,
+		"peer":               parsed.peer,
+		"obfuscationOptions": parsed.obfuscationOptions,
+		"warnings":           parsed.warnings,
+		"updatedAt":          firstNonEmpty(updatedAt, profile.UpdatedAt),
+	}
+}
+
+func (s *serverState) loadAmneziaProfileRegistry() amneziaProfileRegistry {
+	body, err := os.ReadFile(s.amneziaProfilesRegistryPath())
+	if err != nil {
+		return amneziaProfileRegistry{}
+	}
+	var reg amneziaProfileRegistry
+	if err := json.Unmarshal(body, &reg); err != nil {
+		return amneziaProfileRegistry{}
+	}
+	return reg
+}
+
+func (s *serverState) writeAmneziaProfileRegistry(reg amneziaProfileRegistry) error {
+	if err := os.MkdirAll(filepath.Dir(s.amneziaProfilesRegistryPath()), 0o700); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.amneziaProfilesRegistryPath(), append(body, '\n'), 0o600)
+}
+
+func (s *serverState) saveAmneziaProfile(raw, name, id string, active bool) error {
+	reg := s.loadAmneziaProfileRegistry()
+	now := time.Now().Format(time.RFC3339)
+	if id == "" || id == "legacy" {
+		id = amneziaProfileID(name)
+	}
+	if name == "" {
+		name = "AmneziaWG"
+	}
+	record := amneziaProfileRecord{
+		ID:        id,
+		Name:      name,
+		File:      id + ".conf",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	found := false
+	for idx := range reg.Profiles {
+		if reg.Profiles[idx].ID == id {
+			record.CreatedAt = reg.Profiles[idx].CreatedAt
+			reg.Profiles[idx] = record
+			found = true
+			break
+		}
+	}
+	if !found {
+		reg.Profiles = append(reg.Profiles, record)
+	}
+	if active {
+		reg.ActiveID = id
+	}
+	if err := os.MkdirAll(s.amneziaProfilesDir(), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.amneziaProfilesDir(), record.File), []byte(strings.TrimSpace(raw)+"\n"), 0o600); err != nil {
+		return err
+	}
+	return s.writeAmneziaProfileRegistry(reg)
+}
+
+func (s *serverState) loadAmneziaProfileConfig(id string) (string, bool) {
+	if id == "" || id == "legacy" {
+		body, err := os.ReadFile(s.amneziaClientConfigPath())
+		return string(body), err == nil
+	}
+	reg := s.loadAmneziaProfileRegistry()
+	for _, profile := range reg.Profiles {
+		if profile.ID != id {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(s.amneziaProfilesDir(), profile.File))
+		return string(body), err == nil
+	}
+	return "", false
+}
+
+func (s *serverState) loadAmneziaProfile(payload map[string]any) map[string]any {
+	id := strings.TrimSpace(fmt.Sprint(payload["id"]))
+	raw, ok := s.loadAmneziaProfileConfig(id)
+	if !ok {
+		return map[string]any{"ok": false, "error": "Профиль AmneziaWG не найден."}
+	}
+	status := s.amneziaClientConfigStatus(false)
+	status["config"] = raw
+	status["profiles"] = s.amneziaProfiles()
+	status["ok"] = true
+	return status
+}
+
+func (s *serverState) activateAmneziaProfile(payload map[string]any) map[string]any {
+	id := strings.TrimSpace(fmt.Sprint(payload["id"]))
+	raw, ok := s.loadAmneziaProfileConfig(id)
+	if !ok {
+		return map[string]any{"ok": false, "error": "Профиль AmneziaWG не найден."}
+	}
+	if err := os.MkdirAll(filepath.Dir(s.amneziaClientConfigPath()), 0o700); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := os.WriteFile(s.amneziaClientConfigPath(), []byte(strings.TrimSpace(raw)+"\n"), 0o600); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	reg := s.loadAmneziaProfileRegistry()
+	reg.ActiveID = id
+	if id == "legacy" {
+		reg.ActiveID = ""
+	}
+	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	s.metricsMu.Lock()
+	s.amneziaCache = nil
+	s.amneziaAt = time.Time{}
+	s.metricsMu.Unlock()
+	return map[string]any{"ok": true, "status": s.amneziaStatus()}
+}
+
+func (s *serverState) deleteAmneziaProfile(payload map[string]any) map[string]any {
+	id := strings.TrimSpace(fmt.Sprint(payload["id"]))
+	if id == "" || id == "legacy" {
+		return s.deleteAmneziaClientConfig()
+	}
+	reg := s.loadAmneziaProfileRegistry()
+	next := reg.Profiles[:0]
+	removed := false
+	for _, profile := range reg.Profiles {
+		if profile.ID == id {
+			removed = true
+			_ = os.Remove(filepath.Join(s.amneziaProfilesDir(), profile.File))
+			continue
+		}
+		next = append(next, profile)
+	}
+	if !removed {
+		return map[string]any{"ok": false, "error": "Профиль AmneziaWG не найден."}
+	}
+	reg.Profiles = next
+	if reg.ActiveID == id {
+		reg.ActiveID = ""
+		_ = os.Remove(s.amneziaClientConfigPath())
+	}
+	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "status": s.amneziaStatus()}
+}
+
+func (s *serverState) amneziaPreflight(payload map[string]any) map[string]any {
+	raw := strings.TrimSpace(fmt.Sprint(payload["config"]))
+	if raw == "" {
+		id := strings.TrimSpace(fmt.Sprint(payload["id"]))
+		var ok bool
+		raw, ok = s.loadAmneziaProfileConfig(id)
+		if !ok {
+			raw, _ = s.loadAmneziaProfileConfig("legacy")
+		}
+	}
+	return map[string]any{"ok": true, "preflight": s.amneziaPreflightForConfig(raw)}
+}
+
+func (s *serverState) prepareAmnezia(payload map[string]any) map[string]any {
+	preflight := s.amneziaPreflight(payload)
+	return map[string]any{
+		"ok":        true,
+		"dryRun":    true,
+		"preflight": preflight["preflight"],
+		"message":   "Подготовка выполнена в режиме предварительной проверки. Интерфейсы, маршруты и firewall не изменялись.",
+	}
+}
+
+func (s *serverState) amneziaPreflightForConfig(raw string) map[string]any {
+	parsed := parseAmneziaClientConfig(raw)
+	commands := amneziaCommandStatus()
+	kernel := amneziaKernelStatus()
+	glinet := amneziaGLInetStatus()
+	userspace := amneziaUserspaceStatus()
+	routing := amneziaRoutingStatus(amneziaInterfacesStatus())
+	kernelReady := boolMap(commands, "awg") && (boolMap(kernel, "loaded") || boolMap(kernel, "installed") || boolMap(kernel, "moduleFile"))
+	glinetReady := boolMap(glinet, "supportsNativeAmnezia") && boolMap(glinet, "nativeWireGuard")
+	userspaceReady := boolMap(userspace, "available") && boolMap(userspace, "tunDevice") && boolMap(userspace, "awgSetconf")
+	backendReady := kernelReady || glinetReady || userspaceReady
+	keyWarnings := amneziaKeyWarnings(parsed)
+	optionWarnings := amneziaAWGOptionWarnings(parsed)
+	endpointHost, endpointPort := amneziaEndpointParts(fmt.Sprint(parsed.peer["endpoint"]))
+	checks := []map[string]any{
+		amneziaCheck("config", len(parsed.errors) == 0, "Клиентский конфиг", strings.Join(parsed.errors, " ")),
+		amneziaCheck("backend", backendReady, "Backend запуска", amneziaBackendDetail(kernelReady, glinetReady, userspaceReady)),
+		amneziaCheck("awg", boolMap(commands, "awg"), "Утилита awg", "Нужна для awg setconf и проверки интерфейса."),
+		amneziaCheck("keys", len(keyWarnings) == 0, "Ключи WireGuard", strings.Join(keyWarnings, " ")),
+		amneziaCheck("endpoint", endpointHost != "" && endpointPort != "", "Endpoint", "Нужен host:port, чтобы до policy routing закрепить маршрут к серверу через WAN."),
+		amneziaCheck("defaultRoute", !boolMap(routing, "defaultViaTunnel"), "Default route", "Туннель не должен забирать весь роутер без явного выбора."),
+		amneziaCheck("mtuMss", true, "MTU и TCPMSS", "Планируем MTU 1280 и MSS clamp, чтобы снизить риск зависаний на некоторых провайдерах."),
+	}
+	warnings := append([]string{}, parsed.warnings...)
+	warnings = append(warnings, optionWarnings...)
+	if boolMap(glinet, "nativeWireGuard") && !boolMap(glinet, "supportsNativeAmnezia") {
+		warnings = append(warnings, "Найден GL.iNet WireGuard-клиент, но прошивка не подтверждает native AmneziaWG 2.0. Безопаснее raw awg после установки kmod.")
+	}
+	ok := true
+	for _, check := range checks {
+		if check["ok"] != true {
+			ok = false
+		}
+	}
+	return map[string]any{
+		"ok":      ok,
+		"backend": amneziaRecommendedBackend(kernelReady, glinetReady, userspaceReady, glinet),
+		"backends": map[string]any{
+			"kernel":       kernelReady,
+			"glinetNative": glinetReady,
+			"userspace":    userspaceReady,
+		},
+		"userspace": userspace,
+		"checks":    checks,
+		"warnings":  warnings,
+		"plan": []string{
+			"Сохранить профиль AmneziaWG отдельно от Xray.",
+			"Закрепить endpoint сервера через текущий WAN до включения policy routing.",
+			"Поднять awg-интерфейс через kernel, GL.iNet native или amneziawg-go.",
+			"Применить awg setconf, адрес интерфейса, MTU 1280 и TCPMSS clamp.",
+			"Подготовить отдельный route table 5200 и fwmark 0x5200.",
+			"Помечать только выбранные правила RuOpenRay, не меняя default route всего роутера.",
+			"После health-check откатить интерфейс, маршруты и nft-метки, если туннель не отвечает.",
+		},
+	}
+}
+
+func amneziaCheck(id string, ok bool, label string, detail string) map[string]any {
+	return map[string]any{"id": id, "ok": ok, "label": label, "detail": detail}
+}
+
+func amneziaBackendDetail(kernelReady, glinetReady, userspaceReady bool) string {
+	ready := []string{}
+	if kernelReady {
+		ready = append(ready, "raw kmod-amneziawg")
+	}
+	if glinetReady {
+		ready = append(ready, "GL.iNet native")
+	}
+	if userspaceReady {
+		ready = append(ready, "amneziawg-go userspace")
+	}
+	if len(ready) > 0 {
+		return "Готово: " + strings.Join(ready, ", ") + "."
+	}
+	return "Нужен хотя бы один путь: kmod-amneziawg, GL.iNet native AmneziaWG или amneziawg-go + /dev/net/tun + awg."
+}
+
+func amneziaRecommendedBackend(kernelReady, glinetReady, userspaceReady bool, glinet map[string]any) string {
+	switch {
+	case glinetReady:
+		return "glinet-native"
+	case kernelReady:
+		return "raw-awg"
+	case userspaceReady:
+		return "userspace-amneziawg-go"
+	}
+	if backend := strings.TrimSpace(fmt.Sprint(glinet["recommendedBackend"])); backend != "" && backend != "<nil>" {
+		return backend
+	}
+	return "not-ready"
+}
+
+func amneziaKeyWarnings(parsed parsedAmneziaClientConfig) []string {
+	warnings := []string{}
+	iface := parsed.rawOptions["interface"]
+	peer := parsed.rawOptions["peer"]
+	if key := firstMapValueCI(iface, "PrivateKey"); key != "" && !amneziaLooksLikeWGKey(key) {
+		warnings = append(warnings, "PrivateKey не похож на base64-ключ WireGuard.")
+	}
+	if key := firstMapValueCI(peer, "PublicKey"); key != "" && !amneziaLooksLikeWGKey(key) {
+		warnings = append(warnings, "PublicKey не похож на base64-ключ WireGuard.")
+	}
+	if key := firstMapValueCI(peer, "PresharedKey"); key != "" && !amneziaLooksLikeWGKey(key) {
+		warnings = append(warnings, "PresharedKey не похож на base64-ключ WireGuard.")
+	}
+	return warnings
+}
+
+func amneziaLooksLikeWGKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(value)
+	return err == nil && len(decoded) == 32
+}
+
+func amneziaAWGOptionWarnings(parsed parsedAmneziaClientConfig) []string {
+	warnings := []string{}
+	for _, section := range []string{"interface", "peer"} {
+		for key, value := range parsed.rawOptions[section] {
+			if !amneziaOptionLooksNumeric(key) {
+				continue
+			}
+			if _, err := strconv.Atoi(strings.TrimSpace(value)); err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s=%s должен быть числом.", key, value))
+			}
+		}
+	}
+	return warnings
+}
+
+func amneziaOptionLooksNumeric(key string) bool {
+	lower := strings.ToLower(strings.TrimSpace(key))
+	if lower == "jc" || lower == "jmin" || lower == "jmax" || lower == "s1" || lower == "s2" {
+		return true
+	}
+	if len(lower) == 2 && (lower[0] == 'h' || lower[0] == 'i') && lower[1] >= '0' && lower[1] <= '9' {
+		return true
+	}
+	return false
+}
+
+func amneziaEndpointParts(endpoint string) (string, string) {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return "", ""
+	}
+	host, port, err := net.SplitHostPort(endpoint)
+	if err == nil {
+		return strings.Trim(host, "[]"), port
+	}
+	idx := strings.LastIndex(endpoint, ":")
+	if idx <= 0 || idx >= len(endpoint)-1 {
+		return strings.Trim(endpoint, "[]"), ""
+	}
+	return strings.Trim(endpoint[:idx], "[]"), endpoint[idx+1:]
+}
+
+func firstMapValueCI(values map[string]string, key string) string {
+	if values == nil {
+		return ""
+	}
+	for gotKey, value := range values {
+		if strings.EqualFold(gotKey, key) {
+			return value
+		}
+	}
+	return ""
+}
+
+func amneziaProfileID(name string) string {
+	base := slugID(name, "amneziawg")
+	if base == "" {
+		base = "amneziawg"
+	}
+	return fmt.Sprintf("%s-%d", base, time.Now().UnixNano())
 }
 
 type parsedAmneziaClientConfig struct {
@@ -548,6 +1004,72 @@ func amneziaCommandStatus() map[string]any {
 		"ip":      commandExists("ip"),
 		"nft":     commandExists("nft"),
 	}
+}
+
+func amneziaUserspaceStatus() map[string]any {
+	command, commandSource := amneziaUserspaceCommand()
+	result := map[string]any{
+		"available":      command != "",
+		"command":        command,
+		"commandSource":  commandSource,
+		"tunDevice":      false,
+		"tunModule":      false,
+		"canCreateTun":   false,
+		"awgSetconf":     commandExists("awg"),
+		"recommendedMTU": "1280",
+		"routeTable":     amneziaRouteTable,
+		"mark":           amneziaFwMark,
+		"rollback": []string{
+			"Удалить ip rule/fwmark для таблицы AmneziaWG.",
+			"Очистить route table 5200 и endpoint route.",
+			"Удалить awg-интерфейс или остановить amneziawg-go.",
+			"Откатить временные nft-правила и MSS clamp.",
+		},
+	}
+	if runtime.GOOS == "windows" {
+		return result
+	}
+	if fileExists("/dev/net/tun") {
+		result["tunDevice"] = true
+	}
+	if commandExists("modprobe") || commandExists("mknod") {
+		result["canCreateTun"] = true
+	}
+	loaded := runTimeout(3*time.Second, "sh", "-c", "lsmod 2>/dev/null | grep -E '^tun\\b' || true")
+	if strings.TrimSpace(fmt.Sprint(loaded["stdout"])) != "" {
+		result["tunModule"] = true
+		result["tunLsmod"] = firstLines(fmt.Sprint(loaded["stdout"]), 3)
+	}
+	if commandExists("opkg") {
+		pkg := runTimeout(3*time.Second, "sh", "-c", "opkg list-installed 2>/dev/null | grep -E '^kmod-tun ' || true")
+		if text := strings.TrimSpace(fmt.Sprint(pkg["stdout"])); text != "" {
+			result["tunModule"] = true
+			result["tunPackage"] = text
+		}
+	}
+	if command != "" {
+		result["summary"] = "userspace backend найден"
+	} else {
+		result["summary"] = "amneziawg-go не найден"
+	}
+	return result
+}
+
+func amneziaUserspaceCommand() (string, string) {
+	if commandExists("amneziawg-go") {
+		return "amneziawg-go", "PATH"
+	}
+	for _, path := range []string{
+		"/usr/bin/amneziawg-go",
+		"/usr/sbin/amneziawg-go",
+		"/opt/bin/amneziawg-go",
+		"/etc/ruopenray-ui/amneziawg-go",
+	} {
+		if fileExists(path) {
+			return path, "file"
+		}
+	}
+	return "", ""
 }
 
 func amneziaKernelStatus() map[string]any {

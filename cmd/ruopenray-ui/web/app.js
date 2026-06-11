@@ -685,7 +685,12 @@ const {
   syncAmneziaStatus,
   loadAmneziaConfig,
   saveAmneziaConfig,
-  deleteAmneziaConfig
+  deleteAmneziaConfig,
+  loadAmneziaProfile,
+  activateAmneziaProfile,
+  deleteAmneziaProfile,
+  checkAmneziaPreflight,
+  prepareAmnezia
 } = amneziaActions;
 
 const setupModel = createSetupModel({
@@ -2223,6 +2228,11 @@ function bind() {
       loadAmneziaConfig,
       saveAmneziaConfig,
       deleteAmneziaConfig,
+      loadAmneziaProfile,
+      activateAmneziaProfile,
+      deleteAmneziaProfile,
+      checkAmneziaPreflight,
+      prepareAmnezia,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
       refreshFirewallStatus,
       downloadFirewallRules,
@@ -2586,6 +2596,11 @@ function bind() {
   document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
     textarea.addEventListener('input', () => {
       state.amneziaConfigText = textarea.value;
+    });
+  });
+  document.querySelectorAll('[data-amnezia-name]').forEach((input) => {
+    input.addEventListener('input', () => {
+      state.amneziaProfileName = input.value;
     });
   });
 

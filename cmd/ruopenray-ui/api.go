@@ -172,6 +172,21 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.saveAmneziaClientConfig(payload))
 	case path == "/amnezia/config/delete" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.deleteAmneziaClientConfig())
+	case path == "/amnezia/profile/load" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.loadAmneziaProfile(payload))
+	case path == "/amnezia/profile/activate" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.activateAmneziaProfile(payload))
+	case path == "/amnezia/profile/delete" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.deleteAmneziaProfile(payload))
+	case path == "/amnezia/preflight" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.amneziaPreflight(payload))
+	case path == "/amnezia/prepare" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.prepareAmnezia(payload))
 	case path == "/settings/password" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))

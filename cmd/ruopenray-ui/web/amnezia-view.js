@@ -41,6 +41,74 @@ export function createAmneziaView({ state, escapeHtml }) {
     </article>`;
   }
 
+  function checkTone(ok) {
+    return ok ? 'ok' : 'warn';
+  }
+
+  function profileCard(item = {}) {
+    const awgOptions = array(item.obfuscationOptions);
+    const peer = item.peer || {};
+    return `<article class="amnezia-profile-card ${item.active ? 'ok' : ''}">
+      <div>
+        <span class="eyebrow">${escapeHtml(item.active ? 'активный профиль' : 'профиль')}</span>
+        <h3>${escapeHtml(item.name || 'AmneziaWG')}</h3>
+        <p>${escapeHtml(item.summary || peer.endpoint || 'endpoint не задан')}</p>
+        ${awgOptions.length ? `<small>${escapeHtml(`AWG: ${awgOptions.join(', ')}`)}</small>` : ''}
+      </div>
+      <div class="split-actions">
+        <button class="btn secondary" type="button" data-action="loadAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Открыть</button>
+        <button class="btn secondary" type="button" data-action="activateAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}" ${item.active ? 'disabled' : ''}>Выбрать</button>
+        <button class="btn danger" type="button" data-action="deleteAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Удалить</button>
+      </div>
+    </article>`;
+  }
+
+  function profilesView(profiles = {}) {
+    const items = array(profiles.items);
+    return `<section class="panel amnezia-profiles-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Профили AmneziaWG</h2>
+          <span>Можно хранить несколько client.conf и выбирать активный без запуска туннеля.</span>
+        </div>
+      </div>
+      ${items.length ? `<div class="amnezia-profile-grid">${items.map(profileCard).join('')}</div>` : `<div class="empty-state">Профилей пока нет. Вставьте client.conf ниже и сохраните.</div>`}
+    </section>`;
+  }
+
+  function preflightView(preflight = {}) {
+    const checks = array(preflight.checks);
+    const warnings = array(preflight.warnings);
+    const plan = array(preflight.plan);
+    if (!checks.length && !warnings.length && !plan.length) return '';
+    return `<section class="panel amnezia-preflight-panel ${preflight.ok ? 'ok' : 'warn'}">
+      <div class="panel-title">
+        <div>
+          <h2>Preflight</h2>
+          <span>Проверка только читает систему и показывает, можно ли безопасно готовить AmneziaWG.</span>
+        </div>
+        <span class="status-chip ${preflight.ok ? 'ok' : 'warn'}">${escapeHtml(preflight.ok ? 'готово' : 'есть блокеры')}</span>
+      </div>
+      <div class="amnezia-check-grid">
+        ${checks.map((check) => `<article class="${checkTone(check.ok)}">
+          <span>${escapeHtml(check.ok ? '✓' : '!')}</span>
+          <div>
+            <strong>${escapeHtml(check.label || check.id || 'проверка')}</strong>
+            ${check.detail ? `<small>${escapeHtml(check.detail)}</small>` : ''}
+          </div>
+        </article>`).join('')}
+      </div>
+      ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
+        <strong>Предупреждения</strong>
+        <span>${escapeHtml(warnings.join(' '))}</span>
+      </div>` : ''}
+      ${plan.length ? `<div class="settings-info">
+        <strong>План без применения</strong>
+        <span>${escapeHtml(plan.join(' '))}</span>
+      </div>` : ''}
+    </section>`;
+  }
+
   function warningsView(status = {}) {
     const warnings = array(status.warnings);
     if (!warnings.length) return '';
@@ -56,6 +124,7 @@ export function createAmneziaView({ state, escapeHtml }) {
     const iface = config.interface || {};
     const peer = config.peer || {};
     const text = state.amneziaConfigText || '';
+    const profileName = state.amneziaProfileName || 'AmneziaWG';
     return `<section class="panel amnezia-config-panel">
       <div class="panel-title">
         <div>
@@ -67,6 +136,8 @@ export function createAmneziaView({ state, escapeHtml }) {
           <button class="btn secondary" type="button" data-action="deleteAmneziaConfig" ${config.exists ? '' : 'disabled'}>Удалить</button>
         </div>
       </div>
+      <label class="field-label">Название профиля</label>
+      <input class="input" data-amnezia-name value="${escapeHtml(profileName)}" placeholder="Например: Домашний AmneziaWG">
       ${config.exists ? `<div class="compat-metrics">
         ${metric('Конфиг', config.summary || 'сохранен', config.updatedAt || '')}
         ${metric('Адрес', iface.address || 'нет', iface.dns ? `DNS ${iface.dns}` : '')}
@@ -88,6 +159,8 @@ Endpoint = host:port
 AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
       <div class="toolbar amnezia-config-actions">
         <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить конфиг</button>
+        <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить</button>
+        <button class="btn secondary" type="button" data-action="prepareAmnezia">Подготовить</button>
         <span class="muted">Приватный ключ хранится в файле панели с правами 600 и не попадает в обычный статус.</span>
       </div>
     </section>`;
@@ -120,6 +193,30 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     </section>`;
   }
 
+  function userspaceBackendView(userspace = {}) {
+    if (!userspace.available && !userspace.tunDevice && !userspace.tunModule && !userspace.awgSetconf) return '';
+    const rollback = array(userspace.rollback).join(' ');
+    return `<section class="panel amnezia-userspace-panel ${userspace.available ? 'ok' : 'warn'}">
+      <div class="panel-title">
+        <div>
+          <h2>Userspace backend</h2>
+          <span>Запасной путь для роутеров без совместимого kmod-amneziawg: amneziawg-go + TUN + awg setconf.</span>
+        </div>
+        <span class="status-chip ${userspace.available ? 'ok' : 'warn'}">${escapeHtml(userspace.available ? 'amneziawg-go' : 'не найден')}</span>
+      </div>
+      <div class="compat-metrics">
+        ${metric('amneziawg-go', userspace.command || 'нет', userspace.commandSource || '')}
+        ${metric('/dev/net/tun', userspace.tunDevice ? 'есть' : 'нет', userspace.tunPackage || userspace.tunLsmod || '')}
+        ${metric('awg setconf', userspace.awgSetconf ? 'доступен' : 'нет', 'применение конфигурации интерфейса')}
+        ${metric('MTU', userspace.recommendedMTU || '1280', 'рекомендовано для старта')}
+      </div>
+      ${rollback ? `<div class="settings-info">
+        <strong>Откат при ошибке</strong>
+        <span>${escapeHtml(rollback)}</span>
+      </div>` : ''}
+    </section>`;
+  }
+
   function amneziaPanel() {
     const status = state.amneziaStatus || state.status?.amnezia || {};
     const interfaces = array(status.interfaces);
@@ -129,7 +226,10 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const configs = status.configs || {};
     const kernel = status.kernel || {};
     const glinet = status.glinet || {};
+    const userspace = status.userspace || {};
     const clientConfig = status.clientConfig || {};
+    const profiles = clientConfig.profiles || {};
+    const preflight = state.amneziaPreflight || clientConfig.preflight || {};
     const plan = status.routePlan || {};
     return `<section class="amnezia-page">
       <section class="route-hero amnezia-hero">
@@ -146,9 +246,15 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
 
       ${warningsView(status)}
 
+      ${profilesView(profiles)}
+
       ${clientConfigView(clientConfig)}
 
+      ${preflightView(preflight)}
+
       ${glinetBackendView(glinet)}
+
+      ${userspaceBackendView(userspace)}
 
       <section class="panel amnezia-overview ${statusTone(status)}">
         <div class="panel-title">
@@ -163,6 +269,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
           ${metric('Сервис', services.running ? 'запущен' : (services.found ? 'найден' : 'нет'), array(services.items).map((item) => item.path).join(', '))}
           ${metric('wg/awg', wg.available ? (wg.command || 'доступен') : 'нет', array(wg.interfaces).join(', '))}
           ${metric('Kernel module', kernel.loaded ? 'загружен' : (kernel.installed || kernel.moduleFile ? 'найден' : 'нет'), kernel.package || array(kernel.files).join(', '))}
+          ${metric('Userspace', userspace.available ? (userspace.command || 'найден') : 'нет', userspace.tunDevice ? 'TUN готов' : 'TUN не подтвержден')}
           ${metric('Конфиги', configs.found ? `${array(configs.paths).length} найдено` : 'нет', array(configs.paths).join(', '))}
         </div>
       </section>
