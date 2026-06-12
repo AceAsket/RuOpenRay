@@ -68,6 +68,18 @@ export function createAmneziaView({ state, escapeHtml }) {
     return 'нет handshake';
   }
 
+  function profileRuntimeMetrics(item = {}, runtime = {}) {
+    if (!item.active) return '';
+    const hasRuntime = runtime.backendReady || runtime.endpoint || runtime.interface || runtime.rxBytes || runtime.txBytes;
+    if (!hasRuntime) return '';
+    return `<div class="amnezia-profile-runtime ${runtimeTone(runtime)}">
+      <span>${escapeHtml(runtimeLabel(runtime))}</span>
+      <span>${escapeHtml(latencyLabel(runtime))}</span>
+      <span>${escapeHtml(handshakeLabel(runtime))}</span>
+      <span>${escapeHtml(`${formatBytes(runtime.rxBytes)} / ${formatBytes(runtime.txBytes)}`)}</span>
+    </div>`;
+  }
+
   function interfaceCard(item = {}) {
     const addresses = array(item.addresses).join(' · ');
     const routes = array(item.routes).join(' · ');
@@ -144,7 +156,7 @@ export function createAmneziaView({ state, escapeHtml }) {
     }
   }
 
-  function profileCard(item = {}) {
+  function profileCard(item = {}, runtime = {}) {
     const awgOptions = array(item.obfuscationOptions);
     const peer = item.peer || {};
     const iface = item.interface || {};
@@ -165,6 +177,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           ${peer.allowedIPs ? `<span>${escapeHtml(`AllowedIPs ${peer.allowedIPs}`)}</span>` : ''}
           ${awgOptions.length ? `<span>${escapeHtml(`AWG ${awgOptions.length}`)}</span>` : ''}
         </div>
+        ${profileRuntimeMetrics(item, runtime)}
       </div>
       <div class="split-actions">
         <button class="btn secondary" type="button" data-action="loadAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Открыть</button>
@@ -176,6 +189,7 @@ export function createAmneziaView({ state, escapeHtml }) {
 
   function profilesView(profiles = {}, config = {}, status = {}, preflight = {}) {
     const items = array(profiles.items);
+    const runtime = status.runtime || {};
     const current = activeProfile(items, config);
     const selectedIds = selectedProfileIds(profiles);
     const selectedItems = items.filter((item) => selectedIds.includes(item.id));
@@ -230,7 +244,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           </div>
         </article>
         <div class="amnezia-profile-list">
-          ${items.length ? items.map(profileCard).join('') : `<div class="empty-state">Профилей пока нет. Вставьте client.conf в блоке импорта и сохраните.</div>`}
+          ${items.length ? items.map((item) => profileCard(item, runtime)).join('') : `<div class="empty-state">Профилей пока нет. Вставьте client.conf в блоке импорта и сохраните.</div>`}
         </div>
       </div>
     </section>`;
