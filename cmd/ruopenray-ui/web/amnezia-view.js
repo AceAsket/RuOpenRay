@@ -141,10 +141,7 @@ export function createAmneziaView({ state, escapeHtml }) {
     const strategy = state.amneziaPoolStrategy || profiles.strategy || 'single';
     const mode = state.amneziaIntegrationMode || profiles.mode || 'standby';
     const xray = status.xrayIntegration || {};
-    const currentPeer = current?.peer || config.peer || {};
-    const currentIface = current?.interface || config.interface || {};
-    const awgOptions = current ? array(current.obfuscationOptions).length ? array(current.obfuscationOptions) : array(current.awgOptions) : [];
-    const currentLabel = current?.active ? 'активный профиль' : (current ? 'выбранный профиль' : 'профиль не выбран');
+    const selectedSummary = selectedItems.length ? `${selectedItems.length} проф. выбрано` : 'ничего не выбрано';
     return `<section class="panel amnezia-profiles-panel">
       <div class="panel-title">
         <div>
@@ -159,19 +156,13 @@ export function createAmneziaView({ state, escapeHtml }) {
       <div class="amnezia-control-grid">
         <article class="amnezia-active-profile ${current ? 'ok' : ''}">
           <div>
-            <span class="eyebrow">${escapeHtml(currentLabel)}</span>
-            <h3>${escapeHtml(current?.name || 'профиль не выбран')}</h3>
-            <p>${escapeHtml(current?.summary || currentPeer.endpoint || 'сохраните или выберите client.conf')}</p>
-          </div>
-          <div class="compat-metrics compact">
-            ${metric('Endpoint', currentPeer.endpoint || 'нет', currentPeer.allowedIPs ? `AllowedIPs ${currentPeer.allowedIPs}` : '')}
-            ${metric('Адрес', currentIface.address || 'нет', currentIface.dns ? `DNS ${currentIface.dns}` : '')}
-            ${metric('AWG', awgOptions.length ? awgOptions.join(', ') : 'нет', currentPeer.hasPresharedKey ? 'есть PresharedKey' : '')}
-            ${metric('Preflight', preflight.ok ? 'готово' : 'проверить', array(preflight.warnings).slice(0, 1).join(' '))}
+            <span class="eyebrow">настройки</span>
+            <h3>AWG-пул и режим работы</h3>
+            <p>Профили выбираются в списке справа. Здесь задается стратегия пула и способ совместной работы с Xray.</p>
           </div>
           <div class="amnezia-pool-editor">
             <label class="field-label">Профили в AWG-пуле</label>
-            <strong>${escapeHtml(selectedItems.length ? selectedItems.map((item) => item.name || item.id).join(', ') : 'ничего не выбрано')}</strong>
+            <strong>${escapeHtml(selectedSummary)}</strong>
             <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
             <select class="input" data-amnezia-strategy>
               ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
