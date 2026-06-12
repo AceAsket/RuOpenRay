@@ -39,6 +39,13 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       finishNavigation();
     });
   });
+  document.querySelectorAll('[data-amnezia-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.amneziaView = button.dataset.amneziaView || 'profiles';
+      state.message = '';
+      render();
+    });
+  });
   document.querySelectorAll('[data-import-dialog]').forEach((button) => {
     button.addEventListener('click', () => {
       state.importDialog = button.dataset.importDialog;

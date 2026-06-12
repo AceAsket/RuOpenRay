@@ -21,6 +21,7 @@ export function createInitialState() {
   amneziaProfileId: '',
   amneziaProfileName: 'AmneziaWG',
   amneziaImportDialog: false,
+  amneziaView: 'profiles',
   amneziaSelectedProfileIds: [],
   amneziaPoolStrategy: '',
   amneziaIntegrationMode: '',

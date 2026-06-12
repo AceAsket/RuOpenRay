@@ -378,59 +378,24 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     </section>`;
   }
 
-  function amneziaPanel() {
-    const status = state.amneziaStatus || state.status?.amnezia || {};
-    const interfaces = array(status.interfaces);
-    const routing = status.routing || {};
-    const services = status.services || {};
-    const wg = status.wg || {};
-    const configs = status.configs || {};
-    const kernel = status.kernel || {};
-    const glinet = status.glinet || {};
-    const userspace = status.userspace || {};
-    const clientConfig = status.clientConfig || {};
-    const profiles = clientConfig.profiles || {};
-    const preflight = state.amneziaPreflight || clientConfig.preflight || {};
-    const plan = status.routePlan || {};
-    return `<section class="amnezia-page">
-      ${amneziaImportDialog(clientConfig)}
-      <section class="route-hero amnezia-hero">
+  function amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan }) {
+    return `<section class="amnezia-system-stack">
+      <div class="panel-title amnezia-system-title">
         <div>
-          <span class="eyebrow">AmneziaWG</span>
-          <h1>${escapeHtml(statusLabel(status))}</h1>
-          <p>${escapeHtml(status.summary || 'RuOpenRay проверяет awg/wg интерфейсы, сервисы, маршруты и готовность к раздельной маршрутизации.')}</p>
+          <h2>Состояние AWG</h2>
+          <span>Backend, команды, kernel module, интерфейсы и будущая схема policy routing.</span>
         </div>
-        <div class="split-actions">
-          ${commandButton('refreshAmnezia', 'Обновить статус')}
-          <button class="btn secondary" type="button" data-tab-jump="routing">Открыть маршруты</button>
-        </div>
-      </section>
-
-      ${warningsView(status)}
-
-      ${profilesView(profiles, clientConfig, status, preflight)}
-
-      ${clientConfigView(clientConfig)}
-
-      ${preflightView(preflight)}
-
-      <section class="amnezia-system-stack">
-        <div class="panel-title amnezia-system-title">
-          <div>
-            <h2>Состояние стенда</h2>
-            <span>Backend, интерфейсы и будущая схема раздельной маршрутизации.</span>
-          </div>
-        </div>
-        <div class="amnezia-system-grid">
-          ${glinetBackendView(glinet)}
-          ${userspaceBackendView(userspace)}
-        </div>
+      </div>
+      <div class="amnezia-system-grid">
+        ${glinetBackendView(glinet)}
+        ${userspaceBackendView(userspace)}
+      </div>
 
       <section class="panel amnezia-overview ${statusTone(status)}">
         <div class="panel-title">
           <div>
-            <h2>Состояние туннеля</h2>
-            <span>Пока это диагностика: RuOpenRay ничего не применяет к AmneziaWG без отдельного действия.</span>
+            <h2>Техническое состояние</h2>
+            <span>Диагностика backend: RuOpenRay ничего не применяет к AmneziaWG без отдельного действия.</span>
           </div>
           <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
         </div>
@@ -457,8 +422,8 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
       <section class="panel">
         <div class="panel-title">
           <div>
-            <h2>Раздельная маршрутизация</h2>
-            <span>Будущая схема: правила RuOpenRay смогут отправлять часть трафика в Xray, часть в AmneziaWG, остальное напрямую.</span>
+            <h2>Policy routing</h2>
+            <span>Технический план для отправки части трафика в AWG без глобального default route туннеля.</span>
           </div>
         </div>
         <div class="compat-metrics">
@@ -472,7 +437,50 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
           <span>RuOpenRay будет резолвить доменные правила в nft-set, ставить отдельную метку и отправлять только выбранные IP в таблицу AmneziaWG. Глобальный default route туннеля для всего роутера лучше не включать.</span>
         </div>
       </section>
+    </section>`;
+  }
+
+  function amneziaPanel() {
+    const status = state.amneziaStatus || state.status?.amnezia || {};
+    const interfaces = array(status.interfaces);
+    const routing = status.routing || {};
+    const services = status.services || {};
+    const wg = status.wg || {};
+    const configs = status.configs || {};
+    const kernel = status.kernel || {};
+    const glinet = status.glinet || {};
+    const userspace = status.userspace || {};
+    const clientConfig = status.clientConfig || {};
+    const profiles = clientConfig.profiles || {};
+    const preflight = state.amneziaPreflight || clientConfig.preflight || {};
+    const plan = status.routePlan || {};
+    const view = state.amneziaView === 'awg' ? 'awg' : 'profiles';
+    return `<section class="amnezia-page">
+      ${amneziaImportDialog(clientConfig)}
+      <section class="route-hero amnezia-hero">
+        <div>
+          <span class="eyebrow">AmneziaWG</span>
+          <h1>${escapeHtml(statusLabel(status))}</h1>
+          <p>${escapeHtml(status.summary || 'RuOpenRay проверяет awg/wg интерфейсы, сервисы, маршруты и готовность к раздельной маршрутизации.')}</p>
+        </div>
+        <div class="split-actions">
+          ${commandButton('refreshAmnezia', 'Обновить статус')}
+          <button class="btn secondary" type="button" data-tab-jump="routing">Открыть маршруты</button>
+        </div>
       </section>
+
+      ${warningsView(status)}
+
+      <div class="segmented settings-log-levels amnezia-section-tabs" aria-label="Раздел AmneziaWG">
+        <button type="button" class="${view === 'profiles' ? 'active' : ''}" data-amnezia-view="profiles">Профили</button>
+        <button type="button" class="${view === 'awg' ? 'active' : ''}" data-amnezia-view="awg">AWG</button>
+      </div>
+
+      ${view === 'awg'
+        ? amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan })
+        : `${profilesView(profiles, clientConfig, status, preflight)}
+          ${clientConfigView(clientConfig)}
+          ${preflightView(preflight)}`}
     </section>`;
   }
 

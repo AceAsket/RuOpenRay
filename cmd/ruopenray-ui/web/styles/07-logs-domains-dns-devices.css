@@ -1741,6 +1741,10 @@
   justify-content: flex-end;
 }
 
+.amnezia-section-tabs {
+  margin-bottom: 16px;
+}
+
 .amnezia-control-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.95fr) minmax(340px, 1.35fr);
