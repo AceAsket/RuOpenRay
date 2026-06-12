@@ -239,9 +239,7 @@ export function createAmneziaView({ state, escapeHtml }) {
 
   function clientConfigView(config = {}) {
     const warnings = array(config.warnings);
-    const awgOptions = array(config.obfuscationOptions).length ? array(config.obfuscationOptions) : array(config.awgOptions);
-    const iface = config.interface || {};
-    const peer = config.peer || {};
+    const configState = config.exists ? `сохранен${config.updatedAt ? ` · ${config.updatedAt}` : ''}` : 'не импортирован';
     return `<section class="panel amnezia-config-panel">
       <div class="panel-title">
         <div>
@@ -254,12 +252,10 @@ export function createAmneziaView({ state, escapeHtml }) {
           <button class="btn secondary" type="button" data-action="deleteAmneziaConfig" ${config.exists ? '' : 'disabled'}>Удалить</button>
         </div>
       </div>
-      ${config.exists ? `<div class="compat-metrics">
-        ${metric('Конфиг', config.summary || 'сохранен', config.updatedAt || '')}
-        ${metric('Адрес', iface.address || 'нет', iface.dns ? `DNS ${iface.dns}` : '')}
-        ${metric('Endpoint', peer.endpoint || 'нет', peer.allowedIPs ? `AllowedIPs ${peer.allowedIPs}` : '')}
-        ${metric('AWG-параметры', awgOptions.length ? awgOptions.join(', ') : 'не найдены', peer.hasPresharedKey ? 'есть PresharedKey' : '')}
-      </div>` : `<div class="empty-state">client.conf еще не импортирован. Нажмите «Импорт client.conf», вставьте конфиг и сохраните профиль.</div>`}
+      <div class="${config.exists ? 'settings-info compact' : 'empty-state'}">
+        <strong>client.conf ${escapeHtml(configState)}</strong>
+        <span>${escapeHtml(config.exists ? 'Детали профиля показаны в списке выше.' : 'Нажмите «Импорт client.conf», вставьте конфиг и сохраните профиль.')}</span>
+      </div>
       ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
         <strong>Проверьте конфиг</strong>
         <span>${escapeHtml(warnings.join(' '))}</span>
