@@ -41,6 +41,84 @@ interface: awg0`
 	}
 }
 
+func TestParseWGShowRuntime(t *testing.T) {
+	text := `interface: awg0
+  public key: redacted
+peer: peerkey
+  endpoint: cloudfour.acespace.tech:443
+  latest handshake: 1 minute, 23 seconds ago
+  transfer: 1.50 KiB received, 2.00 KiB sent`
+	got := parseWGShowRuntime(text)
+	if got["interface"] != "awg0" {
+		t.Fatalf("interface = %#v", got["interface"])
+	}
+	if got["endpoint"] != "cloudfour.acespace.tech:443" {
+		t.Fatalf("endpoint = %#v", got["endpoint"])
+	}
+	if number(got["peerCount"], 0) != 1 {
+		t.Fatalf("peerCount = %#v", got["peerCount"])
+	}
+	if number(got["latestHandshakeAgoSec"], -1) != 83 {
+		t.Fatalf("latestHandshakeAgoSec = %#v", got["latestHandshakeAgoSec"])
+	}
+	if numberAny(got["rxBytes"]) != 1536 || numberAny(got["txBytes"]) != 2048 {
+		t.Fatalf("transfer = rx %#v tx %#v", got["rxBytes"], got["txBytes"])
+	}
+}
+
+func TestParseWGShowRuntimeDoesNotInventTransfer(t *testing.T) {
+	got := parseWGShowRuntime(`interface: awg0
+peer: peerkey
+  latest handshake: never`)
+	if _, ok := got["rxBytes"]; ok {
+		t.Fatalf("rxBytes must be absent when transfer line is absent: %#v", got)
+	}
+	if number(got["latestHandshakeAgoSec"], 0) != -1 {
+		t.Fatalf("latestHandshakeAgoSec = %#v", got["latestHandshakeAgoSec"])
+	}
+}
+
+func TestParseIPLinkStats(t *testing.T) {
+	text := `7: awg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1280 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    RX:  bytes packets errors dropped  missed   mcast
+       123456     789      2       3       0       0
+    TX:  bytes packets errors dropped carrier collsns
+       654321     987      4       5       0       0`
+	got := parseIPLinkStats(text)
+	if numberAny(got["rxBytes"]) != 123456 || numberAny(got["txBytes"]) != 654321 {
+		t.Fatalf("bytes = %#v", got)
+	}
+	if numberAny(got["rxErrors"]) != 2 || numberAny(got["txDropped"]) != 5 {
+		t.Fatalf("errors/drops = %#v", got)
+	}
+}
+
+func TestParsePingLatencyMs(t *testing.T) {
+	text := `64 bytes from 192.0.2.1: seq=0 ttl=55 time=51.795 ms`
+	if got := parsePingLatencyMs(text); got != 52 {
+		t.Fatalf("latency = %d", got)
+	}
+}
+
+func TestAmneziaConfigProtocolVersion(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  map[string]any
+		want string
+	}{
+		{"plain", map[string]any{}, "WireGuard"},
+		{"awg1", map[string]any{"obfuscationOptions": []string{"Jc", "Jmin", "S1", "H1"}}, "AWG 1.x"},
+		{"awg2", map[string]any{"obfuscationOptions": []string{"Jc", "S4", "I1"}}, "AWG 2.0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := amneziaConfigProtocolVersion(tc.cfg); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAmneziaServiceStatusTextRunning(t *testing.T) {
 	cases := []struct {
 		name string

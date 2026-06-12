@@ -27,6 +27,47 @@ export function createAmneziaView({ state, escapeHtml }) {
     </article>`;
   }
 
+  function formatBytes(value) {
+    const bytes = Number(value || 0);
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let amount = bytes;
+    let unit = 0;
+    while (amount >= 1024 && unit < units.length - 1) {
+      amount /= 1024;
+      unit += 1;
+    }
+    const precision = amount >= 10 || unit === 0 ? 0 : 1;
+    return `${amount.toFixed(precision)} ${units[unit]}`;
+  }
+
+  function runtimeTone(runtime = {}) {
+    if (runtime.connected) return 'ok';
+    if (runtime.backendReady || runtime.endpointReachable || runtime.interfaceRunning) return 'warn';
+    return '';
+  }
+
+  function runtimeLabel(runtime = {}) {
+    if (runtime.connected) return 'connected';
+    if (runtime.interfaceRunning) return 'интерфейс поднят';
+    if (runtime.backendReady) return 'backend готов';
+    return 'нет backend';
+  }
+
+  function latencyLabel(runtime = {}) {
+    const latency = Number(runtime.endpointLatencyMs);
+    if (runtime.endpointReachable && Number.isFinite(latency) && latency >= 0) return `${latency} ms`;
+    if (runtime.endpointError) return 'нет ответа';
+    return 'не проверен';
+  }
+
+  function handshakeLabel(runtime = {}) {
+    const age = Number(runtime.latestHandshakeAgoSec);
+    if (runtime.latestHandshake) return runtime.latestHandshake;
+    if (Number.isFinite(age) && age >= 0) return `${age} sec ago`;
+    return 'нет handshake';
+  }
+
   function interfaceCard(item = {}) {
     const addresses = array(item.addresses).join(' · ');
     const routes = array(item.routes).join(' · ');
@@ -365,7 +406,10 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     </section>`;
   }
 
-  function amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan }) {
+  function amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan, runtime }) {
+    const runtimeStatus = runtime || {};
+    const trafficDetail = `packets ${Number(runtimeStatus.rxPackets || 0)} / ${Number(runtimeStatus.txPackets || 0)}`;
+    const errorDetail = `errors ${Number(runtimeStatus.rxErrors || 0)} / ${Number(runtimeStatus.txErrors || 0)} · drops ${Number(runtimeStatus.rxDropped || 0)} / ${Number(runtimeStatus.txDropped || 0)}`;
     return `<section class="amnezia-system-stack">
       <div class="panel-title amnezia-system-title">
         <div>
@@ -377,6 +421,24 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         ${glinetBackendView(glinet)}
         ${userspaceBackendView(userspace)}
       </div>
+
+      <section class="panel amnezia-overview ${runtimeTone(runtimeStatus)}">
+        <div class="panel-title">
+          <div>
+            <h2>AWG 2.0 runtime</h2>
+            <span>Живое состояние backend, endpoint, handshake, задержки и сетевых счетчиков.</span>
+          </div>
+          <span class="status-chip ${runtimeTone(runtimeStatus)}">${escapeHtml(runtimeLabel(runtimeStatus))}</span>
+        </div>
+        <div class="compat-metrics">
+          ${metric('Протокол', runtimeStatus.protocolVersion || runtimeStatus.protocol || 'нет', runtimeStatus.backendVersion || runtimeStatus.backend || '')}
+          ${metric('Endpoint', runtimeStatus.endpoint || 'нет', latencyLabel(runtimeStatus))}
+          ${metric('Интерфейс', runtimeStatus.interface || status.primaryInterface || 'нет', runtimeStatus.interfaceRunning ? 'UP' : 'DOWN')}
+          ${metric('Peers', String(runtimeStatus.peerCount ?? 0), runtimeStatus.connected ? 'есть handshake' : handshakeLabel(runtimeStatus))}
+          ${metric('RX / TX', `${formatBytes(runtimeStatus.rxBytes)} / ${formatBytes(runtimeStatus.txBytes)}`, trafficDetail)}
+          ${metric('Ошибки / drops', errorDetail, runtimeStatus.endpointProbe ? array(runtimeStatus.endpointProbe).slice(0, 1).join('') : '')}
+        </div>
+      </section>
 
       <section class="panel amnezia-overview ${statusTone(status)}">
         <div class="panel-title">
@@ -437,6 +499,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const kernel = status.kernel || {};
     const glinet = status.glinet || {};
     const userspace = status.userspace || {};
+    const runtime = status.runtime || {};
     const clientConfig = status.clientConfig || {};
     const profiles = clientConfig.profiles || {};
     const preflight = state.amneziaPreflight || clientConfig.preflight || {};
@@ -464,7 +527,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
       </div>
 
       ${view === 'awg'
-        ? amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan })
+        ? amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan, runtime })
         : `${profilesView(profiles, clientConfig, status, preflight)}
           ${clientConfigView(clientConfig)}
           ${preflightView(preflight)}`}

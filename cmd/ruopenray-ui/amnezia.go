@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -74,6 +75,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 	clientConfig := s.amneziaClientConfigStatus(false)
 	clientConfig["profiles"] = s.amneziaProfiles()
 	result["clientConfig"] = clientConfig
+	result["runtime"] = amneziaRuntimeStatus(clientConfig, interfaces, wg, commands)
 	result["xrayIntegration"] = s.amneziaXrayIntegrationStatus()
 
 	wgInterfaces, _ := wg["interfaces"].([]string)
@@ -1240,8 +1242,45 @@ func amneziaInterfaceDetails(name string, link map[string]any) map[string]any {
 		item["addresses"] = parseIPAddrAddresses(fmt.Sprint(addr["stdout"]))
 		route := runTimeout(3*time.Second, "ip", "route", "show", "dev", name)
 		item["routes"] = firstLines(fmt.Sprint(route["stdout"]), 6)
+		stats := runTimeout(3*time.Second, "ip", "-s", "link", "show", "dev", name)
+		item["stats"] = parseIPLinkStats(fmt.Sprint(stats["stdout"]))
 	}
 	return item
+}
+
+func parseIPLinkStats(text string) map[string]any {
+	result := map[string]any{}
+	lines := strings.Split(text, "\n")
+	for idx, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "RX:") && idx+1 < len(lines) {
+			values := strings.Fields(strings.TrimSpace(lines[idx+1]))
+			if len(values) >= 4 {
+				result["rxBytes"] = parseInt64Default(values[0], 0)
+				result["rxPackets"] = parseInt64Default(values[1], 0)
+				result["rxErrors"] = parseInt64Default(values[2], 0)
+				result["rxDropped"] = parseInt64Default(values[3], 0)
+			}
+		}
+		if strings.HasPrefix(line, "TX:") && idx+1 < len(lines) {
+			values := strings.Fields(strings.TrimSpace(lines[idx+1]))
+			if len(values) >= 4 {
+				result["txBytes"] = parseInt64Default(values[0], 0)
+				result["txPackets"] = parseInt64Default(values[1], 0)
+				result["txErrors"] = parseInt64Default(values[2], 0)
+				result["txDropped"] = parseInt64Default(values[3], 0)
+			}
+		}
+	}
+	return result
+}
+
+func parseInt64Default(value string, fallback int64) int64 {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func amneziaNetInterfaces() []map[string]any {
@@ -1322,6 +1361,258 @@ func amneziaWGStatus() map[string]any {
 		result["stderr"] = concatCommandOutput(show)
 	}
 	return result
+}
+
+func amneziaRuntimeStatus(clientConfig map[string]any, interfaces []map[string]any, wg map[string]any, commands map[string]any) map[string]any {
+	result := map[string]any{
+		"protocol":              "AmneziaWG",
+		"protocolVersion":       amneziaConfigProtocolVersion(clientConfig),
+		"backend":               "",
+		"backendVersion":        "",
+		"backendReady":          false,
+		"interface":             amneziaPrimaryInterface(interfaces),
+		"interfaceRunning":      false,
+		"peerCount":             0,
+		"connected":             false,
+		"latestHandshake":       "",
+		"latestHandshakeAgoSec": -1,
+		"rxBytes":               int64(0),
+		"txBytes":               int64(0),
+		"endpoint":              "",
+		"endpointHost":          "",
+		"endpointPort":          "",
+		"endpointReachable":     false,
+		"endpointLatencyMs":     -1,
+		"errors":                []string{},
+	}
+	command := strings.TrimSpace(fmt.Sprint(wg["command"]))
+	if command == "" && boolMap(commands, "awg") {
+		command = "awg"
+	} else if command == "" && boolMap(commands, "wg") {
+		command = "wg"
+	}
+	result["backend"] = command
+	result["backendReady"] = command != ""
+	if command != "" {
+		version := runTimeout(2*time.Second, command, "--version")
+		versionText := firstLine(concatCommandOutput(version), "")
+		result["backendVersion"] = versionText
+		if version["ok"] != true && versionText != "" {
+			result["errors"] = append(stringSlice(result["errors"]), versionText)
+		}
+	}
+	for _, item := range interfaces {
+		if fmt.Sprint(item["name"]) == result["interface"] {
+			result["interfaceRunning"] = boolMap(item, "running")
+			if stats, ok := item["stats"].(map[string]any); ok {
+				result["rxBytes"] = numberAny(stats["rxBytes"])
+				result["txBytes"] = numberAny(stats["txBytes"])
+				result["rxPackets"] = numberAny(stats["rxPackets"])
+				result["txPackets"] = numberAny(stats["txPackets"])
+				result["rxErrors"] = numberAny(stats["rxErrors"])
+				result["txErrors"] = numberAny(stats["txErrors"])
+				result["rxDropped"] = numberAny(stats["rxDropped"])
+				result["txDropped"] = numberAny(stats["txDropped"])
+			}
+			break
+		}
+	}
+	if command != "" {
+		show := runTimeout(4*time.Second, command, "show")
+		parsed := parseWGShowRuntime(fmt.Sprint(show["stdout"]))
+		for key, value := range parsed {
+			result[key] = value
+		}
+		if show["ok"] != true {
+			if text := strings.TrimSpace(concatCommandOutput(show)); text != "" {
+				result["errors"] = append(stringSlice(result["errors"]), text)
+			}
+		}
+	}
+	if result["endpoint"] == "" {
+		if peer, ok := clientConfig["peer"].(map[string]any); ok {
+			result["endpoint"] = strings.TrimSpace(fmt.Sprint(peer["endpoint"]))
+		}
+	}
+	host, port := amneziaEndpointParts(fmt.Sprint(result["endpoint"]))
+	result["endpointHost"] = host
+	result["endpointPort"] = port
+	if host != "" {
+		probe := amneziaEndpointPing(host)
+		for key, value := range probe {
+			result[key] = value
+		}
+	}
+	result["connected"] = number(result["peerCount"], 0) > 0 && number(result["latestHandshakeAgoSec"], -1) >= 0
+	return result
+}
+
+func amneziaConfigProtocolVersion(clientConfig map[string]any) string {
+	options := stringSlice(clientConfig["obfuscationOptions"])
+	if len(options) == 0 {
+		options = stringSlice(clientConfig["awgOptions"])
+	}
+	if len(options) == 0 {
+		return "WireGuard"
+	}
+	if amneziaHasAWG2Options(options) {
+		return "AWG 2.0"
+	}
+	return "AWG 1.x"
+}
+
+func amneziaHasAWG2Options(options []string) bool {
+	for _, option := range options {
+		lower := strings.ToLower(strings.TrimSpace(option))
+		if lower == "s3" || lower == "s4" || strings.HasPrefix(lower, "i") {
+			return true
+		}
+	}
+	return false
+}
+
+func parseWGShowRuntime(text string) map[string]any {
+	result := map[string]any{
+		"peerCount":             0,
+		"latestHandshake":       "",
+		"latestHandshakeAgoSec": -1,
+	}
+	peerCount := 0
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, "interface:"):
+			result["interface"] = strings.TrimSpace(strings.TrimPrefix(line, "interface:"))
+		case strings.HasPrefix(lower, "peer:"):
+			peerCount += 1
+		case strings.HasPrefix(lower, "endpoint:"):
+			if _, seen := result["endpoint"]; !seen || strings.TrimSpace(fmt.Sprint(result["endpoint"])) == "" {
+				result["endpoint"] = strings.TrimSpace(strings.TrimPrefix(line, "endpoint:"))
+			}
+		case strings.HasPrefix(lower, "latest handshake:"):
+			value := strings.TrimSpace(strings.TrimPrefix(line, "latest handshake:"))
+			result["latestHandshake"] = value
+			result["latestHandshakeAgoSec"] = amneziaHandshakeAgeSeconds(value)
+		case strings.HasPrefix(lower, "transfer:"):
+			rx, tx := parseWGTransfer(strings.TrimSpace(strings.TrimPrefix(line, "transfer:")))
+			result["rxBytes"] = rx
+			result["txBytes"] = tx
+		}
+	}
+	result["peerCount"] = peerCount
+	return result
+}
+
+func amneziaHandshakeAgeSeconds(value string) int {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if lower == "" || lower == "never" {
+		return -1
+	}
+	if lower == "now" {
+		return 0
+	}
+	total := 0
+	re := regexp.MustCompile(`(?i)(\d+)\s*(second|seconds|sec|secs|minute|minutes|min|mins|hour|hours|day|days)`)
+	for _, match := range re.FindAllStringSubmatch(lower, -1) {
+		n, _ := strconv.Atoi(match[1])
+		switch match[2] {
+		case "second", "seconds", "sec", "secs":
+			total += n
+		case "minute", "minutes", "min", "mins":
+			total += n * 60
+		case "hour", "hours":
+			total += n * 3600
+		case "day", "days":
+			total += n * 86400
+		}
+	}
+	if total == 0 {
+		return -1
+	}
+	return total
+}
+
+func parseWGTransfer(value string) (int64, int64) {
+	parts := strings.Split(value, ",")
+	var rx, tx int64
+	if len(parts) > 0 {
+		rx = parseWGByteValue(strings.TrimSpace(strings.TrimSuffix(parts[0], "received")))
+	}
+	if len(parts) > 1 {
+		tx = parseWGByteValue(strings.TrimSpace(strings.TrimSuffix(parts[1], "sent")))
+	}
+	return rx, tx
+}
+
+func parseWGByteValue(value string) int64 {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) == 0 {
+		return 0
+	}
+	raw := strings.ReplaceAll(fields[0], ",", "")
+	n, _ := strconv.ParseFloat(raw, 64)
+	unit := ""
+	if len(fields) > 1 {
+		unit = strings.ToLower(fields[1])
+	}
+	multiplier := float64(1)
+	switch unit {
+	case "kib":
+		multiplier = 1024
+	case "mib":
+		multiplier = 1024 * 1024
+	case "gib":
+		multiplier = 1024 * 1024 * 1024
+	case "tib":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	case "kb":
+		multiplier = 1000
+	case "mb":
+		multiplier = 1000 * 1000
+	case "gb":
+		multiplier = 1000 * 1000 * 1000
+	case "tb":
+		multiplier = 1000 * 1000 * 1000 * 1000
+	}
+	return int64(n * multiplier)
+}
+
+func amneziaEndpointPing(host string) map[string]any {
+	result := map[string]any{
+		"endpointReachable": false,
+		"endpointLatencyMs": -1,
+	}
+	if !commandExists("ping") {
+		result["endpointError"] = "ping not found"
+		return result
+	}
+	ping := runTimeout(3*time.Second, "ping", "-c", "1", "-W", "2", host)
+	text := concatCommandOutput(ping)
+	result["endpointProbe"] = firstLines(text, 6)
+	if ping["ok"] == true {
+		result["endpointReachable"] = true
+	}
+	if latency := parsePingLatencyMs(text); latency >= 0 {
+		result["endpointLatencyMs"] = latency
+	}
+	if ping["ok"] != true && text != "" {
+		result["endpointError"] = text
+	}
+	return result
+}
+
+func parsePingLatencyMs(text string) int {
+	re := regexp.MustCompile(`time[=<]([0-9]+(?:\.[0-9]+)?)\s*ms`)
+	match := re.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return -1
+	}
+	value, err := strconv.ParseFloat(match[1], 64)
+	if err != nil {
+		return -1
+	}
+	return int(value + 0.5)
 }
 
 func amneziaRoutingStatus(interfaces []map[string]any) map[string]any {
