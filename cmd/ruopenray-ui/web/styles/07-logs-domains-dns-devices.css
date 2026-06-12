@@ -1745,17 +1745,18 @@
   margin-bottom: 16px;
 }
 
-.amnezia-control-grid {
+.amnezia-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(340px, 1.35fr);
+  grid-template-columns: minmax(300px, 1.05fr) minmax(260px, 0.78fr) minmax(320px, 1.3fr);
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .amnezia-active-profile {
   min-width: 0;
   display: grid;
   gap: 14px;
+  align-self: stretch;
   padding: 16px;
   border: 1px solid rgba(130, 251, 239, 0.14);
   border-radius: 8px;
@@ -1777,15 +1778,63 @@
   overflow-wrap: anywhere;
 }
 
-.amnezia-active-profile .split-actions {
-  align-self: end;
-  flex-wrap: wrap;
+.amnezia-quick-actions {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(130, 251, 239, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.amnezia-action-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.amnezia-action-stack .btn {
+  width: 100%;
+}
+
+.amnezia-dashboard-state {
+  display: grid;
+  gap: 6px;
+}
+
+.amnezia-dashboard-state span {
+  min-width: 0;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(130, 251, 239, 0.12);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amnezia-dashboard-state span.ok {
+  border-color: rgba(105, 220, 118, 0.24);
+  color: #d9ffe4;
+}
+
+.amnezia-dashboard-state span.warn {
+  border-color: rgba(255, 203, 91, 0.24);
+  color: #ffe3a1;
 }
 
 .amnezia-pool-editor,
 .amnezia-integration-editor {
   display: grid;
   gap: 6px;
+  align-self: stretch;
   padding: 12px;
   border: 1px solid rgba(130, 251, 239, 0.12);
   border-radius: 8px;
@@ -1870,6 +1919,8 @@
 }
 
 .amnezia-profile-list {
+  grid-column: 3;
+  grid-row: 1 / span 3;
   align-content: start;
   max-height: 520px;
   overflow: auto;
@@ -2305,11 +2356,13 @@
 }
 
 @media (max-width: 1040px) {
-  .amnezia-control-grid {
+  .amnezia-dashboard-grid {
     grid-template-columns: 1fr;
   }
 
   .amnezia-profile-list {
+    grid-column: auto;
+    grid-row: auto;
     max-height: none;
   }
 
@@ -3069,6 +3122,10 @@
 
   .amnezia-profile-card .split-actions .btn {
     flex: 1 1 120px;
+  }
+
+  .amnezia-action-stack {
+    grid-template-columns: 1fr;
   }
 
   .amnezia-profile-runtime {

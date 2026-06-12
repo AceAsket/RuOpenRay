@@ -156,6 +156,17 @@ export function createAmneziaView({ state, escapeHtml }) {
     }
   }
 
+  function preflightSummary(preflight = {}) {
+    const checks = array(preflight.checks);
+    if (!checks.length) return 'не проверено';
+    const passed = checks.filter((check) => check.ok).length;
+    return `${passed}/${checks.length} проверок`;
+  }
+
+  function profileEndpoint(profile = {}) {
+    return profile.peer?.endpoint || profile.summary || 'endpoint не задан';
+  }
+
   function profileCard(item = {}, runtime = {}) {
     const awgOptions = array(item.obfuscationOptions);
     const peer = item.peer || {};
@@ -191,58 +202,82 @@ export function createAmneziaView({ state, escapeHtml }) {
     const items = array(profiles.items);
     const runtime = status.runtime || {};
     const current = activeProfile(items, config);
+    const currentPeer = current?.peer || {};
+    const currentIface = current?.interface || {};
+    const currentOptions = array(current?.obfuscationOptions);
     const selectedIds = selectedProfileIds(profiles);
     const selectedItems = items.filter((item) => selectedIds.includes(item.id));
     const strategy = state.amneziaPoolStrategy || profiles.strategy || 'single';
     const mode = state.amneziaIntegrationMode || profiles.mode || 'standby';
     const xray = status.xrayIntegration || {};
     const selectedSummary = selectedItems.length ? `${selectedItems.length} проф. выбрано` : 'ничего не выбрано';
+    const configState = config.exists ? `client.conf сохранен${config.updatedAt ? ` · ${config.updatedAt}` : ''}` : 'client.conf не импортирован';
     return `<section class="panel amnezia-profiles-panel">
       <div class="panel-title">
         <div>
           <h2>Управление AmneziaWG</h2>
-          <span>Профили, активный client.conf и готовность backend в одном месте.</span>
+          <span>Активный сервер, runtime-метрики, пул профилей и назначение маршрутизации в одном месте.</span>
         </div>
         <div class="split-actions">
           <button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
           <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
         </div>
       </div>
-      <div class="amnezia-control-grid">
+      <div class="amnezia-dashboard-grid">
         <article class="amnezia-active-profile ${current ? 'ok' : ''}">
           <div>
-            <span class="eyebrow">настройки</span>
-            <h3>AWG-пул и режим работы</h3>
-            <p>Профили выбираются в списке справа. Здесь задается стратегия пула и способ совместной работы с Xray.</p>
+            <span class="eyebrow">активный сервер</span>
+            <h3>${escapeHtml(current?.name || 'Профиль не выбран')}</h3>
+            <p>${escapeHtml(current ? profileEndpoint(current) : 'Импортируйте client.conf или выберите профиль из списка.')}</p>
           </div>
-          <div class="amnezia-pool-editor">
-            <label class="field-label">Профили в AWG-пуле</label>
-            <strong>${escapeHtml(selectedSummary)}</strong>
-            <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
-            <select class="input" data-amnezia-strategy>
-              ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
-            </select>
+          <div class="amnezia-profile-meta">
+            ${currentIface.address ? `<span>${escapeHtml(currentIface.address)}</span>` : ''}
+            ${currentPeer.allowedIPs ? `<span>${escapeHtml(`AllowedIPs ${currentPeer.allowedIPs}`)}</span>` : ''}
+            ${currentOptions.length ? `<span>${escapeHtml(`AWG ${currentOptions.length}`)}</span>` : ''}
           </div>
-          <div class="amnezia-integration-editor">
-            <label class="field-label">Работа вместе с Xray</label>
-            <strong>${escapeHtml(integrationModeLabel(mode))}</strong>
-            <span>${escapeHtml(integrationModeDetail(mode))}</span>
-            <select class="input" data-amnezia-mode>
-              ${['standby', 'mixed', 'amnezia-first', 'xray-only'].map((item) => `<option value="${escapeHtml(item)}" ${mode === item ? 'selected' : ''}>${escapeHtml(integrationModeLabel(item))}</option>`).join('')}
-            </select>
-            <div class="amnezia-integration-metrics">
-              <span>Xray proxy: ${escapeHtml(String(xray.proxyOutbounds ?? 0))}</span>
-              <span>rules: ${escapeHtml(String(xray.rules ?? 0))}</span>
-              <span>${escapeHtml(xray.transparentReady ? 'transparent готов' : 'transparent не найден')}</span>
-            </div>
-          </div>
-          <div class="split-actions">
+          ${profileRuntimeMetrics(current || {}, runtime)}
+        </article>
+
+        <article class="amnezia-quick-actions">
+          <span class="eyebrow">быстрые действия</span>
+          <div class="amnezia-action-stack">
+            <button class="btn warning" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
             ${commandButton('refreshAmnezia', 'Обновить статус')}
-            <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool" ${items.length ? '' : 'disabled'}>Сохранить пул</button>
             <button class="btn secondary" type="button" data-action="checkAmneziaPreflight" ${current || config.exists ? '' : 'disabled'}>Проверить</button>
             <button class="btn secondary" type="button" data-action="prepareAmnezia" ${current || config.exists ? '' : 'disabled'}>Подготовить</button>
           </div>
+          <div class="amnezia-dashboard-state">
+            <span>${escapeHtml(configState)}</span>
+            <span class="${preflight.ok ? 'ok' : 'warn'}">${escapeHtml(preflightSummary(preflight))}</span>
+            <span>${escapeHtml(runtime.protocolVersion || 'AWG')}</span>
+          </div>
         </article>
+
+        <article class="amnezia-pool-editor">
+          <label class="field-label">AWG-пул</label>
+          <strong>${escapeHtml(selectedSummary)}</strong>
+          <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
+          <select class="input" data-amnezia-strategy>
+            ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
+          </select>
+          <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool" ${items.length ? '' : 'disabled'}>Сохранить пул</button>
+        </article>
+
+        <article class="amnezia-integration-editor">
+          <label class="field-label">Маршрутизация</label>
+          <strong>${escapeHtml(integrationModeLabel(mode))}</strong>
+          <span>${escapeHtml(integrationModeDetail(mode))}</span>
+          <select class="input" data-amnezia-mode>
+            ${['standby', 'mixed', 'amnezia-first', 'xray-only'].map((item) => `<option value="${escapeHtml(item)}" ${mode === item ? 'selected' : ''}>${escapeHtml(integrationModeLabel(item))}</option>`).join('')}
+          </select>
+          <div class="amnezia-integration-metrics">
+            <span>Xray proxy: ${escapeHtml(String(xray.proxyOutbounds ?? 0))}</span>
+            <span>AWG rules: ${escapeHtml(String(xray.rules ?? 0))}</span>
+            <span>${escapeHtml(xray.transparentReady ? 'transparent готов' : 'transparent не найден')}</span>
+          </div>
+          <button class="btn secondary" type="button" data-tab-jump="routing">Открыть маршрутизацию</button>
+        </article>
+
         <div class="amnezia-profile-list">
           ${items.length ? items.map((item) => profileCard(item, runtime)).join('') : `<div class="empty-state">Профилей пока нет. Вставьте client.conf в блоке импорта и сохраните.</div>`}
         </div>
@@ -542,9 +577,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
 
       ${view === 'awg'
         ? amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan, runtime })
-        : `${profilesView(profiles, clientConfig, status, preflight)}
-          ${clientConfigView(clientConfig)}
-          ${preflightView(preflight)}`}
+        : profilesView(profiles, clientConfig, status, preflight)}
     </section>`;
   }
 
