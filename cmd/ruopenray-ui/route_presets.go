@@ -244,11 +244,11 @@ func (s *serverState) saveRoutePresets(payload map[string]any) map[string]any {
 func (s *serverState) routePresetSources() []map[string]any {
 	body, err := os.ReadFile(s.routePresetSourcesPath())
 	if err != nil {
-		return nil
+		return []map[string]any{}
 	}
 	var file map[string]any
 	if err := json.Unmarshal(body, &file); err != nil {
-		return nil
+		return []map[string]any{}
 	}
 	raw, _ := file["sources"].([]any)
 	sources := make([]map[string]any, 0, min(len(raw), routePresetSourcesLimit))
@@ -482,6 +482,9 @@ func (s *serverState) saveRoutePresetSource(payload map[string]any) map[string]a
 
 func (s *serverState) updateRoutePresetSources(payload map[string]any) map[string]any {
 	targetID := optionalRoutePresetString(payload["id"])
+	if len(s.routePresetSources()) == 0 {
+		return map[string]any{"ok": false, "error": "Нет подключенных источников сценариев", "sources": []map[string]any{}, "externalPresets": map[string]any{}}
+	}
 	sources := s.refreshRoutePresetSources(targetID, false)
 	if err := s.writeRoutePresetSources(sources); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "sources": s.routePresetSources()}
