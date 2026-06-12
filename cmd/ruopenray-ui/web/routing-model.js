@@ -62,14 +62,53 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     return outboundByTag(tag) || subscriptionPoolByTag(tag)?.activeCandidate || null;
   }
 
+  function selectedAmneziaProfiles() {
+    const profiles = state.amneziaStatus?.clientConfig?.profiles || {};
+    const items = Array.isArray(profiles.items) ? profiles.items : [];
+    const selected = Array.isArray(profiles.selectedIds) && profiles.selectedIds.length
+      ? profiles.selectedIds
+      : Array.isArray(state.amneziaSelectedProfileIds) ? state.amneziaSelectedProfileIds : [];
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const ordered = selected.map((id) => byId.get(id)).filter(Boolean);
+    const fallback = items.filter((item) => item.selected || item.active);
+    const profilesList = ordered.length ? ordered : fallback;
+    const seen = new Set();
+    return profilesList.filter((item) => item?.id && !seen.has(item.id) && seen.add(item.id));
+  }
+
+  function amneziaProfileById(id) {
+    return selectedAmneziaProfiles().find((item) => item.id === id) ||
+      (Array.isArray(state.amneziaStatus?.clientConfig?.profiles?.items) ? state.amneziaStatus.clientConfig.profiles.items : [])
+        .find((item) => item.id === id) || null;
+  }
+
+  function amneziaDirectTag(profileId = '') {
+    return `${amneziaDirectOutboundTag}:${profileId || 'active'}`;
+  }
+
+  function isAmneziaDirectTag(tag) {
+    return String(tag || '') === amneziaDirectOutboundTag || String(tag || '').startsWith(`${amneziaDirectOutboundTag}:`);
+  }
+
+  function amneziaProfileTargetLabel(profile) {
+    return `AWG - ${profile?.name || profile?.summary || profile?.id || 'AmneziaWG'}`;
+  }
+
   function isProxyTargetTag(tag) {
-    if (['proxy', 'direct', 'block', 'dns-out'].includes(tag) || isFragmentOutboundTag(tag)) return false;
+    if (isAmneziaDirectTag(tag) || ['proxy', 'direct', 'block', 'dns-out'].includes(tag) || isFragmentOutboundTag(tag)) return false;
     const outbound = routeTargetOutbound(tag);
     if (!outbound) return false;
     return !['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
   }
 
   function routeTargetOptionLabel(tag) {
+    if (isAmneziaDirectTag(tag)) {
+      const profileId = String(tag || '').split(':').slice(1).join(':');
+      return amneziaProfileTargetLabel(amneziaProfileById(profileId));
+    }
+    if (tag === 'out-amnezia') {
+      return `Xray -> ${amneziaProfileTargetLabel(selectedAmneziaProfiles()[0])}`;
+    }
     if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
     const pool = subscriptionPoolByTag(tag);
     const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
@@ -82,7 +121,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeTargetOptions() {
     return [
-      { value: `outbound:${amneziaDirectOutboundTag}`, label: routeTargetOptionLabel(amneziaDirectOutboundTag) },
+      ...selectedAmneziaProfiles().map((profile) => ({ value: `outbound:${amneziaDirectTag(profile.id)}`, label: amneziaProfileTargetLabel(profile) })),
       ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: routeTargetOptionLabel(tag) })),
       ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
     ];
@@ -176,6 +215,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function readableRouteTag(tag) {
     if (isFragmentOutboundTag(tag)) return 'Фрагментация TLS (служебно)';
+    if (isAmneziaDirectTag(tag)) return routeTargetOptionLabel(tag);
     return managedRouteTags[String(tag || '')] || String(tag || '');
   }
   
@@ -343,7 +383,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (isRuOpenRayManagedRoute(rule)) return 'other';
     if (rule?.balancerTag) return 'proxy';
     const outbound = rule?.outboundTag || '';
-    if (outbound === amneziaDirectOutboundTag) return 'other';
+    if (isAmneziaDirectTag(outbound)) return 'other';
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
     const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean), ...subscriptionTags]);
     if (proxyTags.has(outbound)) return 'proxy';

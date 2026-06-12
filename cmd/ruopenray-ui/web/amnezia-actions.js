@@ -1,4 +1,21 @@
 export function createAmneziaActions({ state, request, render, syncConfig }) {
+  function openAmneziaImportDialog() {
+    state.amneziaProfileId = '';
+    state.amneziaProfileName = 'AmneziaWG';
+    state.amneziaConfigText = '';
+    state.amneziaConfigLoaded = false;
+    state.amneziaPreflight = null;
+    state.amneziaImportDialog = true;
+    state.message = '';
+    render();
+  }
+
+  function closeAmneziaImportDialog() {
+    state.amneziaImportDialog = false;
+    state.message = '';
+    render();
+  }
+
   function syncAmneziaStatus(result) {
     if (!result || typeof result !== 'object') return;
     state.amneziaStatus = result;
@@ -13,6 +30,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     if (profiles.strategy) state.amneziaPoolStrategy = profiles.strategy;
     if (profiles.mode) state.amneziaIntegrationMode = profiles.mode;
     state.amneziaPolicyRules = Array.isArray(profiles.policyRules) ? profiles.policyRules : [];
+    ensureAmneziaXrayOutboundDraft({ silent: true });
   }
 
   async function refreshAmnezia({ silent = false } = {}) {
@@ -47,6 +65,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
       if (result?.profiles?.mode) state.amneziaIntegrationMode = result.profiles.mode;
       state.amneziaPreflight = result?.preflight || result?.clientConfig?.preflight || null;
       state.amneziaConfigLoaded = true;
+      state.amneziaImportDialog = true;
       state.message = result?.exists ? 'Конфиг AmneziaWG загружен в форму.' : 'Сохраненного конфига AmneziaWG пока нет.';
       render();
       return result;
@@ -69,6 +88,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     state.amneziaProfileId = activeProfile?.id || state.amneziaProfileId || '';
     state.amneziaProfileName = activeProfile?.name || state.amneziaProfileName || 'AmneziaWG';
     state.amneziaConfigLoaded = true;
+    state.amneziaImportDialog = false;
     state.message = 'Конфиг AmneziaWG сохранен. Запуск станет доступен после установки совместимого kmod-amneziawg.';
     render();
   }
@@ -95,6 +115,8 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     state.amneziaProfileId = id;
     state.amneziaProfileName = profile?.name || state.amneziaProfileName || 'AmneziaWG';
     state.amneziaPreflight = result.preflight || null;
+    state.amneziaConfigLoaded = true;
+    state.amneziaImportDialog = true;
     state.message = 'Профиль AmneziaWG загружен в редактор.';
     render();
   }
@@ -208,25 +230,38 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     };
   }
 
-  async function prepareAmneziaXrayOutboundDraft() {
+  function ensureAmneziaXrayOutboundDraft({ silent = false } = {}) {
     if (typeof syncConfig !== 'function') throw new Error('Редактор конфигурации не готов.');
+    if (silent && (!state.config || !Object.keys(state.config).length)) return false;
     const profile = activeAmneziaProfileSummary();
-    if (!profile) throw new Error('Сначала сохраните или выберите профиль AmneziaWG.');
+    if (!profile) {
+      if (silent) return false;
+      throw new Error('Сначала сохраните или выберите профиль AmneziaWG.');
+    }
     const next = JSON.parse(JSON.stringify(state.config || {}));
     next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
     const outbound = amneziaXrayOutboundDraft();
     const index = next.outbounds.findIndex((item) => item?.tag === outbound.tag);
     const existed = index >= 0;
+    if (silent && existed) return false;
     if (index >= 0) next.outbounds[index] = { ...next.outbounds[index], ...outbound };
     else next.outbounds.push(outbound);
     syncConfig(next);
+    if (silent) return true;
     state.message = existed
       ? 'out-amnezia обновлен в черновике Xray. Его можно выбрать в маршрутизации.'
       : 'out-amnezia добавлен в черновик Xray. Его можно выбрать в маршрутизации.';
     render();
+    return true;
+  }
+
+  async function prepareAmneziaXrayOutboundDraft() {
+    return ensureAmneziaXrayOutboundDraft();
   }
 
   return {
+    openAmneziaImportDialog,
+    closeAmneziaImportDialog,
     refreshAmnezia,
     syncAmneziaStatus,
     loadAmneziaConfig,

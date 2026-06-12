@@ -110,11 +110,34 @@ export function createRoutingActions({
 
   function isAmneziaDirectTarget(targetValue) {
     const [kind, ...rest] = String(targetValue || '').split(':');
-    return kind === 'outbound' && rest.join(':') === amneziaDirectOutboundTag;
+    const tag = rest.join(':');
+    return kind === 'outbound' && isAmneziaDirectOutboundTag(tag);
   }
 
-  function routeRuleToAmneziaPolicy(rule, name = '') {
+  function isAmneziaDirectOutboundTag(tag) {
+    return String(tag || '') === amneziaDirectOutboundTag || String(tag || '').startsWith(`${amneziaDirectOutboundTag}:`);
+  }
+
+  function amneziaDirectProfileIdFromTag(tag) {
+    const clean = String(tag || '');
+    if (!isAmneziaDirectOutboundTag(clean)) return '';
+    return clean.split(':').slice(1).join(':');
+  }
+
+  function amneziaProfileById(id) {
+    const items = Array.isArray(state.amneziaStatus?.clientConfig?.profiles?.items) ? state.amneziaStatus.clientConfig.profiles.items : [];
+    return items.find((item) => item.id === id) || items.find((item) => item.selected || item.active) || null;
+  }
+
+  function directTagFromTargetValue(targetValue) {
+    const [kind, ...rest] = String(targetValue || '').split(':');
+    return kind === 'outbound' ? rest.join(':') : '';
+  }
+
+  function routeRuleToAmneziaPolicy(rule, name = '', targetValue = '') {
     const cleanName = String(name || '').trim();
+    const profileId = amneziaDirectProfileIdFromTag(directTagFromTargetValue(targetValue) || rule.outboundTag || '');
+    const profile = amneziaProfileById(profileId);
     const seed = [
       cleanName,
       ...(Array.isArray(rule.domain) ? rule.domain : []),
@@ -135,6 +158,8 @@ export function createRoutingActions({
       port: rule.port || undefined,
       network: rule.network || undefined,
       target: 'bypass-xray',
+      profileId: profile?.id || profileId || undefined,
+      profile: profile?.name || profile?.summary || profileId || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -155,8 +180,8 @@ export function createRoutingActions({
     return result;
   }
 
-  async function addAmneziaPolicyFromRoute(rule, name = '') {
-    await saveAmneziaPolicyRules([routeRuleToAmneziaPolicy(rule, name), ...amneziaPolicyRules()]);
+  async function addAmneziaPolicyFromRoute(rule, name = '', targetValue = '') {
+    await saveAmneziaPolicyRules([routeRuleToAmneziaPolicy(rule, name, targetValue), ...amneziaPolicyRules()]);
   }
 
   async function addRoutingRule() {
@@ -179,9 +204,9 @@ export function createRoutingActions({
     }
     if (state.routeKind === 'default') {
       rule.network = 'tcp,udp';
-      if (rule.outboundTag === amneziaDirectOutboundTag) {
-        delete rule.outboundTag;
+      if (isAmneziaDirectOutboundTag(rule.outboundTag)) {
         await addAmneziaPolicyFromRoute(rule, state.routeName);
+        delete rule.outboundTag;
         state.routeName = '';
         state.routeValue = '';
         state.routeRuleDialog = false;
@@ -205,9 +230,9 @@ export function createRoutingActions({
     } else {
       rule[state.routeKind] = values;
     }
-    if (rule.outboundTag === amneziaDirectOutboundTag) {
-      delete rule.outboundTag;
+    if (isAmneziaDirectOutboundTag(rule.outboundTag)) {
       await addAmneziaPolicyFromRoute(rule, state.routeName);
+      delete rule.outboundTag;
       state.routeName = '';
       state.routeValue = '';
       state.routeRuleDialog = false;
@@ -274,12 +299,12 @@ export function createRoutingActions({
   async function testRouteRuleTarget() {
     state.routeRuleTestResult = null;
     const tag = state.routeTargetType === 'balancer' ? '' : String(state.routeOutbound || '').trim();
-    if (tag === amneziaDirectOutboundTag) {
+    if (isAmneziaDirectOutboundTag(tag)) {
       state.routeRuleTestResult = {
         ok: false,
         tone: 'pending',
-        title: 'AmneziaWG напрямую',
-        detail: 'Это правило обходит Xray, поэтому проверка outbound недоступна до применения AmneziaWG policy routing.'
+        title: readableRouteTag(tag),
+        detail: 'Это правило обходит Xray, поэтому проверка outbound недоступна до применения AWG policy routing.'
       };
       state.message = state.routeRuleTestResult.detail;
       render();
@@ -443,9 +468,9 @@ export function createRoutingActions({
       render();
       return;
     }
-    if (nextRule.outboundTag === amneziaDirectOutboundTag) {
-      delete nextRule.outboundTag;
+    if (isAmneziaDirectOutboundTag(nextRule.outboundTag)) {
       await addAmneziaPolicyFromRoute(nextRule, state.routeName);
+      delete nextRule.outboundTag;
       const nextRules = current.filter((_, ruleIndex) => ruleIndex !== index);
       delete state.routeNames[routeRuleKey(oldRule)];
       setRoutingDraft(nextRules);
@@ -1629,14 +1654,14 @@ export function createRoutingActions({
       const moved = [];
       const kept = [];
       routeRules().forEach((rule, index) => {
-        if (indexes.has(index)) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule))));
+        if (indexes.has(index)) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule)), state.routeReplaceTo));
         else kept.push(rule);
       });
       await saveAmneziaPolicyRules([...moved, ...amneziaPolicyRules()]);
       setRoutingDraft(kept);
       state.routeTargetReplaceDialog = false;
       state.selectedRouteRuleIndexes = [];
-      state.message = `В AmneziaWG напрямую перенесено правил: ${moved.length}. Они больше не входят в Xray routing.rules.`;
+      state.message = `В AWG policy routing перенесено правил: ${moved.length}. Они больше не входят в Xray routing.rules.`;
       render();
       return;
     }
@@ -1654,7 +1679,7 @@ export function createRoutingActions({
     const next = { ...rule };
     delete next.outboundTag;
     delete next.balancerTag;
-    if (tag === amneziaDirectOutboundTag) return next;
+    if (isAmneziaDirectOutboundTag(tag)) return next;
     if (kind === 'balancer') next.balancerTag = tag;
     else next.outboundTag = tag;
     copyRouteRuleName(rule, next);
@@ -1667,9 +1692,9 @@ export function createRoutingActions({
       const current = routeRules();
       const rule = current[index];
       if (!rule) return;
-      await addAmneziaPolicyFromRoute(rule, routeRuleName(rule, describeRouteRule(rule)));
+      await addAmneziaPolicyFromRoute(rule, routeRuleName(rule, describeRouteRule(rule)), targetValue);
       setRoutingDraft(current.filter((_, ruleIndex) => ruleIndex !== index));
-      state.message = 'Правило перенесено в AmneziaWG напрямую и убрано из Xray routing.rules.';
+      state.message = 'Правило перенесено в AWG policy routing и убрано из Xray routing.rules.';
       render();
       return;
     }
@@ -1685,13 +1710,13 @@ export function createRoutingActions({
       const moved = [];
       const kept = [];
       routeRules().forEach((rule, ruleIndex) => {
-        if (ruleIndex >= fromStart && ruleIndex < fromEnd) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule))));
+        if (ruleIndex >= fromStart && ruleIndex < fromEnd) moved.push(routeRuleToAmneziaPolicy(rule, routeRuleName(rule, describeRouteRule(rule)), targetValue));
         else kept.push(rule);
       });
       if (!moved.length) return;
       await saveAmneziaPolicyRules([...moved, ...amneziaPolicyRules()]);
       setRoutingDraft(kept);
-      state.message = `Подборка перенесена в AmneziaWG напрямую: ${moved.length} правил.`;
+      state.message = `Подборка перенесена в AWG policy routing: ${moved.length} правил.`;
       render();
       return;
     }

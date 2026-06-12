@@ -1,5 +1,27 @@
 export function createConfigStateHelpers(state, { onDraftChange } = {}) {
+  function hasSelectedAmneziaProfile() {
+    const profiles = state.amneziaStatus?.clientConfig?.profiles || {};
+    const items = Array.isArray(profiles.items) ? profiles.items : [];
+    return items.some((item) => item.selected || item.active) ||
+      (Array.isArray(profiles.selectedIds) && profiles.selectedIds.length > 0) ||
+      (Array.isArray(state.amneziaSelectedProfileIds) && state.amneziaSelectedProfileIds.length > 0);
+  }
+
+  function ensureAutomaticAmneziaOutbound(config) {
+    if (!config || typeof config !== 'object' || !hasSelectedAmneziaProfile()) return config;
+    config.outbounds = Array.isArray(config.outbounds) ? config.outbounds : [];
+    if (config.outbounds.some((outbound) => outbound?.tag === 'out-amnezia')) return config;
+    config.outbounds.push({
+      tag: 'out-amnezia',
+      protocol: 'freedom',
+      settings: { domainStrategy: 'UseIP' },
+      streamSettings: { sockopt: { mark: 20992 } }
+    });
+    return config;
+  }
+
   function syncConfig(config, options = {}) {
+    config = ensureAutomaticAmneziaOutbound(config);
     const nextText = JSON.stringify(config, null, 2);
     const draftWasClean = !state.jsonDraft || state.jsonDraft === state.appliedConfigText || state.configApplying;
     const activeText = options.activeConfig

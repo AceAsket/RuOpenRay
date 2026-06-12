@@ -9,6 +9,7 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
     state.installWizardOpen = false;
     state.setupWizardOpen = false;
     state.importDialog = '';
+    state.amneziaImportDialog = false;
     state.routeRuleDialog = false;
     state.routeBalancerDialog = false;
     state.routePresetDialog = false;

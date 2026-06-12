@@ -1304,6 +1304,10 @@ body.is-login-page .login {
   min-height: 42px;
 }
 
+.amnezia-import-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .subscription-auth-fields {
   margin-bottom: 14px;
 }

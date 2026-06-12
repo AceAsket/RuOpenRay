@@ -48,7 +48,7 @@ export const managedRouteTags = {
 };
 
 managedRouteTags['out-amnezia'] = 'AmneziaWG через Xray';
-managedRouteTags['ruopenray-amnezia-direct'] = 'AmneziaWG напрямую';
+managedRouteTags['ruopenray-amnezia-direct'] = 'AWG - AmneziaWG';
 
 export const routePlaceholders = {
   domain: 'domain:youtube.com, geosite:youtube',

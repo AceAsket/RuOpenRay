@@ -150,7 +150,10 @@ export function createAmneziaView({ state, escapeHtml }) {
           <h2>Управление AmneziaWG</h2>
           <span>Профили, активный client.conf и готовность backend в одном месте.</span>
         </div>
-        <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+        <div class="split-actions">
+          <button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
+          <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+        </div>
       </div>
       <div class="amnezia-control-grid">
         <article class="amnezia-active-profile ${current ? 'ok' : ''}">
@@ -247,31 +250,63 @@ export function createAmneziaView({ state, escapeHtml }) {
     const awgOptions = array(config.obfuscationOptions).length ? array(config.obfuscationOptions) : array(config.awgOptions);
     const iface = config.interface || {};
     const peer = config.peer || {};
-    const text = state.amneziaConfigText || '';
-    const profileName = state.amneziaProfileName || 'AmneziaWG';
     return `<section class="panel amnezia-config-panel">
       <div class="panel-title">
         <div>
-          <h2>Импорт client.conf</h2>
-          <span>Сохраненный конфиг становится отдельным профилем и доступен в списке выше.</span>
+          <h2>client.conf</h2>
+          <span>Добавление AWG-профиля открывается отдельным окном, как импорт VLESS/VMess.</span>
         </div>
         <div class="split-actions">
-          ${commandButton('loadAmneziaConfig', 'Загрузить сохраненный')}
+          <button class="btn warning" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
+          ${commandButton('loadAmneziaConfig', 'Открыть сохраненный')}
           <button class="btn secondary" type="button" data-action="deleteAmneziaConfig" ${config.exists ? '' : 'disabled'}>Удалить</button>
         </div>
       </div>
-      <label class="field-label">Название профиля</label>
-      <input class="input" data-amnezia-name value="${escapeHtml(profileName)}" placeholder="Например: Домашний AmneziaWG">
       ${config.exists ? `<div class="compat-metrics">
         ${metric('Конфиг', config.summary || 'сохранен', config.updatedAt || '')}
         ${metric('Адрес', iface.address || 'нет', iface.dns ? `DNS ${iface.dns}` : '')}
         ${metric('Endpoint', peer.endpoint || 'нет', peer.allowedIPs ? `AllowedIPs ${peer.allowedIPs}` : '')}
         ${metric('AWG-параметры', awgOptions.length ? awgOptions.join(', ') : 'не найдены', peer.hasPresharedKey ? 'есть PresharedKey' : '')}
-      </div>` : ''}
+      </div>` : `<div class="empty-state">client.conf еще не импортирован. Нажмите «Импорт client.conf», вставьте конфиг и сохраните профиль.</div>`}
       ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
         <strong>Проверьте конфиг</strong>
         <span>${escapeHtml(warnings.join(' '))}</span>
       </div>` : ''}
+    </section>`;
+  }
+
+  function amneziaImportDialog(config = {}) {
+    if (!state.amneziaImportDialog) return '';
+    const warnings = array(config.warnings);
+    const awgOptions = array(config.obfuscationOptions).length ? array(config.obfuscationOptions) : array(config.awgOptions);
+    const iface = config.interface || {};
+    const peer = config.peer || {};
+    const showSavedConfig = state.amneziaConfigLoaded && config.exists;
+    const text = state.amneziaConfigText || '';
+    const profileName = state.amneziaProfileName || 'AmneziaWG';
+    return `<div class="modal-backdrop" data-action="closeAmneziaImportDialog">
+      <section class="modal import-dialog amnezia-import-dialog" role="dialog" aria-modal="true" aria-labelledby="amneziaImportTitle" data-modal>
+        <div class="modal-head">
+          <div>
+            <h2 id="amneziaImportTitle">Импорт client.conf</h2>
+            <span>Вставьте конфиг AmneziaWG, задайте имя профиля и сохраните его в пул AWG.</span>
+          </div>
+          <button class="icon-btn" type="button" data-action="closeAmneziaImportDialog" aria-label="Закрыть">&times;</button>
+        </div>
+        <div class="form-row">
+          <label>Название профиля</label>
+          <input class="input" data-amnezia-name value="${escapeHtml(profileName)}" placeholder="Например: cloudfour AWG">
+        </div>
+        ${showSavedConfig ? `<div class="compat-metrics">
+          ${metric('Конфиг', config.summary || 'сохранен', config.updatedAt || '')}
+          ${metric('Адрес', iface.address || 'нет', iface.dns ? `DNS ${iface.dns}` : '')}
+          ${metric('Endpoint', peer.endpoint || 'нет', peer.allowedIPs ? `AllowedIPs ${peer.allowedIPs}` : '')}
+          ${metric('AWG-параметры', awgOptions.length ? awgOptions.join(', ') : 'не найдены', peer.hasPresharedKey ? 'есть PresharedKey' : '')}
+        </div>` : ''}
+        ${warnings.length ? `<div class="settings-warning compact amnezia-warning">
+          <strong>Проверьте конфиг</strong>
+          <span>${escapeHtml(warnings.join(' '))}</span>
+        </div>` : ''}
       <textarea class="amnezia-config-textarea code-textarea" data-amnezia-config spellcheck="false" placeholder="[Interface]
 PrivateKey = ...
 Address = ...
@@ -281,12 +316,14 @@ Jc = ...
 PublicKey = ...
 Endpoint = host:port
 AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
-      <div class="toolbar amnezia-config-actions">
+      <div class="import-action-bar amnezia-import-actions">
         <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить конфиг</button>
         <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить</button>
         <button class="btn secondary" type="button" data-action="prepareAmnezia">Подготовить</button>
       </div>
-    </section>`;
+        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      </section>
+    </div>`;
   }
 
   function glinetBackendView(glinet = {}) {
@@ -355,6 +392,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const preflight = state.amneziaPreflight || clientConfig.preflight || {};
     const plan = status.routePlan || {};
     return `<section class="amnezia-page">
+      ${amneziaImportDialog(clientConfig)}
       <section class="route-hero amnezia-hero">
         <div>
           <span class="eyebrow">AmneziaWG</span>

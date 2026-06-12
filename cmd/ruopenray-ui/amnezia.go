@@ -284,6 +284,8 @@ type amneziaPolicyRule struct {
 	Port      string   `json:"port,omitempty"`
 	Network   string   `json:"network,omitempty"`
 	Target    string   `json:"target"`
+	ProfileID string   `json:"profileId,omitempty"`
+	Profile   string   `json:"profile,omitempty"`
 	CreatedAt string   `json:"createdAt,omitempty"`
 	UpdatedAt string   `json:"updatedAt,omitempty"`
 }
@@ -743,6 +745,8 @@ func amneziaPolicyRulesFromPayload(value any, existing []amneziaPolicyRule) []am
 			Port:      strings.TrimSpace(cleanPayloadString(item, "port")),
 			Network:   strings.TrimSpace(cleanPayloadString(item, "network")),
 			Target:    amneziaPolicyTarget(cleanPayloadString(item, "target")),
+			ProfileID: strings.TrimSpace(cleanPayloadString(item, "profileId")),
+			Profile:   strings.TrimSpace(cleanPayloadString(item, "profile")),
 			CreatedAt: firstNonEmpty(created[id], strings.TrimSpace(cleanPayloadString(item, "createdAt")), now),
 			UpdatedAt: now,
 		}
@@ -769,6 +773,8 @@ func normalizeAmneziaPolicyRules(rules []amneziaPolicyRule) []amneziaPolicyRule 
 		}
 		rule.Type = firstNonEmpty(strings.TrimSpace(rule.Type), "field")
 		rule.Target = amneziaPolicyTarget(rule.Target)
+		rule.ProfileID = strings.TrimSpace(rule.ProfileID)
+		rule.Profile = strings.TrimSpace(rule.Profile)
 		rule.Domain = amneziaCleanValueList(rule.Domain)
 		rule.IP = amneziaCleanValueList(rule.IP)
 		rule.Source = amneziaCleanValueList(rule.Source)

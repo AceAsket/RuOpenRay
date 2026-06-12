@@ -58,7 +58,7 @@ function amneziaPolicyRulePseudoRoute(rule) {
     inboundTag: Array.isArray(rule?.inboundTag) ? rule.inboundTag : undefined,
     port: rule?.port || undefined,
     network: rule?.network || undefined,
-    outboundTag: 'ruopenray-amnezia-direct'
+    outboundTag: `ruopenray-amnezia-direct:${rule?.profileId || 'active'}`
   };
 }
 
@@ -69,7 +69,7 @@ function amneziaPolicyRulesPanel() {
     <div class="amnezia-route-policy-list">
       <div class="amnezia-route-policy-head">
         <div>
-          <strong>AmneziaWG напрямую</strong>
+          <strong>AWG policy routing</strong>
           <span>${rules.length} правил обходят Xray и будут применяться через отдельный policy routing AmneziaWG.</span>
         </div>
       </div>
@@ -80,7 +80,7 @@ function amneziaPolicyRulesPanel() {
         return `<article class="disabled-route-row amnezia-policy-row">
           <div>
             <strong>${escapeHtml(name)}</strong>
-            <span>${escapeHtml(info.kind)}: ${escapeHtml(info.value)} -> AmneziaWG напрямую</span>
+            <span>${escapeHtml(info.kind)}: ${escapeHtml(info.value)} -> ${escapeHtml(info.outbound || rule.profile || 'AWG')}</span>
           </div>
           <button class="btn danger" data-amnezia-policy-delete="${escapeHtml(rule.id || '')}">Удалить</button>
         </article>`;
@@ -98,8 +98,6 @@ function routingRulesPanel() {
   const userRulesCount = rules.length - managedRules.length;
   const amneziaPolicyCount = amneziaPolicyRuleItems().length;
   const selectedRuleCount = (state.selectedRouteRuleIndexes || []).length;
-  const hasAmneziaProfile = Boolean(state.amneziaStatus?.clientConfig?.profiles?.items?.length);
-  const hasOutAmnezia = (Array.isArray(state.config?.outbounds) ? state.config.outbounds : []).some((outbound) => outbound?.tag === 'out-amnezia');
 
   return `
     <section class="panel routing-simple-panel">
@@ -110,7 +108,7 @@ function routingRulesPanel() {
         </div>
       </div>
       ${operationProgressView()}
-      ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AmneziaWG напрямую</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся как policy routing мимо Xray.</span></div>` : ''}
+      ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AWG policy routing</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся мимо Xray.</span></div>` : ''}
       <div class="routing-summary">
         ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
           <span>${escapeHtml(item.title)}</span>
@@ -119,7 +117,6 @@ function routingRulesPanel() {
         </article>`).join('')}
       </div>
       <div class="route-tools">
-        <button class="btn secondary" data-action="prepareAmneziaXrayOutboundDraft" ${hasAmneziaProfile ? '' : 'disabled'}>${hasOutAmnezia ? 'Обновить out-amnezia' : 'Добавить out-amnezia'}</button>
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />

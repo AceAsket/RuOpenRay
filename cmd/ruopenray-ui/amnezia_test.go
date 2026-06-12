@@ -333,12 +333,14 @@ func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
 	result := state.updateAmneziaPolicyRules(map[string]any{
 		"rules": []any{
 			map[string]any{
-				"id":      "instagram-direct",
-				"name":    "Instagram",
-				"type":    "field",
-				"domain":  []any{"domain:instagram.com", "domain:cdninstagram.com"},
-				"network": "tcp,udp",
-				"target":  "amnezia-direct",
+				"id":        "instagram-direct",
+				"name":      "Instagram",
+				"type":      "field",
+				"domain":    []any{"domain:instagram.com", "domain:cdninstagram.com"},
+				"network":   "tcp,udp",
+				"target":    "amnezia-direct",
+				"profileId": "cloudfour",
+				"profile":   "cloudfour.acespace.tech",
 			},
 			map[string]any{
 				"id":     "empty",
@@ -356,6 +358,9 @@ func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
 	}
 	if rules[0].ID != "instagram-direct" || rules[0].Target != "bypass-xray" || len(rules[0].Domain) != 2 {
 		t.Fatalf("unexpected policy rule: %#v", rules[0])
+	}
+	if rules[0].ProfileID != "cloudfour" || rules[0].Profile != "cloudfour.acespace.tech" {
+		t.Fatalf("profile target was not preserved: %#v", rules[0])
 	}
 }
 

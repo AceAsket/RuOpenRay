@@ -682,6 +682,8 @@ const amneziaActions = createAmneziaActions({
   syncConfig
 });
 const {
+  openAmneziaImportDialog,
+  closeAmneziaImportDialog,
   refreshAmnezia,
   syncAmneziaStatus,
   loadAmneziaConfig,
@@ -2229,6 +2231,8 @@ function bind() {
       disableFirewall,
       stopRuOpenRayMode,
       refreshCompatibility,
+      openAmneziaImportDialog,
+      closeAmneziaImportDialog,
       refreshAmnezia,
       loadAmneziaConfig,
       saveAmneziaConfig,
