@@ -21,6 +21,8 @@ const busyLabels = {
   checkAmneziaPreflight: 'Проверяю AmneziaWG',
   prepareAmnezia: 'Готовлю AmneziaWG',
   prepareAmneziaUserspace: 'Готовлю userspace backend',
+  startAmnezia: 'Запускаю AmneziaWG',
+  stopAmnezia: 'Останавливаю AmneziaWG',
   controlB4: 'Управляю B4',
   refreshFirewallStatus: 'Проверяю firewall',
   downloadFirewallRules: 'Готовлю правила firewall',

@@ -276,6 +276,29 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     render();
   }
 
+  async function startAmnezia() {
+    const result = await request('/api/amnezia/start', {
+      method: 'POST',
+      body: JSON.stringify({ id: state.amneziaProfileId || '', config: state.amneziaConfigText || '', backend: 'auto' })
+    });
+    if (!result?.ok) {
+      if (result?.preflight) state.amneziaPreflight = result.preflight;
+      throw new Error(result?.error || 'Не удалось запустить AmneziaWG');
+    }
+    if (result.preflight) state.amneziaPreflight = result.preflight;
+    syncAmneziaStatus(result.status);
+    state.message = result.message || 'AmneziaWG запущен.';
+    render();
+  }
+
+  async function stopAmnezia() {
+    const result = await request('/api/amnezia/stop', { method: 'POST' });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось остановить AmneziaWG');
+    syncAmneziaStatus(result.status);
+    state.message = result.message || 'AmneziaWG остановлен.';
+    render();
+  }
+
   return {
     openAmneziaImportDialog,
     closeAmneziaImportDialog,
@@ -293,6 +316,8 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     checkAmneziaPreflight,
     prepareAmnezia,
     prepareAmneziaXrayOutboundDraft,
-    prepareAmneziaUserspace
+    prepareAmneziaUserspace,
+    startAmnezia,
+    stopAmnezia
   };
 }

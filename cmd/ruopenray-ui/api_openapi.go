@@ -100,6 +100,8 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/amnezia/preflight", "AmneziaWG", "Check AmneziaWG preflight", "Validates config, tools, kernel module and route safety without changing the system.", "GenericObject", "Object"},
 		{"post", "/amnezia/prepare", "AmneziaWG", "Prepare AmneziaWG plan", "Dry-run preparation for future AmneziaWG routing. Does not start tunnel or change firewall.", "GenericObject", "Object"},
 		{"post", "/amnezia/userspace/prepare", "AmneziaWG", "Prepare userspace AmneziaWG backend", "Downloads amneziawg-go from an explicit URL into RuOpenRay data dir or returns a dry-run plan. Does not start tunnel or change firewall.", "GenericObject", "Object"},
+		{"post", "/amnezia/start", "AmneziaWG", "Start managed AmneziaWG interface", "Starts only RuOpenRay-managed AmneziaWG interface and route table. Does not change main default route.", "GenericObject", "Object"},
+		{"post", "/amnezia/stop", "AmneziaWG", "Stop managed AmneziaWG interface", "Stops only RuOpenRay-managed AmneziaWG interface, userspace pid and route table.", "GenericObject", "Object"},
 
 		{"get", "/config", "Config", "Get active Xray config", "Returns parsed /etc/xray/config.json.", "", "Object"},
 		{"get", "/config/draft", "Config", "Get config draft", "Returns current UI draft if it exists.", "", "Object"},

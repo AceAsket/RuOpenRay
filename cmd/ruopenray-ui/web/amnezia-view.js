@@ -502,9 +502,13 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         <div class="panel-title">
           <div>
             <h2>Техническое состояние</h2>
-            <span>Диагностика backend: RuOpenRay ничего не применяет к AmneziaWG без отдельного действия.</span>
+            <span>RuOpenRay управляет только своим интерфейсом ruopenray-awg0 и отдельной route table, не меняя основной default route роутера.</span>
           </div>
-          <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+          <div class="split-actions">
+            <button class="btn warning ${state.busyAction === 'startAmnezia' ? 'is-busy' : ''}" type="button" data-action="startAmnezia" ${state.busyAction === 'startAmnezia' ? 'disabled' : ''}>${state.busyAction === 'startAmnezia' ? 'Запускаю...' : 'Запустить'}</button>
+            <button class="btn secondary ${state.busyAction === 'stopAmnezia' ? 'is-busy' : ''}" type="button" data-action="stopAmnezia" ${state.busyAction === 'stopAmnezia' ? 'disabled' : ''}>${state.busyAction === 'stopAmnezia' ? 'Останавливаю...' : 'Остановить'}</button>
+            <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+          </div>
         </div>
         <div class="compat-metrics">
           ${metric('Интерфейс', status.primaryInterface || (interfaces.length ? `${interfaces.length} найдено` : 'нет'), interfaces.map((item) => item.name).filter(Boolean).join(', '))}

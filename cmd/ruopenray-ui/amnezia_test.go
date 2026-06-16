@@ -246,6 +246,43 @@ AllowedIPs = 0.0.0.0/0`
 	}
 }
 
+func TestBuildAmneziaSetconfOmitsRuntimeOnlyKeys(t *testing.T) {
+	raw := `[Interface]
+PrivateKey = private
+Address = 10.8.0.2/32, fd00::2/128
+DNS = 1.1.1.1
+MTU = 1280
+PostUp = echo unsafe
+Jc = 4
+Jmin = 40
+Jmax = 70
+
+[Peer]
+PublicKey = public
+AllowedIPs = 0.0.0.0/0
+Endpoint = vpn.example.com:443
+PersistentKeepalive = 25`
+	setconf := buildAmneziaSetconf(parseAmneziaClientConfig(raw))
+	for _, forbidden := range []string{"Address", "DNS", "MTU", "PostUp"} {
+		if strings.Contains(setconf, forbidden+" =") {
+			t.Fatalf("setconf must omit %s: %s", forbidden, setconf)
+		}
+	}
+	for _, required := range []string{"PrivateKey = private", "Jc = 4", "Jmin = 40", "Jmax = 70", "PublicKey = public", "AllowedIPs = 0.0.0.0/0"} {
+		if !strings.Contains(setconf, required) {
+			t.Fatalf("setconf must contain %q: %s", required, setconf)
+		}
+	}
+}
+
+func TestSplitAmneziaCSV(t *testing.T) {
+	got := splitAmneziaCSV("10.8.0.2/32, fd00::2/128, ")
+	want := []string{"10.8.0.2/32", "fd00::2/128"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+}
+
 func TestVersionAtLeast(t *testing.T) {
 	cases := []struct {
 		version string
@@ -367,7 +404,7 @@ AllowedIPs = 0.0.0.0/0`
 	if err := os.MkdirAll(state.amneziaProfilesDir(), 0o700); err != nil {
 		t.Fatalf("mkdir profiles: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(state.amneziaProfilesDir(), "<nil>.conf"), []byte(raw), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(state.amneziaProfilesDir(), "cloud-four.conf"), []byte(raw), 0o600); err != nil {
 		t.Fatalf("write profile: %v", err)
 	}
 	reg := amneziaProfileRegistry{

@@ -698,7 +698,9 @@ const {
   checkAmneziaPreflight,
   prepareAmnezia,
   prepareAmneziaXrayOutboundDraft,
-  prepareAmneziaUserspace
+  prepareAmneziaUserspace,
+  startAmnezia,
+  stopAmnezia
 } = amneziaActions;
 
 const setupModel = createSetupModel({
@@ -2246,6 +2248,8 @@ function bind() {
       checkAmneziaPreflight,
       prepareAmnezia,
       prepareAmneziaUserspace,
+      startAmnezia,
+      stopAmnezia,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
       refreshFirewallStatus,
       downloadFirewallRules,

@@ -21,6 +21,7 @@ const (
 	amneziaRouteTable     = "5200"
 	amneziaRouteTableName = "ruopenray_awg"
 	amneziaFwMark         = "0x5200"
+	amneziaInterfaceName  = "ruopenray-awg0"
 	amneziaUserspaceMax   = 32 * 1024 * 1024
 	amneziaUserspaceMin   = 128 * 1024
 )
@@ -51,6 +52,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 		"summary":   "AmneziaWG не найден",
 		"warnings":  []string{},
 		"routePlan": amneziaRoutePlan(),
+		"control":   s.amneziaControlStatus(),
 	}
 	if runtime.GOOS == "windows" {
 		result["summary"] = "AmneziaWG проверяется только на роутере."
@@ -188,6 +190,17 @@ func (s *serverState) amneziaUserspaceInstallPath() string {
 		return filepath.Join("/etc/ruopenray-ui", "amneziawg", "bin", "amneziawg-go")
 	}
 	return filepath.Join(s.cfg.DataDir, "amneziawg", "bin", "amneziawg-go")
+}
+
+func (s *serverState) amneziaRuntimeDir() string {
+	if !filepath.IsAbs(s.cfg.DataDir) {
+		return filepath.Join("/etc/ruopenray-ui", "amneziawg", "runtime")
+	}
+	return filepath.Join(s.cfg.DataDir, "amneziawg", "runtime")
+}
+
+func (s *serverState) amneziaRuntimePath(name string) string {
+	return filepath.Join(s.amneziaRuntimeDir(), name)
 }
 
 func (s *serverState) amneziaClientConfigStatus(includeRaw bool) map[string]any {
@@ -662,7 +675,7 @@ func normalizeAmneziaProfileRegistry(reg amneziaProfileRegistry) amneziaProfileR
 				replacements[oldID] = nextID
 			}
 		}
-		if strings.TrimSpace(reg.Profiles[idx].File) == "" || strings.TrimSpace(reg.Profiles[idx].File) == "<nil>" {
+		if invalidAmneziaProfileFile(reg.Profiles[idx].File) {
 			reg.Profiles[idx].File = reg.Profiles[idx].ID + ".conf"
 		}
 		used[reg.Profiles[idx].ID] = true
@@ -688,6 +701,14 @@ func normalizeAmneziaProfileRegistry(reg amneziaProfileRegistry) amneziaProfileR
 func invalidAmneziaProfileID(id string) bool {
 	id = strings.TrimSpace(id)
 	return id == "" || id == "<nil>"
+}
+
+func invalidAmneziaProfileFile(name string) bool {
+	name = strings.TrimSpace(name)
+	return name == "" ||
+		name == "<nil>" ||
+		strings.Contains(name, "<nil>") ||
+		strings.ContainsAny(name, `/\`)
 }
 
 func stableAmneziaProfileID(name string) string {
@@ -931,6 +952,275 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 		"status":  s.amneziaStatus(),
 		"message": fmt.Sprintf("amneziawg-go сохранен: %s.", byteCount(int64(len(body)))),
 	}
+}
+
+func (s *serverState) startAmnezia(payload map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "error": "AmneziaWG запускается только на роутере."}
+	}
+	raw := strings.TrimSpace(fmt.Sprint(payload["config"]))
+	if raw == "" {
+		var ok bool
+		id := strings.TrimSpace(fmt.Sprint(payload["id"]))
+		raw, ok = s.loadAmneziaProfileConfig(id)
+		if !ok {
+			raw, ok = s.loadAmneziaProfileConfig("legacy")
+		}
+		if !ok {
+			return map[string]any{"ok": false, "error": "Активный профиль AmneziaWG не найден."}
+		}
+	}
+	preflight := s.amneziaPreflightForConfig(raw)
+	if preflight["ok"] != true {
+		return map[string]any{"ok": false, "error": "Preflight AmneziaWG не пройден.", "preflight": preflight}
+	}
+	backend := strings.TrimSpace(fmt.Sprint(payload["backend"]))
+	if backend == "" || backend == "<nil>" || backend == "auto" {
+		backend = strings.TrimSpace(fmt.Sprint(preflight["backend"]))
+	}
+	if backend == "glinet-native" || backend == "glinet-wireguard" {
+		return map[string]any{"ok": false, "error": "Запуск через GL.iNet native пока не применяется автоматически: сначала нужен отдельный безопасный адаптер UCI.", "preflight": preflight}
+	}
+	setconf, run, err := s.amneziaRuntimeConfig(raw)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error(), "preflight": preflight}
+	}
+	steps := []map[string]any{s.stopAmneziaRuntimeStep()}
+	if backend == "userspace-amneziawg-go" {
+		command, _ := amneziaUserspaceCommand(s.amneziaUserspaceInstallPath())
+		if command == "" {
+			return map[string]any{"ok": false, "error": "amneziawg-go не найден.", "preflight": preflight}
+		}
+		steps = append(steps, runTimeout(6*time.Second, "sh", "-c", fmt.Sprintf(
+			"nohup %s %s >%s 2>&1 & echo $! >%s; sleep 1",
+			amneziaShellQuote(command),
+			amneziaShellQuote(amneziaInterfaceName),
+			amneziaShellQuote(s.amneziaRuntimePath("amneziawg-go.log")),
+			amneziaShellQuote(s.amneziaRuntimePath("amneziawg-go.pid")),
+		)))
+	} else {
+		steps = append(steps, runTimeout(6*time.Second, "sh", "-c", fmt.Sprintf(
+			"ip link add dev %s type amneziawg 2>/dev/null || ip link add dev %s type wireguard",
+			amneziaShellQuote(amneziaInterfaceName),
+			amneziaShellQuote(amneziaInterfaceName),
+		)))
+	}
+	steps = append(steps, runTimeout(6*time.Second, "awg", "setconf", amneziaInterfaceName, setconf))
+	for _, address := range run.addresses {
+		steps = append(steps, runTimeout(4*time.Second, "ip", "addr", "add", address, "dev", amneziaInterfaceName))
+	}
+	if run.mtu != "" {
+		steps = append(steps, runTimeout(4*time.Second, "ip", "link", "set", "mtu", run.mtu, "dev", amneziaInterfaceName))
+	}
+	steps = append(steps, runTimeout(4*time.Second, "ip", "link", "set", "up", "dev", amneziaInterfaceName))
+	steps = append(steps, runTimeout(4*time.Second, "ip", "route", "replace", "default", "dev", amneziaInterfaceName, "table", amneziaRouteTable))
+	steps = append(steps, runTimeout(4*time.Second, "sh", "-c", fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable)))
+	steps = append(steps, runTimeout(4*time.Second, "ip", "rule", "add", "fwmark", amneziaFwMark, "table", amneziaRouteTable, "pref", amneziaRouteTable))
+	ok := true
+	for _, step := range steps {
+		if step["ok"] != true {
+			ok = false
+		}
+	}
+	if !ok {
+		steps = append(steps, s.stopAmneziaRuntimeStep())
+	}
+	s.clearAmneziaCache()
+	time.Sleep(350 * time.Millisecond)
+	return map[string]any{
+		"ok":        ok,
+		"backend":   backend,
+		"interface": amneziaInterfaceName,
+		"preflight": preflight,
+		"steps":     steps,
+		"stdout":    concatCommandOutput(steps...),
+		"status":    s.amneziaStatus(),
+		"message":   firstNonEmpty(amneziaStartMessage(ok), "AmneziaWG обработан."),
+	}
+}
+
+func (s *serverState) stopAmnezia(payload map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "error": "AmneziaWG останавливается только на роутере."}
+	}
+	step := s.stopAmneziaRuntimeStep()
+	s.clearAmneziaCache()
+	time.Sleep(350 * time.Millisecond)
+	return map[string]any{
+		"ok":      step["ok"] == true,
+		"steps":   []map[string]any{step},
+		"stdout":  concatCommandOutput(step),
+		"status":  s.amneziaStatus(),
+		"message": "AmneziaWG-интерфейс RuOpenRay остановлен.",
+	}
+}
+
+type amneziaRuntimeConfig struct {
+	addresses []string
+	mtu       string
+	endpoint  string
+}
+
+func (s *serverState) amneziaRuntimeConfig(raw string) (string, amneziaRuntimeConfig, error) {
+	parsed := parseAmneziaClientConfig(raw)
+	if len(parsed.errors) > 0 {
+		return "", amneziaRuntimeConfig{}, fmt.Errorf(strings.Join(parsed.errors, " "))
+	}
+	if err := os.MkdirAll(s.amneziaRuntimeDir(), 0o700); err != nil {
+		return "", amneziaRuntimeConfig{}, err
+	}
+	setconf := buildAmneziaSetconf(parsed)
+	if strings.TrimSpace(setconf) == "" {
+		return "", amneziaRuntimeConfig{}, fmt.Errorf("не удалось собрать awg setconf")
+	}
+	setconfPath := s.amneziaRuntimePath("client.setconf")
+	if err := os.WriteFile(setconfPath, []byte(setconf), 0o600); err != nil {
+		return "", amneziaRuntimeConfig{}, err
+	}
+	run := amneziaRuntimeConfig{
+		addresses: splitAmneziaCSV(fmt.Sprint(parsed.iface["address"])),
+		mtu:       firstNonEmpty(strings.TrimSpace(fmt.Sprint(parsed.iface["mtu"])), "1280"),
+		endpoint:  strings.TrimSpace(fmt.Sprint(parsed.peer["endpoint"])),
+	}
+	return setconfPath, run, nil
+}
+
+func buildAmneziaSetconf(parsed parsedAmneziaClientConfig) string {
+	var b strings.Builder
+	writeSection := func(name string, values map[string]string, omit map[string]bool) {
+		if len(values) == 0 {
+			return
+		}
+		keys := sortedAmneziaConfigKeys(values)
+		if len(keys) == 0 {
+			return
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("[")
+		b.WriteString(name)
+		b.WriteString("]\n")
+		for _, key := range keys {
+			if omit[strings.ToLower(key)] {
+				continue
+			}
+			value := strings.TrimSpace(values[key])
+			if value == "" {
+				continue
+			}
+			b.WriteString(key)
+			b.WriteString(" = ")
+			b.WriteString(value)
+			b.WriteString("\n")
+		}
+	}
+	writeSection("Interface", parsed.rawOptions["interface"], map[string]bool{
+		"address": true, "dns": true, "mtu": true, "table": true, "saveconfig": true,
+		"preup": true, "postup": true, "predown": true, "postdown": true,
+	})
+	writeSection("Peer", parsed.rawOptions["peer"], map[string]bool{})
+	return b.String()
+}
+
+func sortedAmneziaConfigKeys(values map[string]string) []string {
+	priority := map[string]int{
+		"privatekey":          1,
+		"listenport":          2,
+		"fwmark":              3,
+		"publickey":           1,
+		"presharedkey":        2,
+		"allowedips":          3,
+		"endpoint":            4,
+		"persistentkeepalive": 5,
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		li := strings.ToLower(keys[i])
+		lj := strings.ToLower(keys[j])
+		pi := priority[li]
+		pj := priority[lj]
+		if pi != pj {
+			if pi == 0 {
+				pi = 1000
+			}
+			if pj == 0 {
+				pj = 1000
+			}
+			return pi < pj
+		}
+		return li < lj
+	})
+	return keys
+}
+
+func splitAmneziaCSV(value string) []string {
+	out := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" && item != "<nil>" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *serverState) stopAmneziaRuntimeStep() map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "message": "not supported on windows"}
+	}
+	script := strings.Join([]string{
+		fmt.Sprintf("pidfile=%s", amneziaShellQuote(s.amneziaRuntimePath("amneziawg-go.pid"))),
+		"if [ -s \"$pidfile\" ]; then kill \"$(cat \"$pidfile\")\" 2>/dev/null || true; rm -f \"$pidfile\"; fi",
+		fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable),
+		fmt.Sprintf("ip route flush table %s 2>/dev/null || true", amneziaRouteTable),
+		fmt.Sprintf("ip link del dev %s 2>/dev/null || true", amneziaShellQuote(amneziaInterfaceName)),
+	}, "; ")
+	return runTimeout(8*time.Second, "sh", "-c", script)
+}
+
+func (s *serverState) amneziaControlStatus() map[string]any {
+	status := map[string]any{
+		"interface":  amneziaInterfaceName,
+		"table":      amneziaRouteTable,
+		"mark":       amneziaFwMark,
+		"runtimeDir": s.amneziaRuntimeDir(),
+		"managed":    false,
+		"pidFile":    s.amneziaRuntimePath("amneziawg-go.pid"),
+	}
+	if runtime.GOOS == "windows" {
+		return status
+	}
+	link := runTimeout(2*time.Second, "ip", "link", "show", "dev", amneziaInterfaceName)
+	status["managed"] = link["ok"] == true
+	if fileExists(s.amneziaRuntimePath("amneziawg-go.pid")) {
+		status["userspacePidFile"] = true
+	}
+	return status
+}
+
+func (s *serverState) clearAmneziaCache() {
+	s.metricsMu.Lock()
+	defer s.metricsMu.Unlock()
+	s.amneziaCache = nil
+	s.amneziaAt = time.Time{}
+}
+
+func amneziaStartMessage(ok bool) string {
+	if ok {
+		return "AmneziaWG-интерфейс RuOpenRay поднят. Трафик пойдет туда только после правил с fwmark."
+	}
+	return "AmneziaWG не поднялся, выполнен откат runtime-интерфейса RuOpenRay."
+}
+
+func amneziaShellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func (s *serverState) amneziaPreflightForConfig(raw string) map[string]any {
