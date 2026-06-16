@@ -434,6 +434,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
   function userspaceBackendView(userspace = {}) {
     if (!userspace.available && !userspace.tunDevice && !userspace.tunModule && !userspace.awgSetconf) return '';
     const rollback = array(userspace.rollback).join(' ');
+    const url = state.amneziaUserspaceUrl || '';
     return `<section class="panel amnezia-userspace-panel ${userspace.available ? 'ok' : 'warn'}">
       <div class="panel-title">
         <div>
@@ -447,6 +448,14 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         ${metric('/dev/net/tun', userspace.tunDevice ? 'есть' : 'нет', userspace.tunPackage || userspace.tunLsmod || '')}
         ${metric('awg setconf', userspace.awgSetconf ? 'доступен' : 'нет', 'применение конфигурации интерфейса')}
         ${metric('MTU', userspace.recommendedMTU || '1280', 'рекомендовано для старта')}
+      </div>
+      <div class="amnezia-userspace-form">
+        <label>
+          <span class="field-label">URL amneziawg-go</span>
+          <input class="input" data-amnezia-userspace-url value="${escapeHtml(url)}" placeholder="https://example.com/amneziawg-go-linux-arm64">
+        </label>
+        <button class="btn secondary ${state.busyAction === 'prepareAmneziaUserspace' ? 'is-busy' : ''}" type="button" data-action="prepareAmneziaUserspace" ${state.busyAction === 'prepareAmneziaUserspace' ? 'disabled' : ''}>${state.busyAction === 'prepareAmneziaUserspace' ? 'Готовлю...' : 'Подготовить userspace'}</button>
+        <small>${escapeHtml(userspace.installPath ? `Будет сохранено в ${userspace.installPath}. Без запуска туннеля.` : 'Без запуска туннеля.')}</small>
       </div>
       ${rollback ? `<div class="settings-info">
         <strong>Откат при ошибке</strong>

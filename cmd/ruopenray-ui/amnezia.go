@@ -4,7 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,6 +21,8 @@ const (
 	amneziaRouteTable     = "5200"
 	amneziaRouteTableName = "ruopenray_awg"
 	amneziaFwMark         = "0x5200"
+	amneziaUserspaceMax   = 32 * 1024 * 1024
+	amneziaUserspaceMin   = 128 * 1024
 )
 
 func (s *serverState) cachedAmneziaStatus() map[string]any {
@@ -61,7 +65,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 	commands := amneziaCommandStatus()
 	kernel := amneziaKernelStatus()
 	glinet := amneziaGLInetStatus()
-	userspace := amneziaUserspaceStatus()
+	userspace := s.amneziaUserspaceStatus()
 
 	result["interfaces"] = interfaces
 	result["services"] = services
@@ -177,6 +181,13 @@ func (s *serverState) amneziaProfilesDir() string {
 
 func (s *serverState) amneziaProfilesRegistryPath() string {
 	return filepath.Join(s.cfg.DataDir, "amneziawg", "profiles.json")
+}
+
+func (s *serverState) amneziaUserspaceInstallPath() string {
+	if !filepath.IsAbs(s.cfg.DataDir) {
+		return filepath.Join("/etc/ruopenray-ui", "amneziawg", "bin", "amneziawg-go")
+	}
+	return filepath.Join(s.cfg.DataDir, "amneziawg", "bin", "amneziawg-go")
 }
 
 func (s *serverState) amneziaClientConfigStatus(includeRaw bool) map[string]any {
@@ -848,12 +859,86 @@ func (s *serverState) prepareAmnezia(payload map[string]any) map[string]any {
 	}
 }
 
+func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "error": "Userspace backend готовится только на роутере."}
+	}
+	target := s.amneziaUserspaceInstallPath()
+	sourceURL := strings.TrimSpace(fmt.Sprint(payload["url"]))
+	plan := []string{
+		"Создать каталог " + filepath.Dir(target) + ".",
+		"Скачать amneziawg-go по указанному URL.",
+		"Проверить размер файла и записать его как " + target + ".",
+		"Поставить права 755 и обновить диагностику backend.",
+		"Не запускать туннель и не менять маршруты/firewall.",
+	}
+	if sourceURL == "" {
+		return map[string]any{
+			"ok":      true,
+			"dryRun":  true,
+			"target":  target,
+			"plan":    plan,
+			"status":  s.amneziaUserspaceStatus(),
+			"message": "URL не указан: показан только план подготовки userspace backend.",
+		}
+	}
+	if !strings.HasPrefix(sourceURL, "https://") && !strings.HasPrefix(sourceURL, "http://") {
+		return map[string]any{"ok": false, "error": "Укажите http:// или https:// URL бинарника amneziawg-go."}
+	}
+	downloadURL := s.mirrorURL(sourceURL)
+	resp, err := (&http.Client{Timeout: 90 * time.Second}).Get(downloadURL)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error(), "url": downloadURL}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return map[string]any{"ok": false, "error": fmt.Sprintf("download HTTP %d", resp.StatusCode), "url": downloadURL}
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, amneziaUserspaceMax+1))
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error(), "url": downloadURL}
+	}
+	if len(body) > amneziaUserspaceMax {
+		return map[string]any{"ok": false, "error": "Файл слишком большой для amneziawg-go.", "url": downloadURL}
+	}
+	if len(body) < amneziaUserspaceMin {
+		return map[string]any{"ok": false, "error": "Файл слишком маленький, похоже на HTML/ошибку загрузки.", "url": downloadURL, "size": len(body)}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	tmp := target + ".new"
+	if err := os.WriteFile(tmp, body, 0o755); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		_ = os.Remove(tmp)
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	s.metricsMu.Lock()
+	s.amneziaCache = nil
+	s.amneziaAt = time.Time{}
+	s.metricsMu.Unlock()
+	return map[string]any{
+		"ok":      true,
+		"target":  target,
+		"url":     downloadURL,
+		"size":    len(body),
+		"status":  s.amneziaStatus(),
+		"message": fmt.Sprintf("amneziawg-go сохранен: %s.", byteCount(int64(len(body)))),
+	}
+}
+
 func (s *serverState) amneziaPreflightForConfig(raw string) map[string]any {
 	parsed := parseAmneziaClientConfig(raw)
 	commands := amneziaCommandStatus()
 	kernel := amneziaKernelStatus()
 	glinet := amneziaGLInetStatus()
-	userspace := amneziaUserspaceStatus()
+	userspace := s.amneziaUserspaceStatus()
 	routing := amneziaRoutingStatus(amneziaInterfacesStatus())
 	kernelReady := boolMap(commands, "awg") && (boolMap(kernel, "loaded") || boolMap(kernel, "installed") || boolMap(kernel, "moduleFile"))
 	glinetReady := boolMap(glinet, "supportsNativeAmnezia") && boolMap(glinet, "nativeWireGuard")
@@ -1679,12 +1764,13 @@ func amneziaCommandStatus() map[string]any {
 	}
 }
 
-func amneziaUserspaceStatus() map[string]any {
-	command, commandSource := amneziaUserspaceCommand()
+func (s *serverState) amneziaUserspaceStatus() map[string]any {
+	command, commandSource := amneziaUserspaceCommand(s.amneziaUserspaceInstallPath())
 	result := map[string]any{
 		"available":      command != "",
 		"command":        command,
 		"commandSource":  commandSource,
+		"installPath":    s.amneziaUserspaceInstallPath(),
 		"tunDevice":      false,
 		"tunModule":      false,
 		"canCreateTun":   false,
@@ -1728,16 +1814,19 @@ func amneziaUserspaceStatus() map[string]any {
 	return result
 }
 
-func amneziaUserspaceCommand() (string, string) {
+func amneziaUserspaceCommand(extraPaths ...string) (string, string) {
 	if commandExists("amneziawg-go") {
 		return "amneziawg-go", "PATH"
 	}
-	for _, path := range []string{
+	paths := append([]string{}, extraPaths...)
+	paths = append(paths,
 		"/usr/bin/amneziawg-go",
 		"/usr/sbin/amneziawg-go",
 		"/opt/bin/amneziawg-go",
 		"/etc/ruopenray-ui/amneziawg-go",
-	} {
+		"/etc/ruopenray-ui/amneziawg/bin/amneziawg-go",
+	)
+	for _, path := range paths {
 		if fileExists(path) {
 			return path, "file"
 		}

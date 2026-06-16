@@ -20,6 +20,7 @@ const busyLabels = {
   deleteAmneziaProfile: 'Удаляю профиль AmneziaWG',
   checkAmneziaPreflight: 'Проверяю AmneziaWG',
   prepareAmnezia: 'Готовлю AmneziaWG',
+  prepareAmneziaUserspace: 'Готовлю userspace backend',
   controlB4: 'Управляю B4',
   refreshFirewallStatus: 'Проверяю firewall',
   downloadFirewallRules: 'Готовлю правила firewall',

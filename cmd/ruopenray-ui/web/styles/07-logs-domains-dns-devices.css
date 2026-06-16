@@ -2177,6 +2177,28 @@
   margin: 0;
 }
 
+.amnezia-userspace-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.amnezia-userspace-form label {
+  min-width: 0;
+}
+
+.amnezia-userspace-form small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .amnezia-userspace-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .compat-actions {
   flex-wrap: wrap;
 }

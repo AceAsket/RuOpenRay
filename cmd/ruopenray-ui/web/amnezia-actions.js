@@ -259,6 +259,23 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     return ensureAmneziaXrayOutboundDraft();
   }
 
+  async function prepareAmneziaUserspace() {
+    const result = await request('/api/amnezia/userspace/prepare', {
+      method: 'POST',
+      body: JSON.stringify({ url: state.amneziaUserspaceUrl || '' })
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось подготовить userspace backend');
+    if (result.status?.amnezia || result.status?.clientConfig || result.status?.userspace) {
+      syncAmneziaStatus(result.status);
+    } else if (result.status) {
+      const current = state.amneziaStatus || {};
+      state.amneziaStatus = { ...current, userspace: result.status };
+      if (state.status) state.status.amnezia = state.amneziaStatus;
+    }
+    state.message = result.message || 'Userspace backend AmneziaWG проверен.';
+    render();
+  }
+
   return {
     openAmneziaImportDialog,
     closeAmneziaImportDialog,
@@ -275,6 +292,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     deleteAmneziaProfile,
     checkAmneziaPreflight,
     prepareAmnezia,
-    prepareAmneziaXrayOutboundDraft
+    prepareAmneziaXrayOutboundDraft,
+    prepareAmneziaUserspace
   };
 }

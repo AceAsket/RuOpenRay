@@ -697,7 +697,8 @@ const {
   deleteAmneziaProfile,
   checkAmneziaPreflight,
   prepareAmnezia,
-  prepareAmneziaXrayOutboundDraft
+  prepareAmneziaXrayOutboundDraft,
+  prepareAmneziaUserspace
 } = amneziaActions;
 
 const setupModel = createSetupModel({
@@ -2244,6 +2245,7 @@ function bind() {
       deleteAmneziaProfile,
       checkAmneziaPreflight,
       prepareAmnezia,
+      prepareAmneziaUserspace,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
       refreshFirewallStatus,
       downloadFirewallRules,
@@ -2644,6 +2646,11 @@ function bind() {
         state.message = error.message || String(error);
         render();
       }
+    });
+  });
+  document.querySelectorAll('[data-amnezia-userspace-url]').forEach((input) => {
+    input.addEventListener('input', () => {
+      state.amneziaUserspaceUrl = input.value;
     });
   });
 

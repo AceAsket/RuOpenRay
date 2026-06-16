@@ -193,6 +193,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/amnezia/prepare" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.prepareAmnezia(payload))
+	case path == "/amnezia/userspace/prepare" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.prepareAmneziaUserspace(payload))
 	case path == "/settings/password" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.changePassword(payload))

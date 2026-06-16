@@ -27,6 +27,7 @@ export function createInitialState() {
   amneziaIntegrationMode: '',
   amneziaPolicyRules: [],
   amneziaPreflight: null,
+  amneziaUserspaceUrl: '',
   profiles: [],
   profileEditorOpen: false,
   profileEditName: '',
