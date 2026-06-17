@@ -1798,6 +1798,18 @@
   width: 100%;
 }
 
+.amnezia-run-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(130, 251, 239, 0.1);
+}
+
+.amnezia-run-controls .btn {
+  width: 100%;
+}
+
 .amnezia-dashboard-state {
   display: grid;
   gap: 6px;
@@ -2195,6 +2207,10 @@
 
 @media (max-width: 760px) {
   .amnezia-userspace-form {
+    grid-template-columns: 1fr;
+  }
+
+  .amnezia-run-controls {
     grid-template-columns: 1fr;
   }
 }

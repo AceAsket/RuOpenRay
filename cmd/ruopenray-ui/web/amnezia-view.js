@@ -14,9 +14,9 @@ export function createAmneziaView({ state, escapeHtml }) {
     return '';
   }
 
-  function commandButton(action, label) {
+  function commandButton(action, label, tone = 'secondary', disabled = false) {
     const busy = state.busyAction === action;
-    return `<button class="btn secondary ${busy ? 'is-busy' : ''}" data-action="${escapeHtml(action)}" ${busy ? 'disabled' : ''}>${escapeHtml(busy ? 'Обновляю...' : label)}</button>`;
+    return `<button class="btn ${escapeHtml(tone)} ${busy ? 'is-busy' : ''}" type="button" data-action="${escapeHtml(action)}" ${busy || disabled ? 'disabled' : ''}>${escapeHtml(busy ? 'Обновляю...' : label)}</button>`;
   }
 
   function metric(label, value, detail = '') {
@@ -210,6 +210,8 @@ export function createAmneziaView({ state, escapeHtml }) {
     const strategy = state.amneziaPoolStrategy || profiles.strategy || 'single';
     const mode = state.amneziaIntegrationMode || profiles.mode || 'standby';
     const xray = status.xrayIntegration || {};
+    const canManage = Boolean(current || config.exists);
+    const managed = Boolean(status.control?.managed || runtime.interfaceRunning || status.running);
     const selectedSummary = selectedItems.length ? `${selectedItems.length} проф. выбрано` : 'ничего не выбрано';
     const configState = config.exists ? `client.conf сохранен${config.updatedAt ? ` · ${config.updatedAt}` : ''}` : 'client.conf не импортирован';
     return `<section class="panel amnezia-profiles-panel">
@@ -245,6 +247,10 @@ export function createAmneziaView({ state, escapeHtml }) {
             ${commandButton('refreshAmnezia', 'Обновить статус')}
             <button class="btn secondary" type="button" data-action="checkAmneziaPreflight" ${current || config.exists ? '' : 'disabled'}>Проверить</button>
             <button class="btn secondary" type="button" data-action="prepareAmnezia" ${current || config.exists ? '' : 'disabled'}>Подготовить</button>
+          </div>
+          <div class="amnezia-run-controls">
+            ${commandButton('startAmnezia', managed ? 'AWG запущен' : 'Запустить AWG', 'warning', !canManage || managed)}
+            ${commandButton('stopAmnezia', 'Остановить AWG', 'danger', !managed)}
           </div>
           <div class="amnezia-dashboard-state">
             <span>${escapeHtml(configState)}</span>

@@ -1,4 +1,5 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
+import { createAmneziaView } from '../cmd/ruopenray-ui/web/amnezia-view.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
 import { anonymizeConfig, createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
@@ -181,6 +182,38 @@ const dashboardKeepsLastSnapshot = dashboardWarmHtml.includes('cloudtwo')
   && dashboardAfterTransientEmptyConfig.includes('cloudtwo')
   && dashboardAfterTransientEmptyConfig.includes('proxy 1 / direct 1')
   && !dashboardAfterTransientEmptyConfig.includes('Серверы пока не добавлены');
+
+const amneziaView = createAmneziaView({ state, escapeHtml });
+state.amneziaStatus = {
+  available: true,
+  running: false,
+  control: { managed: false },
+  runtime: { backendReady: true, protocolVersion: 'AWG 2.0' },
+  xrayIntegration: { proxyOutbounds: 1, rules: 2, transparentReady: true },
+  clientConfig: {
+    exists: true,
+    profiles: {
+      activeId: 'awg-one',
+      items: [{
+        id: 'awg-one',
+        name: 'AWG One',
+        active: true,
+        selected: true,
+        peer: { endpoint: 'vpn.example:443', allowedIPs: '0.0.0.0/0' },
+        interface: { address: '10.0.0.2/32' },
+        obfuscationOptions: ['Jc', 'S1'],
+      }],
+      selectedIds: ['awg-one'],
+      strategy: 'single',
+      mode: 'mixed',
+      policyRules: [],
+    },
+  },
+};
+const amneziaHtml = amneziaView.amneziaPanel();
+const amneziaRunControlsRender = amneziaHtml.includes('data-action="startAmnezia"')
+  && amneziaHtml.includes('data-action="stopAmnezia"')
+  && amneziaHtml.includes('amnezia-run-controls');
 
 const model = createDiagnosticsModel({
   state,
@@ -1882,6 +1915,7 @@ const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
+  ['amnezia run controls render', amneziaRunControlsRender],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],

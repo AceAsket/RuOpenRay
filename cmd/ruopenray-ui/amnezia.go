@@ -121,12 +121,12 @@ func (s *serverState) amneziaStatus() map[string]any {
 
 func amneziaRoutePlan() map[string]any {
 	return map[string]any{
-		"mode":        "planned-read-only",
+		"mode":        "managed-policy",
 		"target":      "AmneziaWG",
 		"table":       amneziaRouteTable,
 		"tableName":   amneziaRouteTableName,
 		"mark":        amneziaFwMark,
-		"description": "RuOpenRay сможет помечать выбранный трафик отдельным fwmark и отправлять его в route table AmneziaWG, не включая туннель для всего роутера.",
+		"description": "RuOpenRay поднимает отдельный управляемый AWG-интерфейс, route table и fwmark. Весь роутер не переключается в AmneziaWG: туда идет только явно выбранный трафик.",
 	}
 }
 

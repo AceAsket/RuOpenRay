@@ -54,7 +54,7 @@ func openAPISpec() map[string]any {
 			{"name": "Servers", "description": "Outbound servers, subscriptions and proxy checks"},
 			{"name": "Profiles", "description": "Profile storage and activation"},
 			{"name": "Diagnostics", "description": "Probes, live domain monitor and downloadable diagnostic package"},
-			{"name": "AmneziaWG", "description": "AmneziaWG/WireGuard detection and planned split-routing integration"},
+			{"name": "AmneziaWG", "description": "AmneziaWG/WireGuard detection, managed interface control and split-routing integration"},
 			{"name": "Geo", "description": "GeoIP/geosite files and custom lists"},
 			{"name": "Backups", "description": "Configuration backups and restore"},
 		},
