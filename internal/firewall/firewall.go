@@ -113,6 +113,14 @@ func NftSet(items []string) string {
 	return "{ " + strings.Join(items, ", ") + " }"
 }
 
+func NftMark(value string) string {
+	clean := strings.TrimSpace(value)
+	if regexp.MustCompile(`^(0x[0-9a-fA-F]+|\d+)$`).MatchString(clean) {
+		return clean
+	}
+	return ""
+}
+
 func DportExpression(ports []string, protocol string) string {
 	if len(ports) == 0 {
 		return ""
@@ -242,6 +250,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	}
 	directIPs := CIDRList(payload["directIps"])
 	proxyIPs := CIDRList(payload["proxyIps"])
+	amneziaPolicyIPs := CIDRList(payload["amneziaPolicyIps"])
+	amneziaPolicyMark := NftMark(PayloadString(payload, "amneziaPolicyMark", ""))
 	directDomains := stringList(payload["directDomains"])
 	proxyDomains := stringList(payload["proxyDomains"])
 	routerBypassIPs := CIDRList(payload["routerBypassIps"])
@@ -296,6 +306,10 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		chainLines = append(chainLines, "    return comment \"RuOpenRay selected device list is empty\"")
 	}
 	chainLines = append(chainLines, "    ip daddr "+NftSet(localBypass)+" return")
+	if !selectedModeEmpty && len(amneziaPolicyIPs) > 0 && amneziaPolicyMark != "" {
+		setLines = append(setLines, "  set amnezia4 { type ipv4_addr; flags interval; elements = "+NftSet(amneziaPolicyIPs)+"; }")
+		chainLines = append(chainLines, targetPrefix+"ip daddr @amnezia4 meta mark set "+amneziaPolicyMark+" return comment \"RuOpenRay AWG policy\"")
+	}
 	if !selectedModeEmpty && bypassMode == "bypass" {
 		setLines = append(setLines, "  set bypass4 { type ipv4_addr; flags interval; elements = "+NftSet(mergeCIDRLists(localBypass, directIPs))+"; }")
 		chainLines = append(chainLines,
@@ -354,6 +368,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"killSwitchDomainMode": killSwitchDomainMode,
 		"directIps":            directIPs,
 		"proxyIps":             proxyIPs,
+		"amneziaPolicyIps":     amneziaPolicyIPs,
+		"amneziaPolicyMark":    amneziaPolicyMark,
 		"routerBypassIps":      routerBypassIPs,
 		"dnatReplyBypass":      DnatReplyBypassMeta(dnatReplyBypass),
 		"directDomains":        directDomains,
@@ -361,7 +377,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s routerBypassIps=%s dnatReplyBypass=%s directDomains=%s proxyDomains=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s amneziaPolicyIps=%s amneziaPolicyMark=%s routerBypassIps=%s dnatReplyBypass=%s directDomains=%s proxyDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -380,6 +396,8 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		strings.Join(killSwitchDomains, ","),
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),
+		strings.Join(amneziaPolicyIPs, ","),
+		amneziaPolicyMark,
 		strings.Join(routerBypassIPs, ","),
 		strings.Join(DnatReplyBypassMeta(dnatReplyBypass), ","),
 		strings.Join(directDomains, ","),

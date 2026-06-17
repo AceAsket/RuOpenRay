@@ -16,6 +16,8 @@ const busyLabels = {
   loadAmneziaProfile: 'Загружаю профиль AmneziaWG',
   activateAmneziaProfile: 'Выбираю профиль AmneziaWG',
   saveAmneziaProfilePool: 'Сохраняю пул AmneziaWG',
+  applyAmneziaPolicy: 'Применяю AmneziaWG policy',
+  rollbackAmneziaPolicy: 'Откатываю AmneziaWG policy',
   prepareAmneziaXrayOutboundDraft: 'Готовлю out-amnezia',
   deleteAmneziaProfile: 'Удаляю профиль AmneziaWG',
   checkAmneziaPreflight: 'Проверяю AmneziaWG',

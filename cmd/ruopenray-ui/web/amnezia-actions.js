@@ -161,6 +161,22 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     return result;
   }
 
+  async function applyAmneziaPolicy() {
+    const result = await request('/api/amnezia/policy/apply', { method: 'POST' });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось применить AmneziaWG policy');
+    syncAmneziaStatus(result.status);
+    state.message = result.message || 'AmneziaWG policy применена.';
+    render();
+  }
+
+  async function rollbackAmneziaPolicy() {
+    const result = await request('/api/amnezia/policy/rollback', { method: 'POST' });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось откатить AmneziaWG policy');
+    syncAmneziaStatus(result.status);
+    state.message = result.message || 'AmneziaWG policy снята.';
+    render();
+  }
+
   async function deleteAmneziaPolicyRule(button) {
     const id = button?.dataset?.amneziaPolicyDelete || '';
     if (!id) return;
@@ -311,6 +327,8 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     activateAmneziaProfile,
     saveAmneziaProfilePool,
     saveAmneziaPolicyRules,
+    applyAmneziaPolicy,
+    rollbackAmneziaPolicy,
     deleteAmneziaPolicyRule,
     deleteAmneziaProfile,
     checkAmneziaPreflight,

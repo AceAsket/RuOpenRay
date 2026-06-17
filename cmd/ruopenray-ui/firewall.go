@@ -345,11 +345,12 @@ func (s *serverState) firewallStatus() map[string]any {
 			}
 			return ""
 		}()),
-		"killSwitchNftset":   killSwitchNftsetStatus(),
-		"killSwitchDNSBlock": killSwitchDNSBlockStatus(),
-		"directNftset":       routeNftsetStatus("bypass4"),
-		"proxyNftset":        routeNftsetStatus("proxy4"),
-		"needsPolicyFix":     routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
+		"killSwitchNftset":    killSwitchNftsetStatus(),
+		"killSwitchDNSBlock":  killSwitchDNSBlockStatus(),
+		"directNftset":        routeNftsetStatus("bypass4"),
+		"proxyNftset":         routeNftsetStatus("proxy4"),
+		"amneziaPolicyNftset": routeNftsetStatus("amnezia4"),
+		"needsPolicyFix":      routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
 	}
 	for key, value := range meta {
 		status[key] = value
@@ -376,12 +377,14 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "routerBypassIps", "dnatReplyBypass", "directDomains", "proxyDomains":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "amneziaPolicyIps", "routerBypassIps", "dnatReplyBypass", "directDomains", "proxyDomains":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
 					meta[key] = strings.Split(value, ",")
 				}
+			case "amneziaPolicyMark":
+				meta[key] = value
 			case "killSwitchDomains":
 				if value == "" {
 					meta[key] = []string{}

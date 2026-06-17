@@ -472,6 +472,8 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
 
   function amneziaTechnicalView({ status, interfaces, routing, services, wg, configs, kernel, glinet, userspace, plan, runtime }) {
     const runtimeStatus = runtime || {};
+    const policy = status.policy || {};
+    const policyWarnings = array(policy.warnings);
     const trafficDetail = `packets ${Number(runtimeStatus.rxPackets || 0)} / ${Number(runtimeStatus.txPackets || 0)}`;
     const errorDetail = `errors ${Number(runtimeStatus.rxErrors || 0)} / ${Number(runtimeStatus.txErrors || 0)} · drops ${Number(runtimeStatus.rxDropped || 0)} / ${Number(runtimeStatus.txDropped || 0)}`;
     return `<section class="amnezia-system-stack">
@@ -542,12 +544,18 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
             <h2>Policy routing</h2>
             <span>Технический план для отправки части трафика в AWG без глобального default route туннеля.</span>
           </div>
+          <div class="split-actions">
+            ${commandButton('applyAmneziaPolicy', policy.active ? 'Обновить AWG policy' : 'Применить AWG policy', 'warning', Number(policy.ipTargetCount || 0) === 0 || !(status.control?.managed || status.running))}
+            ${commandButton('rollbackAmneziaPolicy', 'Откатить AWG policy', 'secondary', !policy.active && !policy.persistent)}
+          </div>
         </div>
         <div class="compat-metrics">
           ${metric('Route table', plan.table || '5200', plan.tableName || 'ruopenray_awg')}
           ${metric('fwmark', plan.mark || '0x5200', 'метка для выбранных правил')}
           ${metric('Текущий default', routing.defaultViaTunnel ? 'через туннель' : 'не через туннель', routing.defaultRoute || '')}
           ${metric('ip rule', routing.ipRule ? 'найден' : 'не настроен', array(routing.rules).join(' · '))}
+          ${metric('AWG policy', policy.active ? 'в firewall' : (policy.persistent ? 'сохранена' : 'не применена'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR`)}
+          ${metric('Домены policy', String(Number(policy.domainTargets || 0)), policyWarnings.join(' · '))}
         </div>
         <div class="settings-info">
           <strong>Как это будет работать</strong>

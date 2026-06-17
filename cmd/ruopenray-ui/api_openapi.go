@@ -96,6 +96,8 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/amnezia/profile/activate", "AmneziaWG", "Activate AmneziaWG profile", "Copies a saved profile to the active client config without starting the tunnel.", "GenericObject", "Object"},
 		{"post", "/amnezia/profile/pool", "AmneziaWG", "Save AmneziaWG profile pool", "Stores selected AmneziaWG profiles, balancing strategy and Xray integration mode.", "GenericObject", "Object"},
 		{"post", "/amnezia/policy", "AmneziaWG", "Save direct AmneziaWG policy rules", "Stores routing-section rules that bypass Xray and target AmneziaWG policy routing.", "GenericObject", "Object"},
+		{"post", "/amnezia/policy/apply", "AmneziaWG", "Apply AmneziaWG policy routing", "Adds concrete IPv4/CIDR AWG rules to the managed RuOpenRay nftables chain and prepares route table 5200. Does not restart Xray.", "GenericObject", "Object"},
+		{"post", "/amnezia/policy/rollback", "AmneziaWG", "Rollback AmneziaWG policy routing", "Removes the AWG bypass from the managed RuOpenRay nftables chain without deleting saved rules.", "GenericObject", "Object"},
 		{"post", "/amnezia/profile/delete", "AmneziaWG", "Delete AmneziaWG profile", "", "GenericObject", "Object"},
 		{"post", "/amnezia/preflight", "AmneziaWG", "Check AmneziaWG preflight", "Validates config, tools, kernel module and route safety without changing the system.", "GenericObject", "Object"},
 		{"post", "/amnezia/prepare", "AmneziaWG", "Prepare AmneziaWG plan", "Dry-run preparation for future AmneziaWG routing. Does not start tunnel or change firewall.", "GenericObject", "Object"},

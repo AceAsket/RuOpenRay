@@ -83,6 +83,7 @@ func (s *serverState) amneziaStatus() map[string]any {
 	result["clientConfig"] = clientConfig
 	result["runtime"] = amneziaRuntimeStatus(clientConfig, interfaces, wg, commands)
 	result["xrayIntegration"] = s.amneziaXrayIntegrationStatus()
+	result["policy"] = s.amneziaPolicyStatus()
 
 	wgInterfaces, _ := wg["interfaces"].([]string)
 	available := len(amneziaInterfaceNames(interfaces)) > 0 ||
@@ -601,6 +602,75 @@ func (s *serverState) updateAmneziaPolicyRules(payload map[string]any) map[strin
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
+func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "error": "AmneziaWG policy routing applies only on the router."}
+	}
+	targets := amneziaPolicyIPv4Targets(s.loadAmneziaProfileRegistry().PolicyRules)
+	if len(targets) == 0 {
+		return map[string]any{"ok": false, "error": "No IPv4/CIDR AmneziaWG policy targets to apply.", "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
+	}
+	if !commandExists("ip") {
+		return map[string]any{"ok": false, "error": "ip command is not available.", "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
+	}
+	link := runTimeout(3*time.Second, "ip", "link", "show", "dev", amneziaInterfaceName)
+	if link["ok"] != true {
+		return map[string]any{"ok": false, "error": "Start AmneziaWG first: ruopenray-awg0 is not active.", "link": link, "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
+	}
+	steps := []map[string]any{
+		runTimeout(4*time.Second, "ip", "route", "replace", "default", "dev", amneziaInterfaceName, "table", amneziaRouteTable),
+		runTimeout(4*time.Second, "sh", "-c", fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable)),
+		runTimeout(4*time.Second, "ip", "rule", "add", "fwmark", amneziaFwMark, "table", amneziaRouteTable, "pref", amneziaRouteTable),
+	}
+	firewallStatus := s.firewallStatus()
+	firewallResult := map[string]any{"ok": false, "skipped": true, "reason": "RuOpenRay firewall is not active or persistent."}
+	if firewallStatus["active"] == true || firewallStatus["persistent"] == true {
+		firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
+		firewallPayload["amneziaPolicyIps"] = targets
+		firewallPayload["amneziaPolicyMark"] = amneziaFwMark
+		firewallPayload[firewallCompatibilityConfirmKey] = true
+		firewallResult = s.applyFirewall(firewallPayload)
+	}
+	s.clearAmneziaCache()
+	status := s.amneziaStatus()
+	ok := amneziaStepsOK(steps) && (firewallResult["skipped"] == true || firewallResult["ok"] == true)
+	return map[string]any{
+		"ok":       ok,
+		"targets":  targets,
+		"steps":    steps,
+		"firewall": firewallResult,
+		"policy":   status["policy"],
+		"status":   status,
+		"stdout":   concatCommandOutput(steps...),
+		"message":  amneziaPolicyApplyMessage(ok, firewallResult),
+	}
+}
+
+func (s *serverState) rollbackAmneziaPolicy(payload map[string]any) map[string]any {
+	if runtime.GOOS == "windows" {
+		return map[string]any{"ok": false, "error": "AmneziaWG policy rollback applies only on the router."}
+	}
+	firewallStatus := s.firewallStatus()
+	firewallResult := map[string]any{"ok": true, "skipped": true, "reason": "RuOpenRay firewall is not active or persistent."}
+	if firewallStatus["active"] == true || firewallStatus["persistent"] == true {
+		firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
+		firewallPayload["amneziaPolicyIps"] = []string{}
+		firewallPayload["amneziaPolicyMark"] = ""
+		firewallPayload[firewallCompatibilityConfirmKey] = true
+		firewallResult = s.applyFirewall(firewallPayload)
+	}
+	s.clearAmneziaCache()
+	status := s.amneziaStatus()
+	ok := firewallResult["skipped"] == true || firewallResult["ok"] == true
+	return map[string]any{
+		"ok":       ok,
+		"firewall": firewallResult,
+		"policy":   status["policy"],
+		"status":   status,
+		"message":  amneziaPolicyRollbackMessage(ok),
+	}
+}
+
 func (s *serverState) amneziaSelectedProfileIDs(reg amneziaProfileRegistry) []string {
 	ids := s.cleanAmneziaProfileIDs(reg.SelectedIDs)
 	if len(ids) > 0 {
@@ -854,6 +924,143 @@ func amneziaPolicyRuleHasCondition(rule amneziaPolicyRule) bool {
 		rule.Network != ""
 }
 
+func (s *serverState) amneziaPolicyStatus() map[string]any {
+	rules := normalizeAmneziaPolicyRules(s.loadAmneziaProfileRegistry().PolicyRules)
+	targets := amneziaPolicyIPv4Targets(rules)
+	firewallStatus := s.firewallStatus()
+	appliedTargets := amneziaCleanValueList(stringList(firewallStatus["amneziaPolicyIps"]))
+	result := map[string]any{
+		"rules":          len(rules),
+		"ipTargets":      targets,
+		"ipTargetCount":  len(targets),
+		"domainTargets":  amneziaPolicyDomainTargetCount(rules),
+		"sourceTargets":  amneziaPolicySourceTargetCount(rules),
+		"appliedTargets": appliedTargets,
+		"appliedCount":   len(appliedTargets),
+		"mark":           firstNonEmpty(strings.TrimSpace(fmt.Sprint(firewallStatus["amneziaPolicyMark"])), amneziaFwMark),
+		"firewallActive": firewallStatus["active"] == true,
+		"persistent":     firewallStatus["persistent"] == true && len(appliedTargets) > 0,
+		"active":         firewallStatus["active"] == true && len(appliedTargets) > 0,
+		"routeTable":     amneziaRouteTable,
+		"nftSet":         "amnezia4",
+		"warnings":       []string{},
+	}
+	warnings := []string{}
+	if len(rules) > 0 && len(targets) == 0 {
+		warnings = append(warnings, "Stored AWG policy has no concrete IPv4/CIDR targets yet.")
+	}
+	if amneziaPolicyDomainTargetCount(rules) > 0 {
+		warnings = append(warnings, "Domain AWG policy still needs DNS/nftset resolver support; current apply uses concrete IP/CIDR targets.")
+	}
+	if firewallStatus["active"] != true && firewallStatus["persistent"] != true {
+		warnings = append(warnings, "RuOpenRay interception is not active, so LAN policy bypass is not installed.")
+	}
+	result["warnings"] = warnings
+	return result
+}
+
+func amneziaPolicyIPv4Targets(rules []amneziaPolicyRule) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, rule := range normalizeAmneziaPolicyRules(rules) {
+		for _, item := range rule.IP {
+			clean, ok := amneziaNormalizeIPv4Target(item)
+			if ok && !seen[clean] {
+				seen[clean] = true
+				out = append(out, clean)
+			}
+		}
+	}
+	return out
+}
+
+func amneziaNormalizeIPv4Target(value string) (string, bool) {
+	clean := strings.TrimSpace(value)
+	if clean == "" {
+		return "", false
+	}
+	if ip := net.ParseIP(clean); ip != nil {
+		if ip.To4() == nil {
+			return "", false
+		}
+		return ip.String(), true
+	}
+	ip, network, err := net.ParseCIDR(clean)
+	if err != nil || ip.To4() == nil {
+		return "", false
+	}
+	return network.String(), true
+}
+
+func amneziaPolicyDomainTargetCount(rules []amneziaPolicyRule) int {
+	total := 0
+	for _, rule := range normalizeAmneziaPolicyRules(rules) {
+		total += len(rule.Domain)
+	}
+	return total
+}
+
+func amneziaPolicySourceTargetCount(rules []amneziaPolicyRule) int {
+	total := 0
+	for _, rule := range normalizeAmneziaPolicyRules(rules) {
+		total += len(rule.Source)
+		total += len(rule.Inbound)
+		if rule.Port != "" {
+			total += 1
+		}
+		if rule.Network != "" {
+			total += 1
+		}
+	}
+	return total
+}
+
+func amneziaFirewallPayloadFromStatus(status map[string]any) map[string]any {
+	payload := map[string]any{}
+	keys := []string{
+		"routerMode", "bypassMode", "deviceMode", "devices", "portMode", "ports",
+		"blockQuic", "dnsIntercept", "transparentPort", "lanInterface",
+		"killSwitch", "killSwitchDeviceMode", "killSwitchDevices", "killSwitchDomainMode",
+		"killSwitchIps", "killSwitchDomains", "directIps", "proxyIps", "routerBypassIps",
+		"dnatReplyBypass", "directDomains", "proxyDomains",
+	}
+	for _, key := range keys {
+		if value, ok := status[key]; ok {
+			payload[key] = value
+		}
+	}
+	if strings.TrimSpace(fmt.Sprint(payload["routerMode"])) == "" || strings.TrimSpace(fmt.Sprint(payload["routerMode"])) == "<nil>" || payload["routerMode"] == "unknown" {
+		payload["routerMode"] = "tproxy"
+	}
+	return payload
+}
+
+func amneziaStepsOK(steps []map[string]any) bool {
+	for _, step := range steps {
+		if step["ok"] != true {
+			return false
+		}
+	}
+	return true
+}
+
+func amneziaPolicyApplyMessage(ok bool, firewallResult map[string]any) string {
+	if !ok {
+		return "AmneziaWG policy не применена полностью."
+	}
+	if firewallResult["skipped"] == true {
+		return "Route table AmneziaWG готова. RuOpenRay firewall не активен, поэтому LAN-bypass не установлен."
+	}
+	return "AmneziaWG policy применена: выбранные IP/CIDR получают fwmark и обходят Xray в сторону AWG."
+}
+
+func amneziaPolicyRollbackMessage(ok bool) string {
+	if ok {
+		return "AmneziaWG policy снята из RuOpenRay firewall."
+	}
+	return "Не удалось полностью снять AmneziaWG policy."
+}
+
 func (s *serverState) amneziaPreflight(payload map[string]any) map[string]any {
 	raw := ""
 	if value, ok := payload["config"]; ok {
@@ -1043,11 +1250,13 @@ func (s *serverState) stopAmnezia(payload map[string]any) map[string]any {
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": false, "error": "AmneziaWG останавливается только на роутере."}
 	}
+	policyRollback := s.rollbackAmneziaPolicy(map[string]any{"silent": true})
 	step := s.stopAmneziaRuntimeStep()
 	s.clearAmneziaCache()
 	time.Sleep(350 * time.Millisecond)
 	return map[string]any{
-		"ok":      step["ok"] == true,
+		"ok":      step["ok"] == true && policyRollback["ok"] == true,
+		"policy":  policyRollback,
 		"steps":   []map[string]any{step},
 		"stdout":  concatCommandOutput(step),
 		"status":  s.amneziaStatus(),

@@ -180,6 +180,34 @@ func TestNativeNftRedirectUsesProxyIPs(t *testing.T) {
 	}
 }
 
+func TestNativeNftAmneziaPolicyBypassesBeforeTProxy(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":        "tproxy",
+		"transparentPort":   "52345",
+		"amneziaPolicyIps":  []any{"203.0.113.10", "198.51.100.0/24", "geosite:telegram", "2001:db8::1"},
+		"amneziaPolicyMark": "0x5200",
+	})
+	if !strings.Contains(body, "set amnezia4") {
+		t.Fatalf("amnezia policy should create amnezia4 set:\n%s", body)
+	}
+	if !strings.Contains(body, `ip daddr @amnezia4 meta mark set 0x5200 return comment "RuOpenRay AWG policy"`) {
+		t.Fatalf("amnezia policy should mark and return before catch-all:\n%s", body)
+	}
+	if strings.Contains(body, "geosite:telegram") || strings.Contains(body, "2001:db8::1") {
+		t.Fatalf("amnezia policy should include only concrete IPv4/CIDR targets:\n%s", body)
+	}
+	if strings.Index(body, "ip daddr @amnezia4") > strings.Index(body, "tproxy ip to 127.0.0.1:52345") {
+		t.Fatalf("amnezia bypass must be before catch-all tproxy:\n%s", body)
+	}
+	got, ok := meta["amneziaPolicyIps"].([]string)
+	if !ok || len(got) != 2 {
+		t.Fatalf("amneziaPolicyIps meta = %#v, want two concrete IP entries", meta["amneziaPolicyIps"])
+	}
+	if meta["amneziaPolicyMark"] != "0x5200" {
+		t.Fatalf("amneziaPolicyMark = %#v, want 0x5200", meta["amneziaPolicyMark"])
+	}
+}
+
 func TestNativeNftKillSwitchForcesProtectedIPsToXray(t *testing.T) {
 	body, meta := NativeNft(map[string]any{
 		"routerMode":      "tproxy",

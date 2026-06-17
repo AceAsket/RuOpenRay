@@ -214,6 +214,15 @@ const amneziaHtml = amneziaView.amneziaPanel();
 const amneziaRunControlsRender = amneziaHtml.includes('data-action="startAmnezia"')
   && amneziaHtml.includes('data-action="stopAmnezia"')
   && amneziaHtml.includes('amnezia-run-controls');
+state.amneziaView = 'awg';
+state.amneziaStatus.running = true;
+state.amneziaStatus.control = { managed: true };
+state.amneziaStatus.policy = { ipTargetCount: 2, appliedCount: 1, domainTargets: 3, active: true, warnings: ['domains pending'] };
+const amneziaAwgHtml = amneziaView.amneziaPanel();
+const amneziaPolicyControlsRender = amneziaAwgHtml.includes('data-action="applyAmneziaPolicy"')
+  && amneziaAwgHtml.includes('data-action="rollbackAmneziaPolicy"')
+  && amneziaAwgHtml.includes('AWG policy');
+state.amneziaView = 'profiles';
 
 const model = createDiagnosticsModel({
   state,
@@ -1916,6 +1925,7 @@ const checks = [
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
   ['amnezia run controls render', amneziaRunControlsRender],
+  ['amnezia policy controls render', amneziaPolicyControlsRender],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
