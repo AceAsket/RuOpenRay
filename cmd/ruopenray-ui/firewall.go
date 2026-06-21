@@ -24,6 +24,29 @@ const (
 
 var killSwitchDomainPattern = regexp.MustCompile(`^[a-z0-9_.-]+(\.[a-z0-9_-]+)+$`)
 
+func normalizeNftsetDomain(value string) (string, bool) {
+	clean := strings.ToLower(strings.TrimSpace(value))
+	clean = strings.Trim(clean, ` "'`)
+	for _, prefix := range []string{"domain:", "full:"} {
+		clean = strings.TrimPrefix(clean, prefix)
+	}
+	if strings.HasPrefix(clean, "geosite:") ||
+		strings.HasPrefix(clean, "geoip:") ||
+		strings.HasPrefix(clean, "regexp:") ||
+		strings.HasPrefix(clean, "ext:") {
+		return "", false
+	}
+	clean = strings.TrimPrefix(clean, "*.")
+	clean = strings.Trim(clean, ".")
+	if net.ParseIP(clean) != nil {
+		return "", false
+	}
+	if clean == "" || !killSwitchDomainPattern.MatchString(clean) {
+		return "", false
+	}
+	return clean, true
+}
+
 func applyTProxyPolicyRouting(enabled bool) []map[string]any {
 	if !enabled {
 		return []map[string]any{
@@ -45,13 +68,8 @@ func sanitizeKillSwitchDomains(value any) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, item := range stringList(value) {
-		clean := strings.ToLower(strings.TrimSpace(item))
-		clean = strings.TrimPrefix(clean, "*.")
-		clean = strings.Trim(clean, ".")
-		if net.ParseIP(clean) != nil {
-			continue
-		}
-		if clean == "" || !killSwitchDomainPattern.MatchString(clean) || seen[clean] {
+		clean, ok := normalizeNftsetDomain(item)
+		if !ok || seen[clean] {
 			continue
 		}
 		seen[clean] = true
@@ -270,6 +288,7 @@ func applyRouteDomainNftsets(payload map[string]any, bypassMode string) []map[st
 	steps := []map[string]any{}
 	steps = append(steps, applyRouteNftsets("bypass4", stringList(payload["directDomains"]), bypassMode == "bypass")...)
 	steps = append(steps, applyRouteNftsets("proxy4", stringList(payload["proxyDomains"]), bypassMode == "redirect")...)
+	steps = append(steps, applyRouteNftsets("amnezia4", stringList(payload["amneziaPolicyDomains"]), rfw.PayloadString(payload, "amneziaPolicyMark", "") != "")...)
 	return steps
 }
 
@@ -377,7 +396,7 @@ func parseFirewallStatusMeta(nftBody string) map[string]any {
 				if port, err := strconv.Atoi(value); err == nil {
 					meta[key] = port
 				}
-			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "amneziaPolicyIps", "routerBypassIps", "dnatReplyBypass", "directDomains", "proxyDomains":
+			case "ports", "devices", "killSwitchDevices", "killSwitchIps", "directIps", "proxyIps", "amneziaPolicyIps", "amneziaPolicyDomains", "routerBypassIps", "dnatReplyBypass", "directDomains", "proxyDomains":
 				if value == "" {
 					meta[key] = []string{}
 				} else {
@@ -670,6 +689,7 @@ func (s *serverState) disableFirewall() map[string]any {
 	steps = append(steps, applyKillSwitchDNSBlock(nil, false)...)
 	steps = append(steps, applyRouteNftsets("bypass4", nil, false)...)
 	steps = append(steps, applyRouteNftsets("proxy4", nil, false)...)
+	steps = append(steps, applyRouteNftsets("amnezia4", nil, false)...)
 	status := s.firewallStatus()
 	return map[string]any{"ok": rfw.AllStepsOK(steps), "steps": steps, "status": status}
 }

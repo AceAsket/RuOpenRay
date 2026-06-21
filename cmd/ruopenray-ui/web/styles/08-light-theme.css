@@ -1391,6 +1391,17 @@ body[data-theme="light"] .amnezia-interface-card code {
   background: #f4fbfa;
 }
 
+body[data-theme="light"] .amnezia-structured-editor article {
+  background: #ffffff;
+  border-color: #d4ebe8;
+  color: #092027;
+}
+
+body[data-theme="light"] .amnezia-structured-editor article > div:first-child span,
+body[data-theme="light"] .amnezia-raw-head span {
+  color: #46625f;
+}
+
 body[data-theme="light"] .status-chip {
   color: #31524e;
   background: #eef8f6;

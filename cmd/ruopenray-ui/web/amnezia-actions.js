@@ -1,3 +1,5 @@
+import { setAmneziaConfigExtra, setAmneziaConfigField } from './amnezia-config-editor.js';
+
 export function createAmneziaActions({ state, request, render, syncConfig }) {
   function openAmneziaImportDialog() {
     state.amneziaProfileId = '';
@@ -14,6 +16,23 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     state.amneziaImportDialog = false;
     state.message = '';
     render();
+  }
+
+  function updateAmneziaConfigField(input) {
+    state.amneziaConfigText = setAmneziaConfigField(
+      state.amneziaConfigText || '',
+      input?.dataset?.amneziaSection || 'interface',
+      input?.dataset?.amneziaField || '',
+      input?.value || ''
+    );
+  }
+
+  function updateAmneziaConfigExtra(textarea) {
+    state.amneziaConfigText = setAmneziaConfigExtra(
+      state.amneziaConfigText || '',
+      textarea?.dataset?.amneziaExtra || 'interface',
+      textarea?.value || ''
+    );
   }
 
   function syncAmneziaStatus(result) {
@@ -318,6 +337,8 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
   return {
     openAmneziaImportDialog,
     closeAmneziaImportDialog,
+    updateAmneziaConfigField,
+    updateAmneziaConfigExtra,
     refreshAmnezia,
     syncAmneziaStatus,
     loadAmneziaConfig,

@@ -251,6 +251,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 	directIPs := CIDRList(payload["directIps"])
 	proxyIPs := CIDRList(payload["proxyIps"])
 	amneziaPolicyIPs := CIDRList(payload["amneziaPolicyIps"])
+	amneziaPolicyDomains := stringList(payload["amneziaPolicyDomains"])
 	amneziaPolicyMark := NftMark(PayloadString(payload, "amneziaPolicyMark", ""))
 	directDomains := stringList(payload["directDomains"])
 	proxyDomains := stringList(payload["proxyDomains"])
@@ -306,8 +307,12 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		chainLines = append(chainLines, "    return comment \"RuOpenRay selected device list is empty\"")
 	}
 	chainLines = append(chainLines, "    ip daddr "+NftSet(localBypass)+" return")
-	if !selectedModeEmpty && len(amneziaPolicyIPs) > 0 && amneziaPolicyMark != "" {
-		setLines = append(setLines, "  set amnezia4 { type ipv4_addr; flags interval; elements = "+NftSet(amneziaPolicyIPs)+"; }")
+	if !selectedModeEmpty && (len(amneziaPolicyIPs) > 0 || len(amneziaPolicyDomains) > 0) && amneziaPolicyMark != "" {
+		if len(amneziaPolicyIPs) > 0 {
+			setLines = append(setLines, "  set amnezia4 { type ipv4_addr; flags interval; elements = "+NftSet(amneziaPolicyIPs)+"; }")
+		} else {
+			setLines = append(setLines, "  set amnezia4 { type ipv4_addr; flags interval; }")
+		}
 		chainLines = append(chainLines, targetPrefix+"ip daddr @amnezia4 meta mark set "+amneziaPolicyMark+" return comment \"RuOpenRay AWG policy\"")
 	}
 	if !selectedModeEmpty && bypassMode == "bypass" {
@@ -369,6 +374,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"directIps":            directIPs,
 		"proxyIps":             proxyIPs,
 		"amneziaPolicyIps":     amneziaPolicyIPs,
+		"amneziaPolicyDomains": amneziaPolicyDomains,
 		"amneziaPolicyMark":    amneziaPolicyMark,
 		"routerBypassIps":      routerBypassIPs,
 		"dnatReplyBypass":      DnatReplyBypassMeta(dnatReplyBypass),
@@ -377,7 +383,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		"path":                 DefaultNftPath,
 	}
 	metaLine := fmt.Sprintf(
-		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s amneziaPolicyIps=%s amneziaPolicyMark=%s routerBypassIps=%s dnatReplyBypass=%s directDomains=%s proxyDomains=%s",
+		"# ruopenray-meta routerMode=%s bypassMode=%s deviceMode=%s devices=%s portMode=%s ports=%s blockQuic=%t dnsIntercept=%t transparentPort=%d lanInterface=%s killSwitch=%t killSwitchDeviceMode=%s killSwitchDevices=%s killSwitchDomainMode=%s killSwitchIps=%s killSwitchDomains=%s directIps=%s proxyIps=%s amneziaPolicyIps=%s amneziaPolicyDomains=%s amneziaPolicyMark=%s routerBypassIps=%s dnatReplyBypass=%s directDomains=%s proxyDomains=%s",
 		routerMode,
 		bypassMode,
 		deviceMode,
@@ -397,6 +403,7 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 		strings.Join(directIPs, ","),
 		strings.Join(proxyIPs, ","),
 		strings.Join(amneziaPolicyIPs, ","),
+		strings.Join(amneziaPolicyDomains, ","),
 		amneziaPolicyMark,
 		strings.Join(routerBypassIPs, ","),
 		strings.Join(DnatReplyBypassMeta(dnatReplyBypass), ","),

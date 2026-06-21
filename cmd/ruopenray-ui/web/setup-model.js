@@ -190,6 +190,7 @@ export function createSetupModel({
     config.dns = config.dns && typeof config.dns === 'object' ? config.dns : {};
     config.dns.hosts = config.dns.hosts && typeof config.dns.hosts === 'object' && !Array.isArray(config.dns.hosts) ? config.dns.hosts : {};
     if (!config.dns.hosts['dns.google']) config.dns.hosts['dns.google'] = ['8.8.8.8', '8.8.4.4'];
+    if (!config.dns.hosts['dns.quad9.net']) config.dns.hosts['dns.quad9.net'] = ['9.9.9.9', '149.112.112.112'];
     if (!config.dns.hosts['dns.adguard-dns.com']) config.dns.hosts['dns.adguard-dns.com'] = ['94.140.14.14', '94.140.15.15'];
   }
 

@@ -1,5 +1,6 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
 import { createAmneziaView } from '../cmd/ruopenray-ui/web/amnezia-view.js';
+import { setAmneziaConfigField, setAmneziaConfigExtra } from '../cmd/ruopenray-ui/web/amnezia-config-editor.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
 import { anonymizeConfig, createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
 import { bindConfigControls } from '../cmd/ruopenray-ui/web/config-bindings.js';
@@ -214,10 +215,32 @@ const amneziaHtml = amneziaView.amneziaPanel();
 const amneziaRunControlsRender = amneziaHtml.includes('data-action="startAmnezia"')
   && amneziaHtml.includes('data-action="stopAmnezia"')
   && amneziaHtml.includes('amnezia-run-controls');
+state.amneziaImportDialog = true;
+state.amneziaConfigText = `[Interface]
+PrivateKey = private
+Address = 10.0.0.2/32
+Jc = 4
+
+[Peer]
+PublicKey = public
+Endpoint = vpn.example:443
+AllowedIPs = 0.0.0.0/0`;
+const amneziaEditorHtml = amneziaView.amneziaPanel();
+const amneziaStructuredEditorRender = amneziaEditorHtml.includes('amnezia-structured-editor')
+  && amneziaEditorHtml.includes('data-amnezia-field="PrivateKey"')
+  && amneziaEditorHtml.includes('data-amnezia-extra="interface"')
+  && amneziaEditorHtml.includes('Raw client.conf');
+let amneziaEditedConfig = setAmneziaConfigField(state.amneziaConfigText, 'peer', 'Endpoint', 'vpn2.example:443');
+amneziaEditedConfig = setAmneziaConfigExtra(amneziaEditedConfig, 'interface', 'Jc = 8\nJmin = 40');
+const amneziaConfigEditorBuildsRaw = amneziaEditedConfig.includes('Endpoint = vpn2.example:443')
+  && amneziaEditedConfig.includes('Jc = 8')
+  && amneziaEditedConfig.includes('[Interface]')
+  && amneziaEditedConfig.includes('[Peer]');
+state.amneziaImportDialog = false;
 state.amneziaView = 'awg';
 state.amneziaStatus.running = true;
 state.amneziaStatus.control = { managed: true };
-state.amneziaStatus.policy = { ipTargetCount: 2, appliedCount: 1, domainTargets: 3, active: true, warnings: ['domains pending'] };
+state.amneziaStatus.policy = { ipTargetCount: 2, appliedCount: 1, domainTargets: 3, domainNftsetCount: 2, appliedDomainCount: 1, active: true, warnings: ['domains pending'] };
 const amneziaAwgHtml = amneziaView.amneziaPanel();
 const amneziaPolicyControlsRender = amneziaAwgHtml.includes('data-action="applyAmneziaPolicy"')
   && amneziaAwgHtml.includes('data-action="rollbackAmneziaPolicy"')
@@ -354,6 +377,11 @@ const setupModel = createSetupModel({
     if (!config.dns.servers.includes(server)) config.dns.servers.push(server);
   },
 });
+const setupBootstrapConfig = { dns: { hosts: {}, servers: ['https://dns.quad9.net/dns-query'] }, routing: { rules: [] }, outbounds: [] };
+setupModel.ensureDnsBootstrapHosts(setupBootstrapConfig);
+const setupBootstrapIncludesQuad9 = Array.isArray(setupBootstrapConfig.dns.hosts['dns.quad9.net'])
+  && setupBootstrapConfig.dns.hosts['dns.quad9.net'].includes('9.9.9.9')
+  && setupBootstrapConfig.dns.hosts['dns.quad9.net'].includes('149.112.112.112');
 function createMemoryStorage() {
   return {
     data: new Map(),
@@ -1925,6 +1953,8 @@ const checks = [
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
   ['amnezia run controls render', amneziaRunControlsRender],
+  ['amnezia structured editor render', amneziaStructuredEditorRender],
+  ['amnezia config editor builds raw', amneziaConfigEditorBuildsRaw],
   ['amnezia policy controls render', amneziaPolicyControlsRender],
   ['diagnostics model events', model.logEvents().length === 1],
   ['diagnostics model domains', model.monitoredDomains()[0]?.host === 'chatgpt.com'],
@@ -1939,6 +1969,7 @@ const checks = [
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
+  ['setup model dns bootstrap quad9', setupBootstrapIncludesQuad9],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],

@@ -208,6 +208,25 @@ func TestNativeNftAmneziaPolicyBypassesBeforeTProxy(t *testing.T) {
 	}
 }
 
+func TestNativeNftAmneziaPolicyCreatesEmptySetForDomains(t *testing.T) {
+	body, meta := NativeNft(map[string]any{
+		"routerMode":           "tproxy",
+		"transparentPort":      "52345",
+		"amneziaPolicyDomains": []any{"domain:patreon.com", "speedtest.net"},
+		"amneziaPolicyMark":    "0x5200",
+	})
+	if !strings.Contains(body, "set amnezia4 { type ipv4_addr; flags interval; }") {
+		t.Fatalf("domain-only amnezia policy should create an empty amnezia4 set:\n%s", body)
+	}
+	if !strings.Contains(body, `ip daddr @amnezia4 meta mark set 0x5200 return comment "RuOpenRay AWG policy"`) {
+		t.Fatalf("domain-only amnezia policy should mark and return before catch-all:\n%s", body)
+	}
+	domains, ok := meta["amneziaPolicyDomains"].([]string)
+	if !ok || len(domains) != 2 {
+		t.Fatalf("amneziaPolicyDomains meta = %#v, want two domains", meta["amneziaPolicyDomains"])
+	}
+}
+
 func TestNativeNftKillSwitchForcesProtectedIPsToXray(t *testing.T) {
 	body, meta := NativeNft(map[string]any{
 		"routerMode":      "tproxy",

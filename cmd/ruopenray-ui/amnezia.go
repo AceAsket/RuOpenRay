@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	rfw "github.com/AceAsket/RuOpenRay/internal/firewall"
 )
 
 const (
@@ -606,9 +608,11 @@ func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any 
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": false, "error": "AmneziaWG policy routing applies only on the router."}
 	}
-	targets := amneziaPolicyIPv4Targets(s.loadAmneziaProfileRegistry().PolicyRules)
-	if len(targets) == 0 {
-		return map[string]any{"ok": false, "error": "No IPv4/CIDR AmneziaWG policy targets to apply.", "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
+	rules := s.loadAmneziaProfileRegistry().PolicyRules
+	targets := amneziaPolicyIPv4Targets(rules)
+	domains := amneziaPolicyConcreteDomains(rules)
+	if len(targets) == 0 && len(domains) == 0 {
+		return map[string]any{"ok": false, "error": "No concrete IP/CIDR/domain AmneziaWG policy targets to apply.", "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
 	}
 	if !commandExists("ip") {
 		return map[string]any{"ok": false, "error": "ip command is not available.", "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
@@ -627,6 +631,7 @@ func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any 
 	if firewallStatus["active"] == true || firewallStatus["persistent"] == true {
 		firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
 		firewallPayload["amneziaPolicyIps"] = targets
+		firewallPayload["amneziaPolicyDomains"] = domains
 		firewallPayload["amneziaPolicyMark"] = amneziaFwMark
 		firewallPayload[firewallCompatibilityConfirmKey] = true
 		firewallResult = s.applyFirewall(firewallPayload)
@@ -637,6 +642,7 @@ func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any 
 	return map[string]any{
 		"ok":       ok,
 		"targets":  targets,
+		"domains":  domains,
 		"steps":    steps,
 		"firewall": firewallResult,
 		"policy":   status["policy"],
@@ -655,19 +661,22 @@ func (s *serverState) rollbackAmneziaPolicy(payload map[string]any) map[string]a
 	if firewallStatus["active"] == true || firewallStatus["persistent"] == true {
 		firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
 		firewallPayload["amneziaPolicyIps"] = []string{}
+		firewallPayload["amneziaPolicyDomains"] = []string{}
 		firewallPayload["amneziaPolicyMark"] = ""
 		firewallPayload[firewallCompatibilityConfirmKey] = true
 		firewallResult = s.applyFirewall(firewallPayload)
 	}
+	routeNftsetSteps := applyRouteNftsets("amnezia4", nil, false)
 	s.clearAmneziaCache()
 	status := s.amneziaStatus()
-	ok := firewallResult["skipped"] == true || firewallResult["ok"] == true
+	ok := (firewallResult["skipped"] == true || firewallResult["ok"] == true) && rfw.AllStepsOK(routeNftsetSteps)
 	return map[string]any{
-		"ok":       ok,
-		"firewall": firewallResult,
-		"policy":   status["policy"],
-		"status":   status,
-		"message":  amneziaPolicyRollbackMessage(ok),
+		"ok":               ok,
+		"firewall":         firewallResult,
+		"routeNftsetSteps": routeNftsetSteps,
+		"policy":           status["policy"],
+		"status":           status,
+		"message":          amneziaPolicyRollbackMessage(ok),
 	}
 }
 
@@ -927,30 +936,42 @@ func amneziaPolicyRuleHasCondition(rule amneziaPolicyRule) bool {
 func (s *serverState) amneziaPolicyStatus() map[string]any {
 	rules := normalizeAmneziaPolicyRules(s.loadAmneziaProfileRegistry().PolicyRules)
 	targets := amneziaPolicyIPv4Targets(rules)
+	domains := amneziaPolicyConcreteDomains(rules)
 	firewallStatus := s.firewallStatus()
 	appliedTargets := amneziaCleanValueList(stringList(firewallStatus["amneziaPolicyIps"]))
+	appliedDomains := amneziaCleanValueList(stringList(firewallStatus["amneziaPolicyDomains"]))
+	nftsetStatus, _ := firewallStatus["amneziaPolicyNftset"].(map[string]any)
 	result := map[string]any{
-		"rules":          len(rules),
-		"ipTargets":      targets,
-		"ipTargetCount":  len(targets),
-		"domainTargets":  amneziaPolicyDomainTargetCount(rules),
-		"sourceTargets":  amneziaPolicySourceTargetCount(rules),
-		"appliedTargets": appliedTargets,
-		"appliedCount":   len(appliedTargets),
-		"mark":           firstNonEmpty(strings.TrimSpace(fmt.Sprint(firewallStatus["amneziaPolicyMark"])), amneziaFwMark),
-		"firewallActive": firewallStatus["active"] == true,
-		"persistent":     firewallStatus["persistent"] == true && len(appliedTargets) > 0,
-		"active":         firewallStatus["active"] == true && len(appliedTargets) > 0,
-		"routeTable":     amneziaRouteTable,
-		"nftSet":         "amnezia4",
-		"warnings":       []string{},
+		"rules":                  len(rules),
+		"ipTargets":              targets,
+		"ipTargetCount":          len(targets),
+		"domainTargets":          amneziaPolicyDomainTargetCount(rules),
+		"domainNftsetTargets":    domains,
+		"domainNftsetCount":      len(domains),
+		"unsupportedDomainCount": amneziaPolicyUnsupportedDomainCount(rules),
+		"sourceTargets":          amneziaPolicySourceTargetCount(rules),
+		"appliedTargets":         appliedTargets,
+		"appliedDomains":         appliedDomains,
+		"appliedCount":           len(appliedTargets),
+		"appliedDomainCount":     len(appliedDomains),
+		"domainNftset":           nftsetStatus,
+		"mark":                   firstNonEmpty(strings.TrimSpace(fmt.Sprint(firewallStatus["amneziaPolicyMark"])), amneziaFwMark),
+		"firewallActive":         firewallStatus["active"] == true,
+		"persistent":             firewallStatus["persistent"] == true && (len(appliedTargets) > 0 || len(appliedDomains) > 0),
+		"active":                 firewallStatus["active"] == true && (len(appliedTargets) > 0 || len(appliedDomains) > 0),
+		"routeTable":             amneziaRouteTable,
+		"nftSet":                 "amnezia4",
+		"warnings":               []string{},
 	}
 	warnings := []string{}
-	if len(rules) > 0 && len(targets) == 0 {
-		warnings = append(warnings, "Stored AWG policy has no concrete IPv4/CIDR targets yet.")
+	if len(rules) > 0 && len(targets) == 0 && len(domains) == 0 {
+		warnings = append(warnings, "Stored AWG policy has no concrete IPv4/CIDR/domain targets yet.")
 	}
-	if amneziaPolicyDomainTargetCount(rules) > 0 {
-		warnings = append(warnings, "Domain AWG policy still needs DNS/nftset resolver support; current apply uses concrete IP/CIDR targets.")
+	if len(domains) > 0 {
+		warnings = append(warnings, "Domain AWG policy uses dnsmasq nftset: entries appear after LAN clients resolve those domains.")
+	}
+	if unsupported := amneziaPolicyUnsupportedDomainCount(rules); unsupported > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d domain rules use geosite/regexp/ext or unsupported format and cannot be put into dnsmasq nftset yet.", unsupported))
 	}
 	if firewallStatus["active"] != true && firewallStatus["persistent"] != true {
 		warnings = append(warnings, "RuOpenRay interception is not active, so LAN policy bypass is not installed.")
@@ -992,6 +1013,33 @@ func amneziaNormalizeIPv4Target(value string) (string, bool) {
 	return network.String(), true
 }
 
+func amneziaPolicyConcreteDomains(rules []amneziaPolicyRule) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, rule := range normalizeAmneziaPolicyRules(rules) {
+		for _, item := range rule.Domain {
+			clean, ok := normalizeNftsetDomain(item)
+			if ok && !seen[clean] {
+				seen[clean] = true
+				out = append(out, clean)
+			}
+		}
+	}
+	return out
+}
+
+func amneziaPolicyUnsupportedDomainCount(rules []amneziaPolicyRule) int {
+	total := 0
+	for _, rule := range normalizeAmneziaPolicyRules(rules) {
+		for _, item := range rule.Domain {
+			if _, ok := normalizeNftsetDomain(item); !ok {
+				total++
+			}
+		}
+	}
+	return total
+}
+
 func amneziaPolicyDomainTargetCount(rules []amneziaPolicyRule) int {
 	total := 0
 	for _, rule := range normalizeAmneziaPolicyRules(rules) {
@@ -1022,7 +1070,7 @@ func amneziaFirewallPayloadFromStatus(status map[string]any) map[string]any {
 		"blockQuic", "dnsIntercept", "transparentPort", "lanInterface",
 		"killSwitch", "killSwitchDeviceMode", "killSwitchDevices", "killSwitchDomainMode",
 		"killSwitchIps", "killSwitchDomains", "directIps", "proxyIps", "routerBypassIps",
-		"dnatReplyBypass", "directDomains", "proxyDomains",
+		"dnatReplyBypass", "directDomains", "proxyDomains", "amneziaPolicyDomains",
 	}
 	for _, key := range keys {
 		if value, ok := status[key]; ok {
@@ -1051,7 +1099,7 @@ func amneziaPolicyApplyMessage(ok bool, firewallResult map[string]any) string {
 	if firewallResult["skipped"] == true {
 		return "Route table AmneziaWG готова. RuOpenRay firewall не активен, поэтому LAN-bypass не установлен."
 	}
-	return "AmneziaWG policy применена: выбранные IP/CIDR получают fwmark и обходят Xray в сторону AWG."
+	return "AmneziaWG policy применена: выбранные IP/CIDR и домены через dnsmasq nftset получают fwmark и обходят Xray в сторону AWG."
 }
 
 func amneziaPolicyRollbackMessage(ok bool) string {

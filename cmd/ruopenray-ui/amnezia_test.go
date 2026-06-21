@@ -477,6 +477,25 @@ func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
 	if rules[0].ProfileID != "cloudfour" || rules[0].Profile != "cloudfour.acespace.tech" {
 		t.Fatalf("profile target was not preserved: %#v", rules[0])
 	}
+	status := state.amneziaPolicyStatus()
+	if status["domainNftsetCount"] != 2 {
+		t.Fatalf("domainNftsetCount = %#v, want 2: %#v", status["domainNftsetCount"], status)
+	}
+}
+
+func TestAmneziaPolicyDomainTargetsSplitConcreteAndUnsupported(t *testing.T) {
+	rules := []amneziaPolicyRule{{
+		Domain: []string{"domain:patreon.com", "full:speedtest.net", "geosite:youtube", "regexp:.*\\.bad"},
+		Target: "bypass-xray",
+	}}
+	domains := amneziaPolicyConcreteDomains(rules)
+	want := []string{"patreon.com", "speedtest.net"}
+	if !reflect.DeepEqual(domains, want) {
+		t.Fatalf("domains = %#v, want %#v", domains, want)
+	}
+	if got := amneziaPolicyUnsupportedDomainCount(rules); got != 2 {
+		t.Fatalf("unsupported domains = %d, want 2", got)
+	}
 }
 
 func TestAmneziaPreflightRejectsEmptyConfig(t *testing.T) {

@@ -433,7 +433,7 @@ function dnsHostsSection(dns) {
       <div class="dns-bootstrap-card">
         <div>
           <strong>Bootstrap для DoH</strong>
-          <span>Чтобы Xray не пытался резолвить dns.google и dns.adguard-dns.com через них же, добавьте фиксированные hosts-записи.</span>
+          <span>Чтобы Xray не пытался резолвить dns.google, dns.quad9.net и dns.adguard-dns.com через них же, добавьте фиксированные hosts-записи.</span>
         </div>
         <button class="btn secondary" data-action="applyDnsBootstrapHosts">Добавить bootstrap</button>
       </div>

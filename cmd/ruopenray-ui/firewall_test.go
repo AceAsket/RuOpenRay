@@ -37,8 +37,8 @@ table inet ruopenray {}
 }
 
 func TestSanitizeKillSwitchDomains(t *testing.T) {
-	got := sanitizeKillSwitchDomains([]any{" OpenAI.com ", "*.chatgpt.com", "bad value", "10.0.0.1", "openai.com"})
-	want := []string{"openai.com", "chatgpt.com"}
+	got := sanitizeKillSwitchDomains([]any{" OpenAI.com ", "*.chatgpt.com", "domain:patreon.com", "full:speedtest.net", "geosite:youtube", "regexp:.*\\.bad", "bad value", "10.0.0.1", "openai.com"})
+	want := []string{"openai.com", "chatgpt.com", "patreon.com", "speedtest.net"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sanitizeKillSwitchDomains() = %#v, want %#v", got, want)
 	}

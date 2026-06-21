@@ -1,3 +1,5 @@
+import { amneziaInterfaceFields, amneziaPeerFields, parseAmneziaConfigText } from './amnezia-config-editor.js';
+
 export function createAmneziaView({ state, escapeHtml }) {
   const array = (value) => Array.isArray(value) ? value : [];
 
@@ -25,6 +27,45 @@ export function createAmneziaView({ state, escapeHtml }) {
       <strong>${escapeHtml(value || 'нет')}</strong>
       ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
     </article>`;
+  }
+
+  function amneziaConfigField(section, field, value = '') {
+    return `<label>
+      <span class="field-label">${escapeHtml(field.label)}</span>
+      <input class="input" data-amnezia-field="${escapeHtml(field.key)}" data-amnezia-section="${escapeHtml(section)}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(field.placeholder || '')}" spellcheck="false">
+    </label>`;
+  }
+
+  function amneziaStructuredEditor(text = '') {
+    const model = parseAmneziaConfigText(text);
+    return `<div class="amnezia-structured-editor">
+      <article>
+        <div>
+          <h3>[Interface]</h3>
+          <span>Локальный адрес, ключ клиента, DNS и дополнительные параметры AmneziaWG.</span>
+        </div>
+        <div class="amnezia-field-grid">
+          ${amneziaInterfaceFields.map((field) => amneziaConfigField('interface', field, model.interface?.[field.key])).join('')}
+        </div>
+        <label class="amnezia-extra-field">
+          <span class="field-label">Дополнительные параметры [Interface]</span>
+          <textarea class="code-textarea" data-amnezia-extra="interface" rows="4" spellcheck="false" placeholder="Jc = 4&#10;Jmin = 40&#10;Jmax = 70">${escapeHtml((model.interfaceExtra || []).join('\n'))}</textarea>
+        </label>
+      </article>
+      <article>
+        <div>
+          <h3>[Peer]</h3>
+          <span>Сервер, публичный ключ, endpoint и AllowedIPs.</span>
+        </div>
+        <div class="amnezia-field-grid">
+          ${amneziaPeerFields.map((field) => amneziaConfigField('peer', field, model.peer?.[field.key])).join('')}
+        </div>
+        <label class="amnezia-extra-field">
+          <span class="field-label">Дополнительные параметры [Peer]</span>
+          <textarea class="code-textarea" data-amnezia-extra="peer" rows="4" spellcheck="false" placeholder="S1 = ...&#10;H1 = ...">${escapeHtml((model.peerExtra || []).join('\n'))}</textarea>
+        </label>
+      </article>
+    </div>`;
   }
 
   function formatBytes(value) {
@@ -391,6 +432,11 @@ export function createAmneziaView({ state, escapeHtml }) {
           <strong>Проверьте конфиг</strong>
           <span>${escapeHtml(warnings.join(' '))}</span>
         </div>` : ''}
+      ${amneziaStructuredEditor(text)}
+      <div class="amnezia-raw-head">
+        <strong>Raw client.conf</strong>
+        <span>Поля выше собирают этот текст автоматически. Можно редактировать raw вручную для редких параметров.</span>
+      </div>
       <textarea class="amnezia-config-textarea code-textarea" data-amnezia-config spellcheck="false" placeholder="[Interface]
 PrivateKey = ...
 Address = ...
@@ -545,7 +591,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
             <span>Технический план для отправки части трафика в AWG без глобального default route туннеля.</span>
           </div>
           <div class="split-actions">
-            ${commandButton('applyAmneziaPolicy', policy.active ? 'Обновить AWG policy' : 'Применить AWG policy', 'warning', Number(policy.ipTargetCount || 0) === 0 || !(status.control?.managed || status.running))}
+            ${commandButton('applyAmneziaPolicy', policy.active ? 'Обновить AWG policy' : 'Применить AWG policy', 'warning', (Number(policy.ipTargetCount || 0) + Number(policy.domainNftsetCount || 0)) === 0 || !(status.control?.managed || status.running))}
             ${commandButton('rollbackAmneziaPolicy', 'Откатить AWG policy', 'secondary', !policy.active && !policy.persistent)}
           </div>
         </div>
@@ -554,8 +600,8 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
           ${metric('fwmark', plan.mark || '0x5200', 'метка для выбранных правил')}
           ${metric('Текущий default', routing.defaultViaTunnel ? 'через туннель' : 'не через туннель', routing.defaultRoute || '')}
           ${metric('ip rule', routing.ipRule ? 'найден' : 'не настроен', array(routing.rules).join(' · '))}
-          ${metric('AWG policy', policy.active ? 'в firewall' : (policy.persistent ? 'сохранена' : 'не применена'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR`)}
-          ${metric('Домены policy', String(Number(policy.domainTargets || 0)), policyWarnings.join(' · '))}
+          ${metric('AWG policy', policy.active ? 'в firewall' : (policy.persistent ? 'сохранена' : 'не применена'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR · ${Number(policy.appliedDomainCount || 0)} из ${Number(policy.domainNftsetCount || 0)} доменов`)}
+          ${metric('Домены policy', String(Number(policy.domainTargets || 0)), `${Number(policy.domainNftsetCount || 0)} через dnsmasq nftset${policyWarnings.length ? ` · ${policyWarnings.join(' · ')}` : ''}`)}
         </div>
         <div class="settings-info">
           <strong>Как это будет работать</strong>

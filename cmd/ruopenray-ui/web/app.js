@@ -684,6 +684,8 @@ const amneziaActions = createAmneziaActions({
 const {
   openAmneziaImportDialog,
   closeAmneziaImportDialog,
+  updateAmneziaConfigField,
+  updateAmneziaConfigExtra,
   refreshAmnezia,
   syncAmneziaStatus,
   loadAmneziaConfig,
@@ -2617,6 +2619,20 @@ function bind() {
   document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
     textarea.addEventListener('input', () => {
       state.amneziaConfigText = textarea.value;
+    });
+  });
+  document.querySelectorAll('[data-amnezia-field]').forEach((input) => {
+    input.addEventListener('input', () => {
+      updateAmneziaConfigField(input);
+      const raw = document.querySelector('[data-amnezia-config]');
+      if (raw) raw.value = state.amneziaConfigText || '';
+    });
+  });
+  document.querySelectorAll('[data-amnezia-extra]').forEach((textarea) => {
+    textarea.addEventListener('input', () => {
+      updateAmneziaConfigExtra(textarea);
+      const raw = document.querySelector('[data-amnezia-config]');
+      if (raw) raw.value = state.amneziaConfigText || '';
     });
   });
   document.querySelectorAll('[data-amnezia-name]').forEach((input) => {
