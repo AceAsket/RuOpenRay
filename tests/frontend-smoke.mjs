@@ -379,9 +379,15 @@ const setupModel = createSetupModel({
 });
 const setupBootstrapConfig = { dns: { hosts: {}, servers: ['https://dns.quad9.net/dns-query'] }, routing: { rules: [] }, outbounds: [] };
 setupModel.ensureDnsBootstrapHosts(setupBootstrapConfig);
-const setupBootstrapIncludesQuad9 = Array.isArray(setupBootstrapConfig.dns.hosts['dns.quad9.net'])
-  && setupBootstrapConfig.dns.hosts['dns.quad9.net'].includes('9.9.9.9')
-  && setupBootstrapConfig.dns.hosts['dns.quad9.net'].includes('149.112.112.112');
+const setupBootstrapHosts = setupBootstrapConfig.dns.hosts;
+const setupBootstrapCoversBuiltInDoh = [
+  ['cloudflare-dns.com', '1.1.1.1'],
+  ['dns.google', '8.8.8.8'],
+  ['dns.quad9.net', '9.9.9.9'],
+  ['dns.adguard-dns.com', '94.140.14.14'],
+  ['common.dot.dns.yandex.net', '77.88.8.8'],
+  ['doh.opendns.com', '208.67.222.222']
+].every(([host, ip]) => Array.isArray(setupBootstrapHosts[host]) && setupBootstrapHosts[host].includes(ip));
 function createMemoryStorage() {
   return {
     data: new Map(),
@@ -1969,7 +1975,7 @@ const checks = [
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
-  ['setup model dns bootstrap quad9', setupBootstrapIncludesQuad9],
+  ['setup model dns bootstrap built-in doh', setupBootstrapCoversBuiltInDoh],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
