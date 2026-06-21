@@ -1,3 +1,12 @@
+import {
+  bootstrapHostValues,
+  dnsHostsObject,
+  dohBootstrapHostFromAddress,
+  knownDohBootstrapIps,
+  saveDnsBootstrapHost,
+  isIpLiteral
+} from './dns-bootstrap.js';
+
 export function createDnsActions({
   state,
   request,
@@ -52,6 +61,58 @@ export function createDnsActions({
     return { address: dnsServerAddress(server) };
   }
 
+  function dnsBootstrapIpsFromResult(result = {}) {
+    const values = [
+      ...(Array.isArray(result.a) ? result.a : []),
+      ...(Array.isArray(result.aaaa) ? result.aaaa : []),
+      ...(Array.isArray(result.addresses) ? result.addresses : [])
+    ];
+    return [...new Set(values.map((item) => String(item || '').trim()).filter(isIpLiteral))];
+  }
+
+  async function ensureDohBootstrapHost(config, address) {
+    const host = dohBootstrapHostFromAddress(address);
+    if (!host) return null;
+    const hosts = dnsHostsObject(config);
+    const existing = bootstrapHostValues(hosts[host]);
+    if (existing.length) return { ok: true, host, ips: existing, source: 'existing' };
+
+    const known = knownDohBootstrapIps(host);
+    if (known.length) {
+      saveDnsBootstrapHost(config, host, known);
+      return { ok: true, host, ips: known, source: 'builtin' };
+    }
+
+    try {
+      const result = await request('/api/dns/check', {
+        method: 'POST',
+        body: JSON.stringify({ server: address, host })
+      });
+      const ips = dnsBootstrapIpsFromResult(result);
+      if (ips.length) {
+        saveDnsBootstrapHost(config, host, ips);
+        return { ok: true, host, ips, source: 'check', warnings: result.warnings || [] };
+      }
+      return { ok: false, host, ips: [], source: 'check', error: result.error || 'не удалось получить A/AAAA для DoH-hostname' };
+    } catch (error) {
+      return { ok: false, host, ips: [], source: 'check', error: String(error?.message || error || 'ошибка проверки bootstrap') };
+    }
+  }
+
+  function dnsAddMessage(server, bootstrap) {
+    if (!isDohServer(server)) return 'DNS-сервер добавлен в черновик';
+    if (!bootstrap) return 'DNS-сервер добавлен. DoH задан IP-адресом или bootstrap не требуется.';
+    if (bootstrap.ok) {
+      const source = bootstrap.source === 'existing'
+        ? 'уже был в hosts'
+        : bootstrap.source === 'builtin'
+          ? 'добавлен из встроенной базы'
+          : 'проверен и добавлен';
+      return `DNS-сервер добавлен. Bootstrap ${bootstrap.host} → ${bootstrap.ips.join(', ')} (${source}).`;
+    }
+    return `DNS не добавлен: bootstrap для ${bootstrap.host} не найден (${bootstrap.error}). Добавьте host-запись вручную или проверьте DoH URL.`;
+  }
+
   function dnsPolicyDomainsFor(index) {
     const servers = dnsConfig().servers || [];
     const server = servers[index];
@@ -66,7 +127,7 @@ export function createDnsActions({
     ];
   }
 
-  function addDnsServer() {
+  async function addDnsServer() {
     const address = dnsAddressWithAuth(state.dnsAddress);
     if (!address) {
       state.message = 'Укажите DNS-сервер, например https://dns.google:443/dns-query';
@@ -87,13 +148,19 @@ export function createDnsActions({
         : normalized.config;
     const next = cloneConfig();
     const servers = ensureDnsList(next);
+    const bootstrap = isDohServer(server) ? await ensureDohBootstrapHost(next, address) : null;
+    if (bootstrap && !bootstrap.ok) {
+      state.dnsBootstrapResult = bootstrap;
+      state.message = dnsAddMessage(server, bootstrap);
+      render();
+      return;
+    }
     servers.push(server);
     if (isDohServer(server)) prioritizeDohServers(next);
     syncConfig(next);
     state.dnsDomains = '';
-    state.message = isDohServer(server)
-      ? 'DNS-сервер добавлен. DoH поднят выше обычных DNS в черновике.'
-      : 'DNS-сервер добавлен в черновик';
+    state.dnsBootstrapResult = bootstrap;
+    state.message = dnsAddMessage(server, bootstrap);
     render();
   }
 

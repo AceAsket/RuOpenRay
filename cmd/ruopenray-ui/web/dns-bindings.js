@@ -30,6 +30,7 @@ export function bindDnsControls({
   document.querySelectorAll('[data-dns-preset]').forEach((button) => {
     button.addEventListener('click', () => {
       state.dnsAddress = button.dataset.dnsPreset;
+      state.dnsBootstrapResult = null;
       render();
     });
   });
@@ -47,16 +48,20 @@ export function bindDnsControls({
 
   document.querySelector('#dnsAddress')?.addEventListener('input', (event) => {
     state.dnsAddress = event.target.value;
+    state.dnsBootstrapResult = null;
   });
   document.querySelector('#dnsAuthEnabled')?.addEventListener('change', (event) => {
     state.dnsAuthEnabled = event.target.checked;
+    state.dnsBootstrapResult = null;
     render();
   });
   document.querySelector('#dnsAuthUser')?.addEventListener('input', (event) => {
     state.dnsAuthUser = event.target.value;
+    state.dnsBootstrapResult = null;
   });
   document.querySelector('#dnsAuthPassword')?.addEventListener('input', (event) => {
     state.dnsAuthPassword = event.target.value;
+    state.dnsBootstrapResult = null;
   });
   document.querySelector('#dnsDomains')?.addEventListener('input', (event) => {
     state.dnsDomains = event.target.value;

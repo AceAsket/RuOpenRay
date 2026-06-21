@@ -292,6 +292,7 @@ export function createInitialState() {
   dnsHostValue: '',
   dnsCheckHost: 'example.com',
   dnsCheckResult: null,
+  dnsBootstrapResult: null,
   dnsDiagnostics: null,
   lanDnsStatus: null,
   lanDnsMode: 'xray',

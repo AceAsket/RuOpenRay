@@ -1475,8 +1475,13 @@ const dnsActionState = {
 const dnsActionModel = createDnsModel({ state: dnsActionState });
 const dnsActions = createDnsActions({
   state: dnsActionState,
-  request: async (path) => {
-    if (path === '/api/dns/check') return { ok: true, a: ['93.184.216.34'], addresses: ['93.184.216.34'] };
+  request: async (path, options = {}) => {
+    if (path === '/api/dns/check') {
+      const payload = JSON.parse(options.body || '{}');
+      if (payload.host === 'secure-dns.example') return { ok: true, a: ['198.51.100.10'], addresses: ['198.51.100.10'] };
+      if (payload.host === 'broken-dns.example') return { ok: false, a: [], addresses: [], error: 'NXDOMAIN' };
+      return { ok: true, a: ['93.184.216.34'], addresses: ['93.184.216.34'] };
+    }
     if (path === '/api/dns/lan-upstream') return { ok: true, mode: dnsActionState.lanDnsMode, upstream: dnsActionState.lanDnsUpstream };
     return { ok: true };
   },
@@ -1492,20 +1497,29 @@ const dnsActions = createDnsActions({
     config.dns.hosts = { ...(config.dns.hosts || {}), 'dns.google': '8.8.8.8' };
   },
 });
-dnsActions.addDnsServer();
+await dnsActions.addDnsServer();
 dnsActionState.dnsAddress = 'https://dns.google/dns-query';
 dnsActionState.dnsDomains = '';
-dnsActions.addDnsServer();
+await dnsActions.addDnsServer();
 dnsActionState.dnsAddress = 'https://secure-dns.example/dns-query';
 dnsActionState.dnsAuthEnabled = true;
 dnsActionState.dnsAuthUser = 'user@example';
 dnsActionState.dnsAuthPassword = 'secret value';
-dnsActions.addDnsServer();
+await dnsActions.addDnsServer();
 const dnsAuthServer = dnsActionState.config.dns.servers.find((server) => String(server).includes('secure-dns.example'));
 const dnsAuthServerMasked = dnsAuthServer?.includes('user%40example:secret%20value@')
   && dnsActionModel.describeDnsServer(dnsAuthServer).address.includes('user%40example:***@')
   && !dnsActionModel.describeDnsServer(dnsAuthServer).address.includes('secret');
+const dnsCustomBootstrapAdded = Array.isArray(dnsActionState.config.dns.hosts['secure-dns.example'])
+  && dnsActionState.config.dns.hosts['secure-dns.example'].includes('198.51.100.10')
+  && dnsActionState.dnsBootstrapResult?.host === 'secure-dns.example';
 dnsActionState.dnsAuthEnabled = false;
+const dnsServerCountBeforeBroken = dnsActionState.config.dns.servers.length;
+dnsActionState.dnsAddress = 'https://broken-dns.example/dns-query';
+await dnsActions.addDnsServer();
+const dnsBrokenBootstrapBlocked = dnsActionState.config.dns.servers.length === dnsServerCountBeforeBroken
+  && dnsActionState.dnsBootstrapResult?.host === 'broken-dns.example'
+  && dnsActionState.dnsBootstrapResult?.ok === false;
 dnsActions.moveDnsServer(0, 1);
 dnsActions.prioritizeDohDnsServers();
 dnsActions.saveDnsHost();
@@ -2027,7 +2041,7 @@ const checks = [
   ['routing dialog multi value textarea', routeDialogMultiValueHtml.includes('route-value-editor') && routeDialogMultiValueHtml.includes('3 знач.') && routeDialogMultiValueHtml.includes('data-route-value-multiline="0"')],
   ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
-  ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1' && dnsAuthServerMasked],
+  ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1' && dnsAuthServerMasked && dnsCustomBootstrapAdded && dnsBrokenBootstrapBlocked],
   ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers.findIndex((server) => server?.address === '192.168.1.1') > 0],
   ['firewall status hydrate', firewallHydrateOk && firewallHydratePreservesDraft && firewallActiveStatusHydrates],
   ['firewall model payload', firewallModel.firewallInfo().ready && firewallModel.firewallPayload().routerMode === 'tproxy' && firewallModel.firewallPayload().killSwitchIps[0] === '172.64.150.0/24' && firewallModel.firewallPayload().proxyDomains.includes('telegram.org') && firewallModel.firewallPayload().proxyGeosite.includes('youtube')],

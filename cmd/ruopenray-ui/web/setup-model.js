@@ -1,3 +1,5 @@
+import { ensureKnownDohBootstrapHosts } from './dns-bootstrap.js';
+
 export function createSetupModel({
   state,
   byteSize,
@@ -187,19 +189,7 @@ export function createSetupModel({
   }
 
   function ensureDnsBootstrapHosts(config) {
-    config.dns = config.dns && typeof config.dns === 'object' ? config.dns : {};
-    config.dns.hosts = config.dns.hosts && typeof config.dns.hosts === 'object' && !Array.isArray(config.dns.hosts) ? config.dns.hosts : {};
-    const knownDohHosts = {
-      'cloudflare-dns.com': ['1.1.1.1', '1.0.0.1'],
-      'dns.google': ['8.8.8.8', '8.8.4.4'],
-      'dns.quad9.net': ['9.9.9.9', '149.112.112.112'],
-      'dns.adguard-dns.com': ['94.140.14.14', '94.140.15.15'],
-      'common.dot.dns.yandex.net': ['77.88.8.8', '77.88.8.1'],
-      'doh.opendns.com': ['208.67.222.222', '208.67.220.220']
-    };
-    for (const [host, ips] of Object.entries(knownDohHosts)) {
-      if (!config.dns.hosts[host]) config.dns.hosts[host] = ips;
-    }
+    ensureKnownDohBootstrapHosts(config);
   }
 
   function firstProxyOutboundTag(config) {

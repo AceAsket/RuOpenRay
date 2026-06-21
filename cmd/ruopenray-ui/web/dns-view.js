@@ -218,6 +218,7 @@ function dnsLeakProtectionTargets() {
 function dnsServersSection(dns) {
   const isDohServer = (server) => String(describeDnsServer(server).address || '').toLowerCase().startsWith('https://');
   const dohCount = (dns.servers || []).filter((server) => isDohServer(server)).length;
+  const bootstrap = state.dnsBootstrapResult;
   const presets = [
     ['Cloudflare DoH', 'https://cloudflare-dns.com/dns-query'],
     ['Google DoH', 'https://dns.google:443/dns-query'],
@@ -261,6 +262,12 @@ function dnsServersSection(dns) {
         </div>
         <button class="btn dns-add-button" data-action="addDns">Добавить DNS</button>
       </div>
+      ${bootstrap ? `<div class="settings-warning compact ${bootstrap.ok ? 'ok' : ''}">
+        <strong>Bootstrap DoH</strong>
+        <span>${escapeHtml(bootstrap.ok
+          ? `${bootstrap.host}: ${bootstrap.ips.join(', ')} (${bootstrap.source === 'existing' ? 'уже был в hosts' : bootstrap.source === 'builtin' ? 'встроенная запись' : 'проверено и добавлено в hosts'})`
+          : `${bootstrap.host}: ${bootstrap.error || 'не удалось получить IP'}. DNS не добавлен, задайте host-запись вручную или проверьте URL.`)}</span>
+      </div>` : ''}
       <div class="preset-grid dns-presets">
         ${presets.map(([name, address]) => `<button class="preset" type="button" data-dns-preset="${escapeHtml(address)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(address)}</span></button>`).join('')}
       </div>
