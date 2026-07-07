@@ -36,9 +36,14 @@ export function createServerModeActions({ state, request, render }) {
     return state.serverModeDraft;
   }
 
+  function resetServerModePreviews() {
+    state.serverModePreview = null;
+    state.serverModeFirewallPreview = null;
+  }
+
   function setServerModeEnabled(enabled) {
     ensureDraft().enabled = Boolean(enabled);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -69,7 +74,7 @@ export function createServerModeActions({ state, request, render }) {
       sniffing: true,
       openFirewall: false
     });
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -84,7 +89,7 @@ export function createServerModeActions({ state, request, render }) {
     });
     inbound.clients = Array.isArray(inbound.clients) ? inbound.clients : [];
     inbound.clients.push(result.client);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -107,7 +112,7 @@ export function createServerModeActions({ state, request, render }) {
       openFirewall: false,
       peers: []
     });
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -125,7 +130,7 @@ export function createServerModeActions({ state, request, render }) {
       presharedKey: '',
       enabled: true
     });
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -139,7 +144,7 @@ export function createServerModeActions({ state, request, render }) {
     inbound.reality = inbound.reality || {};
     inbound.reality.privateKey = result.privateKey;
     state.message = result.publicKey ? `Reality publicKey: ${result.publicKey}` : 'Reality privateKey обновлен';
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -164,6 +169,35 @@ export function createServerModeActions({ state, request, render }) {
     render();
   }
 
+  async function previewServerModeFirewall() {
+    const result = await request('/api/server-mode/firewall/preview', {
+      method: 'POST',
+      body: JSON.stringify({ config: ensureDraft() })
+    });
+    state.serverModeFirewallPreview = result;
+    state.message = result.ok ? 'WAN firewall готов к применению' : (result.error || 'WAN firewall требует внимания');
+    render();
+  }
+
+  async function applyServerModeFirewall() {
+    const result = await request('/api/server-mode/firewall/apply', {
+      method: 'POST',
+      body: JSON.stringify({ config: ensureDraft(), confirm: true })
+    });
+    state.serverModeFirewallPreview = result;
+    if (state.serverMode && result.status) state.serverMode.firewall = result.status;
+    state.message = result.ok ? 'WAN-порты server-mode открыты' : (result.error || 'WAN firewall не применен');
+    render();
+  }
+
+  async function disableServerModeFirewall() {
+    const result = await request('/api/server-mode/firewall/disable', { method: 'POST' });
+    state.serverModeFirewallPreview = result;
+    if (state.serverMode && result.status) state.serverMode.firewall = result.status;
+    state.message = result.ok ? 'WAN-порты server-mode закрыты' : (result.error || 'WAN firewall не отключен');
+    render();
+  }
+
   async function applyServerMode() {
     const result = await request('/api/server-mode/apply', {
       method: 'POST',
@@ -182,7 +216,7 @@ export function createServerModeActions({ state, request, render }) {
     const index = Number(button?.dataset?.serverModeInbound || 0);
     const draft = ensureDraft();
     draft.xray.splice(index, 1);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -193,7 +227,7 @@ export function createServerModeActions({ state, request, render }) {
     const inbound = draft.xray[inboundIndex];
     if (!inbound || !Array.isArray(inbound.clients)) return;
     inbound.clients.splice(clientIndex, 1);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -201,7 +235,7 @@ export function createServerModeActions({ state, request, render }) {
     const index = Number(button?.dataset?.serverModeAwg || 0);
     const draft = ensureDraft();
     draft.awg.splice(index, 1);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -212,7 +246,7 @@ export function createServerModeActions({ state, request, render }) {
     const server = draft.awg[serverIndex];
     if (!server || !Array.isArray(server.peers)) return;
     server.peers.splice(peerIndex, 1);
-    state.serverModePreview = null;
+    resetServerModePreviews();
     render();
   }
 
@@ -233,7 +267,7 @@ export function createServerModeActions({ state, request, render }) {
       value = String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
     }
     target[key] = value;
-    state.serverModePreview = null;
+    resetServerModePreviews();
   }
 
   return {
@@ -247,6 +281,9 @@ export function createServerModeActions({ state, request, render }) {
     generateServerModeRealityKey,
     saveServerMode,
     previewServerMode,
+    previewServerModeFirewall,
+    applyServerModeFirewall,
+    disableServerModeFirewall,
     applyServerMode,
     deleteServerModeInbound,
     deleteServerModeClient,

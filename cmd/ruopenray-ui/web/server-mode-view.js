@@ -185,6 +185,39 @@ export function createServerModeView({ state, escapeHtml }) {
     </div>`;
   }
 
+  function firewallPanel() {
+    const status = state.serverMode?.firewall || {};
+    const preview = state.serverModeFirewallPreview;
+    const statusRules = array(status.rules);
+    const previewRules = array(preview?.rules);
+    const rows = previewRules.length ? previewRules : statusRules;
+    const activeText = status.available === false
+      ? 'UCI firewall недоступен'
+      : (status.active ? `${status.count || statusRules.length} WAN правил открыто` : 'WAN правила не открыты');
+    const resultClass = preview?.ok ? 'ok' : 'warn';
+    return `<section class="server-mode-firewall">
+      <div class="server-mode-firewall-head">
+        <div>
+          <h3>WAN firewall</h3>
+          <p>Открывает только выбранные входящие порты server-mode через UCI firewall. Отключение удаляет только правила RuOpenRay.</p>
+        </div>
+        <span class="pill ${status.active ? 'ok' : 'muted'}">${escapeHtml(activeText)}</span>
+      </div>
+      <div class="server-mode-row-actions">
+        <button class="btn secondary compact" type="button" data-action="previewServerModeFirewall">Проверить WAN</button>
+        <button class="btn warning compact" type="button" data-action="applyServerModeFirewall">Открыть WAN</button>
+        <button class="btn secondary compact" type="button" data-action="disableServerModeFirewall">Закрыть WAN</button>
+      </div>
+      ${rows.length ? `<div class="server-mode-firewall-rules">
+        ${rows.map((rule) => `<article>
+          <strong>${escapeHtml(rule.name || rule.section || 'server-mode')}</strong>
+          <span>${escapeHtml(`${rule.source || 'wan'} · ${rule.protocol || 'tcp'} · ${rule.port || '-'}`)}</span>
+        </article>`).join('')}
+      </div>` : '<div class="empty-state compact">Включите “Планировать WAN firewall” у нужного входа и нажмите проверку.</div>'}
+      ${preview ? `<div class="notice ${resultClass} compact"><strong>${preview.ok ? 'План WAN готов' : 'WAN требует внимания'}</strong><span>${escapeHtml(preview.error || preview.message || 'Команды firewall построены без применения.')}</span></div>` : ''}
+    </section>`;
+  }
+
   function clientTrafficPanel() {
     const clients = array(state.serverMode?.clients);
     const stats = state.serverMode?.xrayStats || {};
@@ -243,6 +276,7 @@ export function createServerModeView({ state, escapeHtml }) {
       ${managedStats()}
       ${clientTrafficPanel()}
       ${issueList(preflight)}
+      ${firewallPanel()}
       <div class="server-mode-toolbar">
         <button class="btn secondary" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>
         <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AWG сервер</button>

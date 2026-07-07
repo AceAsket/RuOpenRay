@@ -8,6 +8,7 @@
 .server-mode-inbound,
 .server-mode-client,
 .server-mode-issues article,
+.server-mode-firewall,
 .server-mode-traffic,
 .server-mode-toolbar {
   border: 1px solid var(--line-soft);
@@ -137,6 +138,47 @@
   padding: 12px;
 }
 
+.server-mode-firewall {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.server-mode-firewall-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.server-mode-firewall-head h3,
+.server-mode-firewall-head p {
+  margin: 0;
+}
+
+.server-mode-firewall-head p {
+  color: var(--muted);
+}
+
+.server-mode-firewall-rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.server-mode-firewall-rules article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(49, 210, 189, 0.06);
+}
+
+.server-mode-firewall-rules span {
+  color: var(--muted);
+}
+
 .server-mode-traffic-head,
 .server-mode-traffic-list article {
   display: grid;
@@ -177,6 +219,7 @@ body[data-theme="light"] .server-mode-hero,
 body[data-theme="light"] .server-mode-inbound,
 body[data-theme="light"] .server-mode-client,
 body[data-theme="light"] .server-mode-issues article,
+body[data-theme="light"] .server-mode-firewall,
 body[data-theme="light"] .server-mode-traffic,
 body[data-theme="light"] .server-mode-toolbar {
   border-color: var(--line-soft);
@@ -199,6 +242,10 @@ body[data-theme="light"] .server-mode-issues article.warning {
 }
 
 body[data-theme="light"] .server-mode-traffic-list article {
+  background: rgba(10, 159, 139, 0.05);
+}
+
+body[data-theme="light"] .server-mode-firewall-rules article {
   background: rgba(10, 159, 139, 0.05);
 }
 
@@ -225,6 +272,7 @@ body[data-theme="light"] .server-mode-traffic-list article {
   }
 
   .server-mode-traffic-head,
+  .server-mode-firewall-head,
   .server-mode-traffic-list article {
     grid-template-columns: 1fr;
   }

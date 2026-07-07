@@ -19,6 +19,7 @@ export function createInitialState() {
   serverModeDraft: null,
   serverModePreflight: null,
   serverModePreview: null,
+  serverModeFirewallPreview: null,
   amneziaStatus: null,
   amneziaConfigText: '',
   amneziaConfigLoaded: false,

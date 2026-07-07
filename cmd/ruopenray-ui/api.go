@@ -169,6 +169,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-mode/apply" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serverModeApply(payload))
+	case path == "/server-mode/firewall/status" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.serverModeFirewallStatus())
+	case path == "/server-mode/firewall/preview" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeFirewallPreview(payload))
+	case path == "/server-mode/firewall/apply" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeFirewallApply(payload))
+	case path == "/server-mode/firewall/disable" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.serverModeFirewallDisable())
 	case path == "/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))
