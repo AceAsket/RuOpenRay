@@ -208,6 +208,87 @@ func TestServerModeAWGPlanWarnsWithoutApplyingInterface(t *testing.T) {
 	}
 }
 
+func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		AWG: []serverModeAWGServer{{
+			ID:          "family",
+			Name:        "Family AWG",
+			Enabled:     true,
+			Interface:   "awg-family",
+			ListenPort:  51820,
+			AddressCIDR: "10.70.0.1/24",
+			PrivateKey:  "server-private",
+			MTU:         1360,
+			EgressTag:   "proxy",
+			Advanced: map[string]interface{}{
+				"Jc":   4,
+				"Jmin": 40,
+				"S1":   1,
+				"bad":  "ignored",
+			},
+			Peers: []serverModeAWGPeer{{
+				ID:           "phone",
+				Name:         "Phone",
+				Enabled:      true,
+				PublicKey:    "peer-public",
+				PresharedKey: "peer-psk",
+				AllowedIPs:   "10.70.0.2",
+			}},
+		}},
+	})
+	plan := (&serverState{cfg: appConfig{DataDir: "/tmp/ruopenray"}}).serverModeAWGPlan(mode)
+	if plan["ok"] != true || plan["count"] != 1 {
+		t.Fatalf("unexpected AWG plan: %#v", plan)
+	}
+	servers := plan["servers"].([]map[string]any)
+	server := servers[0]
+	config := server["config"].(string)
+	for _, part := range []string{
+		"[Interface]",
+		"PrivateKey = server-private",
+		"ListenPort = 51820",
+		"Address = 10.70.0.1/24",
+		"MTU = 1360",
+		"Jc = 4",
+		"Jmin = 40",
+		"S1 = 1",
+		"[Peer]",
+		"PublicKey = peer-public",
+		"PresharedKey = peer-psk",
+		"AllowedIPs = 10.70.0.2/32",
+	} {
+		if !strings.Contains(config, part) {
+			t.Fatalf("config should contain %q:\n%s", part, config)
+		}
+	}
+	if strings.Contains(config, "bad = ignored") {
+		t.Fatalf("unknown advanced option leaked into config:\n%s", config)
+	}
+	redacted := server["configRedacted"].(string)
+	if strings.Contains(redacted, "server-private") || strings.Contains(redacted, "peer-psk") {
+		t.Fatalf("redacted config leaked secrets:\n%s", redacted)
+	}
+	commands := stringList(server["commands"])
+	if len(commands) < 5 || !strings.Contains(strings.Join(commands, "\n"), "awg setconf 'awg-family'") {
+		t.Fatalf("expected awg setconf command, got %#v", commands)
+	}
+	warnings := server["warnings"].([]serverModeIssue)
+	foundPolicyWarning := false
+	foundNormalizeWarning := false
+	for _, warning := range warnings {
+		if warning.Title == "AWG traffic policy is not applied yet" {
+			foundPolicyWarning = true
+		}
+		if warning.Title == "AWG peer AllowedIPs normalized" {
+			foundNormalizeWarning = true
+		}
+	}
+	if !foundPolicyWarning || !foundNormalizeWarning {
+		t.Fatalf("expected policy and normalization warnings, got %#v", warnings)
+	}
+}
+
 func TestServerModeSecurityReportShowsClientPolicy(t *testing.T) {
 	mode := normalizeServerModeConfig(serverModeConfig{
 		Enabled: true,

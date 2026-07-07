@@ -12,6 +12,7 @@
 .server-mode-security,
 .server-mode-traffic,
 .server-mode-export,
+.server-mode-awg-plan,
 .server-mode-toolbar {
   border: 1px solid var(--line-soft);
   border-radius: 8px;
@@ -189,6 +190,63 @@
   background: rgba(242, 189, 82, 0.1);
 }
 
+.server-mode-awg-plan {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.server-mode-awg-plan-head,
+.server-mode-awg-plan-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.server-mode-awg-plan-head h3,
+.server-mode-awg-plan-head p {
+  margin: 0;
+}
+
+.server-mode-awg-plan-head p,
+.server-mode-awg-plan-title span,
+.server-mode-awg-plan-issues {
+  color: var(--muted);
+}
+
+.server-mode-awg-plan-list {
+  display: grid;
+  gap: 10px;
+}
+
+.server-mode-awg-plan-list article {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(49, 210, 189, 0.06);
+}
+
+.server-mode-awg-plan-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.server-mode-awg-plan-issues span {
+  border: 1px solid rgba(242, 189, 82, 0.42);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(242, 189, 82, 0.1);
+}
+
+.server-mode-awg-plan-issues span.error {
+  border-color: rgba(255, 106, 122, 0.45);
+  background: rgba(255, 106, 122, 0.14);
+}
+
 .server-mode-security {
   display: grid;
   gap: 12px;
@@ -359,6 +417,7 @@ body[data-theme="light"] .server-mode-firewall,
 body[data-theme="light"] .server-mode-security,
 body[data-theme="light"] .server-mode-traffic,
 body[data-theme="light"] .server-mode-export,
+body[data-theme="light"] .server-mode-awg-plan,
 body[data-theme="light"] .server-mode-toolbar {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.88);
@@ -391,6 +450,10 @@ body[data-theme="light"] .server-mode-security-list article {
   background: rgba(10, 159, 139, 0.05);
 }
 
+body[data-theme="light"] .server-mode-awg-plan-list article {
+  background: rgba(10, 159, 139, 0.05);
+}
+
 body[data-theme="light"] .server-mode-policy-chip {
   background: rgba(255, 255, 255, 0.9);
 }
@@ -420,6 +483,8 @@ body[data-theme="light"] .server-mode-policy-chip {
   .server-mode-traffic-head,
   .server-mode-export-head,
   .server-mode-firewall-head,
+  .server-mode-awg-plan-head,
+  .server-mode-awg-plan-title,
   .server-mode-security-head,
   .server-mode-security-list article,
   .server-mode-traffic-list article {

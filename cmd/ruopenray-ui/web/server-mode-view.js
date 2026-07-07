@@ -180,6 +180,46 @@ export function createServerModeView({ state, escapeHtml }) {
     </article>`;
   }
 
+  function awgPlanPanel() {
+    const plan = state.serverModePreview?.awgPlan || state.serverMode?.awgPlan || {};
+    const servers = array(plan.servers);
+    if (!servers.length) return '';
+    const globalIssues = [...array(plan.errors), ...array(plan.warnings)];
+    return `<section class="server-mode-awg-plan">
+      <div class="server-mode-awg-plan-head">
+        <div>
+          <h3>План AmneziaWG server</h3>
+          <p>RuOpenRay пока только готовит конфиг интерфейса и команды. Маршрутизация трафика peer-ов в выбранный outbound будет отдельным безопасным шагом.</p>
+        </div>
+        <span class="pill ${plan.ok ? 'ok' : 'warn'}">${plan.ok ? 'готов' : 'нужна правка'}</span>
+      </div>
+      ${globalIssues.length ? `<div class="server-mode-awg-plan-issues">
+        ${globalIssues.map((issue) => `<span class="${escapeHtml(issue.severity || 'warning')}">${escapeHtml(issue.title || 'AWG')}${issue.source ? ` · ${escapeHtml(issue.source)}` : ''}</span>`).join('')}
+      </div>` : ''}
+      <div class="server-mode-awg-plan-list">
+        ${servers.map((server) => {
+          const commands = array(server.commands).join('\n');
+          const serverIssues = [...array(server.errors), ...array(server.warnings)];
+          return `<article>
+            <div class="server-mode-awg-plan-title">
+              <div>
+                <strong>${escapeHtml(server.name || server.id || 'AWG')}</strong>
+                <span>${escapeHtml(`${server.interface || 'awg-server'} · udp/${server.listenPort || '-'} · ${server.addressCidr || '-'}`)}</span>
+              </div>
+              <span class="pill ${server.ok ? 'ok' : 'warn'}">${escapeHtml(`${server.peerCount || 0} peers`)}</span>
+            </div>
+            ${serverIssues.length ? `<div class="server-mode-awg-plan-issues compact">
+              ${serverIssues.map((issue) => `<span class="${escapeHtml(issue.severity || 'warning')}">${escapeHtml(issue.title || 'AWG')}</span>`).join('')}
+            </div>` : ''}
+            <label class="server-mode-export-field"><span>Config path</span><input class="input" readonly value="${escapeHtml(server.configPath || '')}"></label>
+            <label class="server-mode-export-field"><span>AWG config preview</span><textarea class="input" readonly rows="8">${escapeHtml(server.configRedacted || server.config || '')}</textarea></label>
+            <label class="server-mode-export-field"><span>Команды запуска</span><textarea class="input" readonly rows="7">${escapeHtml(commands)}</textarea></label>
+          </article>`;
+        }).join('')}
+      </div>
+    </section>`;
+  }
+
   function managedStats() {
     const managed = state.serverMode?.managed || state.serverModePreview?.summary || {};
     return `<div class="grid four">
@@ -392,6 +432,7 @@ export function createServerModeView({ state, escapeHtml }) {
       ${clientTrafficPanel()}
       ${clientExportPanel()}
       ${issueList(preflight)}
+      ${awgPlanPanel()}
       ${firewallPanel()}
       <div class="server-mode-toolbar">
         <button class="btn secondary" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>

@@ -285,6 +285,7 @@ func (s *serverState) serverModeReport() map[string]any {
 		"ok":      activeErr == nil,
 		"config":  mode,
 		"summary": serverModeSummary(mode),
+		"awgPlan": s.serverModeAWGPlan(mode),
 	}
 	if activeErr != nil {
 		report["error"] = activeErr.Error()
@@ -495,6 +496,7 @@ func (s *serverState) serverModePreview(payload map[string]any) map[string]any {
 		"test":      test,
 		"summary":   serverModeManagedSummary(patched),
 		"xray":      patched,
+		"awgPlan":   s.serverModeAWGPlan(mode),
 	}
 }
 
