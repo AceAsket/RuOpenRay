@@ -2,6 +2,7 @@ package main
 
 import (
 	rxraystats "github.com/AceAsket/RuOpenRay/internal/xraystats"
+	"strings"
 	"testing"
 )
 
@@ -233,5 +234,72 @@ func TestServerModeSecurityReportShowsClientPolicy(t *testing.T) {
 	}
 	if clients[1]["risk"] != "high" || clients[1]["lan"] != "allowed" || clients[1]["dns"] != "allowed" {
 		t.Fatalf("admin client should be high-risk LAN/DNS allowed, got %#v", clients[1])
+	}
+}
+
+func TestServerModeClientExportBuildsRealityURIAndOutbound(t *testing.T) {
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		Xray: []serverModeXrayInbound{{
+			ID:         "public",
+			Name:       "Public",
+			Enabled:    true,
+			Listen:     "0.0.0.0",
+			PublicHost: "old.example.com",
+			Port:       1443,
+			Protocol:   "vless",
+			Network:    "tcp",
+			Security:   "reality",
+			Reality: serverModeReality{
+				Dest:        "www.microsoft.com:443",
+				ServerNames: []string{"www.microsoft.com"},
+				PrivateKey:  "private-key",
+				PublicKey:   "public-key",
+				ShortIDs:    []string{"abcd"},
+			},
+			Clients: []serverModeClient{{
+				ID:        "alice",
+				Name:      "Alice Phone",
+				UUID:      "11111111-1111-4111-8111-111111111111",
+				Email:     "alice@example",
+				Enabled:   true,
+				EgressTag: "proxy",
+				Flow:      "xtls-rprx-vision",
+			}},
+		}},
+	})
+	export := (&serverState{}).buildServerModeClientExport(map[string]any{
+		"config":    mode,
+		"inboundId": "public",
+		"clientId":  "alice",
+		"host":      "https://vpn.example.com:443/path",
+	})
+	if !export.OK {
+		t.Fatalf("export failed: %#v", export)
+	}
+	if export.Host != "vpn.example.com" {
+		t.Fatalf("host should be normalized, got %q", export.Host)
+	}
+	for _, part := range []string{
+		"vless://11111111-1111-4111-8111-111111111111@vpn.example.com:1443?",
+		"security=reality",
+		"sni=www.microsoft.com",
+		"pbk=public-key",
+		"sid=abcd",
+		"flow=xtls-rprx-vision",
+	} {
+		if !strings.Contains(export.URI, part) {
+			t.Fatalf("URI %q should contain %q", export.URI, part)
+		}
+	}
+	settings := mapValue(export.Outbound["settings"])
+	vnext := anySlice(settings["vnext"])
+	if len(vnext) != 1 || mapValue(vnext[0])["address"] != "vpn.example.com" || number(mapValue(vnext[0])["port"], 0) != 1443 {
+		t.Fatalf("unexpected vnext: %#v", vnext)
+	}
+	stream := mapValue(export.Outbound["streamSettings"])
+	reality := mapValue(stream["realitySettings"])
+	if reality["publicKey"] != "public-key" || reality["shortId"] != "abcd" || reality["serverName"] != "www.microsoft.com" {
+		t.Fatalf("unexpected reality settings: %#v", reality)
 	}
 }

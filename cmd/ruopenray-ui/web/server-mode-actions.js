@@ -39,6 +39,7 @@ export function createServerModeActions({ state, request, render }) {
   function resetServerModePreviews() {
     state.serverModePreview = null;
     state.serverModeFirewallPreview = null;
+    state.serverModeClientExport = null;
   }
 
   function setServerModeEnabled(enabled) {
@@ -60,6 +61,7 @@ export function createServerModeActions({ state, request, render }) {
       name: 'Вход Reality',
       enabled: true,
       listen: '0.0.0.0',
+      publicHost: '',
       port: 443,
       protocol: 'vless',
       network: 'tcp',
@@ -68,6 +70,7 @@ export function createServerModeActions({ state, request, render }) {
         dest: 'www.microsoft.com:443',
         serverNames: ['www.microsoft.com'],
         privateKey: '',
+        publicKey: '',
         shortIds: ['']
       },
       clients: [client.client],
@@ -143,8 +146,58 @@ export function createServerModeActions({ state, request, render }) {
     if (!result?.ok || !result.privateKey) throw new Error(result?.error || result?.stderr || 'Не удалось сгенерировать ключ Reality');
     inbound.reality = inbound.reality || {};
     inbound.reality.privateKey = result.privateKey;
+    inbound.reality.publicKey = result.publicKey || inbound.reality.publicKey || '';
     state.message = result.publicKey ? `Reality publicKey: ${result.publicKey}` : 'Reality privateKey обновлен';
     resetServerModePreviews();
+    render();
+  }
+
+  async function exportServerModeClient(button) {
+    const inboundIndex = Number(button?.dataset?.serverModeInbound || 0);
+    const clientIndex = Number(button?.dataset?.serverModeClient || 0);
+    const draft = ensureDraft();
+    const inbound = draft.xray[inboundIndex];
+    const client = inbound?.clients?.[clientIndex];
+    if (!inbound || !client) return;
+    let host = String(inbound.publicHost || '').trim();
+    if (!host) {
+      const entered = window.prompt('Публичный домен или WAN IP для клиента', window.location.hostname || '');
+      if (entered === null) return;
+      host = String(entered || '').trim();
+      if (host) inbound.publicHost = host;
+    }
+    const result = await request('/api/server-mode/client/export', {
+      method: 'POST',
+      body: JSON.stringify({ config: draft, inboundId: inbound.id, clientId: client.id, host })
+    });
+    state.serverModeClientExport = result;
+    if (result?.uri) {
+      try {
+        await navigator.clipboard.writeText(result.uri);
+        state.message = 'VLESS ссылка клиента скопирована';
+      } catch (_) {
+        state.message = 'VLESS ссылка клиента готова';
+      }
+    } else {
+      state.message = result?.error || 'Не удалось собрать ссылку клиента';
+    }
+    render();
+  }
+
+  function downloadServerModeClientExport() {
+    const payload = state.serverModeClientExport?.outbound;
+    if (!payload) return;
+    const filename = state.serverModeClientExport?.filename || 'ruopenray-client.json';
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    state.message = 'JSON клиента скачан';
     render();
   }
 
@@ -279,6 +332,8 @@ export function createServerModeActions({ state, request, render }) {
     addServerModeAWGServer,
     addServerModeAWGPeer,
     generateServerModeRealityKey,
+    exportServerModeClient,
+    downloadServerModeClientExport,
     saveServerMode,
     previewServerMode,
     previewServerModeFirewall,

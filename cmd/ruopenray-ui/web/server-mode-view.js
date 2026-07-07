@@ -61,7 +61,10 @@ export function createServerModeView({ state, escapeHtml }) {
     return `<article class="server-mode-client">
       <div class="server-mode-client-head">
         ${checkbox(`${base}.enabled`, client.enabled, client.name || `Клиент ${clientIndex + 1}`)}
-        <button class="icon-btn danger" type="button" data-action="deleteServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}" title="Удалить клиента">×</button>
+        <div class="server-mode-row-actions">
+          <button class="btn secondary compact" type="button" data-action="exportServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}">Ссылка</button>
+          <button class="icon-btn danger" type="button" data-action="deleteServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}" title="Удалить клиента">×</button>
+        </div>
       </div>
       <div class="server-mode-grid">
         <label><span>Имя</span>${textInput(`${base}.name`, client.name)}</label>
@@ -99,6 +102,7 @@ export function createServerModeView({ state, escapeHtml }) {
       <div class="server-mode-grid">
         <label><span>Название</span>${textInput(`${base}.name`, inbound.name)}</label>
         <label><span>Listen</span>${textInput(`${base}.listen`, inbound.listen || '0.0.0.0', 'spellcheck="false"')}</label>
+        <label><span>Публичный адрес</span>${textInput(`${base}.publicHost`, inbound.publicHost || '', 'placeholder="vpn.example.com" spellcheck="false"')}</label>
         <label><span>Порт</span>${numberInput(`${base}.port`, inbound.port || 443, 'min="1" max="65535"')}</label>
         <label><span>Security</span>
           <select class="input" data-server-mode-field="${base}.security">
@@ -110,6 +114,7 @@ export function createServerModeView({ state, escapeHtml }) {
         <label><span>Reality dest</span>${textInput(`${base}.reality.dest`, inbound.reality?.dest || 'www.microsoft.com:443', 'spellcheck="false"')}</label>
         <label><span>Server names</span>${textInput(`${base}.reality.serverNames`, array(inbound.reality?.serverNames).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
         <label><span>Private key</span>${textInput(`${base}.reality.privateKey`, inbound.reality?.privateKey || '', 'spellcheck="false"')}</label>
+        <label><span>Public key</span>${textInput(`${base}.reality.publicKey`, inbound.reality?.publicKey || '', 'spellcheck="false"')}</label>
         <label><span>Short IDs</span>${textInput(`${base}.reality.shortIds`, array(inbound.reality?.shortIds).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
       </div>
       <div class="server-mode-policy-row">
@@ -339,6 +344,25 @@ export function createServerModeView({ state, escapeHtml }) {
     </section>`;
   }
 
+  function clientExportPanel() {
+    const data = state.serverModeClientExport;
+    if (!data) return '';
+    const warnings = array(data.warnings);
+    const outboundJson = JSON.stringify(data.outbound || {}, null, 2);
+    return `<section class="server-mode-export">
+      <div class="server-mode-export-head">
+        <div>
+          <h3>Экспорт клиента</h3>
+          <p>${data.ok === false ? escapeHtml(data.error || 'Не удалось собрать профиль клиента.') : 'VLESS ссылка скопирована в буфер, JSON можно скачать для ручной настройки Xray.'}</p>
+        </div>
+        <button class="btn secondary compact" type="button" data-action="downloadServerModeClientExport" ${data.outbound ? '' : 'disabled'}>Скачать JSON</button>
+      </div>
+      ${warnings.length ? `<div class="server-mode-export-warnings">${warnings.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}
+      ${data.uri ? `<label class="server-mode-export-field"><span>VLESS URI</span><textarea class="input" readonly rows="3">${escapeHtml(data.uri)}</textarea></label>` : ''}
+      ${data.outbound ? `<label class="server-mode-export-field"><span>Xray outbound JSON</span><textarea class="input" readonly rows="8">${escapeHtml(outboundJson)}</textarea></label>` : ''}
+    </section>`;
+  }
+
   function serverModePanel() {
     const model = draft();
     const preflight = state.serverModePreflight || state.serverMode?.preflight || {};
@@ -366,6 +390,7 @@ export function createServerModeView({ state, escapeHtml }) {
       ${managedStats()}
       ${securityPanel(model)}
       ${clientTrafficPanel()}
+      ${clientExportPanel()}
       ${issueList(preflight)}
       ${firewallPanel()}
       <div class="server-mode-toolbar">

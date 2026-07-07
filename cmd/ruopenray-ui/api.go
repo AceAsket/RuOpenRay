@@ -161,6 +161,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-mode/client" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serverModeNewClient(payload))
+	case path == "/server-mode/client/export" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeClientExport(payload))
 	case path == "/server-mode/reality-key" && r.Method == http.MethodPost:
 		writeJSON(w, 200, s.serverModeRealityKey())
 	case path == "/server-mode/preview" && r.Method == http.MethodPost:

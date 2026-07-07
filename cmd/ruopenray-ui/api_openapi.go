@@ -157,6 +157,7 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/server-mode", "Server mode", "Get inbound server mode", "Returns saved Xray/AWG inbound server configuration, safety preflight, managed Xray summary and available outbounds.", "", "Object"},
 		{"post", "/server-mode", "Server mode", "Save inbound server mode", "Stores server-mode settings without changing active Xray config.", "GenericObject", "Object"},
 		{"post", "/server-mode/client", "Server mode", "Create server-mode client", "Generates a VLESS client UUID/email for a selected inbound.", "GenericObject", "Object"},
+		{"post", "/server-mode/client/export", "Server mode", "Export server-mode client", "Builds a VLESS URI and Xray outbound JSON for a selected server-mode client.", "GenericObject", "Object"},
 		{"post", "/server-mode/reality-key", "Server mode", "Generate Reality key pair", "Runs xray x25519 and returns private/public keys.", "", "Object"},
 		{"post", "/server-mode/preview", "Server mode", "Preview server-mode Xray patch", "Builds managed inbound/routing changes and validates the resulting Xray config without writing it.", "GenericObject", "Object"},
 		{"post", "/server-mode/apply", "Server mode", "Apply server-mode Xray patch", "Writes managed inbound/routing changes to active Xray config after preflight. Xray restart is skipped unless restart=true is passed.", "GenericObject", "Object"},

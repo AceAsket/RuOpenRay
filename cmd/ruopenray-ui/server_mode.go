@@ -34,6 +34,7 @@ type serverModeXrayInbound struct {
 	Name         string             `json:"name"`
 	Enabled      bool               `json:"enabled"`
 	Listen       string             `json:"listen"`
+	PublicHost   string             `json:"publicHost,omitempty"`
 	Port         int                `json:"port"`
 	Protocol     string             `json:"protocol"`
 	Network      string             `json:"network"`
@@ -48,6 +49,7 @@ type serverModeReality struct {
 	Dest        string   `json:"dest"`
 	ServerNames []string `json:"serverNames"`
 	PrivateKey  string   `json:"privateKey"`
+	PublicKey   string   `json:"publicKey,omitempty"`
 	ShortIDs    []string `json:"shortIds"`
 }
 
@@ -155,6 +157,7 @@ func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
 		if strings.TrimSpace(in.Listen) == "" {
 			in.Listen = "0.0.0.0"
 		}
+		in.PublicHost = strings.TrimSpace(in.PublicHost)
 		if in.Port == 0 {
 			in.Port = 443
 		}
@@ -163,6 +166,7 @@ func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
 		in.Security = strings.ToLower(strings.TrimSpace(firstNonEmpty(in.Security, "reality")))
 		in.Reality.Dest = strings.TrimSpace(in.Reality.Dest)
 		in.Reality.PrivateKey = strings.TrimSpace(in.Reality.PrivateKey)
+		in.Reality.PublicKey = strings.TrimSpace(in.Reality.PublicKey)
 		in.Reality.ServerNames = cleanStringSet(in.Reality.ServerNames)
 		in.Reality.ShortIDs = cleanStringSet(in.Reality.ShortIDs)
 		for j := range in.Clients {

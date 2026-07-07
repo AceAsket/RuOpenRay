@@ -11,6 +11,7 @@
 .server-mode-firewall,
 .server-mode-security,
 .server-mode-traffic,
+.server-mode-export,
 .server-mode-toolbar {
   border: 1px solid var(--line-soft);
   border-radius: 8px;
@@ -137,6 +138,55 @@
   display: grid;
   gap: 12px;
   padding: 12px;
+}
+
+.server-mode-export {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.server-mode-export-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.server-mode-export-head h3,
+.server-mode-export-head p {
+  margin: 0;
+}
+
+.server-mode-export-head p,
+.server-mode-export-field span,
+.server-mode-export-warnings {
+  color: var(--muted);
+}
+
+.server-mode-export-field {
+  display: grid;
+  gap: 6px;
+}
+
+.server-mode-export-field textarea {
+  min-height: 78px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  line-height: 1.45;
+}
+
+.server-mode-export-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.server-mode-export-warnings span {
+  border: 1px solid rgba(242, 189, 82, 0.42);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(242, 189, 82, 0.1);
 }
 
 .server-mode-security {
@@ -308,6 +358,7 @@ body[data-theme="light"] .server-mode-issues article,
 body[data-theme="light"] .server-mode-firewall,
 body[data-theme="light"] .server-mode-security,
 body[data-theme="light"] .server-mode-traffic,
+body[data-theme="light"] .server-mode-export,
 body[data-theme="light"] .server-mode-toolbar {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.88);
@@ -367,6 +418,7 @@ body[data-theme="light"] .server-mode-policy-chip {
   }
 
   .server-mode-traffic-head,
+  .server-mode-export-head,
   .server-mode-firewall-head,
   .server-mode-security-head,
   .server-mode-security-list article,

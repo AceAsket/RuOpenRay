@@ -15,6 +15,7 @@ const busyLabels = {
   addServerModeAWGServer: 'Добавляю сервер AWG',
   addServerModeAWGPeer: 'Добавляю peer AWG',
   generateServerModeRealityKey: 'Генерирую Reality key',
+  exportServerModeClient: 'Готовлю профиль клиента',
   saveServerMode: 'Сохраняю серверный режим',
   previewServerMode: 'Проверяю server-mode',
   previewServerModeFirewall: 'Проверяю WAN firewall',
