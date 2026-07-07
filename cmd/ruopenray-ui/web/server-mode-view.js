@@ -185,6 +185,96 @@ export function createServerModeView({ state, escapeHtml }) {
     </div>`;
   }
 
+  function policyChip(label, value, tone = '') {
+    return `<span class="server-mode-policy-chip ${escapeHtml(tone || value || '')}">${escapeHtml(label)}</span>`;
+  }
+
+  function clientSecurityRows(model) {
+    const rows = [];
+    array(model.xray).forEach((inbound) => {
+      array(inbound.clients).forEach((client) => {
+        const enabled = inbound.enabled !== false && client.enabled !== false;
+        const lan = client.allowLan ? 'allowed' : 'blocked';
+        const router = client.allowLan || client.allowRouter ? 'allowed' : 'blocked';
+        const dns = client.allowDns ? 'allowed' : 'blocked';
+        const risk = client.allowLan ? 'high' : ((client.allowRouter || client.allowDns) ? 'medium' : 'low');
+        let rules = enabled ? 1 : 0;
+        if (enabled && !client.allowDns) rules += 1;
+        if (enabled && !client.allowLan) rules += 1;
+        if (enabled && client.allowRouter && !client.allowLan) rules += 1;
+        rows.push({
+          kind: 'Xray',
+          name: client.name || client.email || client.id || 'Клиент',
+          parent: inbound.name || inbound.id || 'Вход',
+          enabled,
+          egress: client.egressTag || 'direct',
+          lan,
+          router,
+          dns,
+          risk,
+          rules
+        });
+      });
+    });
+    array(model.awg).forEach((server) => {
+      array(server.peers).forEach((peer) => {
+        const enabled = server.enabled === true && peer.enabled !== false;
+        rows.push({
+          kind: 'AWG',
+          name: peer.name || peer.id || 'Peer',
+          parent: server.name || server.id || 'AWG',
+          enabled,
+          egress: server.egressTag || 'direct',
+          lan: server.allowLan ? 'allowed' : 'blocked',
+          router: server.allowLan ? 'allowed' : 'blocked',
+          dns: 'client',
+          risk: server.allowLan ? 'high' : 'low',
+          rules: 0
+        });
+      });
+    });
+    return rows;
+  }
+
+  function securityPanel(model) {
+    const rows = clientSecurityRows(model);
+    const enabledRows = rows.filter((row) => row.enabled);
+    const lanOpen = enabledRows.filter((row) => row.lan === 'allowed').length;
+    const dnsOpen = enabledRows.filter((row) => row.dns === 'allowed').length;
+    const highRisk = enabledRows.filter((row) => row.risk === 'high').length;
+    const managedRules = enabledRows.reduce((sum, row) => sum + Number(row.rules || 0), 0);
+    return `<section class="server-mode-security">
+      <div class="server-mode-security-head">
+        <div>
+          <h3>Политики клиентов</h3>
+          <p>По умолчанию внешний клиент не получает LAN и DNS router. Разрешения ниже превращаются в managed routing rules.</p>
+        </div>
+        <div class="server-mode-security-summary">
+          ${policyChip(`${enabledRows.length} активных`, 'neutral')}
+          ${policyChip(`${managedRules} правил`, 'neutral')}
+          ${policyChip(`${lanOpen} LAN`, lanOpen ? 'danger' : 'ok')}
+          ${policyChip(`${dnsOpen} DNS`, dnsOpen ? 'warn' : 'ok')}
+        </div>
+      </div>
+      ${highRisk ? `<div class="notice warn compact"><strong>Есть клиенты с LAN-доступом</strong><span>Оставляйте это только для доверенных клиентов: они смогут обращаться к приватным адресам через router.</span></div>` : ''}
+      ${rows.length ? `<div class="server-mode-security-list">
+        ${rows.map((row) => `<article class="${row.enabled ? '' : 'disabled'}">
+          <div>
+            <strong>${escapeHtml(row.name)}</strong>
+            <span>${escapeHtml(`${row.kind} · ${row.parent} · ${row.egress}`)}</span>
+          </div>
+          <div class="server-mode-policy-chips">
+            ${policyChip(row.enabled ? 'включен' : 'выключен', row.enabled ? 'ok' : 'muted')}
+            ${policyChip(row.lan === 'allowed' ? 'LAN открыт' : 'LAN закрыт', row.lan === 'allowed' ? 'danger' : 'ok')}
+            ${policyChip(row.router === 'allowed' ? 'router открыт' : 'router закрыт', row.router === 'allowed' ? 'warn' : 'ok')}
+            ${policyChip(row.dns === 'allowed' ? 'DNS открыт' : (row.dns === 'client' ? 'DNS клиента' : 'DNS закрыт'), row.dns === 'allowed' ? 'warn' : 'ok')}
+            ${policyChip(row.risk === 'high' ? 'высокий риск' : (row.risk === 'medium' ? 'средний риск' : 'низкий риск'), row.risk === 'high' ? 'danger' : (row.risk === 'medium' ? 'warn' : 'ok'))}
+          </div>
+        </article>`).join('')}
+      </div>` : '<div class="empty-state compact">Добавьте Xray-клиента или AWG peer, чтобы увидеть политики доступа.</div>'}
+    </section>`;
+  }
+
   function firewallPanel() {
     const status = state.serverMode?.firewall || {};
     const preview = state.serverModeFirewallPreview;
@@ -274,6 +364,7 @@ export function createServerModeView({ state, escapeHtml }) {
         <p>По умолчанию внешний клиент не получает доступ к LAN и DNS-порту роутера. Доступ открывается только явными галочками на клиенте.</p>
       </div>
       ${managedStats()}
+      ${securityPanel(model)}
       ${clientTrafficPanel()}
       ${issueList(preflight)}
       ${firewallPanel()}

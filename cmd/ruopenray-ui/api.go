@@ -169,6 +169,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-mode/apply" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serverModeApply(payload))
+	case path == "/server-mode/security" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.serverModeSecurity(nil))
+	case path == "/server-mode/security" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeSecurity(payload))
 	case path == "/server-mode/firewall/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serverModeFirewallStatus())
 	case path == "/server-mode/firewall/preview" && r.Method == http.MethodPost:

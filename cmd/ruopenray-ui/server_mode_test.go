@@ -206,3 +206,32 @@ func TestServerModeAWGPlanWarnsWithoutApplyingInterface(t *testing.T) {
 		t.Fatalf("expected AWG not-applied warning, got %#v", warnings)
 	}
 }
+
+func TestServerModeSecurityReportShowsClientPolicy(t *testing.T) {
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		Xray: []serverModeXrayInbound{{
+			ID:      "public",
+			Enabled: true,
+			Clients: []serverModeClient{
+				{ID: "safe", Name: "Safe", UUID: "11111111-1111-4111-8111-111111111111", Enabled: true, EgressTag: "proxy"},
+				{ID: "admin", Name: "Admin", UUID: "22222222-2222-4222-8222-222222222222", Enabled: true, EgressTag: "direct", AllowLAN: true, AllowDNS: true},
+			},
+		}},
+	})
+	report := serverModeSecurityReport(mode)
+	if report["ok"] != true || report["safe"] == true {
+		t.Fatalf("LAN-open client should make report risky: %#v", report)
+	}
+	summary := report["summary"].(map[string]int)
+	if summary["xrayClients"] != 2 || summary["lanAllowed"] != 1 || summary["dnsAllowed"] != 1 || summary["highRisk"] != 1 {
+		t.Fatalf("unexpected security summary: %#v", summary)
+	}
+	clients := report["clients"].([]map[string]any)
+	if clients[0]["lan"] != "blocked" || clients[0]["dns"] != "blocked" || clients[0]["managedRules"] != 3 {
+		t.Fatalf("safe client policy should block LAN/DNS with 3 rules, got %#v", clients[0])
+	}
+	if clients[1]["risk"] != "high" || clients[1]["lan"] != "allowed" || clients[1]["dns"] != "allowed" {
+		t.Fatalf("admin client should be high-risk LAN/DNS allowed, got %#v", clients[1])
+	}
+}

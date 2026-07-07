@@ -291,6 +291,7 @@ func (s *serverState) serverModeReport() map[string]any {
 	report["preflight"] = serverModePreflight(mode, active)
 	report["managed"] = serverModeManagedSummary(active)
 	report["firewall"] = s.serverModeFirewallStatus()
+	report["security"] = serverModeSecurityReport(mode)
 	if mode.MonitorClients {
 		stats := s.xrayTrafficStats(active, false)
 		report["xrayStats"] = stats

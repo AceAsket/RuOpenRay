@@ -160,6 +160,8 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/server-mode/reality-key", "Server mode", "Generate Reality key pair", "Runs xray x25519 and returns private/public keys.", "", "Object"},
 		{"post", "/server-mode/preview", "Server mode", "Preview server-mode Xray patch", "Builds managed inbound/routing changes and validates the resulting Xray config without writing it.", "GenericObject", "Object"},
 		{"post", "/server-mode/apply", "Server mode", "Apply server-mode Xray patch", "Writes managed inbound/routing changes to active Xray config after preflight. Xray restart is skipped unless restart=true is passed.", "GenericObject", "Object"},
+		{"get", "/server-mode/security", "Server mode", "Get server-mode client policy report", "Shows generated client access policy: egress, LAN, router, DNS and risk hints.", "", "Object"},
+		{"post", "/server-mode/security", "Server mode", "Preview server-mode client policy report", "Shows generated client access policy for an unsaved server-mode draft.", "GenericObject", "Object"},
 		{"get", "/server-mode/firewall/status", "Server mode", "Get server-mode WAN firewall status", "Lists RuOpenRay-managed UCI firewall rules for inbound Xray/AWG server ports.", "", "Object"},
 		{"post", "/server-mode/firewall/preview", "Server mode", "Preview server-mode WAN firewall", "Builds UCI firewall commands for enabled inbound server ports without applying them.", "GenericObject", "Object"},
 		{"post", "/server-mode/firewall/apply", "Server mode", "Apply server-mode WAN firewall", "Backs up UCI firewall, replaces only RuOpenRay-managed server-mode rules and reloads firewall.", "GenericObject", "Object"},
