@@ -48,6 +48,8 @@ import { createRoutingDsl } from './routing-dsl.js';
 import { createRoutingModel } from './routing-model.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServerActions } from './server-actions.js';
+import { createServerModeActions } from './server-mode-actions.js';
+import { createServerModeView } from './server-mode-view.js';
 import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSettingsActions } from './settings-actions.js';
@@ -674,6 +676,29 @@ const {
   refreshCompatibility,
   controlB4
 } = compatActions;
+
+const serverModeActions = createServerModeActions({
+  state,
+  request,
+  render
+});
+const {
+  refreshServerMode,
+  setServerModeEnabled,
+  addServerModeXrayInbound,
+  addServerModeClient,
+  addServerModeAWGServer,
+  addServerModeAWGPeer,
+  generateServerModeRealityKey,
+  saveServerMode,
+  previewServerMode,
+  applyServerMode,
+  deleteServerModeInbound,
+  deleteServerModeClient,
+  deleteServerModeAWGServer,
+  deleteServerModeAWGPeer,
+  updateServerModeField
+} = serverModeActions;
 
 const amneziaActions = createAmneziaActions({
   state,
@@ -1335,6 +1360,12 @@ const compatView = createCompatView({
 });
 const { compatPanel } = compatView;
 
+const serverModeView = createServerModeView({
+  state,
+  escapeHtml
+});
+const { serverModePanel } = serverModeView;
+
 const amneziaView = createAmneziaView({
   state,
   escapeHtml
@@ -1815,6 +1846,7 @@ function content() {
   if (state.tab === 'dashboard') return dashboard();
   if (state.tab === 'setup') return setupPage();
   if (state.tab === 'servers') return serversPanel();
+  if (state.tab === 'serverMode') return serverModePanel();
   if (state.tab === 'diagnostics') return diagnosticsPanel();
   if (state.tab === 'sni') return sniPanel();
   if (state.tab === 'geo') return geoPanel();
@@ -2238,6 +2270,19 @@ function bind() {
       disableFirewall,
       stopRuOpenRayMode,
       refreshCompatibility,
+      refreshServerMode,
+      addServerModeXrayInbound,
+      addServerModeClient,
+      addServerModeAWGServer,
+      addServerModeAWGPeer,
+      generateServerModeRealityKey,
+      saveServerMode,
+      previewServerMode,
+      applyServerMode,
+      deleteServerModeInbound,
+      deleteServerModeClient,
+      deleteServerModeAWGServer,
+      deleteServerModeAWGPeer,
       openAmneziaImportDialog,
       closeAmneziaImportDialog,
       refreshAmnezia,
@@ -2616,6 +2661,14 @@ function bind() {
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
   bindServerCheckControls({ state, render });
+  document.querySelectorAll('[data-server-mode-field]').forEach((input) => {
+    input.addEventListener('input', () => updateServerModeField(input));
+    input.addEventListener('change', () => {
+      updateServerModeField(input);
+      if (input.dataset.serverModeField === 'enabled') setServerModeEnabled(input.checked);
+      else render();
+    });
+  });
   document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
     textarea.addEventListener('input', () => {
       state.amneziaConfigText = textarea.value;
@@ -2685,6 +2738,7 @@ if (state.token) {
   configureLogTimer();
   configureStatusTimer();
   refresh({ background: true });
+  refreshServerMode({ silent: true }).catch(() => {});
 }
 
 document.addEventListener('focusout', () => {

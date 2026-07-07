@@ -698,9 +698,17 @@ export function bindRoutingControls({
 
   document.querySelectorAll('#routeKind').forEach((input) => input.addEventListener('change', (event) => {
     state.routeKind = event.target.value;
+    if (state.routeKind === 'port' && !state.routeNetwork) state.routeNetwork = 'tcp,udp';
     state.routeRuleTestResult = null;
     render();
   }));
+  document.querySelectorAll('[data-route-network]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.routeNetwork = button.dataset.routeNetwork || 'tcp,udp';
+      state.routeRuleTestResult = null;
+      render();
+    });
+  });
   document.querySelectorAll('#routeName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeName = event.target.value;
   }));

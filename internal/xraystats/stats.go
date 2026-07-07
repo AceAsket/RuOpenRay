@@ -46,9 +46,12 @@ func APIInfo(cfg map[string]any) map[string]any {
 	}
 	policy, _ := cfg["policy"].(map[string]any)
 	system, _ := policy["system"].(map[string]any)
+	levels, _ := policy["levels"].(map[string]any)
+	level0, _ := levels["0"].(map[string]any)
 	policyEnabled := boolPayload(system, "statsOutboundUplink", false) && boolPayload(system, "statsOutboundDownlink", false)
+	userPolicyEnabled := boolPayload(level0, "statsUserUplink", false) && boolPayload(level0, "statsUserDownlink", false)
 	enabled := statsEnabled && HasService(api) && policyEnabled
-	return map[string]any{"enabled": enabled, "stats": statsEnabled, "api": HasService(api), "policy": policyEnabled, "server": server, "tag": tag}
+	return map[string]any{"enabled": enabled, "stats": statsEnabled, "api": HasService(api), "policy": policyEnabled, "userPolicy": userPolicyEnabled, "server": server, "tag": tag}
 }
 
 func EnsureConfig(cfg map[string]any, enabled bool) {
@@ -65,6 +68,18 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 				delete(system, "statsOutboundDownlink")
 				if len(system) == 0 {
 					delete(policy, "system")
+				}
+			}
+			if levels, ok := policy["levels"].(map[string]any); ok {
+				if level0, ok := levels["0"].(map[string]any); ok {
+					delete(level0, "statsUserUplink")
+					delete(level0, "statsUserDownlink")
+					if len(level0) == 0 {
+						delete(levels, "0")
+					}
+				}
+				if len(levels) == 0 {
+					delete(policy, "levels")
 				}
 			}
 			if len(policy) == 0 {
@@ -122,6 +137,18 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 	system["statsInboundDownlink"] = true
 	system["statsOutboundUplink"] = true
 	system["statsOutboundDownlink"] = true
+	levels, _ := policy["levels"].(map[string]any)
+	if levels == nil {
+		levels = map[string]any{}
+		policy["levels"] = levels
+	}
+	level0, _ := levels["0"].(map[string]any)
+	if level0 == nil {
+		level0 = map[string]any{}
+		levels["0"] = level0
+	}
+	level0["statsUserUplink"] = true
+	level0["statsUserDownlink"] = true
 
 	api, _ := cfg["api"].(map[string]any)
 	if api == nil {
@@ -299,33 +326,67 @@ func TrafficResult(counters map[string]uint64, previous map[string]uint64, elaps
 		UpRate   float64
 		DownRate float64
 	}
+	type userCounter struct {
+		Email    string
+		Uplink   uint64
+		Downlink uint64
+		UpRate   float64
+		DownRate float64
+	}
 	byTag := map[string]*outboundCounter{}
+	byUser := map[string]*userCounter{}
 	for name, value := range counters {
 		parts := strings.Split(name, ">>>")
-		if len(parts) < 4 || parts[0] != "outbound" || parts[2] != "traffic" {
+		if len(parts) < 4 || parts[2] != "traffic" {
 			continue
 		}
-		tag := parts[1]
 		direction := parts[len(parts)-1]
-		item := byTag[tag]
-		if item == nil {
-			protocol := protocols[tag]
-			item = &outboundCounter{Tag: tag, Protocol: protocol, Kind: OutboundKind(tag, protocol)}
-			byTag[tag] = item
-		}
-		if direction == "uplink" {
-			item.Uplink = value
-		} else if direction == "downlink" {
-			item.Downlink = value
-		}
-		if elapsed > 0 {
-			prior := previous[name]
-			if value >= prior {
-				rate := float64(value-prior) / elapsed
-				if direction == "uplink" {
-					item.UpRate = rate
-				} else if direction == "downlink" {
-					item.DownRate = rate
+		switch parts[0] {
+		case "outbound":
+			tag := parts[1]
+			item := byTag[tag]
+			if item == nil {
+				protocol := protocols[tag]
+				item = &outboundCounter{Tag: tag, Protocol: protocol, Kind: OutboundKind(tag, protocol)}
+				byTag[tag] = item
+			}
+			if direction == "uplink" {
+				item.Uplink = value
+			} else if direction == "downlink" {
+				item.Downlink = value
+			}
+			if elapsed > 0 {
+				prior := previous[name]
+				if value >= prior {
+					rate := float64(value-prior) / elapsed
+					if direction == "uplink" {
+						item.UpRate = rate
+					} else if direction == "downlink" {
+						item.DownRate = rate
+					}
+				}
+			}
+		case "user":
+			email := parts[1]
+			item := byUser[email]
+			if item == nil {
+				item = &userCounter{Email: email}
+				byUser[email] = item
+			}
+			if direction == "uplink" {
+				item.Uplink = value
+			} else if direction == "downlink" {
+				item.Downlink = value
+			}
+			if elapsed > 0 {
+				prior := previous[name]
+				if value >= prior {
+					rate := float64(value-prior) / elapsed
+					if direction == "uplink" {
+						item.UpRate = rate
+					} else if direction == "downlink" {
+						item.DownRate = rate
+					}
 				}
 			}
 		}
@@ -359,7 +420,17 @@ func TrafficResult(counters map[string]uint64, previous map[string]uint64, elaps
 		group["count"] = group["count"].(int) + 1
 		outbounds = append(outbounds, map[string]any{"tag": item.Tag, "protocol": item.Protocol, "kind": item.Kind, "uplink": item.Uplink, "downlink": item.Downlink, "upRate": item.UpRate, "downRate": item.DownRate})
 	}
-	return map[string]any{"outbounds": outbounds, "groups": groups, "updatedAt": now.Format(time.RFC3339)}
+	userKeys := make([]string, 0, len(byUser))
+	for email := range byUser {
+		userKeys = append(userKeys, email)
+	}
+	sort.Strings(userKeys)
+	users := []map[string]any{}
+	for _, email := range userKeys {
+		item := byUser[email]
+		users = append(users, map[string]any{"email": item.Email, "uplink": item.Uplink, "downlink": item.Downlink, "upRate": item.UpRate, "downRate": item.DownRate})
+	}
+	return map[string]any{"outbounds": outbounds, "users": users, "groups": groups, "updatedAt": now.Format(time.RFC3339)}
 }
 
 func asArray(value any) []any {

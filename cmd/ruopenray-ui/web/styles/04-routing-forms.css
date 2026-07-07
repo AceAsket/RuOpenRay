@@ -2463,8 +2463,22 @@
   width: 100%;
 }
 
+.route-network-switch,
+.route-target-switch button {
+  width: 100%;
+}
+
+.route-network-switch button,
 .route-target-switch button {
   flex: 1 1 0;
+}
+
+.route-network-row small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .route-lease-picker {

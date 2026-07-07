@@ -27,12 +27,16 @@ func TestParseOutputJSON(t *testing.T) {
 func TestTrafficResultGroupsOutboundTraffic(t *testing.T) {
 	result := TrafficResult(
 		map[string]uint64{
-			"outbound>>>proxy>>>traffic>>>downlink": 100,
-			"outbound>>>proxy>>>traffic>>>uplink":   20,
+			"outbound>>>proxy>>>traffic>>>downlink":     100,
+			"outbound>>>proxy>>>traffic>>>uplink":       20,
+			"user>>>alice@example>>>traffic>>>downlink": 70,
+			"user>>>alice@example>>>traffic>>>uplink":   10,
 		},
 		map[string]uint64{
-			"outbound>>>proxy>>>traffic>>>downlink": 40,
-			"outbound>>>proxy>>>traffic>>>uplink":   10,
+			"outbound>>>proxy>>>traffic>>>downlink":     40,
+			"outbound>>>proxy>>>traffic>>>uplink":       10,
+			"user>>>alice@example>>>traffic>>>downlink": 20,
+			"user>>>alice@example>>>traffic>>>uplink":   5,
 		},
 		2,
 		map[string]string{"proxy": "vless", "direct": "freedom"},
@@ -41,5 +45,9 @@ func TestTrafficResultGroupsOutboundTraffic(t *testing.T) {
 	groups := result["groups"].(map[string]map[string]any)
 	if groups["proxy"]["downlink"] != uint64(100) || groups["proxy"]["downRate"] != float64(30) {
 		t.Fatalf("unexpected proxy group: %#v", groups["proxy"])
+	}
+	users := result["users"].([]map[string]any)
+	if len(users) != 1 || users[0]["email"] != "alice@example" || users[0]["downRate"] != float64(25) {
+		t.Fatalf("unexpected user stats: %#v", users)
 	}
 }

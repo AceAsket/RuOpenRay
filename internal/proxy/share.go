@@ -25,11 +25,34 @@ func OutboundSummary(outbound map[string]any) map[string]any {
 			portValue = first["port"]
 		}
 	}
-	return map[string]any{
-		"tag": outbound["tag"], "protocol": outbound["protocol"], "address": address, "port": portValue,
+	tag := fmt.Sprint(outbound["tag"])
+	summary := map[string]any{
+		"tag": tag, "protocol": outbound["protocol"], "address": address, "port": portValue,
 		"network":  firstNonEmpty(fmt.Sprint(getNested(outbound, "streamSettings", "network")), "tcp"),
 		"security": firstNonEmpty(fmt.Sprint(getNested(outbound, "streamSettings", "security")), "none"),
 	}
+	country := ""
+	if country := normalizedCountry(fmt.Sprint(outbound["country"])); country != "" {
+		summary["country"] = country
+	} else if country := normalizedCountry(fmt.Sprint(getNested(outbound, "meta", "country"))); country != "" {
+		summary["country"] = country
+	}
+	if value, ok := summary["country"].(string); ok {
+		country = value
+	}
+	if displayTag := cleanCountryPrefixedTag(tag, country); displayTag != "" && displayTag != tag {
+		summary["displayTag"] = displayTag
+	}
+	return summary
+}
+
+func OutboundDisplayTag(outbound map[string]any) string {
+	tag := fmt.Sprint(outbound["tag"])
+	country := normalizedCountry(fmt.Sprint(outbound["country"]))
+	if country == "" {
+		country = normalizedCountry(fmt.Sprint(getNested(outbound, "meta", "country")))
+	}
+	return firstNonEmpty(cleanCountryPrefixedTag(tag, country), tag)
 }
 
 func CloneOutboundWithTag(outbound map[string]any, tag string) map[string]any {
@@ -129,16 +152,109 @@ func ParseShareLink(raw string) (map[string]any, error) {
 }
 
 func tagFromURL(u *url.URL, fallback string) string {
+	tag, _ := tagAndCountryFromURL(u, fallback)
+	return tag
+}
+
+func tagAndCountryFromURL(u *url.URL, fallback string) (string, string) {
 	if u.Fragment != "" {
-		if value, err := url.QueryUnescape(u.Fragment); err == nil && value != "" {
-			return value
+		if value, err := url.QueryUnescape(u.Fragment); err == nil {
+			tag, country := cleanShareTag(value)
+			if tag != "" {
+				return tag, country
+			}
 		}
 	}
-	return fallback
+	return fallback, ""
+}
+
+func cleanShareTag(value string) (string, string) {
+	tag := strings.TrimSpace(value)
+	if tag == "" {
+		return "", ""
+	}
+	country, rest := flagCountryPrefix(tag)
+	if country != "" {
+		tag = strings.TrimLeft(strings.TrimSpace(rest), " \t\r\n-_·|")
+		tag = cleanCountryPrefixedTag(tag, country)
+	}
+	return tag, country
+}
+
+func cleanCountryPrefixedTag(tag string, country string) string {
+	tag = strings.TrimSpace(tag)
+	country = normalizedCountry(country)
+	if tag == "" || country == "" {
+		return tag
+	}
+	code := strings.ToLower(country)
+	lower := strings.ToLower(tag)
+	if !strings.HasPrefix(lower, code) {
+		return tag
+	}
+	rest := tag[len(code):]
+	if !hasCountryPrefix(rest, country) {
+		return tag
+	}
+	return strings.TrimLeft(strings.TrimSpace(rest), " \t\r\n-_·|")
+}
+
+func hasCountryPrefix(value string, country string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if lower == "" {
+		return false
+	}
+	prefixes := []string{strings.ToLower(country)}
+	if country == "FI" {
+		prefixes = append(prefixes, "fin", "finnish")
+	}
+	for _, prefix := range prefixes {
+		if lower == prefix {
+			return true
+		}
+		if strings.HasPrefix(lower, prefix) {
+			rest := strings.TrimPrefix(lower, prefix)
+			if rest != "" && strings.ContainsRune("-_ .|·", []rune(rest)[0]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func flagCountryPrefix(value string) (string, string) {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) < 2 || !isRegionalIndicator(runes[0]) || !isRegionalIndicator(runes[1]) {
+		return "", ""
+	}
+	code := string([]rune{
+		rune('A') + (runes[0] - 0x1F1E6),
+		rune('A') + (runes[1] - 0x1F1E6),
+	})
+	return code, string(runes[2:])
+}
+
+func isRegionalIndicator(value rune) bool {
+	return value >= 0x1F1E6 && value <= 0x1F1FF
+}
+
+func normalizedCountry(value string) string {
+	country := strings.ToUpper(strings.TrimSpace(value))
+	if matched, _ := regexp.MatchString(`^[A-Z]{2}$`, country); matched {
+		return country
+	}
+	return ""
+}
+
+func applyOutboundCountry(outbound map[string]any, country string) {
+	if country = normalizedCountry(country); country != "" {
+		outbound["country"] = country
+	}
 }
 
 func parseVless(u *url.URL) map[string]any {
 	q := u.Query()
+	tag, country := tagAndCountryFromURL(u, "vless-out")
 	network := firstNonEmpty(q.Get("type"), "tcp")
 	security := firstNonEmpty(q.Get("security"), "none")
 	user := map[string]any{"id": u.User.Username(), "encryption": firstNonEmpty(q.Get("encryption"), "none")}
@@ -175,10 +291,11 @@ func parseVless(u *url.URL) map[string]any {
 		stream["sockopt"] = sockopt
 	}
 	outbound := map[string]any{
-		"tag": tagFromURL(u, "vless-out"), "protocol": "vless",
+		"tag": tag, "protocol": "vless",
 		"settings":       map[string]any{"vnext": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "users": []any{user}}}},
 		"streamSettings": stream,
 	}
+	applyOutboundCountry(outbound, country)
 	if strings.EqualFold(q.Get("mux"), "true") || q.Get("mux") == "1" {
 		mux := map[string]any{"enabled": true}
 		if concurrency := q.Get("muxConcurrency"); concurrency != "" {
@@ -232,21 +349,27 @@ func FragmentOutboundFromTag(tag string) (map[string]any, bool) {
 
 func parseTrojan(u *url.URL) map[string]any {
 	q := u.Query()
-	return map[string]any{
-		"tag": tagFromURL(u, "trojan-out"), "protocol": "trojan",
+	tag, country := tagAndCountryFromURL(u, "trojan-out")
+	outbound := map[string]any{
+		"tag": tag, "protocol": "trojan",
 		"settings":       map[string]any{"servers": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "password": u.User.Username()}}},
 		"streamSettings": map[string]any{"network": firstNonEmpty(q.Get("type"), "tcp"), "security": firstNonEmpty(q.Get("security"), "tls")},
 	}
+	applyOutboundCountry(outbound, country)
+	return outbound
 }
 
 func parseSS(u *url.URL) map[string]any {
 	q := u.Query()
-	return map[string]any{
-		"tag": tagFromURL(u, "ss-out"), "protocol": "shadowsocks",
+	tag, country := tagAndCountryFromURL(u, "ss-out")
+	outbound := map[string]any{
+		"tag": tag, "protocol": "shadowsocks",
 		"settings": map[string]any{"servers": []any{map[string]any{
 			"address": u.Hostname(), "port": port(u, 443), "method": firstNonEmpty(q.Get("method"), "2022-blake3-aes-128-gcm"), "password": u.User.Username(),
 		}}},
 	}
+	applyOutboundCountry(outbound, country)
+	return outbound
 }
 
 func parseVMess(u *url.URL) (map[string]any, error) {
@@ -262,14 +385,18 @@ func parseVMess(u *url.URL) (map[string]any, error) {
 	if err := json.Unmarshal(decoded, &raw); err != nil {
 		return nil, err
 	}
-	return map[string]any{
-		"tag": firstNonEmpty(fmt.Sprint(raw["ps"]), "vmess-out"), "protocol": "vmess",
+	tag, country := cleanShareTag(firstNonEmpty(fmt.Sprint(raw["ps"]), "vmess-out"))
+	tag = firstNonEmpty(tag, "vmess-out")
+	outbound := map[string]any{
+		"tag": tag, "protocol": "vmess",
 		"settings": map[string]any{"vnext": []any{map[string]any{
 			"address": raw["add"], "port": number(raw["port"], 443),
 			"users": []any{map[string]any{"id": raw["id"], "alterId": number(raw["aid"], 0), "security": firstNonEmpty(fmt.Sprint(raw["scy"]), "auto")}},
 		}}},
 		"streamSettings": map[string]any{"network": firstNonEmpty(fmt.Sprint(raw["net"]), "tcp"), "security": firstNonEmpty(fmt.Sprint(raw["tls"]), "none")},
-	}, nil
+	}
+	applyOutboundCountry(outbound, country)
+	return outbound, nil
 }
 
 func asArray(value any) []any {

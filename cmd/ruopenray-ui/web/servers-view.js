@@ -73,6 +73,7 @@ function subscriptionCandidateStatus(check, checking = false) {
 function subscriptionCandidateSearchText(candidate, index, location, address) {
   return [
     index + 1,
+    candidate?.displayTag,
     candidate?.tag,
     candidate?.address,
     candidate?.port,
@@ -136,6 +137,7 @@ function subscriptionPoolCard(pool) {
   const candidateChecks = state.subscriptionCandidateChecks?.[tag] || {};
   const candidateEntries = candidates.map((candidate, index) => {
     const address = [candidate?.address, candidate?.port].filter(Boolean).join(':');
+    const candidateTitle = candidate?.displayTag || candidate?.tag || `server-${index + 1}`;
     const selected = index === activeIndex;
     const location = serverLocation(candidate, {});
     const searchText = subscriptionCandidateSearchText(candidate, index, location, address);
@@ -158,7 +160,7 @@ function subscriptionPoolCard(pool) {
       </label>
       <span class="subscription-candidate-flag" title="${escapeHtml(countryTitle)}">${countryFlagMarkup(countryCode)}</span>
       <div class="subscription-candidate-main">
-        <strong>${escapeHtml(candidate?.tag || `server-${index + 1}`)}</strong>
+        <strong>${escapeHtml(candidateTitle)}</strong>
         <span>${escapeHtml([address, candidate?.network, candidate?.security].filter(Boolean).join(' · '))}</span>
       </div>
       ${subscriptionCandidateStatus(check, checking)}
@@ -171,12 +173,14 @@ function subscriptionPoolCard(pool) {
   });
   const visibleCount = candidateEntries.filter((entry) => entry.visible).length;
   const candidateRows = candidateEntries.map((entry) => entry.markup).join('');
-  const activeText = active?.tag
-    ? `активен ${active.tag} · ${[active.address, active.port].filter(Boolean).join(':')}`
+  const activeName = active?.displayTag || active?.tag || '';
+  const missingName = missing?.displayTag || missing?.tag || '';
+  const activeText = activeName
+    ? `активен ${activeName} · ${[active.address, active.port].filter(Boolean).join(':')}`
     : activeMissing
-      ? `активный удален из подписки${missing?.tag ? `: ${missing.tag}` : ''}`
+      ? `активный удален из подписки${missingName ? `: ${missingName}` : ''}`
       : 'активный сервер не выбран';
-  const missingText = [missing?.tag, [missing?.address, missing?.port].filter(Boolean).join(':')].filter(Boolean).join(' · ');
+  const missingText = [missingName, [missing?.address, missing?.port].filter(Boolean).join(':')].filter(Boolean).join(' · ');
   const canConnect = Boolean(active?.tag) && !activeMissing;
   return `<article class="server-row subscription-pool-row">
     <div class="server-identity">

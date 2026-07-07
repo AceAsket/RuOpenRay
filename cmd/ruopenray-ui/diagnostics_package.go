@@ -128,6 +128,7 @@ func (s *serverState) diagnosticsStatusPayloads() []diagnosticsNamedPayload {
 		{name: "status/b4.json", payload: s.b4Status()},
 		{name: "status/b4-api.json", payload: b4APIStatus()},
 		{name: "status/amneziawg.json", payload: s.amneziaStatus()},
+		{name: "status/server-mode.json", payload: redactDiagnosticAny(s.serverModeReport(), nil, "", "")},
 		{name: "status/geo.json", payload: s.geoStatus()},
 		{name: "status/subscriptions.json", payload: redactDiagnosticAny(s.subscriptionReport(), nil, "", "")},
 		{name: "status/subscription-schedule.json", payload: s.subscriptionSchedule()},

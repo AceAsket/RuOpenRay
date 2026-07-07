@@ -45,6 +45,51 @@ func TestParseVlessShareLink(t *testing.T) {
 	}
 }
 
+func TestParseShareLinkStripsLeadingFlagAndKeepsCountry(t *testing.T) {
+	raw := "vless://00000000-0000-0000-0000-000000000000@cloudthree.acespace.tech:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&pbk=test-key&sid=abcd#%F0%9F%87%AB%F0%9F%87%AEFIfin_play2go_cloudthree"
+	outbound, err := ParseShareLink(raw)
+	if err != nil {
+		t.Fatalf("ParseShareLink returned error: %v", err)
+	}
+	if outbound["tag"] != "fin_play2go_cloudthree" {
+		t.Fatalf("tag = %v, want fin_play2go_cloudthree", outbound["tag"])
+	}
+	if outbound["country"] != "FI" {
+		t.Fatalf("country = %v, want FI", outbound["country"])
+	}
+	summary := OutboundSummary(outbound)
+	if summary["tag"] != "fin_play2go_cloudthree" || summary["country"] != "FI" {
+		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestCleanShareTagStripsDuplicatedCountryPrefix(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		brokenTag   string
+		wantTag     string
+		wantCountry string
+	}{
+		{name: "russia", value: "🇷🇺RUru_ruweb_cloudone-MT6000Sub", brokenTag: "RUru_ruweb_cloudone-MT6000Sub", wantTag: "ru_ruweb_cloudone-MT6000Sub", wantCountry: "RU"},
+		{name: "finland", value: "🇫🇮FIfin_play2go_cloudthree", brokenTag: "FIfin_play2go_cloudthree", wantTag: "fin_play2go_cloudthree", wantCountry: "FI"},
+		{name: "netherlands", value: "🇳🇱NLNL_ruweb_cloudfour", brokenTag: "NLNL_ruweb_cloudfour", wantTag: "NL_ruweb_cloudfour", wantCountry: "NL"},
+		{name: "germany", value: "🇩🇪DEde_datalix_cloudtwo", brokenTag: "DEde_datalix_cloudtwo", wantTag: "de_datalix_cloudtwo", wantCountry: "DE"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tag, country := cleanShareTag(tt.value)
+			if tag != tt.wantTag || country != tt.wantCountry {
+				t.Fatalf("cleanShareTag() = %q, %q; want %q, %q", tag, country, tt.wantTag, tt.wantCountry)
+			}
+			summary := OutboundSummary(map[string]any{"tag": tt.brokenTag, "country": country})
+			if summary["displayTag"] != tt.wantTag {
+				t.Fatalf("displayTag = %v, want %s", summary["displayTag"], tt.wantTag)
+			}
+		})
+	}
+}
+
 func TestDecodeSubscription(t *testing.T) {
 	links := []byte("vless:" + "//00000000-0000-0000-0000-000000000001@example.com:443#one\n" + "vmess:" + "//eyJ2IjoiMiIsInBzIjoidHdvIiwiYWRkIjoiZXhhbXBsZS5uZXQiLCJwb3J0IjoiNDQzIiwiaWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDIiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiJleGFtcGxlLm5ldCIsInBhdGgiOiIvIiwidGxzIjoidGxzIn0=")
 	encoded := base64.StdEncoding.EncodeToString(links)

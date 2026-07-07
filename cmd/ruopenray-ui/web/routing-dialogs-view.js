@@ -60,6 +60,14 @@ function routeRuleDialog() {
   const routeValueEditorText = useRouteValueTextarea && !String(state.routeValue || '').includes('\n')
     ? routeValueItems.join('\n')
     : state.routeValue;
+  const portMode = state.routeKind === 'port';
+  const cleanRouteNetwork = String(state.routeNetwork || 'tcp,udp').replace(/\s+/g, '').toLowerCase();
+  const routeNetwork = ['tcp', 'udp'].includes(cleanRouteNetwork) ? cleanRouteNetwork : 'tcp,udp';
+  const networkOptions = [
+    ['tcp,udp', 'TCP и UDP'],
+    ['tcp', 'Только TCP'],
+    ['udp', 'Только UDP']
+  ];
   return `
     <div class="modal-backdrop" data-action="closeRouteRuleDialog">
       <section class="modal route-rule-dialog" role="dialog" aria-modal="true" aria-labelledby="routeRuleTitle" data-modal>
@@ -149,6 +157,15 @@ function routeRuleDialog() {
                 .join('')}
             </select>
           </div>
+          ${portMode ? `
+          <div class="form-row route-network-row">
+            <label>Протокол</label>
+            <div class="segmented route-network-switch" aria-label="Протокол портового правила">
+              ${networkOptions.map(([value, title]) => `<button type="button" class="${routeNetwork === value ? 'active' : ''}" data-route-network="${escapeHtml(value)}">${escapeHtml(title)}</button>`).join('')}
+            </div>
+            <small>${routeNetwork === 'tcp,udp' ? 'Правило сработает для TCP и UDP на указанных портах.' : `Правило сработает только для ${routeNetwork.toUpperCase()} на указанных портах.`}</small>
+          </div>
+          ` : ''}
           ${defaultMode ? `
           <div class="route-default-hint">
             <strong>Остальной трафик</strong>

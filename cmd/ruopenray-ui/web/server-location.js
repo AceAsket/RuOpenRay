@@ -265,9 +265,9 @@ const commonIsoTokens = new Set([
 ]);
 
 const locationAliasRules = [
-  ['DE', /germany|deutsch|german|frankfurt|nuremberg|nuernberg|falkenstein|fsn|hel1|hetzner/i],
+  ['DE', /germany|deutsch|german|frankfurt|nuremberg|nuernberg|falkenstein|fsn|hetzner/i],
   ['NL', /netherlands|holland|amsterdam|rotterdam|evoxt/i],
-  ['FI', /finland|helsinki/i],
+  ['FI', /finland|finnish|helsinki|hel1/i],
   ['SE', /sweden|stockholm/i],
   ['PL', /poland|warsaw|wroclaw/i],
   ['FR', /france|paris|roubaix|graveline|ovh-fr/i],
@@ -341,6 +341,18 @@ function countryFromIsoToken(value) {
     const prefix = token.slice(0, 2);
     const prefixedCode = prefix === 'uk' ? 'GB' : prefix.toUpperCase();
     if (/^[a-z]{2}\d+$/.test(token) && commonIsoTokens.has(prefix) && countryNames[prefixedCode]) return prefixedCode;
+  }
+  return '';
+}
+
+function countryFromFlagEmoji(value) {
+  const chars = [...String(value || '')];
+  for (let index = 0; index < chars.length - 1; index += 1) {
+    const first = chars[index].codePointAt(0);
+    const second = chars[index + 1].codePointAt(0);
+    if (first < 0x1F1E6 || first > 0x1F1FF || second < 0x1F1E6 || second > 0x1F1FF) continue;
+    const code = String.fromCharCode(65 + first - 0x1F1E6, 65 + second - 0x1F1E6);
+    if (countryNames[code]) return code;
   }
   return '';
 }
@@ -504,6 +516,9 @@ export function serverLocation(outbound = {}, meta = {}) {
 
   const host = outboundHost(outbound);
   const haystack = locationText(outbound);
+  const byFlagEmoji = countryFromFlagEmoji(haystack);
+  if (byFlagEmoji) return countryResult(byFlagEmoji, 'name', 0.98);
+
   const byIsoToken = countryFromIsoToken(haystack);
   if (byIsoToken) return countryResult(byIsoToken, 'name', 0.92);
 

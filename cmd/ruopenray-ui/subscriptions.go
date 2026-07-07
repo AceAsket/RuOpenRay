@@ -273,7 +273,7 @@ func (s *serverState) checkSubscriptionCandidate(w http.ResponseWriter, r *http.
 
 func subscriptionCandidateTag(poolTag string, candidate map[string]any, index int) string {
 	prefix := slugID(poolTag, "subscription")
-	base := slugID(fmt.Sprint(candidate["tag"]), fmt.Sprintf("server-%d", index+1))
+	base := slugID(rproxy.OutboundDisplayTag(candidate), fmt.Sprintf("server-%d", index+1))
 	tag := strings.Trim(prefix+"-"+base, "-")
 	if len(tag) > 96 {
 		tag = strings.Trim(tag[:96], "-")

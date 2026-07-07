@@ -171,7 +171,7 @@ func (s *serverState) saveXrayStatsSettings(enabled bool) map[string]any {
 }
 
 func (s *serverState) queryXrayStats(server string, reset bool) map[string]any {
-	args := []string{"api", "statsquery", "--server=" + server, "-timeout", "3", "-pattern", "outbound"}
+	args := []string{"api", "statsquery", "--server=" + server, "-timeout", "3", "-pattern", "traffic"}
 	if reset {
 		args = append(args, "-reset")
 	}

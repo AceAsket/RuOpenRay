@@ -153,6 +153,22 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-meta" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.saveServerMeta(payload))
+	case path == "/server-mode" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.serverModeReport())
+	case path == "/server-mode" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.saveServerMode(payload))
+	case path == "/server-mode/client" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeNewClient(payload))
+	case path == "/server-mode/reality-key" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.serverModeRealityKey())
+	case path == "/server-mode/preview" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModePreview(payload))
+	case path == "/server-mode/apply" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeApply(payload))
 	case path == "/service" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serviceAction(fmt.Sprint(payload["action"])))

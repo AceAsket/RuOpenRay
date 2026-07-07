@@ -52,6 +52,7 @@ func openAPISpec() map[string]any {
 			{"name": "DNS", "description": "DNS servers, LAN DNS and DNS diagnostics"},
 			{"name": "Routing", "description": "Routing rules, scenario presets and rule metadata"},
 			{"name": "Servers", "description": "Outbound servers, subscriptions and proxy checks"},
+			{"name": "Server mode", "description": "Managed inbound Xray/AWG endpoints, client policies and safety preflight"},
 			{"name": "Profiles", "description": "Profile storage and activation"},
 			{"name": "Diagnostics", "description": "Probes, live domain monitor and downloadable diagnostic package"},
 			{"name": "AmneziaWG", "description": "AmneziaWG/WireGuard detection, managed interface control and split-routing integration"},
@@ -152,6 +153,13 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/subscriptions/schedule", "Servers", "Save subscription auto-refresh schedule", "", "GenericObject", "Object"},
 		{"post", "/subscriptions/fallback", "Servers", "Run subscription fallback", "", "GenericObject", "Object"},
 		{"get", "/subscriptions/fallback-progress", "Servers", "Get fallback progress", "", "", "Object"},
+
+		{"get", "/server-mode", "Server mode", "Get inbound server mode", "Returns saved Xray/AWG inbound server configuration, safety preflight, managed Xray summary and available outbounds.", "", "Object"},
+		{"post", "/server-mode", "Server mode", "Save inbound server mode", "Stores server-mode settings without changing active Xray config.", "GenericObject", "Object"},
+		{"post", "/server-mode/client", "Server mode", "Create server-mode client", "Generates a VLESS client UUID/email for a selected inbound.", "GenericObject", "Object"},
+		{"post", "/server-mode/reality-key", "Server mode", "Generate Reality key pair", "Runs xray x25519 and returns private/public keys.", "", "Object"},
+		{"post", "/server-mode/preview", "Server mode", "Preview server-mode Xray patch", "Builds managed inbound/routing changes and validates the resulting Xray config without writing it.", "GenericObject", "Object"},
+		{"post", "/server-mode/apply", "Server mode", "Apply server-mode Xray patch", "Writes managed inbound/routing changes to active Xray config after preflight. Xray restart is skipped unless restart=true is passed.", "GenericObject", "Object"},
 
 		{"get", "/profiles", "Profiles", "List profiles", "", "", "Object"},
 		{"post", "/profiles", "Profiles", "Save profile", "", "GenericObject", "Object"},

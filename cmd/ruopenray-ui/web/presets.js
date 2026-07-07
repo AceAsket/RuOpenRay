@@ -4,6 +4,7 @@ export const nav = [
   ['dashboard', 'Панель'],
   ['setup', 'Мастер'],
   ['servers', 'Серверы'],
+  ['serverMode', 'Входящие'],
   ['routing', 'Маршрутизация'],
   ['dns', 'DNS'],
   ['diagnostics', 'Диагностика'],

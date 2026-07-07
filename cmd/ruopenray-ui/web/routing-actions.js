@@ -225,6 +225,8 @@ export function createRoutingActions({
     }
     if (state.routeKind === 'port') {
       rule.port = values.join(',');
+      const routeNetwork = String(state.routeNetwork || 'tcp,udp').replace(/\s+/g, '').toLowerCase();
+      rule.network = ['tcp', 'udp'].includes(routeNetwork) ? routeNetwork : 'tcp,udp';
     } else if (state.routeKind === 'domain') {
       rule.domain = normalizeRouteDomainValues(values);
     } else {
@@ -255,6 +257,7 @@ export function createRoutingActions({
     state.routeValue = '';
     state.routeOutbound = activeProxyTag() || 'proxy';
     state.routeTargetType = 'outbound';
+    state.routeNetwork = 'tcp,udp';
     state.routeBalancer = balancerOptions()[0] || '';
     state.routeRuleMode = 'single';
     state.routeRuleEditingIndex = -1;
@@ -394,6 +397,7 @@ export function createRoutingActions({
     const values = splitRouteValues(state.routeValue);
     if (state.routeKind !== 'default' && !values.length) return null;
     const rule = { ...baseRule, type: baseRule.type || 'field' };
+    const routeNetwork = String(state.routeNetwork || 'tcp,udp').replace(/\s+/g, '').toLowerCase();
     delete rule.domain;
     delete rule.ip;
     delete rule.source;
@@ -412,7 +416,10 @@ export function createRoutingActions({
       rule.network = 'tcp,udp';
       return rule;
     }
-    if (state.routeKind === 'port') rule.port = values.join(',');
+    if (state.routeKind === 'port') {
+      rule.port = values.join(',');
+      rule.network = ['tcp', 'udp'].includes(routeNetwork) ? routeNetwork : 'tcp,udp';
+    }
     else if (state.routeKind === 'domain') rule.domain = normalizeRouteDomainValues(values);
     else rule[state.routeKind] = values;
     return rule;
@@ -440,6 +447,8 @@ export function createRoutingActions({
     state.routeKind = target.kind;
     state.routeValue = (target.kind === 'domain' ? displayRouteDomainValues(target.values) : target.values).join(', ');
     state.routeValueMultiline = target.values.length > 1;
+    const cleanRouteNetwork = String(rule.network || 'tcp,udp').replace(/\s+/g, '').toLowerCase();
+    state.routeNetwork = target.kind === 'port' && ['tcp', 'udp'].includes(cleanRouteNetwork) ? cleanRouteNetwork : 'tcp,udp';
     state.routeTargetType = rule.balancerTag ? 'balancer' : 'outbound';
     state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
     state.routeOutbound = rule.outboundTag || 'proxy';
