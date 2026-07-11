@@ -628,7 +628,6 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const plan = status.routePlan || {};
     const view = state.amneziaView === 'awg' ? 'awg' : 'profiles';
     return `<section class="amnezia-page">
-      ${amneziaImportDialog(clientConfig)}
       <section class="route-hero amnezia-hero">
         <div>
           <span class="eyebrow">AmneziaWG</span>
@@ -654,5 +653,5 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     </section>`;
   }
 
-  return { amneziaPanel };
+  return { amneziaPanel, amneziaImportDialog };
 }

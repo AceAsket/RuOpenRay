@@ -92,9 +92,20 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
   });
   document.querySelectorAll('[data-setup-step]').forEach((button) => {
     button.addEventListener('click', () => {
-      state.setupStep = button.dataset.setupStep || state.setupStep || 'environment';
+      state.setupStep = button.dataset.setupStep || state.setupStep || 'connection';
       render();
     });
+  });
+  const setupScenarioSearch = document.querySelector('#setupScenarioSearch');
+  setupScenarioSearch?.addEventListener('input', (event) => {
+    const query = String(event.target.value || '').trim().toLowerCase();
+    state.setupScenarioSearch = event.target.value || '';
+    document.querySelectorAll('[data-setup-scenario-row]').forEach((row) => {
+      row.hidden = Boolean(query && !String(row.dataset.scenarioSearch || '').includes(query));
+    });
+  });
+  document.querySelector('#setupScenarioTarget')?.addEventListener('change', (event) => {
+    state.setupScenarioTarget = event.target.value || '';
   });
 }
 

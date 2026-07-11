@@ -145,7 +145,6 @@ export function createConfigActions({
 function materializeProxyAliases(config, activeProxyTag) {
   const next = JSON.parse(JSON.stringify(config || {}));
   const outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
-  removeTransparentCatchAllRules(next);
   if (outbounds.some((outbound) => outbound?.tag === 'proxy')) return next;
   const systemTags = new Set(['direct', 'block', 'dns-out', 'ruopenray-api']);
   const replacement = typeof activeProxyTag === 'function'
@@ -161,24 +160,6 @@ function materializeProxyAliases(config, activeProxyTag) {
     if (rule && rule.outboundTag === 'proxy') rule.outboundTag = fallback;
   }
   return next;
-}
-
-function removeTransparentCatchAllRules(config) {
-  const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
-  if (!rules.length) return;
-  config.routing.rules = rules.filter((rule) => !isTransparentCatchAllRoute(rule));
-}
-
-function isTransparentCatchAllRoute(rule) {
-  if (!Array.isArray(rule?.inboundTag) || !rule.inboundTag.includes('transparent_ipv4')) return false;
-  return !(
-    (Array.isArray(rule.domain) && rule.domain.length) ||
-    (Array.isArray(rule.ip) && rule.ip.length) ||
-    (Array.isArray(rule.source) && rule.source.length) ||
-    rule.network ||
-    rule.port ||
-    rule.balancerTag
-  );
 }
 
 function configTestSummary(result = {}, analysis = {}) {

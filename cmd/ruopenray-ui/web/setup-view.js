@@ -1,4 +1,5 @@
 import { isServiceOutbound } from './outbound-tags.js';
+import { routePresetIconView } from './route-visuals.js';
 
 export function createSetupView({
   state,
@@ -9,6 +10,15 @@ export function createSetupView({
   loadSetupSnapshot,
   firewallReadyStatus,
   firewallPorts,
+  builtinRoutePresetEntries,
+  customRoutePresetEntries,
+  routePresetRules,
+  routePresetTitle,
+  routePresetDetail,
+  routePresetConditionCount,
+  routePresetInstallSummary,
+  routeTargetOptions,
+  activeProxyTag,
 }) {
 function normalizeCoreVersion(value = '') {
   const text = String(value || '');
@@ -103,22 +113,13 @@ function githubInstallCommand(withXray = false) {
 
 function setupWizardSteps(readiness) {
   const xrayReady = Boolean(state.status?.core?.available);
-  const geoReady = Boolean(state.geoStatus?.geoip?.exists && state.geoStatus?.geosite?.exists);
   const proxyReady = proxyOutboundsSafe().length > 0;
-  const dnsReady = Boolean(state.lanDnsStatus?.mode === 'xray' && state.lanDnsStatus?.readiness?.ready);
-  const fwReady = firewallReadyStatus(state.firewallStatus || {});
   const transparentReady = Boolean(readiness.items.find((item) => item.key === 'transparent')?.ok);
   const defaultRouteReady = Boolean(readiness.items.find((item) => item.key === 'defaultRoute')?.ok);
-  const statsReady = Boolean(state.status?.xrayStats?.enabled);
   return [
-    { id: 'environment', title: 'Проверка', detail: 'Xray, geo-файлы, место', ok: xrayReady && geoReady },
-    { id: 'mode', title: 'Режим', detail: 'Как вести LAN-трафик', ok: true },
-    { id: 'dns', title: 'DNS', detail: 'dnsmasq, Xray, Pi-hole или AdGuard', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
-    { id: 'server', title: 'Сервер', detail: 'Прокси или подписка', ok: proxyReady },
-    { id: 'routing', title: 'Правила', detail: 'Маршрутизация и geo', ok: true },
-    { id: 'fallback', title: 'Остальное', detail: 'Куда вести unmatched traffic', ok: defaultRouteReady },
-    { id: 'firewall', title: 'Перехват', detail: 'Firewall и LAN', ok: fwReady && transparentReady },
-    { id: 'verify', title: 'Запуск', detail: 'Финальная проверка', ok: statsReady || Boolean(state.setupResult?.ok) }
+    { id: 'connection', title: 'Подключения', detail: 'Xray и AmneziaWG', ok: xrayReady && proxyReady },
+    { id: 'traffic', title: 'Трафик', detail: 'Устройства и правила', ok: transparentReady && defaultRouteReady },
+    { id: 'verify', title: 'Проверка', detail: 'Сводка и включение', ok: Boolean(state.setupResult?.ok) }
   ];
 }
 
@@ -140,7 +141,7 @@ function setupWizardStepper(steps) {
   return `<nav class="setup-stepper setup-step-rail" aria-label="Шаги мастера">
     ${steps.map((step, index) => {
       const stateClass = index === activeIndex ? 'active' : step.ok ? 'ok' : index < activeIndex ? 'warn' : 'pending';
-      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}">
+      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}" ${index === activeIndex ? 'aria-current="step"' : ''}>
         <span>${step.ok ? '✓' : index + 1}</span>
         <strong>${escapeHtml(step.title)}</strong>
         <small>${escapeHtml(step.detail || '')}</small>
@@ -163,21 +164,18 @@ function setupWizardSummary(steps) {
       </div>
       <em>${done}/${steps.length}</em>
     </div>
-    <div class="setup-progress" aria-hidden="true"><span style="width: ${progress}%"></span></div>
-    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}. Если что-то опасно применять, мастер остановится и покажет причину.` : 'Все ключевые пункты готовы, можно запускать финальную проверку.'}</p>
+    <div class="setup-progress" role="progressbar" aria-label="Готовность настройки" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}"><span style="width: ${progress}%"></span></div>
+    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}.` : 'Настройка завершена.'}</p>
   </section>`;
 }
 
 function setupStepPrimaryLabel(isLast) {
   if (state.setupApplying) return 'Применяю...';
-  if (isLast) return 'Проверить и применить';
-  return 'Проверить шаг и дальше';
+  if (isLast) return 'Проверить и включить';
+  return 'Продолжить';
 }
 
 function setupStepSecondaryAction(step) {
-  if (step === 'routing' || step === 'fallback' || step === 'firewall' || step === 'verify') {
-    return `<button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>`;
-  }
   return '';
 }
 
@@ -190,124 +188,156 @@ function setupStepNotice() {
   </section>`;
 }
 
+function amneziaConnection() {
+  const status = state.amneziaStatus || state.status?.amnezia || {};
+  const config = status.clientConfig || {};
+  const items = Array.isArray(config.profiles?.items) ? config.profiles.items : [];
+  const current = items.find((item) => item.active) || items.find((item) => item.id === state.amneziaProfileId) || null;
+  return {
+    count: items.length,
+    name: current?.name || config.name || (config.exists ? state.amneziaProfileName || 'AmneziaWG' : ''),
+    ready: Boolean(current || config.exists),
+    running: Boolean(status.control?.managed || status.runtime?.interfaceRunning || status.running)
+  };
+}
+
+function setupScenarioTargetValue() {
+  const options = routeTargetOptions();
+  const selected = String(state.setupScenarioTarget || '');
+  if (selected && options.some((option) => option.value === selected)) return selected;
+  const active = `outbound:${activeProxyTag() || ''}`;
+  if (options.some((option) => option.value === active)) return active;
+  return options.find((option) => option.value === 'outbound:proxy')?.value || options[0]?.value || '';
+}
+
+function setupScenarioInstallState(key) {
+  const xray = routePresetInstallSummary(key);
+  const title = routePresetTitle(key);
+  const proxyRuleCount = routePresetRules(key).filter((rule) => rule?.outboundTag === 'proxy').length;
+  const policies = Array.isArray(state.amneziaPolicyRules) ? state.amneziaPolicyRules : [];
+  const awgCount = policies.filter((rule) => String(rule?.name || '') === title).length;
+  const awgInstalled = proxyRuleCount > 0 && awgCount >= proxyRuleCount;
+  return {
+    installed: Boolean(xray.installed || awgInstalled),
+    partial: Boolean(xray.partial || (awgCount > 0 && !awgInstalled)),
+    matched: Math.max(Number(xray.matched || 0), awgCount),
+  };
+}
+
+function setupScenariosBlock() {
+  const entries = [...customRoutePresetEntries(), ...builtinRoutePresetEntries()];
+  const seen = new Set();
+  const uniqueEntries = entries.filter(([key]) => key && !seen.has(key) && seen.add(key));
+  const query = String(state.setupScenarioSearch || '').trim().toLowerCase();
+  const selected = new Set(Array.isArray(state.selectedRoutePresets) ? state.selectedRoutePresets : []);
+  const options = routeTargetOptions();
+  const targetValue = setupScenarioTargetValue();
+  const rows = uniqueEntries.map(([key, preset]) => {
+    const title = routePresetTitle(key);
+    const detail = routePresetDetail(key) || preset?.detail || 'Готовый набор правил маршрутизации.';
+    const conditionCount = routePresetConditionCount(key);
+    const install = setupScenarioInstallState(key);
+    const haystack = `${title} ${detail} ${key}`.toLowerCase();
+    const hidden = query && !haystack.includes(query);
+    const status = install.installed ? 'добавлен' : install.partial ? `частично ${install.matched}/${conditionCount}` : `${conditionCount} прав.`;
+    return `<label class="setup-scenario-row preset-check ${install.installed ? 'installed' : install.partial ? 'partial' : ''}" data-setup-scenario-row data-scenario-search="${escapeHtml(haystack)}" ${hidden ? 'hidden' : ''}>
+      <input type="checkbox" data-route-preset-check="${escapeHtml(key)}" ${selected.has(key) ? 'checked' : ''} ${install.installed ? 'disabled' : ''} />
+      ${routePresetIconView(escapeHtml, key, preset, 'setup-scenario-icon')}
+      <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span>
+      <em>${escapeHtml(status)}</em>
+    </label>`;
+  }).join('');
+  return `<section class="setup-scenarios">
+    <div class="setup-scenarios-head">
+      <div><h4>Сценарии</h4><p>Отметьте сервисы и сразу выберите, куда направлять их трафик.</p></div>
+      <button class="btn secondary" type="button" data-action="updateRoutePresetSources">Обновить</button>
+    </div>
+    <div class="setup-scenario-controls">
+      <input id="setupScenarioSearch" value="${escapeHtml(state.setupScenarioSearch || '')}" placeholder="Найти сценарий" />
+      <select id="setupScenarioTarget" aria-label="Назначение выбранных сценариев">
+        ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${option.value === targetValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="setup-scenario-list">${rows || '<div class="empty-state">Сценарии пока не загружены. Обновите подключенный источник.</div>'}</div>
+    <div class="setup-scenario-footer">
+      <span>Выбрано: <strong data-setup-scenario-selected>${selected.size}</strong></span>
+      <button class="btn warning" type="button" data-action="applySetupRoutePresets" ${selected.size ? '' : 'disabled'}>Добавить выбранные</button>
+    </div>
+  </section>`;
+}
+
 function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
-  const step = state.setupStep || 'environment';
+  const step = ['connection', 'traffic', 'verify'].includes(state.setupStep) ? state.setupStep : 'connection';
   const proxyCount = proxyOutboundsSafe().length;
+  const coreReady = Boolean(state.status?.core?.available);
   const fwMode = state.firewallRouterMode || state.firewallStatus?.routerMode || 'off';
-  if (step === 'environment') {
+  const awg = amneziaConnection();
+  if (step === 'connection') {
     return `<section class="setup-step-panel">
-      <h3>Проверка роутера</h3>
-      <p>Сначала мастер проверяет, готов ли роутер: Xray, geo-файлы, свободное место, прокси-сервер, входящий поток перехвата, firewall и LAN DNS. Красные пункты лучше исправить до применения.</p>
-      <div class="setup-readiness">
-        ${readiness.items.map((item) => `<article class="${item.ok ? 'ok' : item.warn ? 'warn' : 'bad'}">
-          <span>${item.ok ? '✓' : item.warn ? '!' : '×'}</span>
-          <div>
-            <strong>${escapeHtml(item.title)}</strong>
-            <small>${escapeHtml(item.detail)}</small>
-          </div>
-        </article>`).join('')}
-      </div>
+      <h3>Подключения</h3>
+      <p>Добавьте основное подключение Xray. AmneziaWG можно подключить дополнительно и выбирать его в правилах маршрутизации.</p>
       <div class="setup-choice-grid compact">
-        <article><span>Свободно</span><strong>${escapeHtml(byteSize(diskFree))}</strong><small>Если места мало, используйте компактные geo и обновляйте без резервной копии.</small></article>
-        <article><span>Прокси</span><strong>${proxyCount}</strong><small>Нужен хотя бы один сервер или подписка.</small></article>
-        <article><span>Firewall</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>Фактический режим сверяется перед финальным применением.</small></article>
-      </div>
-    </section>`;
-  }
-  if (step === 'mode') {
-    return `<section class="setup-step-panel">
-      <h3>Режим работы</h3>
-      <p>Выберите, как RuOpenRay должен работать после мастера. Сейчас мастер готовит самостоятельный режим: DNS, входящий поток перехвата, правила обхода локальной сети и firewall-перехват.</p>
-      <div class="setup-mode-grid">
-        <article class="active">
-          <strong>LAN через Xray</strong>
-          <span>Устройства из LAN попадают в Xray, а правила решают: через прокси, напрямую или заблокировать.</span>
-        </article>
-        <article>
-          <strong>Выбранные клиенты</strong>
-          <span>Настраивается в разделе перехвата: можно ограничить схему конкретными IP/MAC.</span>
-          <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Открыть перехват</button>
-        </article>
-        <article>
-          <strong>Защита от утечек</strong>
-          <span>Для доменов/IP, которые нельзя выпускать наружу без Xray.</span>
-          <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Открыть защиту</button>
-        </article>
-      </div>
-    </section>`;
-  }
-  if (step === 'dns') {
-    return `<section class="setup-step-panel">
-      <h3>DNS для LAN</h3>
-      <p>Можно оставить текущий DNS, направить dnsmasq в Xray DNS или использовать внешний DNS, Pi-hole либо AdGuard Home. Для режима через Xray мастер проверит, что DNS-вход Xray действительно слушает порт.</p>
-      ${setupLanDnsBlock()}
-    </section>`;
-  }
-  if (step === 'server') {
-    return `<section class="setup-step-panel">
-      <h3>Прокси-сервер</h3>
-      <p>Добавьте сервер или подписку, затем проверьте доступность. Мастер не продолжит безопасно, если в конфигурации нет ни одного прокси-направления.</p>
-      <div class="setup-choice-grid compact">
-        <article><span>Прокси</span><strong>${proxyCount}</strong><small>${proxyCount ? 'Можно продолжать.' : 'Добавьте VLESS/VMess/Trojan/SS ссылку или подписку.'}</small></article>
-        <article><span>Активный сервер</span><strong>${escapeHtml(activeProxyName())}</strong><small>Основные правила “через прокси” будут вести сюда, если не выбран балансировщик.</small></article>
-        <article><span>Проверка</span><strong>${escapeHtml(lastServerCheckText())}</strong><small>TCP/HTTP проверку можно запустить в разделе “Серверы”.</small></article>
+        <article class="${coreReady ? 'ok' : 'warn'}"><span>Xray</span><strong>${coreReady ? 'установлен' : 'не найден'}</strong><small>${coreReady ? 'Ядро готово к настройке.' : 'Установите Xray перед продолжением.'}</small></article>
+        <article class="${proxyCount ? 'ok' : 'warn'}"><span>Основное подключение</span><strong>${proxyCount ? escapeHtml(activeProxyName()) : 'не добавлено'}</strong><small>${proxyCount ? `${proxyCount} серверов доступно` : 'Добавьте сервер или подписку Xray.'}</small></article>
+        <article class="${awg.ready ? 'ok' : ''}"><span>AmneziaWG · необязательно</span><strong>${escapeHtml(awg.name || 'не настроен')}</strong><small>${awg.ready ? `${awg.count ? `${awg.count} проф.` : 'client.conf сохранен'} · ${awg.running ? 'туннель работает' : 'профиль готов'}` : 'Можно добавить сейчас или позже.'}</small></article>
       </div>
       <div class="setup-inline-actions">
-        <button class="btn" type="button" data-tab-jump="servers">Открыть серверы</button>
-        <button class="btn secondary" type="button" data-import-dialog="server">Добавить сервер</button>
+        ${coreReady ? '' : '<button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button>'}
+        <button class="btn warning" type="button" data-import-dialog="server">Добавить Xray</button>
+        <button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Импорт AWG</button>
+        <button class="btn secondary" type="button" data-tab-jump="servers">Все серверы</button>
+        <button class="btn secondary" type="button" data-tab-jump="amnezia">Все AWG-профили</button>
       </div>
     </section>`;
   }
-  if (step === 'routing') {
+  if (step === 'traffic') {
+    const selectedDevices = Array.isArray(state.firewallSelectedDevices) ? state.firewallSelectedDevices.length : 0;
+    const devicesText = state.firewallDeviceMode === 'selected' ? `${selectedDevices} выбрано` : 'вся локальная сеть';
+    const rulesCount = Array.isArray(state.config?.routing?.rules) ? state.config.routing.rules.length : 0;
     return `<section class="setup-step-panel">
-      <h3>Маршрутизация</h3>
-      <p>Добавьте подборки или свои правила до финального применения. Мастер подготовит служебные правила выше пользовательских: локальные сети напрямую, DNS в DNS-выход Xray, домены прокси-серверов напрямую.</p>
+      <h3>Куда направлять трафик</h3>
+      <p>Выберите устройства и правила. Для каждого правила доступны Xray-сервер, группа, AWG-профиль, прямое подключение или блокировка.</p>
+      ${setupScenariosBlock()}
       <div class="setup-choice-grid compact">
-        <article><span>Правила</span><strong>${escapeHtml(String((state.config?.routing?.rules || []).length || 0))}</strong><small>Порядок важен: выше = раньше.</small></article>
-        <article><span>Geo Doctor</span><strong>${escapeHtml(geoDoctorText())}</strong><small>Geo-ссылки проверяются вместе с конфигурацией.</small></article>
-        <article><span>Черновик</span><strong>${state.serverDraftExists ? 'есть' : 'нет'}</strong><small>Перед применением мастер еще раз проверит Xray.</small></article>
+        <article><span>Устройства</span><strong>${escapeHtml(devicesText)}</strong><small>Можно ограничить работу конкретными устройствами.</small></article>
+        <article><span>Правила</span><strong>${rulesCount}</strong><small>Сценарии и свои домены сохранят выбранные назначения.</small></article>
+        <article><span>Остальной трафик</span><strong>${escapeHtml(activeProxyName())}</strong><small>Локальные адреса останутся доступными напрямую.</small></article>
       </div>
       <div class="setup-inline-actions">
-        <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Открыть правила</button>
-        <button class="btn secondary" type="button" data-action="setupPrepareDraft">Подготовить служебные правила</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Настроить правила</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Выбрать устройства</button>
       </div>
     </section>`;
   }
-  if (step === 'fallback') {
-    const defaultRoute = readiness.items.find((item) => item.key === 'defaultRoute');
-    const target = defaultRoute?.ok ? defaultRoute.detail : 'Финальное правило еще не подготовлено.';
-    return `<section class="setup-step-panel">
-      <h3>Остальной трафик</h3>
-      <p>Это финальное правило для LAN-трафика, который уже попал в <code>transparent_ipv4</code>, но не совпал ни с одним пользовательским правилом выше. Без явного правила Xray использует первый outbound в конфиге, и это сложно заметить при диагностике.</p>
-      <div class="setup-choice-grid compact">
-        <article class="${defaultRoute?.ok ? 'ok' : 'warn'}"><span>Финальное правило</span><strong>${defaultRoute?.ok ? 'найдено' : 'не найдено'}</strong><small>${escapeHtml(target)}</small></article>
-        <article><span>Порядок</span><strong>последним</strong><small>Правила выше сохраняют приоритет: подборки, свои домены, direct/block и служебные исключения сработают раньше.</small></article>
-        <article><span>Назначение</span><strong>${escapeHtml(activeProxyName())}</strong><small>Мастер направит остальной LAN-трафик в первый пользовательский proxy, если отдельный балансировщик не выбран вручную.</small></article>
-      </div>
-      <div class="setup-inline-actions">
-        <button class="btn" type="button" data-action="setupPrepareDraft">Подготовить правило</button>
-        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Открыть маршруты</button>
-      </div>
-    </section>`;
-  }
-  if (step === 'firewall') {
-    return `<section class="setup-step-panel">
-      <h3>Перехват трафика</h3>
-      <p>Firewall-часть решает, какой LAN-трафик попадет в Xray. Перед применением смотрите preview правил nftables, особенно если ограничиваете клиентов или выбираете все порты.</p>
-      <div class="setup-choice-grid compact">
-        <article><span>Политика</span><strong>${escapeHtml(String(state.firewallBypassMode || 'off').toUpperCase())}</strong><small>Определяет, что отсекать до попадания трафика в Xray.</small></article>
-        <article><span>Режим</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>TPROXY работает с TCP/UDP. REDIRECT проще, но только для TCP.</small></article>
-        <article><span>Порты</span><strong>${state.firewallPortMode === 'all' ? 'Все' : escapeHtml(firewallPorts().join(', ') || '80, 443')}</strong><small>${state.firewallBlockQuic ? 'QUIC будет блокироваться.' : 'QUIC не блокируется.'}</small></article>
-      </div>
-      <div class="setup-inline-actions">
-        <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Открыть перехват</button>
-        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Защита от утечек</button>
-      </div>
-    </section>`;
-  }
+  const dnsMode = state.setupLanDnsMode === 'keep' ? 'без изменений' : state.setupLanDnsMode === 'upstream' ? 'внешний DNS' : 'через Xray';
+  const deviceMode = state.firewallDeviceMode === 'selected' ? 'выбранные устройства' : 'вся локальная сеть';
   return `<section class="setup-step-panel">
-    <h3>Финальная проверка и применение</h3>
-    <p>На этом шаге мастер сохранит снимок для отката, подготовит конфигурацию, проверит Xray вместе с Geo Doctor, применит настройки Xray, DNS и firewall.</p>
+    <h3>Проверка перед включением</h3>
+    <p>RuOpenRay сохранит текущее состояние для отката, проверит конфигурацию и только затем включит маршрутизацию.</p>
+    <div class="setup-review-list">
+      <article><span>Основное подключение</span><strong>${escapeHtml(activeProxyName())}</strong></article>
+      ${awg.ready ? `<article><span>AmneziaWG</span><strong>${escapeHtml(awg.name)} · ${awg.running ? 'работает' : 'готов как назначение'}</strong></article>` : ''}
+      <article><span>Устройства</span><strong>${escapeHtml(deviceMode)}</strong></article>
+      <article><span>Остальной трафик</span><strong>через ${escapeHtml(activeProxyName())}</strong></article>
+      <article><span>DNS</span><strong>${escapeHtml(dnsMode)}</strong></article>
+    </div>
+    <button class="btn secondary setup-advanced-toggle" type="button" data-action="toggleSetupAdvanced" aria-expanded="${state.setupAdvancedOpen ? 'true' : 'false'}">${state.setupAdvancedOpen ? 'Скрыть расширенные настройки' : 'Расширенные настройки'}</button>
+    ${state.setupAdvancedOpen ? `<section class="setup-advanced-options">
+      <div>
+        <h4>DNS для локальной сети</h4>
+        ${setupLanDnsBlock()}
+      </div>
+      <div class="setup-choice-grid compact">
+        <article><span>Режим трафика</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>Меняется в разделе перехвата.</small></article>
+        <article><span>Порты</span><strong>${state.firewallPortMode === 'all' ? 'Все' : escapeHtml(firewallPorts().join(', ') || '80, 443')}</strong><small>${state.firewallBlockQuic ? 'QUIC блокируется.' : 'QUIC разрешен.'}</small></article>
+        <article><span>Geo-проверка</span><strong>${escapeHtml(geoDoctorText())}</strong><small>Проверится вместе с конфигурацией.</small></article>
+      </div>
+      <div class="setup-inline-actions">
+        <button class="btn secondary" type="button" data-tab-jump="dns">Открыть DNS</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Открыть перехват</button>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="geo">Открыть Geo</button>
+      </div>
+    </section>` : ''}
     ${setupSnapshotBlock(snapshot)}
     ${resultBlock(result, rollback)}
   </section>`;
@@ -408,20 +438,16 @@ function setupPage() {
     <section class="setup-page">
       <div class="setup-page-head">
         <div>
-          <h2>Мастер настройки RuOpenRay</h2>
-          <p>Пошагово собирает самостоятельный режим: Xray, DNS, серверы, правила, перехват и проверку трафика. Каждый шаг проверяет себя перед переходом дальше.</p>
-        </div>
-        <div class="split-actions">
-          <button class="btn secondary" type="button" data-action="openInstallWizard">Установка Xray</button>
-          <button class="btn secondary" type="button" data-tab-jump="dashboard">На панель</button>
+          <h2>Быстрая настройка RuOpenRay</h2>
+          <p>Добавьте подключения, выберите трафик и проверьте итог перед включением.</p>
         </div>
       </div>
 
       <div class="setup-guided-layout">
         <aside class="setup-guide-rail">
           <div class="setup-rail-title">
-            <strong>Шаги настройки</strong>
-            <span>Идите сверху вниз. Вернуться можно к любому шагу, а перед запуском мастер проверит всю цепочку.</span>
+            <strong>Три шага</strong>
+            <span>Вернуться к предыдущему шагу можно без потери настроек.</span>
           </div>
           ${setupWizardStepper(steps)}
           ${setupWizardSummary(steps)}

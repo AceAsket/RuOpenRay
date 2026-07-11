@@ -33,7 +33,8 @@ export function createSetupActions({
     }
     state.setupWizardOpen = false;
     state.tab = 'setup';
-    state.setupStep = state.setupStep || 'environment';
+    const setupSteps = ['connection', 'traffic', 'verify'];
+    state.setupStep = setupSteps.includes(state.setupStep) ? state.setupStep : 'connection';
     state.setupResult = null;
     state.setupRollbackResult = null;
     loadSetupSnapshot();

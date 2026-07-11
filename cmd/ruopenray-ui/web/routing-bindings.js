@@ -69,8 +69,10 @@ export function bindRoutingControls({
       else selected.delete(key);
       state.selectedRoutePresets = [...selected];
       checkbox.closest('.preset-check')?.classList.toggle('active', checkbox.checked);
-      const applyButton = document.querySelector('[data-action="applyRoutePresets"]');
+      const applyButton = document.querySelector('[data-action="applyRoutePresets"], [data-action="applySetupRoutePresets"]');
       if (applyButton) applyButton.disabled = state.selectedRoutePresets.length === 0;
+      const selectedCount = document.querySelector('[data-setup-scenario-selected]');
+      if (selectedCount) selectedCount.textContent = String(state.selectedRoutePresets.length);
     });
   });
   document.querySelectorAll('[data-route-preset-edit]').forEach((button) => {

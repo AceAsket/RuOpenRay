@@ -1803,7 +1803,7 @@
 
 .setup-guide-rail .setup-stepper {
   position: relative;
-  grid-template-columns: repeat(7, minmax(82px, 1fr));
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
   gap: 8px;
 }
 
@@ -1991,6 +1991,176 @@
   box-shadow: inset 3px 0 0 rgba(98, 210, 111, 0.8);
 }
 
+.setup-review-list {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-review-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.setup-review-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-review-list strong {
+  max-width: 68%;
+  text-align: right;
+}
+
+.setup-advanced-toggle {
+  justify-self: start;
+}
+
+.setup-advanced-options {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(7, 13, 17, 0.44);
+}
+
+.setup-advanced-options h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.setup-scenarios {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(7, 13, 17, 0.44);
+}
+
+.setup-scenarios-head,
+.setup-scenario-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-scenarios-head h4,
+.setup-scenarios-head p {
+  margin: 0;
+}
+
+.setup-scenarios-head h4 {
+  font-size: 16px;
+}
+
+.setup-scenarios-head p,
+.setup-scenario-footer span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-scenario-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 0.8fr);
+  gap: 8px;
+}
+
+.setup-scenario-list {
+  display: grid;
+  gap: 6px;
+  max-height: 310px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.setup-scenario-row {
+  display: grid;
+  grid-template-columns: 18px 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+.setup-scenario-row[hidden] {
+  display: none;
+}
+
+.setup-scenario-row:hover,
+.setup-scenario-row.active {
+  border-color: rgba(52, 211, 198, 0.34);
+  background: rgba(52, 211, 198, 0.06);
+}
+
+.setup-scenario-row.installed {
+  cursor: default;
+  background: rgba(98, 210, 111, 0.055);
+}
+
+.setup-scenario-row > input {
+  position: static;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.setup-scenario-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.setup-scenario-icon svg:not(.brand-icon) {
+  width: 20px;
+  height: 20px;
+}
+
+.setup-scenario-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setup-scenario-row strong,
+.setup-scenario-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-scenario-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.setup-scenario-row em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.setup-scenario-row.installed em {
+  color: var(--green);
+}
+
 .setup-step-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2027,7 +2197,7 @@
   }
 
   .setup-guide-rail .setup-stepper {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .setup-guide-rail .setup-stepper::before {
@@ -2052,6 +2222,51 @@
   .setup-step-actions .btn.warning {
     width: 100%;
     min-width: 0;
+  }
+
+  .setup-rail-title span,
+  .setup-stepper small,
+  .setup-guide-rail .setup-step-summary p {
+    display: none;
+  }
+
+  .setup-stepper button {
+    grid-template-rows: 26px auto;
+    min-height: 64px;
+    padding: 7px 4px;
+  }
+
+  .setup-stepper strong {
+    font-size: 11px;
+  }
+
+  .setup-review-list article {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .setup-review-list strong {
+    max-width: none;
+    text-align: left;
+  }
+
+  .setup-scenario-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-scenarios-head,
+  .setup-scenario-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setup-scenario-row {
+    grid-template-columns: 18px 32px minmax(0, 1fr);
+  }
+
+  .setup-scenario-row em {
+    grid-column: 3;
   }
 }
 

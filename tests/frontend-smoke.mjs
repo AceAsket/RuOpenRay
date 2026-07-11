@@ -48,6 +48,7 @@ import { createServersView } from '../cmd/ruopenray-ui/web/servers-view.js';
 import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
 import { createSetupActions } from '../cmd/ruopenray-ui/web/setup-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
+import { createSetupView } from '../cmd/ruopenray-ui/web/setup-view.js';
 import { bindSettingsControls } from '../cmd/ruopenray-ui/web/settings-bindings.js';
 import { authRememberStorageKey, clearAuthToken, loadAuthToken } from '../cmd/ruopenray-ui/web/storage.js';
 import { createSniView } from '../cmd/ruopenray-ui/web/sni-view.js';
@@ -225,7 +226,7 @@ Jc = 4
 PublicKey = public
 Endpoint = vpn.example:443
 AllowedIPs = 0.0.0.0/0`;
-const amneziaEditorHtml = amneziaView.amneziaPanel();
+const amneziaEditorHtml = amneziaView.amneziaImportDialog(state.amneziaStatus.clientConfig);
 const amneziaStructuredEditorRender = amneziaEditorHtml.includes('amnezia-structured-editor')
   && amneziaEditorHtml.includes('data-amnezia-field="PrivateKey"')
   && amneziaEditorHtml.includes('data-amnezia-extra="interface"')
@@ -388,6 +389,69 @@ const setupBootstrapCoversBuiltInDoh = [
   ['common.dot.dns.yandex.net', '77.88.8.8'],
   ['doh.opendns.com', '208.67.222.222']
 ].every(([host, ip]) => Array.isArray(setupBootstrapHosts[host]) && setupBootstrapHosts[host].includes(ip));
+const setupViewState = {
+  status: { core: { available: true, version: 'Xray test' }, amnezia: {} },
+  config: {
+    inbounds: [],
+    outbounds: [{ tag: 'proxy-test', protocol: 'vless', settings: { vnext: [{ address: 'proxy.example', port: 443 }] } }],
+    routing: { rules: [] },
+  },
+  setupStep: 'connection',
+  setupResult: null,
+  setupRollbackResult: null,
+  setupApplying: false,
+  setupRollbacking: false,
+  setupAdvancedOpen: false,
+  setupLanDnsMode: 'xray',
+  setupLanDnsUpstream: '',
+  setupRestartDnsmasq: true,
+  firewallRouterMode: 'tproxy',
+  firewallDeviceMode: 'all',
+  firewallSelectedDevices: [],
+  firewallPortMode: 'custom',
+  firewallBlockQuic: true,
+  amneziaStatus: { clientConfig: { profiles: { items: [] } } },
+};
+const setupViewReadiness = {
+  canApply: true,
+  items: [
+    { key: 'core', ok: true },
+    { key: 'transparent', ok: false },
+    { key: 'defaultRoute', ok: false },
+  ],
+};
+const setupView = createSetupView({
+  state: setupViewState,
+  shellQuote: (value) => String(value),
+  escapeHtml,
+  byteSize: formatByteSize,
+  setupReadiness: () => setupViewReadiness,
+  loadSetupSnapshot: () => null,
+  firewallReadyStatus: () => false,
+  firewallPorts: () => [80, 443],
+  builtinRoutePresetEntries: () => [['video', { title: 'Video', detail: 'Video services' }]],
+  customRoutePresetEntries: () => [],
+  routePresetRules: () => [{ type: 'field', outboundTag: 'proxy', domain: ['domain:video.example'] }],
+  routePresetTitle: () => 'Video',
+  routePresetDetail: () => 'Video services',
+  routePresetConditionCount: () => 1,
+  routePresetInstallSummary: () => ({ installed: false, partial: false, matched: 0, total: 1 }),
+  routeTargetOptions: () => [{ value: 'outbound:proxy-test', label: 'Proxy test' }],
+  activeProxyTag: () => 'proxy-test',
+});
+const setupViewHtml = setupView.setupPage();
+const setupViewIsSimple = (setupViewHtml.match(/data-setup-step=/g) || []).length === 3
+  && setupViewHtml.includes('Подключения')
+  && setupViewHtml.includes('Куда направлять трафик') === false
+  && setupViewHtml.includes('1/3')
+  && !setupViewHtml.includes('unmatched traffic');
+setupViewState.setupStep = 'traffic';
+const setupTrafficHtml = setupView.setupPage();
+const setupScenariosEmbedded = setupTrafficHtml.includes('data-route-preset-check="video"')
+  && setupTrafficHtml.includes('setup-scenario-icon')
+  && setupTrafficHtml.includes('id="setupScenarioTarget"')
+  && setupTrafficHtml.includes('data-action="applySetupRoutePresets"')
+  && !setupTrafficHtml.includes('Выбрать сценарии');
 function createMemoryStorage() {
   return {
     data: new Map(),
@@ -837,6 +901,31 @@ const configActions = createConfigActions({
 });
 await configActions.analyzeConfig();
 await configActions.applyConfig();
+let appliedCatchAllConfig = null;
+const catchAllConfigState = {
+  jsonDraft: JSON.stringify({
+    outbounds: [{ tag: 'proxy-one', protocol: 'vless' }],
+    routing: { rules: [{ type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: 'proxy', network: 'tcp,udp' }] },
+  }),
+  status: {},
+};
+const catchAllConfigActions = createConfigActions({
+  state: catchAllConfigState,
+  request: async (path, options = {}) => {
+    if (path === '/api/config/apply') {
+      appliedCatchAllConfig = JSON.parse(options.body).config;
+      return { ok: true, analysis: { errors: [] } };
+    }
+    return { ok: true };
+  },
+  render,
+  refresh: async () => {},
+  keepOperationVisible: async () => {},
+  recordXrayStatsSample: () => {},
+  activeProxyTag: () => 'proxy-one',
+});
+await catchAllConfigActions.applyConfig();
+const configApplyPreservesCatchAll = appliedCatchAllConfig?.routing?.rules?.[0]?.outboundTag === 'proxy-one';
 
 const sniActionState = {
   sniTarget: 'cloudone.example',
@@ -1009,6 +1098,27 @@ const subscriptionRoutingModel = createRoutingModel({
   checkForTag: () => null,
   checkLabel: () => '',
 });
+const fallbackAwgRoutingModel = createRoutingModel({
+  state: {
+    config: { routing: { rules: [] }, outbounds: [] },
+    routeNames: {},
+    serverMeta: {},
+    subscriptionPools: [],
+    amneziaStatus: {
+      clientConfig: {
+        exists: true,
+        peer: { endpoint: 'cloudfour.example:443' },
+        profiles: { activeId: 'cloudfour-example', selectedIds: ['cloudfour-example'], items: [] },
+      },
+    },
+  },
+  managedRouteTags: {},
+  routeBundles: {},
+  routeKinds: {},
+  routePresets: {},
+  proxyOutbounds: () => [],
+});
+const fallbackAwgTargetWorks = fallbackAwgRoutingModel.routeTargetOptions().some((option) => option.value === 'outbound:ruopenray-amnezia-direct:cloudfour-example' && option.label.includes('cloudfour.example'));
 const routingDsl = createRoutingDsl({
   state: { routeDslName: 'Discord' },
   escapeHtml,
@@ -1110,6 +1220,18 @@ const routeRuleTargetListTestWorks = routeRuleProbeRequests.length === 2
   && routeRuleProbeRequests[0]?.payload?.host === 'one.example'
   && routeRuleProbeRequests[1]?.payload?.host === 'two.example'
   && routingActionState.routeRuleTestResult?.title?.includes('2/2');
+routingActionState.externalRoutePresets = {
+  video: { title: 'Video', rules: [{ type: 'field', outboundTag: 'proxy', domain: ['domain:video.example'] }] },
+};
+routingActionState.selectedRoutePresets = ['video'];
+await routingActions.applySelectedRoutingPresets({ targetValue: 'outbound:out-amnezia' });
+const setupScenarioTargetsXrayAwg = routingActionState.config.routing.rules.some((rule) => rule.outboundTag === 'out-amnezia' && rule.domain?.includes('domain:video.example'));
+routingActionState.amneziaStatus = { clientConfig: { profiles: { items: [{ id: 'awg-one', name: 'AWG One', active: true }] } } };
+routingActionState.amneziaPolicyRules = [];
+routingActionState.externalRoutePresets.awgvideo = { title: 'AWG Video', rules: [{ type: 'field', outboundTag: 'proxy', domain: ['domain:awg-video.example'] }] };
+routingActionState.selectedRoutePresets = ['awgvideo'];
+await routingActions.applySelectedRoutingPresets({ targetValue: 'outbound:ruopenray-amnezia-direct:awg-one' });
+const setupScenarioTargetsDirectAwg = routingActionState.amneziaPolicyRules.some((rule) => rule.profileId === 'awg-one' && rule.domain?.includes('domain:awg-video.example'));
 const routeGroupState = {
   config: { outbounds: [{ tag: 'vpn-a', protocol: 'vless' }, { tag: 'vpn-b', protocol: 'vless' }], routing: { rules: [
     { type: 'field', outboundTag: 'vpn-a', domain: ['domain:telegram.org', 'domain:t.me', 'domain:telegra.ph', 'domain:telegram.me'] },
@@ -1985,11 +2107,16 @@ const checks = [
   ['routing helpers preserve mixed flag', routingHelpersPreserveMixed],
   ['routing helpers set matching', routingHelpersSetMatches && routingHelpersKeyIgnoresValueOrder],
   ['routing target bulk replace', routeTargetReplaceWorks],
+  ['routing fallback awg target', fallbackAwgTargetWorks],
+  ['setup scenarios target xray awg', setupScenarioTargetsXrayAwg],
+  ['setup scenarios target direct awg', setupScenarioTargetsDirectAwg],
   ['devices model lease picker', devicesModel.deviceStats().proxy === 1 && devicesModel.routeLeasePicker().includes('192.168.1.2')],
   ['devices actions draft', deviceActionState.config.routing.rules[0]?.source?.[0] === '192.168.1.77' && deviceActionState.config.routing.rules[0]?.inboundTag?.[0] === 'transparent_ipv4'],
   ['diagnostics actions bytes', actions.totalXrayStatsBytes({ outbounds: [{ uplink: 1, downlink: 2 }] }) === 3],
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
   ['setup model dns bootstrap built-in doh', setupBootstrapCoversBuiltInDoh],
+  ['setup view uses three honest steps', setupViewIsSimple],
+  ['setup view embeds scenarios', setupScenariosEmbedded],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
@@ -2008,6 +2135,7 @@ const checks = [
   ['server actions check and switch', serverActionState.serverChecks['proxy-new']?.ok && serverActionState.config.routing.rules[0]?.outboundTag === 'proxy-new' && serverActionState.applied && serverActionState.refreshed && serverActionState.selectedSubscription],
   ['observatory actions', observatoryConfigDraft?.observatory?.probeInterval === '15s' && observatoryCheckedTags[0] === 'proxy-one'],
   ['config actions apply', configActionState.configAnalysis?.errors?.length === 0 && configActionState.lastApplyBackup === '/tmp/backup.json'],
+  ['config actions preserve setup catch-all', configApplyPreservesCatchAll],
   ['config anonymized export', anonymizedConfig.outbounds[0]?.tag === 'proxy-1' && anonymizedConfig.routing.rules[0]?.outboundTag === 'proxy-1' && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.address?.startsWith('[masked') && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.users?.[0]?.id?.startsWith('[masked')],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],

@@ -1160,6 +1160,15 @@ const setupView = createSetupView({
   loadSetupSnapshot,
   firewallReadyStatus,
   firewallPorts,
+  builtinRoutePresetEntries,
+  customRoutePresetEntries,
+  routePresetRules,
+  routePresetTitle,
+  routePresetDetail,
+  routePresetConditionCount,
+  routePresetInstallSummary,
+  routeTargetOptions,
+  activeProxyTag,
 });
 const {
   normalizeCoreVersion,
@@ -1375,7 +1384,7 @@ const amneziaView = createAmneziaView({
   state,
   escapeHtml
 });
-const { amneziaPanel } = amneziaView;
+const { amneziaPanel, amneziaImportDialog } = amneziaView;
 
 const auxPanelsView = createAuxPanelsView({
   state,
@@ -1775,73 +1784,32 @@ function pendingChangesBanner() {
 }
 
 function setupStepOrder() {
-  return ['environment', 'mode', 'dns', 'server', 'routing', 'fallback', 'firewall', 'verify'];
+  return ['connection', 'traffic', 'verify'];
 }
 
 function setupStepGate(step) {
   const readiness = setupReadiness();
   const byKey = new Map((readiness.items || []).map((item) => [item.key, item]));
   const proxyCount = proxyOutbounds().length;
-  const transparentReady = Boolean(byKey.get('transparent')?.ok);
-  const defaultRouteReady = Boolean(byKey.get('defaultRoute')?.ok);
-  const firewallReady = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(state.firewallStatus || {}) : false;
   const notice = (level, title, detail) => ({ ok: false, notice: { step, level, title, detail } });
-  if (step === 'environment') {
+  if (step === 'connection') {
     if (!byKey.get('core')?.ok) return notice('bad', 'Xray не найден', 'Сначала установите xray-core и зависимости OpenWrt. Откройте установку Xray на этом шаге.');
-    if (!byKey.get('geo')?.ok) {
-      return {
-        ok: true,
-        notice: {
-          step,
-          level: 'warn',
-          title: 'Geo-файлы не готовы',
-          detail: 'Для правил geoip/geosite нужны geoip.dat и geosite.dat. Мастер может идти дальше, но финальная проверка покажет ошибку, если правило ссылается на отсутствующую категорию.'
-        }
-      };
-    }
-  }
-  if (step === 'server' && proxyCount < 1) {
-    return notice('bad', 'Нет прокси-сервера', 'Добавьте сервер или подписку в разделе “Серверы”, затем вернитесь в мастер.');
-  }
-  if (step === 'fallback' && !defaultRouteReady) {
     if (proxyCount < 1) {
-      return notice('bad', 'Некуда вести остальной трафик', 'Добавьте хотя бы один proxy: мастер должен явно выбрать направление для LAN-трафика, который не совпал с правилами выше.');
+      return notice('bad', 'Нет подключения Xray', 'Добавьте сервер или подписку прямо на этом шаге. AmneziaWG можно подключить дополнительно как отдельное назначение маршрутизации.');
     }
+  }
+  if (step === 'traffic') {
+    if (proxyCount < 1) return notice('bad', 'Нет назначения по умолчанию', 'Вернитесь к подключениям и добавьте хотя бы один сервер Xray.');
     prepareSetupDraft({ message: false });
     return {
       ok: true,
       notice: {
         step,
-        level: 'warn',
-        title: 'Правило для остального трафика подготовлено',
-        detail: 'Мастер добавил финальное правило transparent_ipv4 в конец маршрутизации. Оно сработает только после пользовательских правил, direct/block и служебных исключений.'
+        level: 'ok',
+        title: 'Базовая схема подготовлена',
+        detail: 'Локальная сеть останется доступной напрямую, выбранные правила сохранят приоритет, а остальной трафик пойдет через активное подключение.'
       }
     };
-  }
-  if (step === 'firewall') {
-    if (!transparentReady) {
-      prepareSetupDraft({ message: false });
-      return {
-        ok: true,
-        notice: {
-          step,
-          level: 'warn',
-          title: 'Черновик перехвата подготовлен',
-          detail: 'Мастер добавил входящий поток перехвата и служебные правила в черновик. На финальном шаге он проверит Xray и применит firewall.'
-        }
-      };
-    }
-    if (!firewallReady) {
-      return {
-        ok: true,
-        notice: {
-          step,
-          level: 'warn',
-          title: 'Firewall еще не применен',
-          detail: 'Это нормально перед финальным шагом: мастер покажет, что изменится, и применит nftables вместе с Xray.'
-        }
-      };
-    }
   }
   return { ok: true, notice: null };
 }
@@ -2072,6 +2040,7 @@ function render() {
     ${routeBalancerDialog()}
     ${routeTargetReplaceDialog()}
     ${importDialog(state.importDialog)}
+    ${amneziaImportDialog(state.amneziaStatus?.clientConfig || state.status?.amnezia?.clientConfig || {})}
     ${firewallPreflightDialog()}
     <div class="shell">
       <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
@@ -2105,16 +2074,16 @@ function render() {
             ${state.status ? '' : '<p>Загрузка статуса роутера</p>'}
           </div>
           <div class="top-actions">
-            ${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
-            ${appVersionPill()}
-            <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
-            <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
-            <div class="service-controls" aria-label="Управление сервисом Xray">
-              ${serviceButtons}
-            </div>
+            ${state.tab === 'setup'
+              ? `<button class="btn secondary" data-tab-jump="dashboard" type="button">Закрыть мастер</button>`
+              : `${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
+                ${appVersionPill()}
+                <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
+                <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
+                <div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>`}
           </div>
         </header>
-        ${pendingChangesBanner()}
+        ${state.tab === 'setup' ? '' : pendingChangesBanner()}
         ${content()}
       </main>
     </div>
@@ -2378,6 +2347,9 @@ function bind() {
         render();
       },
       applyRoutePresets: applySelectedRoutingPresets,
+      applySetupRoutePresets: () => applySelectedRoutingPresets({
+        targetValue: state.setupScenarioTarget || `outbound:${activeProxyTag() || 'proxy'}`
+      }),
       openSelectedRouteGroupDialog,
       openRouteTargetReplaceDialog,
       closeRouteTargetReplaceDialog,
@@ -2395,26 +2367,30 @@ function bind() {
       applyRoutePresetEdit,
       openInstallWizard,
       openSetupWizard,
+      toggleSetupAdvanced: () => {
+        state.setupAdvancedOpen = !state.setupAdvancedOpen;
+        render();
+      },
       closeSetupWizard: () => {
         state.setupWizardOpen = false;
         render();
       },
       setupStepBack: () => {
         const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
-        state.setupStep = steps[Math.max(0, index - 1)] || 'environment';
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
+        state.setupStep = steps[Math.max(0, index - 1)] || 'connection';
         state.setupStepNotice = null;
         render();
       },
       setupStepNext: () => {
-        const gate = setupStepGate(state.setupStep || 'environment');
+        const gate = setupStepGate(state.setupStep || 'connection');
         if (!gate.ok) {
           state.setupStepNotice = gate.notice;
           render();
           return;
         }
         const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
         const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'verify';
         state.setupStep = nextStep;
         state.setupStepNotice = gate.notice ? { ...gate.notice, step: nextStep } : null;

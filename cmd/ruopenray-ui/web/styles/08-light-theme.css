@@ -735,6 +735,7 @@ body[data-theme="light"] .setup-result-list small,
 body[data-theme="light"] .setup-choice-grid span,
 body[data-theme="light"] .setup-choice-grid small,
 body[data-theme="light"] .setup-mode-grid span,
+body[data-theme="light"] .setup-review-list span,
 body[data-theme="light"] .setup-flow-guide p,
 body[data-theme="light"] .setup-flow-step small,
 body[data-theme="light"] .setup-lan-dns p,
@@ -766,6 +767,8 @@ body[data-theme="light"] .setup-readiness strong,
 body[data-theme="light"] .setup-result-list strong,
 body[data-theme="light"] .setup-choice-grid strong,
 body[data-theme="light"] .setup-mode-grid strong,
+body[data-theme="light"] .setup-review-list strong,
+body[data-theme="light"] .setup-advanced-options h4,
 body[data-theme="light"] .setup-flow-guide h3,
 body[data-theme="light"] .setup-flow-step strong,
 body[data-theme="light"] .setup-lan-dns h3,
@@ -876,9 +879,31 @@ body[data-theme="light"] .setup-step-panel {
 body[data-theme="light"] .setup-readiness article,
 body[data-theme="light"] .setup-result-list article,
 body[data-theme="light"] .setup-choice-grid article,
-body[data-theme="light"] .setup-mode-grid article {
+body[data-theme="light"] .setup-mode-grid article,
+body[data-theme="light"] .setup-review-list article {
   background: rgba(255, 255, 255, 0.86);
   box-shadow: none;
+}
+
+body[data-theme="light"] .setup-advanced-options {
+  border-color: var(--line);
+  background: #f7fbfa;
+}
+
+body[data-theme="light"] .setup-scenarios {
+  border-color: var(--line);
+  background: #f7fbfa;
+}
+
+body[data-theme="light"] .setup-scenario-row {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+body[data-theme="light"] .setup-scenario-row:hover,
+body[data-theme="light"] .setup-scenario-row.active {
+  border-color: rgba(10, 159, 139, 0.3);
+  background: #edf8f5;
 }
 
 body[data-theme="light"] .setup-mode-grid article.active {

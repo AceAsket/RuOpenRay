@@ -63,7 +63,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
 
   function selectedAmneziaProfiles() {
-    const profiles = state.amneziaStatus?.clientConfig?.profiles || {};
+    const clientConfig = state.amneziaStatus?.clientConfig || {};
+    const profiles = clientConfig.profiles || {};
     const items = Array.isArray(profiles.items) ? profiles.items : [];
     const selected = Array.isArray(profiles.selectedIds) && profiles.selectedIds.length
       ? profiles.selectedIds
@@ -72,6 +73,19 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const ordered = selected.map((id) => byId.get(id)).filter(Boolean);
     const fallback = items.filter((item) => item.selected || item.active);
     const profilesList = ordered.length ? ordered : fallback;
+    if (!profilesList.length && clientConfig.exists) {
+      const id = profiles.activeId || selected[0] || state.amneziaProfileId || 'active';
+      const endpoint = String(clientConfig.peer?.endpoint || '').split(':')[0];
+      return [{
+        id,
+        name: clientConfig.name || endpoint || state.amneziaProfileName || 'AmneziaWG',
+        summary: clientConfig.summary || '',
+        peer: clientConfig.peer || {},
+        interface: clientConfig.interface || {},
+        active: true,
+        selected: true,
+      }];
+    }
     const seen = new Set();
     return profilesList.filter((item) => item?.id && !seen.has(item.id) && seen.add(item.id));
   }

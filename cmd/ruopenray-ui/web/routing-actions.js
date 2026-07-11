@@ -550,7 +550,20 @@ export function createRoutingActions({
     return '';
   }
 
-  function applySelectedRoutingPresets() {
+  function presetRuleWithTarget(rule, targetValue = '') {
+    const next = normalizePresetRule(rule);
+    if (!targetValue || rule?.outboundTag !== 'proxy') return next;
+    const [kind, ...parts] = String(targetValue).split(':');
+    const tag = parts.join(':');
+    if (!tag) return next;
+    delete next.outboundTag;
+    delete next.balancerTag;
+    if (kind === 'balancer') next.balancerTag = tag;
+    else next.outboundTag = tag;
+    return next;
+  }
+
+  async function applySelectedRoutingPresets({ targetValue = '' } = {}) {
     const selectedPresets = state.selectedRoutePresets.filter((key) => externalRoutePreset(key) || routePresets[key] || routeBundles[key]);
     const selectedCustom = state.selectedRoutePresets.filter((key) => customRoutePreset(key));
     const selected = [...selectedPresets, ...selectedCustom];
@@ -559,10 +572,20 @@ export function createRoutingActions({
       render();
       return;
     }
-    const requestedRules = [
-      ...selectedPresets.flatMap((key) => routePresetRules(key).map(normalizePresetRule)),
-      ...selectedCustom.flatMap((key) => routePresetRules(key).map(normalizePresetRule))
-    ];
+    const directTargetTag = directTagFromTargetValue(targetValue);
+    const directToAmnezia = isAmneziaDirectOutboundTag(directTargetTag);
+    const requestedRules = [];
+    const requestedPolicies = [];
+    for (const key of selected) {
+      const title = routePresetTitle(key);
+      for (const rule of routePresetRules(key)) {
+        if (directToAmnezia && rule?.outboundTag === 'proxy') {
+          requestedPolicies.push(routeRuleToAmneziaPolicy(rule, title, targetValue));
+        } else {
+          requestedRules.push(presetRuleWithTarget(rule, targetValue));
+        }
+      }
+    }
     const currentRules = routeRules();
     const seen = new Set(currentRules.map(routeRuleConditionKey));
     const rules = [];
@@ -572,7 +595,16 @@ export function createRoutingActions({
       seen.add(key);
       rules.push(rule);
     }
-    if (!rules.length) {
+    const existingPolicies = amneziaPolicyRules();
+    const policyKey = (rule) => `${routeRuleConditionKey(rule)}|${rule?.profileId || ''}`;
+    const seenPolicies = new Set(existingPolicies.map(policyKey));
+    const policies = requestedPolicies.filter((rule) => {
+      const key = policyKey(rule);
+      if (seenPolicies.has(key)) return false;
+      seenPolicies.add(key);
+      return true;
+    });
+    if (!rules.length && !policies.length) {
       state.routePresetDialog = false;
       state.routeRuleDialog = false;
       state.routeRuleMode = 'single';
@@ -581,13 +613,15 @@ export function createRoutingActions({
       render();
       return;
     }
-    setRoutingDraft([...rules, ...currentRules]);
+    if (rules.length) setRoutingDraft([...rules, ...currentRules]);
+    if (policies.length) await saveAmneziaPolicyRules([...policies, ...existingPolicies]);
     state.routePresetDialog = false;
     state.routeRuleDialog = false;
     state.routeRuleMode = 'single';
     state.selectedRoutePresets = [];
-    const skipped = requestedRules.length - rules.length;
-    state.message = `Добавлено подборок: ${selected.length}, новых правил: ${rules.length}${skipped ? `, уже были: ${skipped}` : ''}`;
+    const skipped = requestedRules.length + requestedPolicies.length - rules.length - policies.length;
+    const added = [rules.length ? `Xray: ${rules.length}` : '', policies.length ? `AWG: ${policies.length}` : ''].filter(Boolean).join(' · ');
+    state.message = `Добавлено сценариев: ${selected.length} · ${added}${skipped ? ` · уже были: ${skipped}` : ''}`;
     render();
   }
 
