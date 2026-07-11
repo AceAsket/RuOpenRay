@@ -408,41 +408,58 @@ export function createServerModeView({ state, escapeHtml }) {
     const preflight = state.serverModePreflight || state.serverMode?.preflight || {};
     const xray = array(model.xray);
     const awg = array(model.awg);
+    const hasEntries = xray.length + awg.length > 0;
     const preview = state.serverModePreview;
     return `<section class="panel server-mode-panel">
       <div class="section-head">
         <div>
           <h2>Входящие подключения</h2>
-          <p>RuOpenRay может принимать внешних клиентов Xray, выдавать каждому свою политику доступа и отправлять их трафик в выбранный outbound.</p>
+          ${hasEntries ? '<p>RuOpenRay может принимать внешних клиентов Xray, выдавать каждому свою политику доступа и отправлять их трафик в выбранный outbound.</p>' : ''}
         </div>
         <div class="actions">
-          <button class="btn secondary" type="button" data-action="refreshServerMode">Обновить</button>
-          <button class="btn secondary" type="button" data-action="previewServerMode">Preview</button>
-          <button class="btn warning" type="button" data-action="saveServerMode">Сохранить</button>
-          <button class="btn" type="button" data-action="applyServerMode">Записать в Xray</button>
+          ${hasEntries ? `
+            <button class="btn secondary" type="button" data-action="refreshServerMode">Обновить</button>
+            <button class="btn secondary" type="button" data-action="previewServerMode">Проверить</button>
+            <button class="btn warning" type="button" data-action="saveServerMode">Сохранить</button>
+            <button class="btn" type="button" data-action="applyServerMode">Записать в Xray</button>
+          ` : ''}
         </div>
       </div>
-      <div class="server-mode-hero">
-        ${checkbox('enabled', model.enabled, 'Серверный режим включен')}
-        ${checkbox('monitorClients', model.monitorClients !== false, 'Мониторить клиентов')}
-        <p>По умолчанию внешний клиент не получает доступ к LAN и DNS-порту роутера. Доступ открывается только явными галочками на клиенте.</p>
-      </div>
-      ${managedStats()}
-      ${securityPanel(model)}
-      ${clientTrafficPanel()}
-      ${clientExportPanel()}
-      ${issueList(preflight)}
-      ${awgPlanPanel()}
-      ${firewallPanel()}
-      <div class="server-mode-toolbar">
-        <button class="btn secondary" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>
-        <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AWG сервер</button>
-      </div>
-      <div class="server-mode-list">
-        ${xray.length ? xray.map((inbound, index) => inboundCard(inbound, index)).join('') : '<article class="empty-state">Входов пока нет. Добавьте Reality-вход, затем клиента и выход для его трафика.</article>'}
-        ${awg.length ? awg.map((server, index) => awgCard(server, index)).join('') : ''}
-      </div>
-      ${preview ? `<div class="notice ${preview.ok ? 'ok' : 'warn'}"><strong>${preview.ok ? 'Preview готов' : 'Preview требует внимания'}</strong><span>${escapeHtml(preview.error || preview.restart?.message || 'Xray config был проверен без перезапуска сервиса.')}</span></div>` : ''}
+      ${hasEntries ? `
+        <div class="server-mode-hero">
+          ${checkbox('enabled', model.enabled, 'Серверный режим включен')}
+          ${checkbox('monitorClients', model.monitorClients !== false, 'Мониторить клиентов')}
+          <p>По умолчанию внешний клиент не получает доступ к LAN и DNS-порту роутера. Доступ открывается только явными галочками на клиенте.</p>
+        </div>
+        ${managedStats()}
+        ${securityPanel(model)}
+        ${clientTrafficPanel()}
+        ${clientExportPanel()}
+        ${issueList(preflight)}
+        ${awgPlanPanel()}
+        ${firewallPanel()}
+        <div class="server-mode-toolbar">
+          <button class="btn secondary" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>
+          <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AWG сервер</button>
+        </div>
+        <div class="server-mode-list">
+          ${xray.map((inbound, index) => inboundCard(inbound, index)).join('')}
+          ${awg.map((server, index) => awgCard(server, index)).join('')}
+        </div>
+        ${preview ? `<div class="notice ${preview.ok ? 'ok' : 'warn'}"><strong>${preview.ok ? 'Проверка готова' : 'Проверка требует внимания'}</strong><span>${escapeHtml(preview.error || preview.restart?.message || 'Xray config был проверен без перезапуска сервиса.')}</span></div>` : ''}
+      ` : `
+        <section class="server-mode-empty-start">
+          <div>
+            <span class="eyebrow">первый шаг</span>
+            <h3>Добавьте подключение</h3>
+            <p>Reality подходит для Xray-клиентов; AWG создаёт отдельный туннель с управляемыми peer.</p>
+          </div>
+          <div class="server-mode-empty-actions">
+            <button class="btn" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>
+            <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AWG сервер</button>
+          </div>
+        </section>
+      `}
     </section>`;
   }
 

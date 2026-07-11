@@ -1160,6 +1160,7 @@ const setupView = createSetupView({
   loadSetupSnapshot,
   firewallReadyStatus,
   firewallPorts,
+  firewallDeviceChoices,
   builtinRoutePresetEntries,
   customRoutePresetEntries,
   routePresetRules,
@@ -1759,22 +1760,35 @@ function pendingChangesBanner() {
   const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
   const applySteps = Array.isArray(state.applySteps) && state.applySteps.length && applying ? state.applySteps : [];
   const risks = pendingApplyRisks(configDirty, firewallDirty);
+  const expanded = Boolean(state.pendingChangesExpanded || applying);
+  const changeCount = xrayReasons.length + firewallReasons.length;
+  const changedAreas = [configDirty ? 'Xray' : '', firewallDirty ? 'Firewall' : ''].filter(Boolean).join(' · ');
+  const riskTone = risks.some((item) => item.level === 'danger') ? 'danger' : 'warn';
   return `
-    <section class="pending-changes" role="status" aria-live="polite">
-      <div>
-        <strong>Есть непримененные изменения</strong>
-        <span>Ниже показано, что будет изменено и где потребуется перезапуск.</span>
-        <ul class="pending-change-list">
-          ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-        </ul>
-        ${xrayReasons.length > visibleXrayReasons.length ? `<small class="pending-more">Еще ${xrayReasons.length - visibleXrayReasons.length} ${xrayReasons.length - visibleXrayReasons.length === 1 ? 'отличие' : 'отличия'} в черновике Xray</small>` : ''}
-        ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
-        ${risks.length ? `<div class="pending-risk-list">
-          ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
-        </div>` : ''}
-        ${applySteps.length ? `<ol class="apply-step-list">
-          ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
-        </ol>` : ''}
+    <section class="pending-changes ${expanded ? 'is-expanded' : 'is-compact'}" aria-labelledby="pendingChangesTitle">
+      <div class="pending-main">
+        <div class="pending-summary">
+          <div class="pending-summary-copy" aria-live="polite">
+            <strong id="pendingChangesTitle">Непримененные изменения</strong>
+            <span>${escapeHtml(changedAreas)} · Изменений: ${Math.max(1, changeCount)}</span>
+          </div>
+          ${risks.length ? `<span class="pending-risk-count ${riskTone}">Предупреждений: ${risks.length}</span>` : ''}
+          <button class="pending-toggle" type="button" data-action="togglePendingChanges" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="pendingChangesDetails" ${applying ? 'disabled' : ''}>${expanded ? 'Свернуть' : 'Подробнее'}</button>
+        </div>
+        <div class="pending-details" id="pendingChangesDetails" ${expanded ? '' : 'hidden'}>
+          <span>Что будет изменено и где потребуется перезапуск.</span>
+          <ul class="pending-change-list">
+            ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+          ${xrayReasons.length > visibleXrayReasons.length ? `<small class="pending-more">Еще ${xrayReasons.length - visibleXrayReasons.length} ${xrayReasons.length - visibleXrayReasons.length === 1 ? 'отличие' : 'отличия'} в черновике Xray</small>` : ''}
+          ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
+          ${risks.length ? `<div class="pending-risk-list">
+            ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
+          </div>` : ''}
+          ${applySteps.length ? `<ol class="apply-step-list">
+            ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
+          </ol>` : ''}
+        </div>
       </div>
       <div class="pending-actions">
         <button class="btn warning ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
@@ -1800,6 +1814,9 @@ function setupStepGate(step) {
   }
   if (step === 'traffic') {
     if (proxyCount < 1) return notice('bad', 'Нет назначения по умолчанию', 'Вернитесь к подключениям и добавьте хотя бы один сервер Xray.');
+    if (state.firewallDeviceMode === 'selected' && !(state.firewallSelectedDevices || []).length) {
+      return notice('bad', 'Не выбраны устройства', 'В режиме «Только выбранные» отметьте хотя бы одного DHCP-клиента или переключитесь на всю локальную сеть.');
+    }
     prepareSetupDraft({ message: false });
     return {
       ok: true,
@@ -2224,6 +2241,10 @@ function bind() {
       restart: () => service('restart'),
       toggleMobileNav: () => {
         state.mobileNavOpen = !state.mobileNavOpen;
+        render();
+      },
+      togglePendingChanges: () => {
+        state.pendingChangesExpanded = !state.pendingChangesExpanded;
         render();
       },
       logout,

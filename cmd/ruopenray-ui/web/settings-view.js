@@ -40,16 +40,20 @@ function settingsPanel() {
   const cleanupDeltaText = cleanupFreeDelta < 0
     ? `-${byteSize(Math.abs(cleanupFreeDelta))}`
     : `+${byteSize(cleanupFreeDelta)}`;
-  const settingsTabs = [
-    ['logging', 'Логирование'],
+  const primarySettingsTabs = [
     ['security', 'Панель'],
     ['interface', 'Интерфейс'],
     ['service', 'Сервис'],
-    ['local-proxy', 'Локальные прокси'],
-    ['storage', 'Память'],
     ['updates', 'Обновление']
   ];
-  const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'logging';
+  const advancedSettingsTabs = [
+    ['logging', 'Логирование Xray'],
+    ['local-proxy', 'Локальные прокси'],
+    ['storage', 'Память роутера']
+  ];
+  const settingsTabs = [...primarySettingsTabs, ...advancedSettingsTabs];
+  const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'security';
+  const advancedSelected = advancedSettingsTabs.some(([value]) => value === settingsView);
   const loggingApplyHint = state.loggingRestart
     ? 'Сохранение проверит конфигурацию Xray и перезапустит сервис, новые параметры начнут работать сразу.'
     : 'Сохранение изменит конфигурацию Xray и настройки ротации. Работающий Xray применит новые пути, уровень и DNS-лог после следующего перезапуска.';
@@ -417,19 +421,14 @@ function settingsPanel() {
       ? localProxySection
       : loggingSections;
   return `
-    <section class="settings-hero">
-      <div>
-        <h2>Параметры RuOpenRay</h2>
-        <p>Параметры панели и Xray, которые влияют на работу сервиса на роутере.</p>
+    <div class="settings-nav-shell">
+      <div class="settings-subnav" role="tablist" aria-label="Основные настройки">
+        ${primarySettingsTabs.map(([value, label]) => `<button type="button" class="${settingsView === value ? 'active' : ''}" data-settings-view="${value}">${label}</button>`).join('')}
       </div>
-      <div class="settings-hero-status">
-        <strong>${escapeHtml(state.status?.core?.available ? 'Xray доступен' : 'Xray не найден')}</strong>
-        <span>${escapeHtml(state.status?.core?.version || '')}</span>
-      </div>
-    </section>
-
-    <div class="settings-subnav" role="tablist" aria-label="Подменю настроек">
-      ${settingsTabs.map(([value, label]) => `<button type="button" class="${settingsView === value ? 'active' : ''}" data-settings-view="${value}">${label}</button>`).join('')}
+      <select class="input settings-advanced-select ${advancedSelected ? 'active' : ''}" data-settings-view-select aria-label="Дополнительные настройки">
+        <option value="" ${advancedSelected ? '' : 'selected'} disabled>Дополнительно</option>
+        ${advancedSettingsTabs.map(([value, label]) => `<option value="${value}" ${settingsView === value ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
     </div>
 
     ${visibleSection}

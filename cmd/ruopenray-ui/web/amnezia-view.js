@@ -284,7 +284,6 @@ export function createAmneziaView({ state, escapeHtml }) {
         <article class="amnezia-quick-actions">
           <span class="eyebrow">быстрые действия</span>
           <div class="amnezia-action-stack">
-            <button class="btn warning" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
             ${commandButton('refreshAmnezia', 'Обновить статус')}
             <button class="btn secondary" type="button" data-action="checkAmneziaPreflight" ${current || config.exists ? '' : 'disabled'}>Проверить</button>
             <button class="btn secondary" type="button" data-action="prepareAmnezia" ${current || config.exists ? '' : 'disabled'}>Подготовить</button>
@@ -368,7 +367,7 @@ export function createAmneziaView({ state, escapeHtml }) {
   function warningsView(status = {}) {
     const warnings = array(status.warnings);
     if (!warnings.length) return '';
-    return `<div class="settings-warning amnezia-warning">
+    return `<div class="settings-warning compact amnezia-warning">
       <strong>Внимание</strong>
       <span>${escapeHtml(warnings.join(' '))}</span>
     </div>`;
@@ -628,11 +627,10 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const plan = status.routePlan || {};
     const view = state.amneziaView === 'awg' ? 'awg' : 'profiles';
     return `<section class="amnezia-page">
-      <section class="route-hero amnezia-hero">
-        <div>
-          <span class="eyebrow">AmneziaWG</span>
-          <h1>${escapeHtml(statusLabel(status))}</h1>
-          <p>${escapeHtml(status.summary || 'RuOpenRay проверяет awg/wg интерфейсы, сервисы, маршруты и готовность к раздельной маршрутизации.')}</p>
+      <section class="amnezia-status-bar ${statusTone(status)}">
+        <div class="amnezia-status-copy">
+          <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+          <span>${escapeHtml(status.summary || 'RuOpenRay проверяет awg/wg интерфейсы, сервисы, маршруты и готовность к раздельной маршрутизации.')}</span>
         </div>
         <div class="split-actions">
           ${commandButton('refreshAmnezia', 'Обновить статус')}

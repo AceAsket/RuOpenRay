@@ -75,6 +75,11 @@ export function createSetupActions({
   }
 
   async function runSetupWizard() {
+    if (state.firewallDeviceMode === 'selected' && !(state.firewallSelectedDevices || []).length) {
+      state.setupResult = { ok: false, steps: [{ ok: false, title: 'Не выбраны устройства', detail: 'Вернитесь к шагу «Трафик» и отметьте хотя бы одного клиента или выберите всю локальную сеть.' }] };
+      render();
+      return;
+    }
     const readiness = setupReadiness();
     if (!readiness.canApply) {
       state.setupResult = { ok: false, steps: [{ ok: false, title: 'Не хватает основы', detail: 'Сначала установите Xray и добавьте хотя бы один proxy-сервер.' }] };

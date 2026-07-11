@@ -96,6 +96,13 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       render();
     });
   });
+  document.querySelector('[data-settings-view-select]')?.addEventListener('change', (event) => {
+    const nextView = event.target.value;
+    if (!nextView) return;
+    state.settingsView = nextView;
+    state.message = '';
+    render();
+  });
   const setupScenarioSearch = document.querySelector('#setupScenarioSearch');
   setupScenarioSearch?.addEventListener('input', (event) => {
     const query = String(event.target.value || '').trim().toLowerCase();
@@ -106,6 +113,9 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
   });
   document.querySelector('#setupScenarioTarget')?.addEventListener('change', (event) => {
     state.setupScenarioTarget = event.target.value || '';
+    const detail = event.target.selectedOptions?.[0]?.dataset?.detail || '';
+    const detailNode = document.querySelector('[data-setup-scenario-target-detail]');
+    if (detailNode) detailNode.textContent = detail;
   });
 }
 

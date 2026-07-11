@@ -272,28 +272,94 @@ button:disabled {
 
 .pending-changes {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin: -10px 0 18px;
-  padding: 12px 14px;
+  margin: -10px 0 14px;
+  padding: 10px 12px;
   border: 1px solid rgba(247, 190, 78, 0.42);
   border-radius: 8px;
   background: rgba(45, 34, 12, 0.56);
   box-shadow: var(--shadow);
 }
 
-.pending-changes strong {
+.pending-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pending-summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pending-summary-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pending-summary-copy strong {
   display: block;
   color: var(--amber);
   font-size: 14px;
 }
 
-.pending-changes span {
+.pending-summary-copy > span,
+.pending-details > span {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.pending-risk-count {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid rgba(247, 190, 78, 0.32);
+  border-radius: 999px;
+  color: var(--amber);
+  background: rgba(247, 190, 78, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pending-risk-count.danger {
+  border-color: rgba(255, 95, 118, 0.38);
+  color: #ffb3be;
+  background: rgba(255, 95, 118, 0.09);
+}
+
+.pending-toggle {
+  min-height: 32px;
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--accent-2);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pending-toggle:hover {
+  background: rgba(54, 209, 189, 0.1);
+}
+
+.pending-toggle:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.pending-details {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(247, 190, 78, 0.16);
 }
 
 .pending-change-list {
@@ -420,6 +486,7 @@ button:disabled {
 .pending-actions {
   display: flex;
   gap: 8px;
+  align-self: center;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;

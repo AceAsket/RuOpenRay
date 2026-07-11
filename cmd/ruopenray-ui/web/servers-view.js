@@ -1,7 +1,7 @@
 import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
 import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
-import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
+import { countryFlagMarkup, countryNames, serverDisplayName, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 
 export function createServersView(deps) {
@@ -24,7 +24,6 @@ export function createServersView(deps) {
     serverStats,
     serverTrafficView,
     state,
-    stat,
   } = deps;
 
 function serverActionButton({ label, icon, tone = 'secondary', attrs = '', busy = false, disabled = false }) {
@@ -88,6 +87,7 @@ function subscriptionCandidateSearchText(candidate, index, location, address) {
 
 function serverCard(outbound, index, activeTag) {
   const tag = outbound?.tag || `outbound-${index + 1}`;
+  const displayName = serverDisplayName(outbound, state.serverMeta?.[tag] || {});
   const usage = outboundUsage(tag);
   const check = checkForTag(tag);
   const active = tag === activeTag;
@@ -98,7 +98,7 @@ function serverCard(outbound, index, activeTag) {
     <div class="server-identity">
       <span class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</span>
       <div class="server-main">
-        <strong>${serverLocationChip(outbound)}${escapeHtml(tag)}</strong>
+        <strong title="${escapeHtml(tag)}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(outboundAddress(outbound))}</span>
         ${meta}
       </div>
@@ -441,44 +441,28 @@ function serversPanel() {
   const stats = serverStats();
   const activeTag = activeProxyTag();
   const proxyServers = proxyOutbounds();
+  const checked = proxyServers.filter((outbound) => Boolean(checkForTag(outbound?.tag || ''))).length;
   const alive = proxyServers.filter((outbound) => checkForTag(outbound?.tag || '')?.ok).length;
+  const availabilitySummary = checked ? `Доступны: ${alive} из ${checked} проверенных` : 'Проверки не запускались';
   const serverTabs = [
-    ['list', 'Прокси'],
+    ['list', 'Прокси', stats.proxy],
     ['balancers', 'Балансировка'],
-    ['subscriptions', 'Подписки'],
-    ['system', 'Служебные']
+    ['subscriptions', 'Подписки', state.subscriptionPools.length],
+    ['system', 'Служебные', stats.system]
   ];
   const requestedView = state.serversView === 'check' ? 'balancers' : state.serversView;
   const view = serverTabs.some(([value]) => value === requestedView) ? requestedView : 'list';
   return `
-    <section class="route-hero servers-hero">
-      <div>
-        <h2>Прокси и группы</h2>
-        <p>Прокси-серверы, подписки и группы балансировки для правил маршрутизации. Служебные direct/block вынесены отдельно.</p>
-      </div>
-      <div class="route-score">
-        <strong>${proxyServers.length}</strong>
-        <span>прокси</span>
-      </div>
-    </section>
-
-    <section class="stats route-stats">
-      ${stat('Прокси', stats.proxy, 'Пользовательские подключения')}
-      ${stat('Служебные', stats.system, 'direct, block, DNS, fragment')}
-      ${stat('В правилах', stats.used, 'Используются маршрутизацией')}
-      ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'порт сервера'}`)}
-    </section>
-
     <section class="servers-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю серверов">
-        ${serverTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-servers-view="${value}">${label}</button>`).join('')}
+        ${serverTabs.map(([value, label, count]) => `<button type="button" class="${view === value ? 'active' : ''}" data-servers-view="${value}"><span>${label}</span>${Number.isFinite(count) ? `<small class="tab-count">${count}</small>` : ''}</button>`).join('')}
       </div>
     </section>
 
     ${view === 'list' ? `
     <section class="panel">
       <div class="panel-title">
-        <div><h2>Прокси</h2><span>Адреса, транспорт${state.status?.xrayStats?.enabled ? ', трафик по outbound' : ''}, ручная проверка и выбор активного proxy-направления.</span></div>
+        <div><h2>Прокси</h2><span>Подключений: ${stats.proxy} · В правилах: ${stats.used} · ${availabilitySummary}</span></div>
         <div class="split-actions">
           <button class="btn secondary" data-action="checkServers" data-busy="0" ${state.serverChecking ? 'disabled' : ''}>Проверить все</button>
           <button class="btn" data-import-dialog="choose">Добавить прокси</button>

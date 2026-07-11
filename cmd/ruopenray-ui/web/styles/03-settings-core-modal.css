@@ -254,6 +254,7 @@
 }
 
 .settings-theme-card small {
+  grid-column: 2;
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
@@ -262,6 +263,7 @@
 
 .theme-preview {
   position: relative;
+  grid-row: 1 / span 2;
   height: 72px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -934,6 +936,34 @@ select {
   padding: 0 10px;
 }
 
+.profile-actions-menu {
+  position: relative;
+}
+
+.profile-actions-menu summary {
+  min-width: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.profile-actions-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-actions-menu-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(8, 13, 17, 0.92);
+}
+
 .profile-edit-dialog {
   width: min(980px, calc(100vw - 32px));
 }
@@ -1302,6 +1332,30 @@ body.is-login-page .login {
 
 .import-action-bar .btn {
   min-height: 42px;
+}
+
+.settings-nav-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.settings-nav-shell .settings-subnav {
+  margin-bottom: 0;
+}
+
+.settings-advanced-select {
+  width: min(240px, 100%);
+  min-height: 50px;
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.settings-advanced-select.active {
+  border-color: rgba(49, 210, 189, 0.48);
+  color: var(--accent-2);
+  background: rgba(49, 210, 189, 0.09);
 }
 
 .amnezia-import-actions {

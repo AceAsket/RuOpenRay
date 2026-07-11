@@ -1,5 +1,6 @@
 import { isServiceOutbound } from './outbound-tags.js';
 import { routePresetIconView } from './route-visuals.js';
+import { serverDisplayName } from './server-location.js';
 
 export function createSetupView({
   state,
@@ -10,6 +11,7 @@ export function createSetupView({
   loadSetupSnapshot,
   firewallReadyStatus,
   firewallPorts,
+  firewallDeviceChoices,
   builtinRoutePresetEntries,
   customRoutePresetEntries,
   routePresetRules,
@@ -141,31 +143,23 @@ function setupWizardStepper(steps) {
   return `<nav class="setup-stepper setup-step-rail" aria-label="Шаги мастера">
     ${steps.map((step, index) => {
       const stateClass = index === activeIndex ? 'active' : step.ok ? 'ok' : index < activeIndex ? 'warn' : 'pending';
-      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}" ${index === activeIndex ? 'aria-current="step"' : ''}>
+      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}" aria-label="Шаг ${index + 1}: ${escapeHtml(step.title)}. ${escapeHtml(step.detail || '')}" title="${escapeHtml(step.detail || step.title)}" ${index === activeIndex ? 'aria-current="step"' : ''}>
         <span>${step.ok ? '✓' : index + 1}</span>
         <strong>${escapeHtml(step.title)}</strong>
-        <small>${escapeHtml(step.detail || '')}</small>
       </button>`;
     }).join('')}
   </nav>`;
 }
 
 function setupWizardSummary(steps) {
-  const activeIndex = setupStepIndex(steps);
-  const current = steps[activeIndex] || steps[0];
   const done = steps.filter((step) => step.ok).length;
-  const left = Math.max(0, steps.length - done);
   const progress = Math.round((done / Math.max(1, steps.length)) * 100);
   return `<section class="setup-step-summary">
     <div class="setup-step-summary-head">
-      <div>
-      <span>${current?.ok ? 'Шаг готов' : 'Проверьте шаг'}</span>
-      <strong>${escapeHtml(current?.title || 'Проверка')}</strong>
-      </div>
-      <em>${done}/${steps.length}</em>
+      <span>Готовность</span>
+      <strong>${done} из ${steps.length}</strong>
     </div>
     <div class="setup-progress" role="progressbar" aria-label="Готовность настройки" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}"><span style="width: ${progress}%"></span></div>
-    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}.` : 'Настройка завершена.'}</p>
   </section>`;
 }
 
@@ -193,9 +187,13 @@ function amneziaConnection() {
   const config = status.clientConfig || {};
   const items = Array.isArray(config.profiles?.items) ? config.profiles.items : [];
   const current = items.find((item) => item.active) || items.find((item) => item.id === state.amneziaProfileId) || null;
+  const endpoint = String(config.peer?.endpoint || '').trim();
+  const endpointName = endpoint.startsWith('[')
+    ? endpoint.slice(1, endpoint.indexOf(']') > 0 ? endpoint.indexOf(']') : undefined)
+    : endpoint.replace(/:\d+$/, '');
   return {
     count: items.length,
-    name: current?.name || config.name || (config.exists ? state.amneziaProfileName || 'AmneziaWG' : ''),
+    name: current?.name || config.name || endpointName || (config.exists ? state.amneziaProfileName || 'AmneziaWG' : ''),
     ready: Boolean(current || config.exists),
     running: Boolean(status.control?.managed || status.runtime?.interfaceRunning || status.running)
   };
@@ -208,6 +206,29 @@ function setupScenarioTargetValue() {
   const active = `outbound:${activeProxyTag() || ''}`;
   if (options.some((option) => option.value === active)) return active;
   return options.find((option) => option.value === 'outbound:proxy')?.value || options[0]?.value || '';
+}
+
+function setupScenarioTargetDetail(value = '') {
+  const target = String(value || '');
+  if (target.startsWith('outbound:ruopenray-amnezia-direct:')) return 'Напрямую через выбранный AWG-профиль, без обработки Xray.';
+  if (target === 'outbound:out-amnezia') return 'Xray применит свои правила и передаст трафик в активный AWG-профиль.';
+  if (target === 'outbound:direct') return 'Напрямую через провайдера, без Xray и AmneziaWG.';
+  if (target === 'outbound:block') return 'Соединения по выбранным правилам будут заблокированы.';
+  if (target.startsWith('balancer:')) return 'Xray распределит трафик между серверами выбранной группы.';
+  return 'Через выбранный Xray-сервер или подписку.';
+}
+
+function setupScenarioTargetOptions(options, targetValue) {
+  const groups = [
+    ['Xray', (value) => !value.startsWith('outbound:ruopenray-amnezia-direct:') && value !== 'outbound:out-amnezia' && !['outbound:direct', 'outbound:block'].includes(value)],
+    ['AmneziaWG', (value) => value.startsWith('outbound:ruopenray-amnezia-direct:') || value === 'outbound:out-amnezia'],
+    ['Другое', (value) => ['outbound:direct', 'outbound:block'].includes(value)],
+  ];
+  return groups.map(([label, matches]) => {
+    const items = options.filter((option) => matches(String(option.value || '')));
+    if (!items.length) return '';
+    return `<optgroup label="${escapeHtml(label)}">${items.map((option) => `<option value="${escapeHtml(option.value)}" data-detail="${escapeHtml(setupScenarioTargetDetail(option.value))}" ${option.value === targetValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</optgroup>`;
+  }).join('');
 }
 
 function setupScenarioInstallState(key) {
@@ -253,16 +274,107 @@ function setupScenariosBlock() {
       <button class="btn secondary" type="button" data-action="updateRoutePresetSources">Обновить</button>
     </div>
     <div class="setup-scenario-controls">
-      <input id="setupScenarioSearch" value="${escapeHtml(state.setupScenarioSearch || '')}" placeholder="Найти сценарий" />
-      <select id="setupScenarioTarget" aria-label="Назначение выбранных сценариев">
-        ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${option.value === targetValue ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-      </select>
+      <label class="setup-scenario-control">
+        <span>Сервис</span>
+        <input id="setupScenarioSearch" value="${escapeHtml(state.setupScenarioSearch || '')}" placeholder="Найти сценарий" />
+      </label>
+      <label class="setup-scenario-control setup-scenario-target-control">
+        <span>Куда направлять</span>
+        <select id="setupScenarioTarget" aria-describedby="setupScenarioTargetDetail">
+          ${setupScenarioTargetOptions(options, targetValue)}
+        </select>
+        <small id="setupScenarioTargetDetail" data-setup-scenario-target-detail>${escapeHtml(setupScenarioTargetDetail(targetValue))}</small>
+      </label>
     </div>
     <div class="setup-scenario-list">${rows || '<div class="empty-state">Сценарии пока не загружены. Обновите подключенный источник.</div>'}</div>
     <div class="setup-scenario-footer">
       <span>Выбрано: <strong data-setup-scenario-selected>${selected.size}</strong></span>
       <button class="btn warning" type="button" data-action="applySetupRoutePresets" ${selected.size ? '' : 'disabled'}>Добавить выбранные</button>
     </div>
+  </section>`;
+}
+
+function setupDeviceScopeText() {
+  const count = Array.isArray(state.firewallSelectedDevices) ? state.firewallSelectedDevices.length : 0;
+  if (state.firewallDeviceMode === 'selected') return count ? `${count} выбранных устройств` : 'устройства не выбраны';
+  if (state.firewallDeviceMode === 'exclude') return count ? `вся сеть, кроме ${count}` : 'вся локальная сеть';
+  return 'вся локальная сеть';
+}
+
+function setupDeviceScopeBlock() {
+  const mode = ['all', 'selected', 'exclude'].includes(state.firewallDeviceMode) ? state.firewallDeviceMode : 'all';
+  const devices = typeof firewallDeviceChoices === 'function' ? firewallDeviceChoices() : [];
+  const selected = new Set(Array.isArray(state.firewallSelectedDevices) ? state.firewallSelectedDevices : []);
+  const needsSelection = mode !== 'all';
+  const emptySelected = mode === 'selected' && selected.size === 0;
+  return `<section class="setup-device-scope ${emptySelected ? 'warn' : ''}">
+    <div class="setup-device-scope-head">
+      <div><h4>Устройства</h4><p>Для каких клиентов роутера применять правила RuOpenRay.</p></div>
+      <strong>${escapeHtml(setupDeviceScopeText())}</strong>
+    </div>
+    <div class="segmented setup-device-modes" role="group" aria-label="Охват устройств">
+      ${[
+        ['all', 'Вся сеть'],
+        ['selected', 'Только выбранные'],
+        ['exclude', 'Кроме выбранных'],
+      ].map(([value, label]) => `<button type="button" class="${mode === value ? 'active' : ''}" data-firewall-device-mode="${value}">${label}</button>`).join('')}
+    </div>
+    ${needsSelection ? `<div class="setup-device-list">
+      ${devices.length ? devices.slice(0, 16).map((device) => `<label class="setup-device-option ${selected.has(device.ip) ? 'active' : ''}">
+        <input type="checkbox" data-firewall-device="${escapeHtml(device.ip)}" ${selected.has(device.ip) ? 'checked' : ''} />
+        <span><strong>${escapeHtml(device.name || device.ip)}</strong><small>${escapeHtml([device.ip, device.mac].filter(Boolean).join(' · '))}</small></span>
+      </label>`).join('') : '<p class="muted">DHCP-клиенты пока не найдены. Подключите устройство к роутеру и обновите страницу.</p>'}
+    </div>` : ''}
+    ${emptySelected ? '<p class="setup-device-warning" role="status">Выберите хотя бы одно устройство, иначе режим «Только выбранные» не может быть применён.</p>' : ''}
+  </section>`;
+}
+
+function setupApplyPlan(readiness, snapshot) {
+  const byKey = new Map((readiness?.items || []).map((item) => [item.key, item]));
+  const xrayReady = Boolean(byKey.get('transparent')?.ok && byKey.get('defaultRoute')?.ok);
+  const firewallReady = Boolean(byKey.get('firewall')?.ok);
+  const dnsReady = state.setupLanDnsMode === 'keep' || Boolean(byKey.get('dns')?.ok);
+  const plan = [
+    {
+      title: 'Точка отката',
+      detail: 'Сохранить config.json, LAN DNS и текущее состояние nftables.',
+      ready: Boolean(snapshot),
+      pending: 'будет создана',
+    },
+    {
+      title: 'Подготовка Xray',
+      detail: xrayReady
+        ? 'Transparent inbound, локальные исключения и финальный маршрут уже готовы.'
+        : `Добавить перехват, локальные исключения и маршрут остального трафика через ${activeProxyName()}.`,
+      ready: xrayReady,
+      pending: 'будет настроено',
+    },
+    {
+      title: 'Перехват трафика',
+      detail: `${String(state.firewallRouterMode || 'tproxy').toUpperCase()} · ${setupDeviceScopeText()}.`,
+      ready: firewallReady,
+      pending: 'будет применено',
+    },
+    {
+      title: 'DNS локальной сети',
+      detail: state.setupLanDnsMode === 'keep'
+        ? 'Оставить текущую настройку OpenWrt без изменений.'
+        : state.setupLanDnsMode === 'upstream'
+          ? `Направить dnsmasq на ${state.setupLanDnsUpstream || 'указанный внешний DNS'}.`
+          : 'Направить dnsmasq на DNS-вход Xray.',
+      ready: dnsReady,
+      pending: 'будет настроено',
+    },
+  ];
+  return `<section class="setup-apply-plan">
+    <div class="setup-apply-plan-head"><h4>Что сделает мастер</h4><span>Сначала проверка, затем применение</span></div>
+    <ol>
+      ${plan.map((item, index) => `<li class="${item.ready ? 'ready' : ''}">
+        <span>${item.ready ? '✓' : index + 1}</span>
+        <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></div>
+        <em>${item.ready ? 'готово' : item.pending}</em>
+      </li>`).join('')}
+    </ol>
   </section>`;
 }
 
@@ -273,55 +385,71 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
   const fwMode = state.firewallRouterMode || state.firewallStatus?.routerMode || 'off';
   const awg = amneziaConnection();
   if (step === 'connection') {
+    const activeOutbound = activeProxyOutbound();
+    const activeTag = String(activeOutbound?.tag || '');
+    const xrayEndpoint = proxyEndpoint(activeOutbound);
     return `<section class="setup-step-panel">
       <h3>Подключения</h3>
-      <p>Добавьте основное подключение Xray. AmneziaWG можно подключить дополнительно и выбирать его в правилах маршрутизации.</p>
-      <div class="setup-choice-grid compact">
-        <article class="${coreReady ? 'ok' : 'warn'}"><span>Xray</span><strong>${coreReady ? 'установлен' : 'не найден'}</strong><small>${coreReady ? 'Ядро готово к настройке.' : 'Установите Xray перед продолжением.'}</small></article>
-        <article class="${proxyCount ? 'ok' : 'warn'}"><span>Основное подключение</span><strong>${proxyCount ? escapeHtml(activeProxyName()) : 'не добавлено'}</strong><small>${proxyCount ? `${proxyCount} серверов доступно` : 'Добавьте сервер или подписку Xray.'}</small></article>
-        <article class="${awg.ready ? 'ok' : ''}"><span>AmneziaWG · необязательно</span><strong>${escapeHtml(awg.name || 'не настроен')}</strong><small>${awg.ready ? `${awg.count ? `${awg.count} проф.` : 'client.conf сохранен'} · ${awg.running ? 'туннель работает' : 'профиль готов'}` : 'Можно добавить сейчас или позже.'}</small></article>
-      </div>
-      <div class="setup-inline-actions">
-        ${coreReady ? '' : '<button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button>'}
-        <button class="btn warning" type="button" data-import-dialog="server">Добавить Xray</button>
-        <button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Импорт AWG</button>
-        <button class="btn secondary" type="button" data-tab-jump="servers">Все серверы</button>
-        <button class="btn secondary" type="button" data-tab-jump="amnezia">Все AWG-профили</button>
+      <p>Выберите основное подключение Xray. AmneziaWG можно добавить как отдельное назначение для нужных правил.</p>
+      ${coreReady ? '' : `<div class="setup-connection-alert">
+        <div><strong>Xray не установлен</strong><span>Сначала установите ядро, затем добавьте сервер или подписку.</span></div>
+        <button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button>
+      </div>`}
+      <div class="setup-connection-grid">
+        <article class="${proxyCount ? 'ok' : 'warn'}">
+          <div class="setup-connection-head"><span>Xray</span><em>${proxyCount ? 'готов' : 'нужно подключение'}</em></div>
+          <div class="setup-connection-main">
+            <small>Основной сервер</small>
+            <strong title="${escapeHtml(activeTag)}">${proxyCount ? escapeHtml(activeProxyName()) : 'Не добавлен'}</strong>
+            <span>${proxyCount ? `${escapeHtml(xrayEndpoint)}${xrayEndpoint ? ' · ' : ''}${proxyCount} серверов доступно` : 'Добавьте сервер вручную или импортируйте подписку.'}</span>
+          </div>
+          <div class="setup-connection-actions">
+            <button class="btn ${proxyCount ? 'secondary' : 'warning'}" type="button" data-import-dialog="server">Добавить</button>
+            <button class="btn secondary" type="button" data-tab-jump="servers">Управление</button>
+          </div>
+        </article>
+        <article class="${awg.ready ? 'ok' : ''}">
+          <div class="setup-connection-head"><span>AmneziaWG</span><em>${awg.ready ? (awg.running ? 'работает' : 'готов') : 'необязательно'}</em></div>
+          <div class="setup-connection-main">
+            <small>AWG-профиль</small>
+            <strong>${escapeHtml(awg.name || 'Не настроен')}</strong>
+            <span>${awg.ready ? `${awg.count ? `${awg.count} проф.` : 'client.conf сохранен'} · можно выбирать в правилах` : 'Добавьте сейчас или вернитесь к этому позже.'}</span>
+          </div>
+          <div class="setup-connection-actions">
+            <button class="btn ${awg.ready ? 'secondary' : 'warning'}" type="button" data-action="openAmneziaImportDialog">Импорт</button>
+            <button class="btn secondary" type="button" data-tab-jump="amnezia">Управление</button>
+          </div>
+        </article>
       </div>
     </section>`;
   }
   if (step === 'traffic') {
-    const selectedDevices = Array.isArray(state.firewallSelectedDevices) ? state.firewallSelectedDevices.length : 0;
-    const devicesText = state.firewallDeviceMode === 'selected' ? `${selectedDevices} выбрано` : 'вся локальная сеть';
     const rulesCount = Array.isArray(state.config?.routing?.rules) ? state.config.routing.rules.length : 0;
     return `<section class="setup-step-panel">
-      <h3>Куда направлять трафик</h3>
-      <p>Выберите устройства и правила. Для каждого правила доступны Xray-сервер, группа, AWG-профиль, прямое подключение или блокировка.</p>
+      <h3>Трафик</h3>
+      <p>Выберите устройства, затем отметьте сервисы и назначьте им Xray, AmneziaWG или прямое подключение.</p>
+      ${setupDeviceScopeBlock()}
       ${setupScenariosBlock()}
-      <div class="setup-choice-grid compact">
-        <article><span>Устройства</span><strong>${escapeHtml(devicesText)}</strong><small>Можно ограничить работу конкретными устройствами.</small></article>
-        <article><span>Правила</span><strong>${rulesCount}</strong><small>Сценарии и свои домены сохранят выбранные назначения.</small></article>
-        <article><span>Остальной трафик</span><strong>${escapeHtml(activeProxyName())}</strong><small>Локальные адреса останутся доступными напрямую.</small></article>
-      </div>
-      <div class="setup-inline-actions">
-        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Настроить правила</button>
-        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Выбрать устройства</button>
+      <div class="setup-traffic-summary">
+        <span><small>Правила</small><strong>${rulesCount}</strong></span>
+        <span><small>Остальной трафик</small><strong>${escapeHtml(activeProxyName())}</strong></span>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Расширенные правила</button>
       </div>
     </section>`;
   }
   const dnsMode = state.setupLanDnsMode === 'keep' ? 'без изменений' : state.setupLanDnsMode === 'upstream' ? 'внешний DNS' : 'через Xray';
-  const deviceMode = state.firewallDeviceMode === 'selected' ? 'выбранные устройства' : 'вся локальная сеть';
+  const deviceMode = setupDeviceScopeText();
+  const rulesCount = Array.isArray(state.config?.routing?.rules) ? state.config.routing.rules.length : 0;
   return `<section class="setup-step-panel">
     <h3>Проверка перед включением</h3>
-    <p>RuOpenRay сохранит текущее состояние для отката, проверит конфигурацию и только затем включит маршрутизацию.</p>
+    <p>Проверьте выбранную схему. RuOpenRay сначала создаст точку отката и проверит конфигурацию.</p>
     <div class="setup-review-list">
-      <article><span>Основное подключение</span><strong>${escapeHtml(activeProxyName())}</strong></article>
-      ${awg.ready ? `<article><span>AmneziaWG</span><strong>${escapeHtml(awg.name)} · ${awg.running ? 'работает' : 'готов как назначение'}</strong></article>` : ''}
-      <article><span>Устройства</span><strong>${escapeHtml(deviceMode)}</strong></article>
-      <article><span>Остальной трафик</span><strong>через ${escapeHtml(activeProxyName())}</strong></article>
+      <article><span>Трафик</span><strong>${escapeHtml(deviceMode)} → ${escapeHtml(activeProxyName())}</strong></article>
+      <article><span>Правила</span><strong>${rulesCount} · Xray${awg.ready ? ` · AWG ${escapeHtml(awg.name)}` : ''}</strong></article>
       <article><span>DNS</span><strong>${escapeHtml(dnsMode)}</strong></article>
     </div>
-    <button class="btn secondary setup-advanced-toggle" type="button" data-action="toggleSetupAdvanced" aria-expanded="${state.setupAdvancedOpen ? 'true' : 'false'}">${state.setupAdvancedOpen ? 'Скрыть расширенные настройки' : 'Расширенные настройки'}</button>
+    ${setupApplyPlan(readiness, snapshot)}
+    <button class="btn secondary setup-advanced-toggle" type="button" data-action="toggleSetupAdvanced" aria-expanded="${state.setupAdvancedOpen ? 'true' : 'false'}">${state.setupAdvancedOpen ? 'Скрыть DNS и перехват' : 'Изменить DNS и перехват'}</button>
     ${state.setupAdvancedOpen ? `<section class="setup-advanced-options">
       <div>
         <h4>DNS для локальной сети</h4>
@@ -364,14 +492,15 @@ function setupLanDnsBlock() {
 }
 
 function setupSnapshotBlock(snapshot) {
+  if (!snapshot) return '';
   return `<section class="setup-snapshot in-step">
     <div>
-      <h3>Откат мастера</h3>
-      <p>${snapshot?.createdAt ? `Есть снимок от ${escapeHtml(new Date(snapshot.createdAt).toLocaleString('ru-RU'))}: конфигурация Xray, LAN DNS и nftables.` : 'Перед включением активного режима мастер сохранит снимок текущего состояния.'}</p>
+      <h3>Точка отката</h3>
+      <p>Снимок от ${escapeHtml(new Date(snapshot.createdAt).toLocaleString('ru-RU'))}: конфигурация Xray, LAN DNS и nftables.</p>
     </div>
     <div class="split-actions">
-      <button class="btn secondary" type="button" data-action="rollbackSetupWizard" ${snapshot && !state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>${state.setupRollbacking ? 'Откатываю...' : 'Откатить изменения'}</button>
-      <button class="btn secondary" type="button" data-action="clearSetupSnapshot" ${snapshot && !state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>Забыть снимок</button>
+      <button class="btn secondary" type="button" data-action="rollbackSetupWizard" ${!state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>${state.setupRollbacking ? 'Откатываю...' : 'Откатить изменения'}</button>
+      <button class="btn secondary" type="button" data-action="clearSetupSnapshot" ${!state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>Забыть снимок</button>
     </div>
   </section>`;
 }
@@ -400,10 +529,21 @@ function resultBlock(result, rollback) {
 }
 
 function activeProxyName() {
+  const outbound = activeProxyOutbound();
+  if (!outbound) return 'не выбран';
+  return serverDisplayName(outbound, state.serverMeta?.[outbound.tag] || {});
+}
+
+function activeProxyOutbound() {
   const outbounds = proxyOutboundsSafe();
   const routingRules = state.config?.routing?.rules || [];
   const firstProxy = routingRules.find((rule) => rule?.outboundTag && outbounds.some((outbound) => outbound.tag === rule.outboundTag));
-  return firstProxy?.outboundTag || outbounds[0]?.tag || 'не выбран';
+  return outbounds.find((outbound) => outbound.tag === firstProxy?.outboundTag) || outbounds[0] || null;
+}
+
+function proxyEndpoint(outbound = {}) {
+  const server = outbound?.settings?.vnext?.[0] || outbound?.settings?.servers?.[0] || {};
+  return [server.address, server.port].filter(Boolean).join(':');
 }
 
 function lastServerCheckText() {
@@ -436,19 +576,8 @@ function setupPage() {
   const primaryDisabled = state.setupApplying || (isLast && !readiness.canApply);
   return `
     <section class="setup-page">
-      <div class="setup-page-head">
-        <div>
-          <h2>Быстрая настройка RuOpenRay</h2>
-          <p>Добавьте подключения, выберите трафик и проверьте итог перед включением.</p>
-        </div>
-      </div>
-
       <div class="setup-guided-layout">
         <aside class="setup-guide-rail">
-          <div class="setup-rail-title">
-            <strong>Три шага</strong>
-            <span>Вернуться к предыдущему шагу можно без потери настроек.</span>
-          </div>
           ${setupWizardStepper(steps)}
           ${setupWizardSummary(steps)}
         </aside>

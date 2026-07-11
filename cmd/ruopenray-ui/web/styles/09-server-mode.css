@@ -37,6 +37,34 @@
   padding: 12px;
 }
 
+.server-mode-empty-start {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  padding: 24px 4px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.server-mode-empty-start h3 {
+  margin: 5px 0 7px;
+  font-size: 18px;
+}
+
+.server-mode-empty-start p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.server-mode-empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .server-mode-list,
 .server-mode-clients,
 .server-mode-issues {
@@ -466,9 +494,15 @@ body[data-theme="light"] .server-mode-policy-chip {
 
 @media (max-width: 760px) {
   .server-mode-hero,
+  .server-mode-empty-start,
   .server-mode-inbound-head,
   .server-mode-client-head {
     grid-template-columns: 1fr;
+  }
+
+  .server-mode-empty-start {
+    gap: 8px;
+    padding-top: 12px;
   }
 
   .server-mode-grid {
@@ -476,8 +510,14 @@ body[data-theme="light"] .server-mode-policy-chip {
   }
 
   .server-mode-row-actions .btn,
+  .server-mode-empty-actions .btn,
   .server-mode-toolbar .btn {
     width: 100%;
+  }
+
+  .server-mode-empty-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .server-mode-traffic-head,

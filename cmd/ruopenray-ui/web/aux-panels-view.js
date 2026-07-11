@@ -107,13 +107,14 @@ function devicesPanel() {
 
 function profilesPanel(compact = false) {
   const rows = compact ? state.profiles.slice(0, 5) : state.profiles;
+  const activeProfile = rows.find((profile) => profile.active)?.name || '';
   return `
     <section class="panel profile-panel">
       <div class="panel-title">
-        <div><h2>Профили</h2><span>Каждый профиль хранится отдельным JSON-файлом.</span></div>
+        <div><h2>Профили</h2><span>Профилей: ${rows.length}${activeProfile ? ` · Активен: ${escapeHtml(activeProfile)}` : ''}</span></div>
         <div class="split-actions">
-          <button class="btn secondary" data-action="backup">Сохранить резервную копию</button>
-          <button class="btn danger" data-action="restoreLatestBackup">Вернуть последнюю копию</button>
+          <button class="btn secondary" data-action="backup">Сохранить копию</button>
+          <button class="btn danger" data-action="restoreLatestBackup">Восстановить</button>
         </div>
       </div>
       <div class="table-scroll profile-table-scroll">
@@ -127,11 +128,16 @@ function profilesPanel(compact = false) {
               <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
               <td>
                 <div class="profile-row-actions">
-                  <button class="btn secondary" data-profile="${escapeHtml(p.name)}" ${p.active ? 'disabled' : ''}>Активировать</button>
-                  <button class="btn secondary" data-profile-edit="${escapeHtml(p.name)}">Править</button>
-                  <button class="btn secondary" data-profile-download="${escapeHtml(p.name)}">Скачать</button>
-                  <button class="btn secondary" data-profile-download-anonymized="${escapeHtml(p.name)}">Обезличенный</button>
-                  <button class="btn danger" data-profile-delete="${escapeHtml(p.name)}">Удалить</button>
+                  ${p.active ? '' : `<button class="btn secondary" data-profile="${escapeHtml(p.name)}">Активировать</button>`}
+                  <details class="profile-actions-menu">
+                    <summary class="btn secondary" aria-label="Действия профиля ${escapeHtml(p.name)}">Ещё</summary>
+                    <div class="profile-actions-menu-body">
+                      <button class="btn secondary" data-profile-edit="${escapeHtml(p.name)}">Править</button>
+                      <button class="btn secondary" data-profile-download="${escapeHtml(p.name)}">Скачать</button>
+                      <button class="btn secondary" data-profile-download-anonymized="${escapeHtml(p.name)}">Обезличенный</button>
+                      <button class="btn danger" data-profile-delete="${escapeHtml(p.name)}">Удалить</button>
+                    </div>
+                  </details>
                 </div>
               </td>
             </tr>`).join('')}

@@ -13,7 +13,6 @@ export function createDnsView(deps) {
     lanDnsModeLabel,
     routeRules,
     state,
-    stat,
   } = deps;
 
 function dnsModeSection() {
@@ -679,9 +678,9 @@ function dnsPanel() {
   const dns = dnsConfig();
   const stats = dnsStats();
   const dnsTabs = [
-    ['servers', 'Серверы'],
+    ['servers', 'Серверы', stats.servers],
     ['policies', 'Политики'],
-    ['hosts', 'Hosts'],
+    ['hosts', 'Hosts', stats.hosts],
     ['lan', 'LAN DNS'],
     ['guard', 'Защита'],
     ['advanced', 'Режим']
@@ -696,27 +695,9 @@ function dnsPanel() {
     advanced: dnsAdvancedSection
   };
   return `
-    <section class="route-hero dns-hero">
-      <div>
-        <h2>DNS Xray</h2>
-        <p>DNS-серверы, защита от утечек, проверка резолва и advanced-режимы разделены по вкладкам.</p>
-      </div>
-      <div class="route-score">
-        <strong>${stats.servers}</strong>
-        <span>DNS-серверов</span>
-      </div>
-    </section>
-
-    <section class="stats route-stats">
-      ${stat('DoH', stats.doh, 'HTTPS DNS-серверы')}
-      ${stat('TCP DNS', stats.tcp, 'Серверы через TCP')}
-      ${stat('Hosts', stats.hosts, 'Локальные подмены')}
-      ${stat('Всего', stats.servers, 'Записи в dns.servers')}
-    </section>
-
     <section class="routing-nav-panel dns-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю DNS">
-        ${dnsTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-dns-view="${value}">${label}</button>`).join('')}
+        ${dnsTabs.map(([value, label, count]) => `<button type="button" class="${view === value ? 'active' : ''}" data-dns-view="${value}"><span>${label}</span>${Number.isFinite(count) ? `<small class="tab-count">${count}</small>` : ''}</button>`).join('')}
       </div>
     </section>
 

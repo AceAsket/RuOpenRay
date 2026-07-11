@@ -9,11 +9,13 @@ import { bindCoreControls } from '../cmd/ruopenray-ui/web/core-bindings.js';
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
 import { createDiagnosticsModel } from '../cmd/ruopenray-ui/web/diagnostics-model.js';
+import { createDiagnosticsView } from '../cmd/ruopenray-ui/web/diagnostics-view.js';
 import { createDevicesActions } from '../cmd/ruopenray-ui/web/devices-actions.js';
 import { bindDeviceControls } from '../cmd/ruopenray-ui/web/devices-bindings.js';
 import { createDnsActions } from '../cmd/ruopenray-ui/web/dns-actions.js';
 import { bindDnsControls } from '../cmd/ruopenray-ui/web/dns-bindings.js';
 import { createDnsModel } from '../cmd/ruopenray-ui/web/dns-model.js';
+import { createDnsView } from '../cmd/ruopenray-ui/web/dns-view.js';
 import { createDashboardView } from '../cmd/ruopenray-ui/web/dashboard-view.js';
 import { byteSize as formatByteSize, escapeHtml, formatDurationCompact } from '../cmd/ruopenray-ui/web/formatters.js';
 import { createFirewallActions } from '../cmd/ruopenray-ui/web/firewall-actions.js';
@@ -39,13 +41,17 @@ import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
+import { createRoutingView } from '../cmd/ruopenray-ui/web/routing-view.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
 import { patchServerEditField, serverEditFields } from '../cmd/ruopenray-ui/web/server-edit-model.js';
+import { serverDisplayName } from '../cmd/ruopenray-ui/web/server-location.js';
 import { createFirewallModel } from '../cmd/ruopenray-ui/web/firewall-model.js';
 import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
+import { createServerModeView } from '../cmd/ruopenray-ui/web/server-mode-view.js';
 import { createServersView } from '../cmd/ruopenray-ui/web/servers-view.js';
 import { createSettingsActions } from '../cmd/ruopenray-ui/web/settings-actions.js';
+import { createSettingsView } from '../cmd/ruopenray-ui/web/settings-view.js';
 import { createSetupActions } from '../cmd/ruopenray-ui/web/setup-actions.js';
 import { createSetupModel } from '../cmd/ruopenray-ui/web/setup-model.js';
 import { createSetupView } from '../cmd/ruopenray-ui/web/setup-view.js';
@@ -120,6 +126,23 @@ const aux = createAuxPanelsView({
   formatDuration: () => '',
   leaseByIp: () => null,
 });
+
+const compactProfileView = createAuxPanelsView({
+  state: {
+    profileEditorOpen: false,
+    profiles: [
+      { name: 'active', active: true, updatedAt: '2026-01-01T00:00:00Z', size: 1024 },
+      { name: 'stored', active: false, updatedAt: '2026-01-02T00:00:00Z', size: 2048 },
+    ],
+  },
+  labels: { active: 'активен', stored: 'сохранен' },
+  escapeHtml,
+});
+const compactProfileHtml = compactProfileView.profilesPanel();
+const profileActionsAreCompact = (compactProfileHtml.match(/class="profile-actions-menu"/g) || []).length === 2
+  && (compactProfileHtml.match(/>Активировать<\/button>/g) || []).length === 1
+  && compactProfileHtml.includes('>Ещё</summary>')
+  && compactProfileHtml.includes('data-profile-download-anonymized="stored"');
 
 const dashboardState = {
   config: {
@@ -216,6 +239,10 @@ const amneziaHtml = amneziaView.amneziaPanel();
 const amneziaRunControlsRender = amneziaHtml.includes('data-action="startAmnezia"')
   && amneziaHtml.includes('data-action="stopAmnezia"')
   && amneziaHtml.includes('amnezia-run-controls');
+const amneziaImportActionIsSingle = (amneziaHtml.match(/data-action="openAmneziaImportDialog"/g) || []).length === 1;
+const amneziaStatusIsCompact = amneziaHtml.includes('amnezia-status-bar')
+  && amneziaHtml.includes('status-chip')
+  && !amneziaHtml.includes('<h1>');
 state.amneziaImportDialog = true;
 state.amneziaConfigText = `[Interface]
 PrivateKey = private
@@ -429,6 +456,10 @@ const setupView = createSetupView({
   loadSetupSnapshot: () => null,
   firewallReadyStatus: () => false,
   firewallPorts: () => [80, 443],
+  firewallDeviceChoices: () => [
+    { ip: '192.168.1.10', name: 'TV', mac: '00:11:22:33:44:55' },
+    { ip: '192.168.1.20', name: 'Phone', mac: '00:11:22:33:44:66' },
+  ],
   builtinRoutePresetEntries: () => [['video', { title: 'Video', detail: 'Video services' }]],
   customRoutePresetEntries: () => [],
   routePresetRules: () => [{ type: 'field', outboundTag: 'proxy', domain: ['domain:video.example'] }],
@@ -443,15 +474,41 @@ const setupViewHtml = setupView.setupPage();
 const setupViewIsSimple = (setupViewHtml.match(/data-setup-step=/g) || []).length === 3
   && setupViewHtml.includes('Подключения')
   && setupViewHtml.includes('Куда направлять трафик') === false
-  && setupViewHtml.includes('1/3')
+  && setupViewHtml.includes('Готовность')
+  && setupViewHtml.includes('1 из 3')
+  && !setupViewHtml.includes('Быстрая настройка RuOpenRay')
   && !setupViewHtml.includes('unmatched traffic');
+const setupConnectionsAreCompact = setupViewHtml.includes('setup-connection-grid')
+  && setupViewHtml.includes('data-import-dialog="server"')
+  && setupViewHtml.includes('data-action="openAmneziaImportDialog"')
+  && !setupViewHtml.includes('Ядро готово к настройке.');
 setupViewState.setupStep = 'traffic';
 const setupTrafficHtml = setupView.setupPage();
 const setupScenariosEmbedded = setupTrafficHtml.includes('data-route-preset-check="video"')
   && setupTrafficHtml.includes('setup-scenario-icon')
   && setupTrafficHtml.includes('id="setupScenarioTarget"')
+  && setupTrafficHtml.includes('data-setup-scenario-target-detail')
   && setupTrafficHtml.includes('data-action="applySetupRoutePresets"')
   && !setupTrafficHtml.includes('Выбрать сценарии');
+const setupDeviceScopeEmbedded = setupTrafficHtml.includes('setup-device-scope')
+  && setupTrafficHtml.includes('data-firewall-device-mode="all"')
+  && setupTrafficHtml.includes('data-firewall-device-mode="selected"')
+  && !setupTrafficHtml.includes('Выбрать устройства');
+setupViewState.firewallDeviceMode = 'selected';
+setupViewState.firewallSelectedDevices = [];
+const setupEmptyDeviceSelectionWarns = setupView.setupPage().includes('Выберите хотя бы одно устройство');
+setupViewState.firewallDeviceMode = 'all';
+setupViewState.setupStep = 'verify';
+const setupVerifyHtml = setupView.setupPage();
+const setupVerifyIsActionable = setupVerifyHtml.includes('setup-apply-plan')
+  && setupVerifyHtml.includes('Что сделает мастер')
+  && setupVerifyHtml.includes('Изменить DNS и перехват')
+  && !setupVerifyHtml.includes('data-action="rollbackSetupWizard"');
+const brokenServerNameIsReadable = serverDisplayName({
+  tag: '????fin_play2go_cloudthree-Hazesha',
+  protocol: 'vless',
+  settings: { vnext: [{ address: 'cloudthree.acespace.tech', port: 443 }] },
+}) === 'Финляндия · cloudthree.acespace.tech';
 function createMemoryStorage() {
   return {
     data: new Map(),
@@ -1036,6 +1093,50 @@ const expiredRememberLoginPreserved = !localStorage.getItem('openray_token')
 
 const { createInitialState } = await import('../cmd/ruopenray-ui/web/state.js');
 const initialState = createInitialState();
+const compactSettingsHtml = createSettingsView({ state: initialState, byteSize: formatByteSize, escapeHtml }).settingsPanel();
+const settingsNavigationIsCompact = initialState.settingsView === 'security'
+  && !compactSettingsHtml.includes('settings-hero')
+  && compactSettingsHtml.includes('data-settings-view="security"')
+  && compactSettingsHtml.includes('data-settings-view-select')
+  && compactSettingsHtml.includes('Логирование Xray');
+
+const compactRoutingState = {
+  amneziaPolicyRules: [],
+  configApplying: false,
+  configAnalysis: null,
+  configTesting: false,
+  disabledRouteRules: [],
+  message: '',
+  routeDsl: '',
+  routeDslName: '',
+  routeDslPreview: null,
+  routeSearch: '',
+  routingView: 'rules',
+  selectedRouteRuleIndexes: [],
+};
+const compactRoutingView = createRoutingView({
+  state: compactRoutingState,
+  escapeHtml,
+  operationProgressView: () => '',
+  routeRules: () => [{ type: 'field', domain: ['domain:example.com'], outboundTag: 'proxy' }],
+  routeTargetOptions: () => [],
+  visibleRoutingRuleItems: () => [{ index: 0, rule: { type: 'field', domain: ['domain:example.com'], outboundTag: 'proxy' } }],
+  managedRoutingRuleItems: () => [],
+  orderedRouteList: () => '<div data-test="route-list">Rule list</div>',
+  describeRouteRule: () => ({ kind: 'Сайт или домен', value: 'example.com', outbound: 'proxy' }),
+  routeRuleName: () => 'Example',
+  resolveRoutingAlias: () => 'proxy',
+  dslPreviewView: () => '',
+  configAnalysisView: () => '',
+  builtinRoutePresetEntries: () => [{ id: 'one' }, { id: 'two' }],
+  customRoutePresetEntries: () => [],
+});
+const compactRoutingHtml = compactRoutingView.routingPanel();
+const routingPanelStartsWithRules = !compactRoutingHtml.includes('routing-summary')
+  && compactRoutingHtml.includes('data-action="openRouteRuleDialog"')
+  && compactRoutingHtml.includes('class="tab-count">1</small>')
+  && compactRoutingHtml.includes('data-test="route-list"')
+  && !compactRoutingHtml.includes('Отключить выбранные');
 const routingModel = createRoutingModel({
   state: {
     config: {
@@ -2076,6 +2177,74 @@ const serverEditFingerprintSelectWorks = serverEditDialogHtml.includes('id="serv
   && serverEditDialogHtml.includes('<option value="chrome" selected>Chrome</option>')
   && serverEditDialogHtml.includes('<option value="firefox" >Firefox</option>')
   && serverEditDialogHtml.includes('<option value="randomized" >Randomized</option>');
+const serversPanelHtml = serversView.serversPanel();
+const serversPanelStartsWithWork = !serversPanelHtml.includes('servers-hero')
+  && !serversPanelHtml.includes('route-stats')
+  && serversPanelHtml.includes('class="tab-count"')
+  && serversPanelHtml.includes('Добавить прокси');
+
+const compactDnsState = {
+  busyAction: '',
+  configApplying: false,
+  configTesting: false,
+  dnsAddress: '',
+  dnsAuthEnabled: false,
+  dnsAuthPassword: '',
+  dnsAuthUser: '',
+  dnsCheckHost: 'example.com',
+  dnsCheckResult: null,
+  dnsDomains: '',
+  dnsView: 'servers',
+  message: '',
+};
+const compactDnsView = createDnsView({
+  activeProxyTag: () => '',
+  configInbounds: () => [],
+  currentDnsMode: () => 'normal',
+  describeDnsServer: (server) => ({ address: String(server || ''), domains: [], network: '', port: '' }),
+  dnsAnswerText: () => '',
+  dnsConfig: () => ({ servers: [], hosts: {} }),
+  dnsStats: () => ({ servers: 0, doh: 0, tcp: 0, hosts: 0 }),
+  escapeHtml,
+  lanDnsModeLabel: () => '',
+  routeRules: () => [],
+  state: compactDnsState,
+});
+const compactDnsHtml = compactDnsView.dnsPanel();
+const dnsPanelStartsWithWork = !compactDnsHtml.includes('dns-hero')
+  && !compactDnsHtml.includes('route-stats')
+  && compactDnsHtml.includes('class="tab-count"')
+  && compactDnsHtml.includes('Добавить DNS');
+
+const compactDiagnosticsState = {
+  diagnosticsView: 'live',
+  serverChecks: { proxy: { ok: true } },
+};
+const compactDiagnosticsView = createDiagnosticsView({
+  logsPanel: () => '<section data-test="live-logs">Live logs</section>',
+  sniPanel: () => '',
+  state: compactDiagnosticsState,
+});
+const compactDiagnosticsHtml = compactDiagnosticsView.diagnosticsPanel();
+const diagnosticsPanelStartsWithWork = !compactDiagnosticsHtml.includes('diagnostics-hero')
+  && !compactDiagnosticsHtml.includes('route-stats')
+  && compactDiagnosticsHtml.includes('Серверы: 1/1')
+  && compactDiagnosticsHtml.includes('data-test="live-logs"');
+
+const emptyServerModeState = {
+  config: { outbounds: [] },
+  serverMode: { config: { enabled: false, monitorClients: true, xray: [], awg: [] } },
+  serverModeDraft: { enabled: false, monitorClients: true, xray: [], awg: [] },
+  serverModePreflight: null,
+  serverModePreview: null,
+};
+const emptyServerModeHtml = createServerModeView({ state: emptyServerModeState, escapeHtml }).serverModePanel();
+const emptyServerModeIsActionable = emptyServerModeHtml.includes('server-mode-empty-start')
+  && (emptyServerModeHtml.match(/data-action="addServerModeXrayInbound"/g) || []).length === 1
+  && (emptyServerModeHtml.match(/data-action="addServerModeAWGServer"/g) || []).length === 1
+  && !emptyServerModeHtml.includes('data-action="saveServerMode"')
+  && !emptyServerModeHtml.includes('WAN firewall')
+  && !emptyServerModeHtml.includes('managed Xray');
 const mixedRule = { type: 'field', outboundTag: 'proxy', domain: ['domain:chatgpt.com'], ip: ['172.64.150.0/24'], port: '443' };
 const mixedRuleSplits = splitMixedRouteRule(mixedRule);
 const routingHelpersSplitMixed = mixedRuleSplits.length === 3
@@ -2090,11 +2259,31 @@ const routingHelpersSetMatches = routePresetRuleSetMatches(
 );
 const routingHelpersKeyIgnoresValueOrder = routeRuleConditionKey({ domain: ['b', 'a'] }) === routeRuleConditionKey({ domain: ['a', 'b'] });
 
+let settingsViewSelectHandler = null;
+const documentBeforeSettingsSelectTest = globalThis.document;
+const settingsSelectState = { settingsView: 'security', message: 'old message' };
+let settingsSelectRenders = 0;
+globalThis.document = {
+  querySelectorAll: () => [],
+  querySelector: (selector) => selector === '[data-settings-view-select]'
+    ? { addEventListener: (_event, handler) => { settingsViewSelectHandler = handler; } }
+    : null,
+};
+bindNavigationControls({ state: settingsSelectState, render: () => { settingsSelectRenders += 1; } });
+settingsViewSelectHandler?.({ target: { value: 'storage' } });
+const settingsAdvancedSelectWorks = settingsSelectState.settingsView === 'storage'
+  && settingsSelectState.message === ''
+  && settingsSelectRenders === 1;
+globalThis.document = documentBeforeSettingsSelectTest;
+
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
+  ['profile actions are compact', profileActionsAreCompact],
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
   ['amnezia run controls render', amneziaRunControlsRender],
+  ['amnezia import action is not duplicated', amneziaImportActionIsSingle],
+  ['amnezia status is compact', amneziaStatusIsCompact],
   ['amnezia structured editor render', amneziaStructuredEditorRender],
   ['amnezia config editor builds raw', amneziaConfigEditorBuildsRaw],
   ['amnezia policy controls render', amneziaPolicyControlsRender],
@@ -2103,6 +2292,13 @@ const checks = [
   ['diagnostics domain pause freezes snapshot', pausedMonitorFrozen],
   ['subscription candidate details persistence', subscriptionDetailsKeyPersists],
   ['subscription candidate busy is local', subscriptionCandidateBusyIsLocal],
+  ['servers panel starts with work', serversPanelStartsWithWork],
+  ['dns panel starts with work', dnsPanelStartsWithWork],
+  ['diagnostics panel starts with work', diagnosticsPanelStartsWithWork],
+  ['empty server mode is actionable', emptyServerModeIsActionable],
+  ['routing panel starts with rules', routingPanelStartsWithRules],
+  ['settings navigation is compact', settingsNavigationIsCompact],
+  ['settings advanced select works', settingsAdvancedSelectWorks],
   ['routing helpers split mixed rules', routingHelpersSplitMixed],
   ['routing helpers preserve mixed flag', routingHelpersPreserveMixed],
   ['routing helpers set matching', routingHelpersSetMatches && routingHelpersKeyIgnoresValueOrder],
@@ -2116,7 +2312,11 @@ const checks = [
   ['runtime controller samples', runtime.logsUrl().includes('q=chatgpt') && runtime.displayLogText('2\n1') === '1\n2' && (runtime.recordTrafficSample({ system: { traffic: { rxRate: 10, txRate: 5 } } }), runtimeState.trafficHistory.length === 1)],
   ['setup model dns bootstrap built-in doh', setupBootstrapCoversBuiltInDoh],
   ['setup view uses three honest steps', setupViewIsSimple],
+  ['setup view keeps connections compact', setupConnectionsAreCompact],
   ['setup view embeds scenarios', setupScenariosEmbedded],
+  ['setup view embeds device scope', setupDeviceScopeEmbedded && setupEmptyDeviceSelectionWarns],
+  ['setup verify shows apply plan without empty rollback', setupVerifyIsActionable],
+  ['server display repairs broken imported labels', brokenServerNameIsReadable],
   ['setup model draft', setupModel.setupReadiness().ready && (setupModel.prepareSetupDraft({ message: false }), setupState.config.inbounds.some((item) => item.tag === 'transparent_ipv4'))],
   ['setup actions run', setupState.setupResult?.ok && setupState.refreshed],
   ['settings actions service', settingsActionState.service?.goGC === 80 && settingsActionState.refreshed],
@@ -2143,10 +2343,10 @@ const checks = [
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],
   ['formatters duration', formatDurationCompact(3660) === '1 ч 1 мин'],
-  ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http'],
+  ['initial state tab', initialState.tab === 'dashboard' && initialState.serverCheckMode === 'http' && initialState.pendingChangesExpanded === false],
   ['routing model rules', routingModel.routeStats().proxy === 1 && routingModel.describeRouteRule(routingModel.routeRules()[0]).kind === 'Сайт или домен'],
   ['routing model managed stats', managedRoutingModel.routeStats().other === 4 && managedRoutingModel.routeStats().direct === 3 && managedRoutingModel.routeSectionDefinitions()[3]?.count === 4],
-  ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main') && subscriptionRoutingModel.routeStats().proxy === 1],
+  ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main' && item.label.startsWith('Xray -')) && subscriptionRoutingModel.routeStats().proxy === 1],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],

@@ -29,6 +29,12 @@
   white-space: nowrap;
 }
 
+.route-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .routing-nav-panel,
 .servers-nav-panel {
   margin-bottom: 14px;
@@ -46,6 +52,10 @@
 
 .routing-subnav button {
   min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -54,10 +64,30 @@
   font-weight: 900;
 }
 
+.routing-subnav .tab-count {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--soft);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 10px;
+  line-height: 1;
+}
+
 .routing-subnav button.active {
   color: #06120c;
   border-color: transparent;
   background: var(--green);
+}
+
+.routing-subnav button.active .tab-count {
+  border-color: rgba(6, 18, 12, 0.16);
+  color: #06120c;
+  background: rgba(6, 18, 12, 0.1);
 }
 
 .routing-scenarios-panel,

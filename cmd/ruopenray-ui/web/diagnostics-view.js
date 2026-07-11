@@ -4,11 +4,8 @@ import { createDiagnosticsTrafficView } from './diagnostics-traffic-view.js';
 
 export function createDiagnosticsView(deps) {
   const {
-    deviceRules,
-    domainDiagnosticRows,
     logsPanel,
     sniPanel,
-    stat,
     state
   } = deps;
 
@@ -22,16 +19,7 @@ export function createDiagnosticsView(deps) {
   const { observatoryPanel } = createDiagnosticsObservatoryView(deps);
 
   function diagnosticsLiveView() {
-    const checks = Object.values(state.serverChecks);
-    return `
-      <section class="stats route-stats">
-        ${stat('Проверки', checks.length || '—', checks.length ? `${checks.filter((item) => item?.ok).length} доступно` : 'серверы еще не проверялись')}
-        ${stat('Live-Xray', state.logLive ? 'Live' : 'Пауза', `${state.logLines} строк · ${state.logSort === 'desc' ? 'новые сверху' : 'новые снизу'}`)}
-        ${stat('Устройства', deviceRules().length, 'source-правила LAN')}
-        ${stat('Домены', domainDiagnosticRows().length, 'доменные правила')}
-      </section>
-      ${logsPanel(false)}
-    `;
+    return logsPanel(false);
   }
 
   function diagnosticsPanel() {
@@ -47,20 +35,6 @@ export function createDiagnosticsView(deps) {
     };
     const activeView = views[state.diagnosticsView] ? state.diagnosticsView : 'live';
     return `
-      <section class="route-hero diagnostics-hero">
-        <div>
-          <h2>Диагностика</h2>
-          <p>SNI-поиск, логи в реальном времени, проверка цепочки и мониторинг доменов.</p>
-        </div>
-        <div class="route-hero-actions">
-          <div class="route-score">
-            <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
-            <span>последняя проверка серверов</span>
-          </div>
-          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать диагностику</a>
-        </div>
-      </section>
-
       <section class="panel diagnostic-switcher">
         <div class="segmented diagnostics-tabs" aria-label="Режим диагностики">
           ${[
@@ -71,6 +45,10 @@ export function createDiagnosticsView(deps) {
             ['sni', 'SNI'],
             ['domains', 'Домены']
           ].map(([value, label]) => `<button type="button" class="${activeView === value ? 'active' : ''}" data-diagnostics-view="${value}">${label}</button>`).join('')}
+        </div>
+        <div class="diagnostic-switcher-actions">
+          <span class="status-chip ${checks.length && alive === checks.length ? 'ok' : 'muted'}">Серверы: ${checks.length ? `${alive}/${checks.length}` : 'не проверялись'}</span>
+          <a class="btn secondary compact" href="/api/diagnostics/package" download>Скачать диагностику</a>
         </div>
       </section>
 

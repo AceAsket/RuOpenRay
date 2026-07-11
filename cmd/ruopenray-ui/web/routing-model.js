@@ -1,4 +1,4 @@
-import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
+import { countryFlagMarkup, flagForCountry, serverDisplayName, serverLocation } from './server-location.js';
 import { isFragmentOutboundTag } from './outbound-tags.js';
 import { displayRouteDomainValues } from './routing-values.js';
 
@@ -123,14 +123,25 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     if (tag === 'out-amnezia') {
       return `Xray -> ${amneziaProfileTargetLabel(selectedAmneziaProfiles()[0])}`;
     }
+    const systemLabels = {
+      proxy: 'Xray - основной',
+      direct: 'Напрямую',
+      block: 'Блокировать',
+      'dns-out': 'DNS Xray',
+    };
+    if (systemLabels[tag]) return systemLabels[tag];
     if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
     const pool = subscriptionPoolByTag(tag);
-    const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
+    const outbound = routeTargetOutbound(tag);
+    const meta = state.serverMeta?.[tag] || {};
+    const location = serverLocation(outbound, meta);
     const flag = flagForCountry(location.code);
+    const readable = readableRouteTag(tag);
+    const name = readable === tag ? serverDisplayName(outbound, meta) : readable;
     const suffix = pool
       ? ` · подписка${pool.activeCandidate?.tag ? `: ${pool.activeCandidate.tag}` : pool.activeMissing ? ': активный удален' : ''}`
       : '';
-    return `${flag ? `${flag} ` : ''}${readableRouteTag(tag)}${suffix}`;
+    return `Xray - ${flag ? `${flag} ` : ''}${name}${suffix}`;
   }
   
   function routeTargetOptions() {

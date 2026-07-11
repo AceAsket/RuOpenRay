@@ -1,4 +1,5 @@
 import { noticeView } from './notice-view.js';
+import { serverDisplayName } from './server-location.js';
 
 export function createDashboardView(deps) {
   const {
@@ -302,6 +303,11 @@ function xrayStatsOutboundConfig(tag) {
   return configOutbounds().find((outbound) => outbound?.tag === tag) || null;
 }
 
+function dashboardServerName(tag, outbound = null) {
+  const server = outbound || xrayStatsOutboundConfig(tag);
+  return serverDisplayName(server || { tag }, state.serverMeta?.[tag] || {});
+}
+
 function xrayStatsOutbound(tag, stats = state.status?.xrayStats || {}) {
   if (!stats.enabled || !Array.isArray(stats.outbounds)) return null;
   return stats.outbounds.find((item) => item.tag === tag) || null;
@@ -339,7 +345,7 @@ function xrayDashboardStats(stats = state.status?.xrayStats || {}) {
     <section class="xray-dashboard-strip">
       <article>
         <span>Активный сервер</span>
-        <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
+        <strong>${escapeHtml(active?.tag ? dashboardServerName(active.tag) : 'не выбран')}</strong>
         <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
       </article>
       <article>
@@ -396,7 +402,7 @@ function xrayCoreDashboard(status = state.status || {}, available, info) {
       <div class="xray-core-metrics">
         <article>
           <span>Активный сервер</span>
-          <strong>${escapeHtml(active?.tag || activeProxyTag() || 'не выбран')}</strong>
+          <strong>${escapeHtml((active?.tag || activeProxyTag()) ? dashboardServerName(active?.tag || activeProxyTag()) : 'не выбран')}</strong>
           <small>${escapeHtml(statsEnabled && active ? `${activeAddress || 'outbound'} · ${byteRate(active.downRate)} прием · ${byteRate(active.upRate)} отдача` : 'статистика Xray выключена')}</small>
         </article>
         <article>
@@ -454,7 +460,7 @@ function xrayActiveGraph(active) {
     <article class="xray-active-graph">
       <div>
         <span>Активный сервер</span>
-        <strong>${escapeHtml(active.tag)}</strong>
+        <strong>${escapeHtml(dashboardServerName(active.tag, outbound))}</strong>
         <small>${escapeHtml(outboundAddress(outbound))}</small>
         <small>${escapeHtml(byteRate(active.downRate))} прием · ${escapeHtml(byteRate(active.upRate))} отдача</small>
       </div>
@@ -521,7 +527,7 @@ function xrayStatsPanel(stats = {}) {
         </article>
         <article>
           <span>Активный сервер</span>
-          <strong>${escapeHtml(active?.tag || 'не выбран')}</strong>
+          <strong>${escapeHtml(active?.tag ? dashboardServerName(active.tag) : 'не выбран')}</strong>
           <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
         </article>
       </div>
@@ -542,7 +548,7 @@ function xrayStatsPanel(stats = {}) {
           const share = xrayStatsShare(item, outbounds, 'downlink');
           return `<article class="${active?.tag === item.tag ? 'active' : ''}">
           <div>
-            <strong>${escapeHtml(item.tag || 'outbound')}</strong>
+            <strong>${escapeHtml(item.tag ? dashboardServerName(item.tag, outbound) : 'outbound')}</strong>
             <span>${escapeHtml(outboundAddress(outbound))}</span>
             <small>${escapeHtml(item.protocol || item.kind || 'xray')} · ${escapeHtml(item.kind || 'proxy')}</small>
             <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>
@@ -810,7 +816,7 @@ function proxyFailureWarning(activeTag) {
   return `
     <div class="settings-warning compact dashboard-proxy-warning" role="status">
       <strong>Proxy не работает</strong>
-      <span>${escapeHtml(`${activeTag}: ${status}. ${detail} · ${checkedText}. Проверьте сервер или настройте группу с резервным fallback.`)}</span>
+      <span>${escapeHtml(`${dashboardServerName(activeTag)}: ${status}. ${detail} · ${checkedText}. Проверьте сервер или настройте группу с резервным fallback.`)}</span>
       <button class="btn secondary compact" data-server-check="${escapeHtml(activeTag)}" ${isCheckingServer(activeTag) ? 'disabled' : ''}>Проверить</button>
       <button class="btn secondary compact" data-action="openBalancerView">Балансировка</button>
     </div>
@@ -859,6 +865,7 @@ function dashboardServerSwitch(servers, options = {}) {
       <div class="dashboard-server-switch">
         ${servers.slice(0, 5).map((outbound) => {
           const tag = outbound?.tag || '';
+          const displayName = dashboardServerName(tag, outbound);
           const direction = summary.outbounds.get(tag);
           const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
           const selectedServer = state.dashboardSelectedServerTag === tag && !activeServer;
@@ -873,7 +880,7 @@ function dashboardServerSwitch(servers, options = {}) {
             <button type="button" class="server-option-pick" ${activeServer || connecting ? 'disabled' : `data-dashboard-select="${escapeHtml(tag)}"`}>
               <span class="server-option-state ${activeServer ? 'active' : selectedServer ? 'selected' : ''}">${stateLabel}</span>
               <span class="server-option-main">
-                <strong>${serverLocationChip(outbound)}${escapeHtml(tag || 'server')}</strong>
+                <strong title="${escapeHtml(tag)}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
                 <small>${escapeHtml(outboundAddress(outbound))}</small>
               </span>
               ${serverTrafficView(tag, 'dashboard-server-traffic')}

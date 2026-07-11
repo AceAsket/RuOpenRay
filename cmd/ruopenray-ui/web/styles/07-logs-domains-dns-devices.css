@@ -90,15 +90,28 @@
 }
 
 .diagnostic-switcher {
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 16px;
-  padding: 10px 12px;
+  padding: 8px;
 }
 
 .diagnostics-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  max-width: 720px;
+  min-width: 0;
+  display: grid;
+  flex: 1 1 620px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.diagnostic-switcher-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .diagnostic-grid {
@@ -1734,15 +1747,44 @@
 
 .amnezia-page {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
-.amnezia-hero .split-actions {
+.amnezia-status-bar {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(13, 20, 25, 0.72);
+}
+
+.amnezia-status-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.amnezia-status-copy > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amnezia-status-bar .split-actions {
+  flex: 0 0 auto;
   justify-content: flex-end;
 }
 
 .amnezia-section-tabs {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .amnezia-dashboard-grid {
@@ -2044,7 +2086,7 @@
 
 .amnezia-profile-runtime {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, max-content));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   margin-top: 8px;
 }
@@ -2695,6 +2737,8 @@
   }
 
   .settings-subnav,
+  .settings-nav-shell,
+  .settings-advanced-select,
   .settings-log-layout,
   .settings-field,
   .settings-field.wide,
@@ -2782,6 +2826,19 @@
 
   .setup-guide-rail .setup-stepper {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .settings-theme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .settings-advanced-select {
+    min-height: 44px;
   }
 
   .setup-guide-workspace {
@@ -3200,6 +3257,29 @@
 }
 
 @media (max-width: 720px) {
+  .amnezia-status-bar,
+  .amnezia-status-copy {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .amnezia-status-copy > span:last-child {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .amnezia-status-bar .split-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .amnezia-status-bar .split-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
   .amnezia-structured-editor,
   .amnezia-field-grid {
     grid-template-columns: 1fr;
@@ -3319,6 +3399,17 @@
     flex-direction: column;
   }
 
+  .route-selection-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route-selection-actions .btn {
+    width: 100%;
+    min-width: 0;
+  }
+
   .xray-core-head,
   .xray-core-status {
     align-items: stretch;
@@ -3331,6 +3422,42 @@
 
   .top-actions {
     gap: 8px;
+  }
+
+  .pending-changes {
+    display: grid;
+    gap: 8px;
+    margin-top: -4px;
+  }
+
+  .pending-summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px 8px;
+  }
+
+  .pending-summary-copy {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .pending-risk-count {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: max-content;
+    max-width: 100%;
+    margin-top: 4px;
+    white-space: normal;
+  }
+
+  .pending-toggle {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .pending-actions,
+  .pending-actions .btn {
+    width: 100%;
   }
 
   .compat-card-head {
@@ -3415,13 +3542,36 @@
 
   .diagnostics-tabs {
     width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    flex: 0 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .diagnostic-switcher,
+  .diagnostic-switcher {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .diagnostic-switcher-actions,
   .diagnostics-tabs button {
     width: 100%;
     min-width: 0;
+  }
+
+  .diagnostic-switcher-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dns-nav-panel .routing-subnav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .dns-nav-panel .routing-subnav button {
+    min-width: 0;
+    padding-inline: 6px;
+    font-size: 12px;
   }
 
   .diagnostics-tabs button {
@@ -3689,5 +3839,20 @@
 
   .profile-row-actions .btn {
     width: 100%;
+  }
+
+  .profile-actions-menu {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .profile-actions-menu summary,
+  .profile-actions-menu-body,
+  .profile-actions-menu-body .btn {
+    width: 100%;
+  }
+
+  .profile-actions-menu-body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

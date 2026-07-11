@@ -6,13 +6,10 @@ export function createRoutingView(deps) {
     state,
     escapeHtml,
     operationProgressView,
-    stat,
     routeRules,
-    routeStats,
     routeTargetOptions,
     visibleRoutingRuleItems,
     managedRoutingRuleItems,
-    routeSectionDefinitions,
     orderedRouteList,
     describeRouteRule,
     routeRuleName,
@@ -91,40 +88,35 @@ function amneziaPolicyRulesPanel() {
 
 function routingRulesPanel() {
   const rules = routeRules();
-  const stats = routeStats();
   const options = routeTargetOptions();
   const visibleRules = visibleRoutingRuleItems(80);
   const managedRules = managedRoutingRuleItems();
   const userRulesCount = rules.length - managedRules.length;
   const amneziaPolicyCount = amneziaPolicyRuleItems().length;
   const selectedRuleCount = (state.selectedRouteRuleIndexes || []).length;
+  const hasSearch = Boolean(String(state.routeSearch || '').trim());
 
   return `
     <section class="panel routing-simple-panel">
       <div class="panel-title">
         <div><h2>Правила маршрутизации</h2><span>${userRulesCount} пользовательских · ${managedRules.length} служебных скрыто. Xray читает правила сверху вниз.</span></div>
         <div class="split-actions">
+          <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       ${operationProgressView()}
       ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AWG policy routing</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся мимо Xray.</span></div>` : ''}
-      <div class="routing-summary">
-        ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
-          <span>${escapeHtml(item.title)}</span>
-          <strong>${item.count}</strong>
-          <small>${escapeHtml(item.detail)}</small>
-        </article>`).join('')}
-      </div>
       <div class="route-tools">
-        <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
-        <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу${selectedRuleCount ? ` (${selectedRuleCount})` : ''}</button>
-        <button class="btn secondary compact" data-action="disableSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Отключить выбранные</button>
-        <button class="btn danger compact" data-action="removeSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Удалить выбранные</button>
-        <button class="btn secondary compact" data-action="clearRouteRuleSelection" ${selectedRuleCount ? '' : 'disabled'}>Снять выбор</button>
-        <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
+        ${selectedRuleCount ? `<div class="route-selection-actions">
+          <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу (${selectedRuleCount})</button>
+          <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить выбранные</button>
+          <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить выбранные</button>
+          <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
+        </div>` : ''}
+        ${hasSearch && visibleRules.length ? '<button class="btn secondary" data-action="disableVisibleRoutes">Отключить найденные</button>' : ''}
         <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
       </div>
       ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
@@ -458,9 +450,11 @@ function interceptAdvancedAccordion() {
 }
 
 function routingPanel() {
+  const userRuleCount = Math.max(0, routeRules().length - managedRoutingRuleItems().length);
+  const scenarioCount = builtinRoutePresetEntries().length + customRoutePresetEntries().length;
   const routingTabs = [
-    ['rules', 'Правила'],
-    ['scenarios', 'Сценарии'],
+    ['rules', 'Правила', userRuleCount],
+    ['scenarios', 'Сценарии', scenarioCount],
     ['intercept', 'Перехват'],
     ['leaks', 'Защита от утечек'],
     ['geo', 'Geo'],
@@ -478,7 +472,7 @@ function routingPanel() {
   return `
     <section class="routing-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю маршрутизации">
-        ${routingTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}">${label}</button>`).join('')}
+        ${routingTabs.map(([value, label, count]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}"><span>${label}</span>${Number.isFinite(count) ? `<small class="tab-count">${count}</small>` : ''}</button>`).join('')}
       </div>
     </section>
     ${views[view]()}
