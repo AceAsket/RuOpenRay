@@ -45,14 +45,14 @@ func TestParseWGShowRuntime(t *testing.T) {
 	text := `interface: awg0
   public key: redacted
 peer: peerkey
-  endpoint: cloudfour.acespace.tech:443
+  endpoint: cloudfour.example.com:443
   latest handshake: 1 minute, 23 seconds ago
   transfer: 1.50 KiB received, 2.00 KiB sent`
 	got := parseWGShowRuntime(text)
 	if got["interface"] != "awg0" {
 		t.Fatalf("interface = %#v", got["interface"])
 	}
-	if got["endpoint"] != "cloudfour.acespace.tech:443" {
+	if got["endpoint"] != "cloudfour.example.com:443" {
 		t.Fatalf("endpoint = %#v", got["endpoint"])
 	}
 	if number(got["peerCount"], 0) != 1 {
@@ -455,7 +455,7 @@ func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
 				"network":   "tcp,udp",
 				"target":    "amnezia-direct",
 				"profileId": "cloudfour",
-				"profile":   "cloudfour.acespace.tech",
+				"profile":   "cloudfour.example.com",
 			},
 			map[string]any{
 				"id":     "empty",
@@ -474,7 +474,7 @@ func TestAmneziaPolicyRulesRoundTrip(t *testing.T) {
 	if rules[0].ID != "instagram-direct" || rules[0].Target != "bypass-xray" || len(rules[0].Domain) != 2 {
 		t.Fatalf("unexpected policy rule: %#v", rules[0])
 	}
-	if rules[0].ProfileID != "cloudfour" || rules[0].Profile != "cloudfour.acespace.tech" {
+	if rules[0].ProfileID != "cloudfour" || rules[0].Profile != "cloudfour.example.com" {
 		t.Fatalf("profile target was not preserved: %#v", rules[0])
 	}
 	status := state.amneziaPolicyStatus()

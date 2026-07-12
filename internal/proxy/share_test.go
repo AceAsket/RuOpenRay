@@ -46,7 +46,7 @@ func TestParseVlessShareLink(t *testing.T) {
 }
 
 func TestParseShareLinkStripsLeadingFlagAndKeepsCountry(t *testing.T) {
-	raw := "vless://00000000-0000-0000-0000-000000000000@cloudthree.acespace.tech:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&pbk=test-key&sid=abcd#%F0%9F%87%AB%F0%9F%87%AEFIfin_play2go_cloudthree"
+	raw := "vless://00000000-0000-0000-0000-000000000000@cloudthree.example.com:443?type=tcp&encryption=none&security=reality&sni=front.example.com&fp=chrome&pbk=test-key&sid=abcd#%F0%9F%87%AB%F0%9F%87%AEFIfin_play2go_cloudthree"
 	outbound, err := ParseShareLink(raw)
 	if err != nil {
 		t.Fatalf("ParseShareLink returned error: %v", err)

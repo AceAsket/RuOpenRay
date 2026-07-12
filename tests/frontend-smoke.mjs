@@ -507,8 +507,8 @@ const setupVerifyIsActionable = setupVerifyHtml.includes('setup-apply-plan')
 const brokenServerNameIsReadable = serverDisplayName({
   tag: '????fin_play2go_cloudthree-Hazesha',
   protocol: 'vless',
-  settings: { vnext: [{ address: 'cloudthree.acespace.tech', port: 443 }] },
-}) === 'Финляндия · cloudthree.acespace.tech';
+  settings: { vnext: [{ address: 'cloudthree.example.com', port: 443 }] },
+}) === 'Финляндия · cloudthree.example.com';
 function createMemoryStorage() {
   return {
     data: new Map(),

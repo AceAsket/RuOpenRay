@@ -63,7 +63,7 @@ func TestParseXrayDomainLinesIgnoresConnectionIDs(t *testing.T) {
 }
 
 func TestParseXrayDomainLinesLinksDNSCacheAnswerToClientIP(t *testing.T) {
-	content := "2026/06/08 22:28:46.176532 DOH//dns.google:443 cache HIT: cloudthree.acespace.tech. -> [31.76.80.139]\n" +
+	content := "2026/06/08 22:28:46.176532 DOH//dns.google:443 cache HIT: cloudthree.example.com. -> [31.76.80.139]\n" +
 		"2026/06/08 22:28:46.372426 from 192.168.50.146:41518 accepted tcp:31.76.80.139:443 [transparent_ipv4 -> direct]\n"
 	devices := map[string]string{"192.168.50.146": "OnePlus"}
 
@@ -72,7 +72,7 @@ func TestParseXrayDomainLinesLinksDNSCacheAnswerToClientIP(t *testing.T) {
 		t.Fatalf("expected one correlated client event, got %d: %#v", len(events), events)
 	}
 	event := events[0]
-	if event.Host != "cloudthree.acespace.tech" || event.SourceIP != "192.168.50.146" || event.SourceDevice != "OnePlus" {
+	if event.Host != "cloudthree.example.com" || event.SourceIP != "192.168.50.146" || event.SourceDevice != "OnePlus" {
 		t.Fatalf("DNS answer should be linked to accepted client flow: %#v", event)
 	}
 	if event.DestinationIP != "31.76.80.139" || event.DestinationPort != "443" || event.Outbound != "direct" {
