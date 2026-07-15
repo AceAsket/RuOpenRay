@@ -304,7 +304,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           <label class="field-label">AWG-пул</label>
           <strong>${escapeHtml(selectedSummary)}</strong>
           <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
-          <select class="input" data-amnezia-strategy>
+          <select class="input" data-amnezia-strategy aria-label="Стратегия AWG-пула">
             ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
           </select>
           <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool" ${items.length ? '' : 'disabled'}>Сохранить пул</button>
@@ -314,7 +314,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           <label class="field-label">Маршрутизация</label>
           <strong>${escapeHtml(integrationModeLabel(mode))}</strong>
           <span>${escapeHtml(integrationModeDetail(mode))}</span>
-          <select class="input" data-amnezia-mode>
+          <select class="input" data-amnezia-mode aria-label="Режим маршрутизации AmneziaWG">
             ${['standby', 'mixed', 'amnezia-first', 'xray-only'].map((item) => `<option value="${escapeHtml(item)}" ${mode === item ? 'selected' : ''}>${escapeHtml(integrationModeLabel(item))}</option>`).join('')}
           </select>
           <div class="amnezia-integration-metrics">
@@ -487,6 +487,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     if (!userspace.available && !userspace.tunDevice && !userspace.tunModule && !userspace.awgSetconf) return '';
     const rollback = array(userspace.rollback).join(' ');
     const url = state.amneziaUserspaceUrl || '';
+    const sha256 = state.amneziaUserspaceSha256 || '';
     return `<section class="panel amnezia-userspace-panel ${userspace.available ? 'ok' : 'warn'}">
       <div class="panel-title">
         <div>
@@ -506,8 +507,12 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
           <span class="field-label">URL amneziawg-go</span>
           <input class="input" data-amnezia-userspace-url value="${escapeHtml(url)}" placeholder="https://example.com/amneziawg-go-linux-arm64">
         </label>
+        <label>
+          <span class="field-label">SHA-256</span>
+          <input class="input" data-amnezia-userspace-sha256 value="${escapeHtml(sha256)}" placeholder="64 шестнадцатеричных символа" spellcheck="false">
+        </label>
         <button class="btn secondary ${state.busyAction === 'prepareAmneziaUserspace' ? 'is-busy' : ''}" type="button" data-action="prepareAmneziaUserspace" ${state.busyAction === 'prepareAmneziaUserspace' ? 'disabled' : ''}>${state.busyAction === 'prepareAmneziaUserspace' ? 'Готовлю...' : 'Подготовить userspace'}</button>
-        <small>${escapeHtml(userspace.installPath ? `Будет сохранено в ${userspace.installPath}. Без запуска туннеля.` : 'Без запуска туннеля.')}</small>
+        <small>${escapeHtml(userspace.installPath ? `HTTPS и SHA-256 обязательны. Будет сохранено в ${userspace.installPath}. Без запуска туннеля.` : 'HTTPS и SHA-256 обязательны. Без запуска туннеля.')}</small>
       </div>
       ${rollback ? `<div class="settings-info">
         <strong>Откат при ошибке</strong>
@@ -597,7 +602,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         </div>
         <div class="compat-metrics">
           ${metric('Route table', plan.table || '5200', plan.tableName || 'ruopenray_awg')}
-          ${metric('fwmark', plan.mark || '0x5200', 'метка для выбранных правил')}
+          ${metric('fwmark', plan.mark || '0x52000000', 'метка для выбранных правил')}
           ${metric('Текущий default', routing.defaultViaTunnel ? 'через туннель' : 'не через туннель', routing.defaultRoute || '')}
           ${metric('ip rule', routing.ipRule ? 'найден' : 'не настроен', array(routing.rules).join(' · '))}
           ${metric('AWG policy', policy.active ? 'в firewall' : (policy.persistent ? 'сохранена' : 'не применена'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR · ${Number(policy.appliedDomainCount || 0)} из ${Number(policy.domainNftsetCount || 0)} доменов`)}

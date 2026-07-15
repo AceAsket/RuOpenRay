@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +21,19 @@ const (
 	serverModeTagPrefix     = "ruopenray-server-"
 	serverModeBlockTag      = "ruopenray-server-deny"
 )
+
+var serverModePrivateNetworkCIDRs = []string{
+	"10.0.0.0/8",
+	"100.64.0.0/10",
+	"127.0.0.0/8",
+	"169.254.0.0/16",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"198.18.0.0/15",
+	"::1/128",
+	"fc00::/7",
+	"fe80::/10",
+}
 
 type serverModeConfig struct {
 	Version        int                     `json:"version"`
@@ -54,18 +69,21 @@ type serverModeReality struct {
 }
 
 type serverModeClient struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	UUID           string `json:"uuid"`
-	Email          string `json:"email"`
-	Enabled        bool   `json:"enabled"`
-	EgressTag      string `json:"egressTag"`
-	Level          int    `json:"level"`
-	Flow           string `json:"flow"`
-	AllowLAN       bool   `json:"allowLan"`
-	AllowRouter    bool   `json:"allowRouter"`
-	AllowDNS       bool   `json:"allowDns"`
-	FallbackPolicy string `json:"fallbackPolicy"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	UUID            string `json:"uuid"`
+	Email           string `json:"email"`
+	Enabled         bool   `json:"enabled"`
+	EgressTag       string `json:"egressTag"`
+	Level           int    `json:"level"`
+	Flow            string `json:"flow"`
+	AllowLAN        bool   `json:"allowLan"`
+	AllowRouter     bool   `json:"allowRouter"`
+	AllowDNS        bool   `json:"allowDns"`
+	LANAllowedIPs   string `json:"lanAllowedIps,omitempty"`
+	LANAllowedPorts string `json:"lanAllowedPorts,omitempty"`
+	LANProtocol     string `json:"lanProtocol,omitempty"`
+	FallbackPolicy  string `json:"fallbackPolicy"`
 }
 
 type serverModeAWGServer struct {
@@ -75,6 +93,7 @@ type serverModeAWGServer struct {
 	Interface    string                 `json:"interface"`
 	ListenPort   int                    `json:"listenPort"`
 	AddressCIDR  string                 `json:"addressCidr"`
+	PublicHost   string                 `json:"publicHost,omitempty"`
 	PrivateKey   string                 `json:"privateKey,omitempty"`
 	PublicKey    string                 `json:"publicKey,omitempty"`
 	MTU          int                    `json:"mtu,omitempty"`
@@ -86,12 +105,21 @@ type serverModeAWGServer struct {
 }
 
 type serverModeAWGPeer struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	PublicKey    string `json:"publicKey"`
-	AllowedIPs   string `json:"allowedIps"`
-	PresharedKey string `json:"presharedKey,omitempty"`
-	Enabled      bool   `json:"enabled"`
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	PublicKey           string `json:"publicKey"`
+	AllowedIPs          string `json:"allowedIps"`
+	PresharedKey        string `json:"presharedKey,omitempty"`
+	ClientAllowedIPs    string `json:"clientAllowedIps,omitempty"`
+	ClientDNS           string `json:"clientDns,omitempty"`
+	PersistentKeepalive int    `json:"persistentKeepalive,omitempty"`
+	AllowLAN            bool   `json:"allowLan,omitempty"`
+	AllowRouter         bool   `json:"allowRouter,omitempty"`
+	AllowDNS            bool   `json:"allowDns,omitempty"`
+	LANAllowedIPs       string `json:"lanAllowedIps,omitempty"`
+	LANAllowedPorts     string `json:"lanAllowedPorts,omitempty"`
+	LANProtocol         string `json:"lanProtocol,omitempty"`
+	Enabled             bool   `json:"enabled"`
 }
 
 type serverModeIssue struct {
@@ -179,6 +207,9 @@ func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
 			client.Email = serverModeClientEmail(in.ID, client.ID, client.Email)
 			client.EgressTag = strings.TrimSpace(firstNonEmpty(client.EgressTag, "direct"))
 			client.Flow = strings.TrimSpace(client.Flow)
+			client.LANAllowedIPs = strings.TrimSpace(client.LANAllowedIPs)
+			client.LANAllowedPorts = strings.TrimSpace(client.LANAllowedPorts)
+			client.LANProtocol = serverModeNormalizeLANProtocol(client.LANProtocol)
 			client.FallbackPolicy = strings.TrimSpace(client.FallbackPolicy)
 		}
 	}
@@ -199,6 +230,7 @@ func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
 		}
 		awg.PrivateKey = strings.TrimSpace(awg.PrivateKey)
 		awg.PublicKey = strings.TrimSpace(awg.PublicKey)
+		awg.PublicHost = strings.TrimSpace(awg.PublicHost)
 		awg.EgressTag = strings.TrimSpace(firstNonEmpty(awg.EgressTag, "direct"))
 		for j := range awg.Peers {
 			peer := &awg.Peers[j]
@@ -209,6 +241,14 @@ func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
 			peer.PublicKey = strings.TrimSpace(peer.PublicKey)
 			peer.AllowedIPs = strings.TrimSpace(firstNonEmpty(peer.AllowedIPs, fmt.Sprintf("10.70.0.%d/32", j+2)))
 			peer.PresharedKey = strings.TrimSpace(peer.PresharedKey)
+			peer.ClientAllowedIPs = strings.TrimSpace(firstNonEmpty(peer.ClientAllowedIPs, "0.0.0.0/0"))
+			peer.ClientDNS = strings.TrimSpace(firstNonEmpty(peer.ClientDNS, "1.1.1.1"))
+			peer.LANAllowedIPs = strings.TrimSpace(peer.LANAllowedIPs)
+			peer.LANAllowedPorts = strings.TrimSpace(peer.LANAllowedPorts)
+			peer.LANProtocol = serverModeNormalizeLANProtocol(peer.LANProtocol)
+			if peer.PersistentKeepalive == 0 {
+				peer.PersistentKeepalive = 25
+			}
 		}
 	}
 	return cfg
@@ -282,10 +322,11 @@ func (s *serverState) serverModeReport() map[string]any {
 	}
 	active, activeErr := s.readActiveConfig()
 	report := map[string]any{
-		"ok":      activeErr == nil,
-		"config":  mode,
-		"summary": serverModeSummary(mode),
-		"awgPlan": s.serverModeAWGPlan(mode),
+		"ok":         activeErr == nil,
+		"config":     mode,
+		"summary":    serverModeSummary(mode),
+		"awgPlan":    s.serverModeAWGPlan(mode),
+		"awgRuntime": s.serverModeAWGRuntimeStatus(mode),
 	}
 	if activeErr != nil {
 		report["error"] = activeErr.Error()
@@ -296,7 +337,7 @@ func (s *serverState) serverModeReport() map[string]any {
 	report["preflight"] = serverModePreflight(mode, active)
 	report["managed"] = serverModeManagedSummary(active)
 	report["firewall"] = s.serverModeFirewallStatus()
-	report["security"] = serverModeSecurityReport(mode)
+	report["security"] = serverModeSecurityReportWithAWGRuntime(mode, report["awgRuntime"].(map[string]any)["healthy"] == true)
 	if mode.MonitorClients {
 		stats := s.xrayTrafficStats(active, false)
 		report["xrayStats"] = stats
@@ -593,20 +634,9 @@ func serverModePatchConfig(active map[string]any, mode serverModeConfig) map[str
 				xClient["flow"] = client.Flow
 			}
 			clients = append(clients, xClient)
-			user := []any{client.Email}
-			inboundTag := []any{serverModeInboundTag(inbound.ID)}
-			if !client.AllowDNS {
-				needsBlock = true
-				newRules = append(newRules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "port": "53", "outboundTag": serverModeBlockTag})
-			}
-			if client.AllowRouter && !client.AllowLAN && len(routerIPs) > 0 {
-				newRules = append(newRules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": stringsToAny(routerIPs), "outboundTag": "direct"})
-			}
-			if !client.AllowLAN {
-				needsBlock = true
-				newRules = append(newRules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": []any{"geoip:private"}, "outboundTag": serverModeBlockTag})
-			}
-			newRules = append(newRules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "outboundTag": client.EgressTag})
+			clientRules, clientNeedsBlock := serverModeClientRoutingRules(inbound.ID, client, routerIPs)
+			newRules = append(newRules, clientRules...)
+			needsBlock = needsBlock || clientNeedsBlock
 		}
 		stream := map[string]any{"network": inbound.Network}
 		switch inbound.Security {
@@ -652,6 +682,33 @@ func serverModePatchConfig(active map[string]any, mode serverModeConfig) map[str
 	cfg["inbounds"] = inbounds
 	cfg["outbounds"] = outbounds
 	return cfg
+}
+
+func serverModeClientRoutingRules(inboundID string, client serverModeClient, routerIPs []string) ([]any, bool) {
+	user := []any{client.Email}
+	inboundTag := []any{serverModeInboundTag(inboundID)}
+	rules := []any{}
+	needsBlock := false
+	if !client.AllowDNS {
+		needsBlock = true
+		rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "port": "53", "outboundTag": serverModeBlockTag})
+	}
+	if client.AllowLAN {
+		rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": stringsToAny(serverModePrivateNetworkCIDRs), "outboundTag": "direct"})
+	} else {
+		if limitedRule, ok := serverModeLimitedLANXrayRule(inboundTag, user, client.LANAllowedIPs, client.LANAllowedPorts, client.LANProtocol); ok {
+			rules = append(rules, limitedRule)
+		}
+		if client.AllowRouter && len(routerIPs) > 0 {
+			rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": stringsToAny(routerIPs), "outboundTag": "direct"})
+		} else if client.AllowDNS && len(routerIPs) > 0 {
+			rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": stringsToAny(routerIPs), "port": "53", "outboundTag": "direct"})
+		}
+		needsBlock = true
+		rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "ip": stringsToAny(serverModePrivateNetworkCIDRs), "outboundTag": serverModeBlockTag})
+	}
+	rules = append(rules, map[string]any{"type": "field", "inboundTag": inboundTag, "user": user, "outboundTag": client.EgressTag})
+	return rules, needsBlock
 }
 
 func serverModeRouterIPs() []string {
@@ -752,6 +809,9 @@ func serverModePreflight(mode serverModeConfig, active map[string]any) map[strin
 	outbounds := serverModeOutboundTagSet(active)
 	ports := serverModeExistingPorts(active)
 	seenPorts := map[string]string{}
+	seenAWGPorts := map[int]string{}
+	seenAWGInterfaces := map[string]string{}
+	routerAddressKnown := runtime.GOOS == "windows" || strings.TrimSpace(detectRouterLANAddress()) != ""
 	for _, inbound := range mode.Xray {
 		if !inbound.Enabled {
 			continue
@@ -766,12 +826,21 @@ func serverModePreflight(mode serverModeConfig, active map[string]any) map[strin
 		if inbound.Port < 1 || inbound.Port > 65535 {
 			errors = append(errors, serverModeIssue{Severity: "error", Title: "Некорректный порт входа", Detail: fmt.Sprintf("Порт %d вне диапазона 1-65535.", inbound.Port), Source: source})
 		}
-		portKey := strings.TrimSpace(inbound.Listen) + ":" + fmt.Sprint(inbound.Port)
-		if owner := ports[portKey]; owner != "" {
-			errors = append(errors, serverModeIssue{Severity: "error", Title: "Порт уже занят в Xray config", Detail: fmt.Sprintf("%s уже использует %s.", owner, portKey), Source: source})
+		listen := strings.TrimSpace(inbound.Listen)
+		portKey := listen + ":" + fmt.Sprint(inbound.Port)
+		for existingKey, owner := range ports {
+			existingListen, existingPort := serverModeListenPortKey(existingKey)
+			if existingPort == inbound.Port && serverModeListenConflicts(listen, existingListen) {
+				errors = append(errors, serverModeIssue{Severity: "error", Title: "Порт уже занят в Xray config", Detail: fmt.Sprintf("%s уже использует %s; адрес %s конфликтует с %s.", owner, existingKey, firstNonEmpty(listen, "0.0.0.0"), firstNonEmpty(existingListen, "0.0.0.0")), Source: source})
+				break
+			}
 		}
-		if owner := seenPorts[portKey]; owner != "" {
-			errors = append(errors, serverModeIssue{Severity: "error", Title: "Дублирующийся порт server-mode", Detail: fmt.Sprintf("%s и %s используют %s.", owner, inbound.ID, portKey), Source: source})
+		for existingKey, owner := range seenPorts {
+			existingListen, existingPort := serverModeListenPortKey(existingKey)
+			if existingPort == inbound.Port && serverModeListenConflicts(listen, existingListen) {
+				errors = append(errors, serverModeIssue{Severity: "error", Title: "Дублирующийся порт server-mode", Detail: fmt.Sprintf("%s и %s используют конфликтующие адреса на порту %d.", owner, inbound.ID, inbound.Port), Source: source})
+				break
+			}
 		}
 		seenPorts[portKey] = inbound.ID
 		if serverModeExposedListen(inbound.Listen) {
@@ -810,6 +879,15 @@ func serverModePreflight(mode serverModeConfig, active map[string]any) map[strin
 			if strings.TrimSpace(client.Email) == "" {
 				errors = append(errors, serverModeIssue{Severity: "error", Title: "У клиента нет email/user", Detail: "Xray routing использует user/email для политики доступа.", Source: clientSource})
 			}
+			if issue := serverModeLANACLValidationIssue(client.LANAllowedIPs, client.LANAllowedPorts, client.LANProtocol, clientSource); issue != nil {
+				errors = append(errors, *issue)
+			}
+			if client.AllowLAN && strings.TrimSpace(client.LANAllowedIPs) != "" {
+				warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "Ограниченный LAN перекрыт полным доступом", Detail: "Выключите полный LAN, чтобы применялись выбранные CIDR/IP и порты.", Source: clientSource})
+			}
+			if !routerAddressKnown && !client.AllowLAN && (client.AllowRouter || client.AllowDNS) {
+				errors = append(errors, serverModeIssue{Severity: "error", Title: "LAN-адрес роутера не определён", Detail: "Нельзя безопасно создать router/DNS исключение; проверьте network.interface.lan или адрес br-lan.", Source: clientSource})
+			}
 			if strings.TrimSpace(client.EgressTag) == "" {
 				errors = append(errors, serverModeIssue{Severity: "error", Title: "Не выбран выход для клиента", Detail: "Выберите proxy/direct/block или другой outbound.", Source: clientSource})
 			} else if !outbounds[client.EgressTag] {
@@ -834,38 +912,47 @@ func serverModePreflight(mode serverModeConfig, active map[string]any) map[strin
 			continue
 		}
 		source := "awg:" + awg.ID
-		if awg.ListenPort < 1 || awg.ListenPort > 65535 {
-			errors = append(errors, serverModeIssue{Severity: "error", Title: "Некорректный порт AWG", Detail: fmt.Sprintf("Порт %d вне диапазона 1-65535.", awg.ListenPort), Source: source})
+		if owner := seenAWGPorts[awg.ListenPort]; owner != "" {
+			errors = append(errors, serverModeIssue{Severity: "error", Title: "Дублирующийся UDP-порт AWG", Detail: fmt.Sprintf("%s и %s используют UDP/%d.", owner, awg.ID, awg.ListenPort), Source: source})
 		}
+		seenAWGPorts[awg.ListenPort] = awg.ID
+		ifaceKey := strings.ToLower(strings.TrimSpace(awg.Interface))
+		if owner := seenAWGInterfaces[ifaceKey]; ifaceKey != "" && owner != "" {
+			errors = append(errors, serverModeIssue{Severity: "error", Title: "Дублирующийся AWG-интерфейс", Detail: fmt.Sprintf("%s и %s используют интерфейс %s.", owner, awg.ID, awg.Interface), Source: source})
+		}
+		if ifaceKey != "" {
+			seenAWGInterfaces[ifaceKey] = awg.ID
+		}
+		plan := serverModeBuildAWGServerPlan(awg, filepath.Join("/tmp", serverModeSlug(awg.ID)+".conf"))
+		errors = append(errors, serverModeIssueSlice(plan["errors"])...)
+		warnings = append(warnings, serverModeIssueSlice(plan["warnings"])...)
 		if !outbounds[awg.EgressTag] {
 			errors = append(errors, serverModeIssue{Severity: "error", Title: "Выход AWG не найден", Detail: fmt.Sprintf("Outbound %q отсутствует в активном Xray config.", awg.EgressTag), Source: source})
 		}
-		if strings.TrimSpace(awg.PrivateKey) == "" {
-			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG privateKey не задан", Detail: "Для запуска серверного AWG понадобится приватный ключ интерфейса. Сейчас схема только сохраняется и проверяется.", Source: source})
-		}
-		if len(awg.Peers) == 0 {
-			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "Нет AWG peers", Detail: "Добавьте хотя бы одного peer с publicKey и отдельным Allowed IP.", Source: source})
-		}
 		if awg.AllowLAN {
 			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG peers получат LAN", Detail: "Такой режим должен быть включен только для доверенных клиентов; по умолчанию LAN лучше закрывать.", Source: source})
-		}
-		if awg.OpenFirewall {
-			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "WAN firewall для AWG открывается отдельно", Detail: "UDP-порт AWG нельзя открывать скрыто вместе с сохранением схемы; нужен отдельный подтверждаемый шаг.", Source: source})
 		}
 		for _, peer := range awg.Peers {
 			if !peer.Enabled {
 				continue
 			}
 			peerSource := source + "/peer:" + peer.ID
-			if strings.TrimSpace(peer.PublicKey) == "" {
-				warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "У AWG peer нет publicKey", Detail: "Peer нельзя будет подключить без публичного ключа клиента.", Source: peerSource})
+			if issue := serverModeLANACLValidationIssue(peer.LANAllowedIPs, peer.LANAllowedPorts, peer.LANProtocol, peerSource); issue != nil {
+				errors = append(errors, *issue)
 			}
-			if strings.TrimSpace(peer.AllowedIPs) == "" {
-				warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "У AWG peer нет Allowed IPs", Detail: "Укажите отдельный адрес клиента, например 10.70.0.2/32.", Source: peerSource})
+			if (awg.AllowLAN || peer.AllowLAN) && strings.TrimSpace(peer.LANAllowedIPs) != "" {
+				warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "Ограниченный LAN peer перекрыт полным доступом", Detail: "Выключите полный LAN сервера и peer, чтобы применялись выбранные назначения.", Source: peerSource})
+			}
+			if !routerAddressKnown && (peer.AllowRouter || peer.AllowDNS) {
+				errors = append(errors, serverModeIssue{Severity: "error", Title: "LAN-адрес роутера не определён", Detail: "Нельзя безопасно открыть роутер или DNS для AWG peer; проверьте network.interface.lan или адрес br-lan.", Source: peerSource})
 			}
 		}
-		warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG server-mode пока не применяет интерфейс", Detail: "Настройки сохраняются и валидируются; запуск серверного AWG будет отдельным системным шагом, чтобы не смешивать его с Xray config.", Source: source})
+		if awg.OpenFirewall {
+			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "WAN firewall для AWG открывается отдельно", Detail: "UDP-порт AWG нельзя открывать скрыто вместе с сохранением схемы; нужен отдельный подтверждаемый шаг.", Source: source})
+		}
+		warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG runtime запускается отдельно", Detail: "Сохранение server-mode не поднимает сетевой интерфейс. Используйте отдельный подтверждаемый запуск AmneziaWG runtime после проверки плана.", Source: source})
 	}
+	errors = append(errors, serverModeAWGConfiguredNetworkConflicts(mode)...)
 	return serverModePreflightPayload(errors, warnings, mode)
 }
 
@@ -924,6 +1011,35 @@ func serverModeExistingPorts(cfg map[string]any) map[string]string {
 		ports[listen+":"+fmt.Sprint(port)] = firstNonEmpty(tag, "inbound")
 	}
 	return ports
+}
+
+func serverModeListenPortKey(value string) (string, int) {
+	index := strings.LastIndex(value, ":")
+	if index < 0 || index+1 >= len(value) {
+		return strings.TrimSpace(value), 0
+	}
+	port, _ := strconv.Atoi(strings.TrimSpace(value[index+1:]))
+	return strings.TrimSpace(value[:index]), port
+}
+
+func serverModeListenConflicts(left, right string) bool {
+	normalize := func(value string) string {
+		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.Trim(value, "[]")
+		if value == "" {
+			return "0.0.0.0"
+		}
+		return value
+	}
+	left = normalize(left)
+	right = normalize(right)
+	if left == right {
+		return true
+	}
+	if left == "::" || left == "::0" || right == "::" || right == "::0" {
+		return true
+	}
+	return left == "0.0.0.0" || right == "0.0.0.0"
 }
 
 func serverModeManagedSummary(cfg map[string]any) map[string]any {

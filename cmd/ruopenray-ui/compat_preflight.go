@@ -8,10 +8,10 @@ import (
 const firewallCompatibilityConfirmKey = "compatConfirmed"
 
 func (s *serverState) firewallCompatibilityPreflight(payload map[string]any, meta map[string]any) map[string]any {
-	return firewallCompatibilityPreflightFromStatuses(payload, meta, s.cachedPodkopStatus(), s.cachedB4Status())
+	return firewallCompatibilityPreflightFromStatuses(payload, meta, s.cachedB4Status())
 }
 
-func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map[string]any, podkop map[string]any, b4 map[string]any) map[string]any {
+func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map[string]any, b4 map[string]any) map[string]any {
 	issues := []map[string]any{}
 	routerMode := strings.TrimSpace(fmt.Sprint(meta["routerMode"]))
 	if routerMode == "" || routerMode == "<nil>" {
@@ -21,25 +21,26 @@ func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map
 	if value, ok := meta["dnsIntercept"].(bool); ok {
 		dnsIntercept = value
 	}
-	if podkop != nil && podkop["active"] == true {
-		detail := "Podkop уже может управлять DNS, nftables и transparent proxy. Если применить перехват RuOpenRay поверх него, порядок обработки пакетов станет неочевидным."
-		if dnsmasq, ok := podkop["dnsmasq"].(map[string]any); ok && boolMap(dnsmasq, "usesPodkopDNS") {
-			detail += " dnsmasq сейчас смотрит в DNS Podkop."
-		}
-		if routing, ok := podkop["routing"].(map[string]any); ok && (boolMap(routing, "ipRule") || boolMap(routing, "route")) {
-			detail += " Найдены policy routing правила Podkop."
-		}
-		issues = append(issues, compatibilityIssue("podkop", "danger", "Podkop активен", detail))
-	}
 	if b4 != nil && b4["active"] == true {
+		severity := "warn"
 		detail := "B4 уже может использовать NFQUEUE/firewall для DPI-обхода. Перед параллельной работой нужно понимать, кто владеет LAN-перехватом."
 		if nft, ok := b4["nft"].(map[string]any); ok && boolMap(nft, "hasDNSRedirect") {
 			detail += " Найдены признаки DNS redirect/NFQUEUE."
 		}
 		if routing, ok := b4["routing"].(map[string]any); ok && (boolMap(routing, "ipRule") || boolMap(routing, "route")) {
 			detail += " Найдены policy routing правила B4."
+			if boolMap(routing, "markConflict") {
+				detail += fmt.Sprintf(" Обнаружен прямой конфликт fwmark %s с RuOpenRay AWG; параллельный запуск небезопасен до смены mark.", amneziaFwMark)
+				severity = "danger"
+			}
 		}
-		issues = append(issues, compatibilityIssue("b4", "warn", "B4 активен", detail))
+		if api, ok := b4["api"].(map[string]any); ok {
+			if config, ok := api["config"].(map[string]any); ok && fmt.Sprint(config["queueScope"]) == "all" {
+				detail += " Пустой список interfaces в B4 означает NFQUEUE на всех интерфейсах; исключите LAN ingress RuOpenRay или задайте явный список до совместного запуска."
+				severity = "danger"
+			}
+		}
+		issues = append(issues, compatibilityIssue("b4", severity, "B4 активен", detail))
 	} else if b4 != nil {
 		nft, _ := b4["nft"].(map[string]any)
 		iptables, _ := b4["iptables"].(map[string]any)
@@ -65,7 +66,6 @@ func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map
 		"routerMode":           routerMode,
 		"dnsIntercept":         dnsIntercept,
 		"issues":               issues,
-		"podkop":               podkop,
 		"b4":                   b4,
 	}
 }

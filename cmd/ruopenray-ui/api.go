@@ -172,6 +172,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-mode/apply" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serverModeApply(payload))
+	case path == "/server-mode/awg/status" && r.Method == http.MethodGet:
+		mode, _ := s.loadServerModeConfig()
+		writeJSON(w, 200, s.serverModeAWGRuntimeStatus(mode))
+	case path == "/server-mode/awg/keypair" && r.Method == http.MethodPost:
+		writeJSON(w, 200, serverModeAWGKeyPair())
+	case path == "/server-mode/awg/apply" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeAWGRuntimeApply(payload))
+	case path == "/server-mode/awg/disable" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.serverModeAWGRuntimeDisable())
 	case path == "/server-mode/security" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serverModeSecurity(nil))
 	case path == "/server-mode/security" && r.Method == http.MethodPost:

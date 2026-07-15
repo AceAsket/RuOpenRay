@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 	"time"
@@ -9,12 +11,14 @@ import (
 
 func (s *serverState) compatibilityStatus() map[string]any {
 	lan := s.lanDNSUpstreamStatus(nil)
-	routerLan := strings.TrimSpace(fmt.Sprint(lan["routerLan"]))
+	routerLan := strings.TrimSpace(detectRouterLANAddress())
 	if routerLan == "" || routerLan == "<nil>" {
-		routerLan = routerLANAddress()
+		routerLan = strings.TrimSpace(fmt.Sprint(lan["routerLan"]))
+	}
+	if routerLan == "" || routerLan == "<nil>" {
+		routerLan = "192.168.1.1"
 	}
 	adguard, _ := lan["adguardHome"].(map[string]any)
-	podkop := s.cachedPodkopStatus()
 	b4 := s.cachedB4Status()
 	amnezia := s.cachedAmneziaStatus()
 	return map[string]any{
@@ -22,17 +26,14 @@ func (s *serverState) compatibilityStatus() map[string]any {
 		"routerLan": routerLan,
 		"detected": map[string]any{
 			"adguardHome": compatAvailable(adguard),
-			"podkop":      compatAvailable(podkop),
 			"b4":          compatAvailable(b4),
 			"amnezia":     compatAvailable(amnezia),
 		},
 		"links": map[string]any{
 			"adguardHome": adGuardHomeWebURL(routerLan, adguard),
-			"podkop":      fmt.Sprintf("http://%s/cgi-bin/luci/admin/services/podkop", routerLan),
 			"b4":          fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort),
 		},
 		"adguardHome": adguard,
-		"podkop":      podkop,
 		"b4":          b4,
 		"amnezia":     amnezia,
 	}
@@ -51,17 +52,82 @@ func adGuardHomeWebURL(routerLan string, adguard map[string]any) string {
 }
 
 func routerLANAddress() string {
-	if runtime.GOOS == "windows" || !commandExists("uci") {
-		return "192.168.1.1"
+	return firstNonEmpty(detectRouterLANAddress(), "192.168.1.1")
+}
+
+func detectRouterLANAddress() string {
+	if runtime.GOOS == "windows" {
+		return ""
 	}
-	lanIP := firstLine(fmt.Sprint(runTimeout(2*time.Second, "uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")
-	if lanIP == "" || lanIP == "<nil>" {
-		return "192.168.1.1"
+	// Prefer the live interface state over UCI. On DHCP LAN interfaces UCI may
+	// contain no address or a stale factory default while ubus/ip expose the
+	// address that clients can actually reach.
+	if commandExists("ubus") {
+		status := fmt.Sprint(runTimeout(2*time.Second, "ubus", "call", "network.interface.lan", "status")["stdout"])
+		if ip := routerIPv4FromUbus(status); ip != "" {
+			return ip
+		}
 	}
-	if strings.Contains(lanIP, "/") {
-		lanIP = strings.SplitN(lanIP, "/", 2)[0]
+	if commandExists("ip") {
+		addr := fmt.Sprint(runTimeout(2*time.Second, "ip", "-4", "-o", "addr", "show", "dev", "br-lan")["stdout"])
+		if ip := routerIPv4FromIPOutput(addr); ip != "" {
+			return ip
+		}
+		routes := fmt.Sprint(runTimeout(2*time.Second, "ip", "-4", "route", "show", "default")["stdout"])
+		if ip := routerIPv4FromIPOutput(routes); ip != "" {
+			return ip
+		}
 	}
-	return lanIP
+	if commandExists("uci") {
+		if ip := normalizeRouterIPv4(firstLine(fmt.Sprint(runTimeout(2*time.Second, "uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func routerIPv4FromUbus(raw string) string {
+	var status struct {
+		IPv4Address []struct {
+			Address string `json:"address"`
+		} `json:"ipv4-address"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &status) != nil {
+		return ""
+	}
+	for _, item := range status.IPv4Address {
+		if ip := normalizeRouterIPv4(item.Address); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func routerIPv4FromIPOutput(raw string) string {
+	fields := strings.Fields(raw)
+	for i, field := range fields {
+		if (field == "inet" || field == "src") && i+1 < len(fields) {
+			if ip := normalizeRouterIPv4(fields[i+1]); ip != "" {
+				return ip
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeRouterIPv4(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "<nil>" {
+		return ""
+	}
+	if strings.Contains(value, "/") {
+		value = strings.SplitN(value, "/", 2)[0]
+	}
+	ip := net.ParseIP(value)
+	if ip == nil || ip.To4() == nil || ip.IsUnspecified() || ip.IsLoopback() {
+		return ""
+	}
+	return ip.String()
 }
 
 func intFromAny(value any) int {

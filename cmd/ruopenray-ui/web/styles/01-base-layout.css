@@ -271,9 +271,9 @@ button:disabled {
 }
 
 .pending-changes {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   margin: -10px 0 18px;
   padding: 12px 14px;
@@ -281,6 +281,13 @@ button:disabled {
   border-radius: 8px;
   background: rgba(45, 34, 12, 0.56);
   box-shadow: var(--shadow);
+}
+
+.pending-summary {
+  grid-column: 1;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
 }
 
 .pending-changes strong {
@@ -294,6 +301,77 @@ button:disabled {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.pending-details {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.pending-details summary {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(247, 190, 78, 0.32);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+  outline: none;
+  white-space: nowrap;
+}
+
+.pending-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.pending-details summary::before {
+  color: var(--amber);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 0.16s ease;
+  content: "\203A";
+}
+
+.pending-details summary:hover {
+  border-color: rgba(247, 190, 78, 0.58);
+  background: rgba(247, 190, 78, 0.08);
+}
+
+.pending-details summary:focus-visible {
+  border-color: rgba(54, 209, 189, 0.8);
+  box-shadow: 0 0 0 3px rgba(54, 209, 189, 0.18);
+}
+
+.pending-details[open] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+}
+
+.pending-details[open] summary {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.pending-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.pending-details-body {
+  width: 100%;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid rgba(247, 190, 78, 0.42);
+  border-radius: 8px;
+  background: rgba(15, 16, 12, 0.58);
 }
 
 .pending-change-list {
@@ -418,6 +496,7 @@ button:disabled {
 }
 
 .pending-actions {
+  grid-column: 3;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -447,11 +526,11 @@ button:disabled {
 .service-controls {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(8, 13, 17, 0.58);
+  border-radius: 12px;
+  background: rgba(8, 13, 17, 0.72);
 }
 
 .service-controls:empty {
@@ -459,17 +538,37 @@ button:disabled {
 }
 
 .service-mode-stop {
-  min-height: 32px;
+  min-height: 36px;
   max-width: 210px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 0 14px;
-  border: 1px solid rgba(126, 230, 216, 0.2);
-  border-radius: 999px;
-  color: var(--text);
-  background: rgba(20, 31, 42, 0.96);
+  border: 1px solid rgba(247, 190, 78, 0.34);
+  border-radius: 8px;
+  color: #ffe4a1;
+  background: rgba(247, 190, 78, 0.1);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.service-mode-stop svg,
+.service-icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.service-icon svg .fill {
+  fill: currentColor;
+  stroke: none;
 }
 
 .service-mode-stop:hover:not(:disabled) {
@@ -482,17 +581,30 @@ button:disabled {
   opacity: 0.55;
 }
 
+.service-controls-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--line);
+}
+
+.service-secondary-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .service-icon {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
   color: var(--soft);
-  background: transparent;
+  background: rgba(18, 26, 32, 0.78);
   font-size: 14px;
   font-weight: 800;
   line-height: 1;
@@ -538,14 +650,15 @@ button:disabled {
 }
 
 .icon-btn {
-  width: 34px;
+  width: 40px;
+  min-height: 40px;
   padding: 0;
   font-size: 18px;
   line-height: 1;
 }
 
 .pill {
-  height: 32px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -560,6 +673,17 @@ button:disabled {
 .profile-pill {
   cursor: pointer;
   color: var(--text);
+}
+
+.profile-pill-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .profile-pill:hover {
@@ -610,11 +734,43 @@ button:disabled {
   cursor: wait;
 }
 
+.xray-version-pill {
+  max-width: min(390px, 46vw);
+  overflow: hidden;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.xray-version-pill > span:not(.xray-update-indicator) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xray-version-pill.has-update {
+  border-color: rgba(242, 189, 82, 0.52);
+  color: #ffdf9c;
+  background: rgba(242, 189, 82, 0.12);
+  box-shadow: 0 0 0 1px rgba(242, 189, 82, 0.08), 0 0 18px rgba(242, 189, 82, 0.08);
+}
+
+.xray-update-indicator {
+  min-width: 19px;
+  height: 19px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #201605;
+  background: var(--amber);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-height: 40px;
   padding: 0 13px;
   border-radius: 8px;
   color: #06100f;

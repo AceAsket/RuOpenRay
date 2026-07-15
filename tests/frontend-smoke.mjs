@@ -119,6 +119,7 @@ const aux = createAuxPanelsView({
   formatDuration: () => '',
   leaseByIp: () => null,
 });
+const fullLogsHtml = aux.logsPanel();
 
 const dashboardState = {
   config: {
@@ -169,7 +170,7 @@ const dashboardView = createDashboardView({
   proxyDirectionSummary: () => ({ outbounds: new Map([['cloudtwo', { rules: 33 }]]), balancers: new Map(), total: 33 }),
   proxyDirectionTitle: () => 'Proxy-направления',
   proxyDirectionDetail: () => '1 активное направление',
-  dashboardProxyDirectionCards: () => '',
+  dashboardProxyDirectionCards: () => '<div class="duplicate-direction-cards">duplicate</div>',
   checkForTag: () => null,
   checkLabel: () => '',
   checkMethodLabel: () => '',
@@ -183,6 +184,12 @@ const dashboardKeepsLastSnapshot = dashboardWarmHtml.includes('cloudtwo')
   && dashboardAfterTransientEmptyConfig.includes('cloudtwo')
   && dashboardAfterTransientEmptyConfig.includes('proxy 1 / direct 1')
   && !dashboardAfterTransientEmptyConfig.includes('Серверы пока не добавлены');
+const dashboardHasSingleServerList = dashboardWarmHtml.includes('dashboard-server-switch')
+  && !dashboardWarmHtml.includes('duplicate-direction-cards');
+const dashboardOperationalLayout = dashboardWarmHtml.includes('dashboard-primary-grid')
+  && dashboardWarmHtml.includes('dashboard-traffic-panel')
+  && dashboardWarmHtml.includes('dashboard-health-panel')
+  && dashboardWarmHtml.includes('dashboard-technical-panel');
 
 const amneziaView = createAmneziaView({ state, escapeHtml });
 state.amneziaStatus = {
@@ -353,6 +360,7 @@ const setupState = {
   lanDnsStatus: { mode: 'xray', readiness: { ready: true } },
   firewallRouterMode: 'tproxy',
   setupLanDnsMode: 'keep',
+  setupFallbackMode: 'proxy',
 };
 const setupModel = createSetupModel({
   state: setupState,
@@ -1229,6 +1237,20 @@ const routeValuesDrawerWorks = routePresetGroupHtmlClosed.includes('route-value-
   && routePresetGroupHtmlOpen.includes('--route-values-drawer-top:120px')
   && routePresetGroupHtmlOpen.includes('domain:telegram.org');
 routeGroupState.config.routing.rules = [
+  { type: 'field', outboundTag: 'vpn-b', domain: ['domain:legacy.telegram.example'] },
+];
+routeGroupState.routeNames = {
+  [routeGroupModel.routeRuleKey(routeGroupState.config.routing.rules[0])]: routeGroupBundles.telegramFull.title,
+};
+const routeSavedScenarioIconHtml = routeGroupActions.orderedRouteList(
+  routeGroupActions.visibleRoutingRuleItems(80),
+  routeGroupModel.routeTargetOptions(),
+  routeGroupState.config.routing.rules.length,
+);
+const routeSavedScenarioIconRestored = routeSavedScenarioIconHtml.includes('route-row-preset-icon')
+  && routeSavedScenarioIconHtml.includes('brand-icon')
+  && !routeSavedScenarioIconHtml.includes('route-row-preset-icon-empty');
+routeGroupState.config.routing.rules = [
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
   { type: 'field', outboundTag: 'dns-out', port: '53' },
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:two.example'] },
@@ -1971,7 +1993,10 @@ const routingHelpersKeyIgnoresValueOrder = routeRuleConditionKey({ domain: ['b',
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
+  ['aux live logs controls stay grouped', fullLogsHtml.includes('log-control-panel') && fullLogsHtml.includes('log-control-title') && fullLogsHtml.includes('log-live-notice')],
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
+  ['dashboard renders one server list without direction summary cards', dashboardHasSingleServerList],
+  ['dashboard separates operational and technical information', dashboardOperationalLayout],
   ['amnezia run controls render', amneziaRunControlsRender],
   ['amnezia structured editor render', amneziaStructuredEditorRender],
   ['amnezia config editor builds raw', amneziaConfigEditorBuildsRaw],
@@ -2021,6 +2046,7 @@ const checks = [
   ['routing model subscription targets', subscriptionRoutingModel.routeTargetOptions().some((item) => item.value === 'outbound:sub-main') && subscriptionRoutingModel.routeStats().proxy === 1],
   ['routing dsl parser', parsedDsl.rules.length === 3 && parsedDsl.proxyAlias === 'cloudone' && routingDsl.dslPreviewStats(parsedDsl).proxy === 2 && parsedDsl.rules[2]?.network === 'tcp,udp' && routingDsl.isDslDefaultRule(parsedDsl.rules[2], parsedDsl)],
   ['routing preset group target stays grouped', routePresetGroupStableAcrossTarget],
+  ['routing saved scenario title restores icon after rule refresh', routeSavedScenarioIconRestored],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
   ['routing visible order skips managed rules', routeVisibleNumberingSkipsManaged],

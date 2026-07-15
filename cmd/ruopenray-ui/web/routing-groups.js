@@ -22,6 +22,24 @@ export function routeRulePresetMatchesFor(rule, entries, rulesForKey, normalizeR
     .map(([key]) => ({ key, title: titleForKey(key) }));
 }
 
+export function routePresetByTitleFor(title, entries, titleForKey) {
+  const normalized = normalizePresetTitle(title);
+  if (!normalized) return null;
+  for (const [key] of entries) {
+    const candidate = String(titleForKey(key) || '').trim();
+    if (normalizePresetTitle(candidate) === normalized) return { key, title: candidate };
+  }
+  return null;
+}
+
+function normalizePresetTitle(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('ru-RU');
+}
+
 export function routePresetSequenceAt(rules, startIndex, entries, rulesForKey, normalizeRule, titleForKey) {
   const candidates = presetEntriesWithRules(entries, rulesForKey, normalizeRule, titleForKey);
   for (const entry of candidates) {

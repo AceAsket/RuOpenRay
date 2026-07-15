@@ -1168,6 +1168,11 @@ body.is-login-page .login {
   color: #f8dfaa;
   background: rgba(242, 189, 82, 0.09);
   font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice > strong + span {
+  margin-left: 6px;
 }
 
 .notice-details {
@@ -1559,7 +1564,7 @@ body.is-login-page .login {
 }
 
 .segmented button {
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 14px;
   border: 0;
   border-radius: 6px;

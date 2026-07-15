@@ -76,6 +76,8 @@ body[data-theme="light"] .lan-dns-readiness article,
 body[data-theme="light"] .device-rule-card,
 body[data-theme="light"] .domain-row,
 body[data-theme="light"] .log-panel,
+body[data-theme="light"] .dashboard-technical-panel,
+body[data-theme="light"] .dashboard-traffic-grid article,
 body[data-theme="light"] .dashboard-selected-server {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.86);
@@ -346,6 +348,20 @@ body[data-theme="light"] .app-version-pill.has-update {
   color: #6e4a08;
 }
 
+body[data-theme="light"] .xray-version-pill.has-update {
+  color: #6e4a08;
+  background: #fff4d6;
+}
+
+body[data-theme="light"] .service-mode-stop {
+  color: #6e4a08;
+  background: #fff4d6;
+}
+
+body[data-theme="light"] .service-icon {
+  background: #f7fbfa;
+}
+
 body[data-theme="light"] .pending-more {
   color: #9a6408;
 }
@@ -601,6 +617,15 @@ body[data-theme="light"] .setup-readiness article,
 body[data-theme="light"] .setup-result-list article,
 body[data-theme="light"] .setup-choice-grid article,
 body[data-theme="light"] .setup-mode-grid article,
+body[data-theme="light"] .setup-config-card,
+body[data-theme="light"] .setup-callout,
+body[data-theme="light"] .setup-connection-card,
+body[data-theme="light"] .setup-rule-summary,
+body[data-theme="light"] .setup-auto-plan,
+body[data-theme="light"] .setup-action-card,
+body[data-theme="light"] .setup-fallback-choice button,
+body[data-theme="light"] .setup-launch-summary article,
+body[data-theme="light"] .setup-context-banner,
 body[data-theme="light"] .setup-flow-guide,
 body[data-theme="light"] .setup-flow-step,
 body[data-theme="light"] .setup-lan-dns,
@@ -876,9 +901,30 @@ body[data-theme="light"] .setup-step-panel {
 body[data-theme="light"] .setup-readiness article,
 body[data-theme="light"] .setup-result-list article,
 body[data-theme="light"] .setup-choice-grid article,
-body[data-theme="light"] .setup-mode-grid article {
+body[data-theme="light"] .setup-mode-grid article,
+body[data-theme="light"] .setup-config-card,
+body[data-theme="light"] .setup-callout,
+body[data-theme="light"] .setup-connection-card,
+body[data-theme="light"] .setup-rule-summary,
+body[data-theme="light"] .setup-auto-plan,
+body[data-theme="light"] .setup-action-card,
+body[data-theme="light"] .setup-fallback-choice button,
+body[data-theme="light"] .setup-launch-summary article {
   background: rgba(255, 255, 255, 0.86);
   box-shadow: none;
+}
+
+body[data-theme="light"] .setup-context-banner {
+  border-color: rgba(10, 159, 139, 0.34);
+  background: rgba(10, 159, 139, 0.08);
+}
+
+body[data-theme="light"] .setup-action-card:hover,
+body[data-theme="light"] .setup-action-card.primary,
+body[data-theme="light"] .setup-fallback-choice button.active,
+body[data-theme="light"] .setup-connection-card.ready {
+  border-color: rgba(10, 159, 139, 0.38);
+  background: rgba(10, 159, 139, 0.08);
 }
 
 body[data-theme="light"] .setup-mode-grid article.active {

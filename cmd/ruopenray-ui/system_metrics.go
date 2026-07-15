@@ -43,7 +43,6 @@ func (s *serverState) status(w http.ResponseWriter) {
 		},
 		"profiles":  len(profiles),
 		"system":    s.systemMetrics(),
-		"podkop":    s.cachedPodkopStatus(),
 		"b4":        s.cachedB4Status(),
 		"amnezia":   s.cachedAmneziaStatus(),
 		"xrayStats": s.xrayTrafficStats(cfg, false),

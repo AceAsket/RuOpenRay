@@ -475,7 +475,14 @@ function routingPanel() {
     geo: geoPanel,
     'geo-editor': geoEditorPanel
   };
+  const setupContext = state.setupStep === 'scenarios' && ['rules', 'scenarios'].includes(view)
+    ? `<section class="setup-context-banner">
+        <div><strong>Выбор для быстрого запуска</strong><span>Добавьте нужные сценарии или правила, затем вернитесь в мастер.</span></div>
+        <button class="btn warning" type="button" data-tab-jump="setup">Вернуться в мастер</button>
+      </section>`
+    : '';
   return `
+    ${setupContext}
     <section class="routing-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю маршрутизации">
         ${routingTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}">${label}</button>`).join('')}

@@ -1,10 +1,10 @@
 /* Logs, domain monitor, DNS, devices and responsive rules */
 .log-filters {
   display: grid;
-  grid-template-columns: 132px 132px 170px 104px 104px minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(118px, 0.75fr)) minmax(150px, 1fr) repeat(2, minmax(96px, 0.6fr)) minmax(220px, 1.5fr);
   gap: 12px;
   align-items: end;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .log-filters .form-row {
@@ -18,7 +18,52 @@
 .log-follow {
   width: max-content;
   max-width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+
+.log-panel:not(.compact) {
+  display: grid;
+  gap: 14px;
+}
+
+.log-panel:not(.compact) .panel-title {
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.log-panel:not(.compact) .panel-title .split-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.log-live-notice {
+  margin: 0;
+}
+
+.log-control-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(9, 24, 29, 0.4);
+}
+
+.log-control-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.log-control-title strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.log-control-title span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .log-panel.compact .panel-title {
@@ -3199,6 +3244,12 @@
   }
 }
 
+@media (min-width: 721px) and (max-width: 1040px) {
+  .log-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .amnezia-structured-editor,
   .amnezia-field-grid {
@@ -3330,6 +3381,8 @@
   }
 
   .top-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -3353,16 +3406,68 @@
   }
 
   .top-actions > .app-version-pill {
+    grid-column: 1 / -1;
     height: auto;
-    min-height: 32px;
+    min-height: 40px;
     padding-block: 7px;
     overflow-wrap: anywhere;
     text-align: center;
     white-space: normal;
   }
 
+  .top-actions > .service-controls {
+    grid-column: 1 / -1;
+  }
+
+  .pending-changes {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: -4px;
+  }
+
+  .pending-summary {
+    grid-column: 1;
+  }
+
+  .pending-details,
+  .pending-details[open] {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .pending-details summary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .pending-details[open] summary {
+    justify-content: flex-start;
+  }
+
+  .pending-details-body {
+    width: 100%;
+    max-height: 50vh;
+    margin-top: 8px;
+  }
+
+  .pending-actions {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .pending-actions,
+  .pending-actions .btn {
+    width: 100%;
+  }
+
+  .log-control-title {
+    display: grid;
+    gap: 3px;
+  }
+
   .service-controls {
-    width: auto;
+    width: 100%;
     max-width: 100%;
     align-self: flex-start;
     align-items: center;
@@ -3372,7 +3477,18 @@
   }
 
   .service-mode-stop {
-    max-width: min(100%, 220px);
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 auto;
+    white-space: normal;
+  }
+
+  .metric-stat small,
+  .stat small,
+  .server-meta span {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
     white-space: normal;
   }
 
@@ -3414,8 +3530,9 @@
   }
 
   .diagnostics-tabs {
+    display: grid;
     width: 100%;
-    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .diagnostic-switcher,
@@ -3425,9 +3542,23 @@
   }
 
   .diagnostics-tabs button {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-height: 44px;
+    overflow: visible;
+    line-height: 1.2;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .server-main strong,
+  .settings-info-grid span,
+  .settings-info-grid strong,
+  .amnezia-profile-status span,
+  .amnezia-runtime-card span,
+  .amnezia-runtime-card strong {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .lease-grid {

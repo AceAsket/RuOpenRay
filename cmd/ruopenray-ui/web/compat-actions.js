@@ -3,7 +3,6 @@ export function createCompatActions({ state, request, render, refresh }) {
     if (!result || typeof result !== 'object') return;
     state.compatStatus = result;
     if (state.status) {
-      if (result.podkop) state.status.podkop = result.podkop;
       if (result.b4) state.status.b4 = result.b4;
     }
     if (result.adguardHome && state.lanDnsStatus) state.lanDnsStatus.adguardHome = result.adguardHome;

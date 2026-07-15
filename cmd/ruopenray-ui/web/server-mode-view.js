@@ -40,7 +40,13 @@ export function createServerModeView({ state, escapeHtml }) {
     </label>`;
   }
 
-  function issueList(preflight = {}) {
+  function issueList(preflight = {}, model = {}) {
+    if (!model.enabled) {
+      return `<div class="notice compact"><strong>Серверный режим выключен</strong><span>Добавьте входящий сервер, включите режим и выполните проверку перед применением.</span></div>`;
+    }
+    if (preflight.dirty) {
+      return `<div class="notice compact"><strong>Изменения ещё не проверены</strong><span>Нажмите «Проверить», чтобы валидировать ключи, порты и сетевые политики.</span></div>`;
+    }
     const errors = array(preflight.errors);
     const warnings = array(preflight.warnings);
     const items = [...errors, ...warnings];
@@ -62,17 +68,20 @@ export function createServerModeView({ state, escapeHtml }) {
       <div class="server-mode-client-head">
         ${checkbox(`${base}.enabled`, client.enabled, client.name || `Клиент ${clientIndex + 1}`)}
         <div class="server-mode-row-actions">
-          <button class="btn secondary compact" type="button" data-action="exportServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}">Ссылка</button>
+          <button class="btn secondary compact" type="button" data-action="exportServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}">Скопировать ссылку</button>
           <button class="icon-btn danger" type="button" data-action="deleteServerModeClient" data-server-mode-inbound="${inboundIndex}" data-server-mode-client="${clientIndex}" title="Удалить клиента">×</button>
         </div>
       </div>
       <div class="server-mode-grid">
         <label><span>Имя</span>${textInput(`${base}.name`, client.name)}</label>
         <label><span>UUID</span>${textInput(`${base}.uuid`, client.uuid, 'spellcheck="false"')}</label>
-        <label><span>User / email</span>${textInput(`${base}.email`, client.email, 'spellcheck="false"')}</label>
+        <label><span>Идентификатор клиента</span>${textInput(`${base}.email`, client.email, 'spellcheck="false"')}</label>
         <label><span>Куда отправлять</span>${outboundSelect(`${base}.egressTag`, client.egressTag || 'direct')}</label>
-        <label><span>Flow</span>${textInput(`${base}.flow`, client.flow || 'xtls-rprx-vision', 'spellcheck="false"')}</label>
-        <label><span>Level</span>${numberInput(`${base}.level`, client.level || 0, 'min="0" max="255"')}</label>
+        <label><span>Режим XTLS</span>${textInput(`${base}.flow`, client.flow || 'xtls-rprx-vision', 'spellcheck="false"')}</label>
+        <label><span>Уровень</span>${numberInput(`${base}.level`, client.level || 0, 'min="0" max="255"')}</label>
+        <label><span>Разрешённые LAN CIDR/IP</span>${textInput(`${base}.lanAllowedIps`, client.lanAllowedIps || '', 'placeholder="192.168.50.20/32, 10.20.0.0/24" spellcheck="false"')}</label>
+        <label><span>LAN порты</span>${textInput(`${base}.lanAllowedPorts`, client.lanAllowedPorts || '', 'placeholder="22, 443, 8000-8010" spellcheck="false"')}</label>
+        <label><span>LAN протокол</span><select class="input" data-server-mode-field="${base}.lanProtocol">${['any', 'tcp', 'udp'].map((value) => `<option value="${value}" ${value === (client.lanProtocol || 'any') ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
       </div>
       <div class="server-mode-policy-row">
         ${checkbox(`${base}.allowLan`, client.allowLan, 'Разрешить LAN')}
@@ -88,7 +97,7 @@ export function createServerModeView({ state, escapeHtml }) {
     return `<article class="server-mode-inbound">
       <div class="server-mode-inbound-head">
         <div>
-          <span class="eyebrow">XRAY SERVER</span>
+          <span class="eyebrow">СЕРВЕР XRAY</span>
           <h3>${escapeHtml(inbound.name || `Вход ${index + 1}`)}</h3>
           <p>${escapeHtml(`${inbound.listen || '0.0.0.0'}:${inbound.port || 443} · ${inbound.protocol || 'vless'} · ${inbound.security || 'reality'}`)}</p>
         </div>
@@ -101,24 +110,24 @@ export function createServerModeView({ state, escapeHtml }) {
       ${checkbox(`${base}.enabled`, inbound.enabled, 'Вход включен')}
       <div class="server-mode-grid">
         <label><span>Название</span>${textInput(`${base}.name`, inbound.name)}</label>
-        <label><span>Listen</span>${textInput(`${base}.listen`, inbound.listen || '0.0.0.0', 'spellcheck="false"')}</label>
+        <label><span>Адрес прослушивания</span>${textInput(`${base}.listen`, inbound.listen || '0.0.0.0', 'spellcheck="false"')}</label>
         <label><span>Публичный адрес</span>${textInput(`${base}.publicHost`, inbound.publicHost || '', 'placeholder="vpn.example.com" spellcheck="false"')}</label>
         <label><span>Порт</span>${numberInput(`${base}.port`, inbound.port || 443, 'min="1" max="65535"')}</label>
-        <label><span>Security</span>
+        <label><span>Защита соединения</span>
           <select class="input" data-server-mode-field="${base}.security">
             ${['reality', 'tls', 'none'].map((value) => `<option value="${value}" ${value === inbound.security ? 'selected' : ''}>${value}</option>`).join('')}
           </select>
         </label>
       </div>
       <div class="server-mode-grid">
-        <label><span>Reality dest</span>${textInput(`${base}.reality.dest`, inbound.reality?.dest || 'www.microsoft.com:443', 'spellcheck="false"')}</label>
-        <label><span>Server names</span>${textInput(`${base}.reality.serverNames`, array(inbound.reality?.serverNames).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
-        <label><span>Private key</span>${textInput(`${base}.reality.privateKey`, inbound.reality?.privateKey || '', 'spellcheck="false"')}</label>
-        <label><span>Public key</span>${textInput(`${base}.reality.publicKey`, inbound.reality?.publicKey || '', 'spellcheck="false"')}</label>
-        <label><span>Short IDs</span>${textInput(`${base}.reality.shortIds`, array(inbound.reality?.shortIds).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
+        <label><span>Сайт маскировки Reality</span>${textInput(`${base}.reality.dest`, inbound.reality?.dest || 'www.microsoft.com:443', 'spellcheck="false"')}</label>
+        <label><span>Имена сервера (SNI)</span>${textInput(`${base}.reality.serverNames`, array(inbound.reality?.serverNames).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
+        <label><span>Приватный ключ</span>${textInput(`${base}.reality.privateKey`, inbound.reality?.privateKey || '', 'spellcheck="false"')}</label>
+        <label><span>Публичный ключ</span>${textInput(`${base}.reality.publicKey`, inbound.reality?.publicKey || '', 'spellcheck="false"')}</label>
+        <label><span>Короткие идентификаторы</span>${textInput(`${base}.reality.shortIds`, array(inbound.reality?.shortIds).join(', '), 'data-server-mode-list="1" spellcheck="false"')}</label>
       </div>
       <div class="server-mode-policy-row">
-        ${checkbox(`${base}.sniffing`, inbound.sniffing, 'Sniffing routeOnly')}
+        ${checkbox(`${base}.sniffing`, inbound.sniffing, 'Анализировать домены (routeOnly)')}
         ${checkbox(`${base}.openFirewall`, inbound.openFirewall, 'Планировать WAN firewall')}
       </div>
       <div class="server-mode-clients">
@@ -127,18 +136,35 @@ export function createServerModeView({ state, escapeHtml }) {
     </article>`;
   }
 
-  function awgPeerCard(serverIndex, peer, peerIndex) {
+  function awgPeerCard(server, serverIndex, peer, peerIndex) {
     const base = `awg.${serverIndex}.peers.${peerIndex}`;
+    const clientKeyReady = Boolean(state.serverModeAWGClientKeys?.[`${server?.id || 'server'}:${peer?.id || 'peer'}`]);
     return `<article class="server-mode-client">
       <div class="server-mode-client-head">
         ${checkbox(`${base}.enabled`, peer.enabled, peer.name || `Peer ${peerIndex + 1}`)}
-        <button class="icon-btn danger" type="button" data-action="deleteServerModeAWGPeer" data-server-mode-awg="${serverIndex}" data-server-mode-peer="${peerIndex}" title="Удалить peer">×</button>
+        <div class="server-mode-row-actions">
+          <button class="btn secondary compact" type="button" data-action="generateServerModeAWGPeerKey" data-server-mode-awg="${serverIndex}" data-server-mode-peer="${peerIndex}">${clientKeyReady ? 'Пересоздать ключ' : 'Создать ключ клиента'}</button>
+          <button class="btn compact" type="button" data-action="exportServerModeAWGPeer" data-server-mode-awg="${serverIndex}" data-server-mode-peer="${peerIndex}" ${clientKeyReady ? '' : 'disabled'}>Скопировать client.conf</button>
+          <button class="icon-btn danger" type="button" data-action="deleteServerModeAWGPeer" data-server-mode-awg="${serverIndex}" data-server-mode-peer="${peerIndex}" title="Удалить peer" aria-label="Удалить peer">×</button>
+        </div>
       </div>
+      ${clientKeyReady ? '<div class="notice warn compact"><strong>Приватный ключ клиента доступен только сейчас</strong><span>Скопируйте или скачайте client.conf до обновления страницы. RuOpenRay не сохраняет этот ключ.</span></div>' : ''}
       <div class="server-mode-grid">
         <label><span>Имя</span>${textInput(`${base}.name`, peer.name)}</label>
-        <label><span>Public key</span>${textInput(`${base}.publicKey`, peer.publicKey, 'spellcheck="false"')}</label>
-        <label><span>Allowed IPs</span>${textInput(`${base}.allowedIps`, peer.allowedIps || '10.70.0.2/32', 'spellcheck="false"')}</label>
-        <label><span>Preshared key</span>${textInput(`${base}.presharedKey`, peer.presharedKey || '', 'spellcheck="false"')}</label>
+        <label><span>Публичный ключ</span>${textInput(`${base}.publicKey`, peer.publicKey, 'spellcheck="false"')}</label>
+        <label><span>Адреса клиента</span>${textInput(`${base}.allowedIps`, peer.allowedIps || '10.70.0.2/32', 'spellcheck="false"')}</label>
+        <label><span>Предварительный ключ</span>${textInput(`${base}.presharedKey`, peer.presharedKey || '', 'spellcheck="false"')}</label>
+        <label><span>Маршруты в client.conf</span>${textInput(`${base}.clientAllowedIps`, peer.clientAllowedIps || '0.0.0.0/0', 'spellcheck="false"')}</label>
+        <label><span>DNS клиента</span>${textInput(`${base}.clientDns`, peer.clientDns || '1.1.1.1', 'spellcheck="false"')}</label>
+        <label><span>Persistent keepalive</span>${numberInput(`${base}.persistentKeepalive`, peer.persistentKeepalive || 25, 'min="0" max="65535"')}</label>
+        <label><span>Разрешённые LAN CIDR/IP</span>${textInput(`${base}.lanAllowedIps`, peer.lanAllowedIps || '', 'placeholder="192.168.50.20/32, 10.20.0.0/24" spellcheck="false"')}</label>
+        <label><span>LAN порты</span>${textInput(`${base}.lanAllowedPorts`, peer.lanAllowedPorts || '', 'placeholder="22, 443, 8000-8010" spellcheck="false"')}</label>
+        <label><span>LAN протокол</span><select class="input" data-server-mode-field="${base}.lanProtocol">${['any', 'tcp', 'udp'].map((value) => `<option value="${value}" ${value === (peer.lanProtocol || 'any') ? 'selected' : ''}>${value}</option>`).join('')}</select></label>
+      </div>
+      <div class="server-mode-policy-row">
+        ${checkbox(`${base}.allowLan`, peer.allowLan, 'Полный LAN для peer')}
+        ${checkbox(`${base}.allowRouter`, peer.allowRouter, 'Доступ к роутеру')}
+        ${checkbox(`${base}.allowDns`, peer.allowDns, 'DNS/53 роутера')}
       </div>
     </article>`;
   }
@@ -149,49 +175,67 @@ export function createServerModeView({ state, escapeHtml }) {
     return `<article class="server-mode-inbound server-mode-awg">
       <div class="server-mode-inbound-head">
         <div>
-          <span class="eyebrow">AMNEZIAWG SERVER</span>
+          <span class="eyebrow">СЕРВЕР AMNEZIAWG</span>
           <h3>${escapeHtml(server.name || `AWG вход ${index + 1}`)}</h3>
           <p>${escapeHtml(`${server.interface || 'awg-server0'} · udp/${server.listenPort || 51820} · ${server.addressCidr || '10.70.0.1/24'}`)}</p>
         </div>
         <div class="server-mode-row-actions">
+          <button class="btn secondary compact" type="button" data-action="generateServerModeAWGServerKey" data-server-mode-awg="${index}">Создать ключи сервера</button>
           <button class="btn secondary compact" type="button" data-action="addServerModeAWGPeer" data-server-mode-awg="${index}">Добавить peer</button>
           <button class="icon-btn danger" type="button" data-action="deleteServerModeAWGServer" data-server-mode-awg="${index}" title="Удалить AWG сервер">×</button>
         </div>
       </div>
       ${checkbox(`${base}.enabled`, server.enabled, 'AWG сервер включен в плане')}
-      <div class="notice warn compact"><strong>Пока без применения интерфейса</strong><span>RuOpenRay сохранит и проверит схему AWG, но не будет поднимать интерфейс и открывать WAN-порт до отдельного безопасного шага.</span></div>
+      <div class="notice info compact"><strong>Запускается отдельным шагом</strong><span>Сначала проверьте план, затем запустите AWG runtime. WAN-порт открывается отдельно и только после подтверждения.</span></div>
       <div class="server-mode-grid">
         <label><span>Название</span>${textInput(`${base}.name`, server.name)}</label>
-        <label><span>Interface</span>${textInput(`${base}.interface`, server.interface || 'awg-server0', 'spellcheck="false"')}</label>
+        <label><span>Интерфейс</span>${textInput(`${base}.interface`, server.interface || 'awg-server0', 'spellcheck="false"')}</label>
         <label><span>UDP порт</span>${numberInput(`${base}.listenPort`, server.listenPort || 51820, 'min="1" max="65535"')}</label>
         <label><span>Адрес интерфейса</span>${textInput(`${base}.addressCidr`, server.addressCidr || '10.70.0.1/24', 'spellcheck="false"')}</label>
+        <label><span>Публичный домен или WAN IP</span>${textInput(`${base}.publicHost`, server.publicHost || '', 'placeholder="vpn.example.com" spellcheck="false"')}</label>
         <label><span>MTU</span>${numberInput(`${base}.mtu`, server.mtu || 1420, 'min="576" max="9000"')}</label>
         <label><span>Куда отправлять</span>${outboundSelect(`${base}.egressTag`, server.egressTag || 'direct')}</label>
-        <label><span>Private key</span>${textInput(`${base}.privateKey`, server.privateKey || '', 'spellcheck="false"')}</label>
-        <label><span>Public key</span>${textInput(`${base}.publicKey`, server.publicKey || '', 'spellcheck="false"')}</label>
+        <label><span>Приватный ключ</span>${textInput(`${base}.privateKey`, server.privateKey || '', 'spellcheck="false"')}</label>
+        <label><span>Публичный ключ</span>${textInput(`${base}.publicKey`, server.publicKey || '', 'spellcheck="false"')}</label>
       </div>
+      <details class="server-mode-advanced">
+        <summary>Параметры обфускации AmneziaWG</summary>
+        <div class="server-mode-grid">
+          ${['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'H1', 'H2', 'H3', 'H4'].map((key) => `<label><span>${key}</span>${numberInput(`${base}.advanced.${key}`, server.advanced?.[key] ?? '', 'min="0" max="2147483647"')}</label>`).join('')}
+        </div>
+      </details>
       <div class="server-mode-policy-row">
-        ${checkbox(`${base}.allowLan`, server.allowLan, 'Разрешить LAN для peers')}
+        ${checkbox(`${base}.allowLan`, server.allowLan, 'Полный LAN для всех peers (legacy)')}
         ${checkbox(`${base}.openFirewall`, server.openFirewall, 'Планировать WAN firewall')}
       </div>
       <div class="server-mode-clients">
-        ${peers.length ? peers.map((peer, peerIndex) => awgPeerCard(index, peer, peerIndex)).join('') : '<div class="empty-state">Peers пока нет.</div>'}
+        ${peers.length ? peers.map((peer, peerIndex) => awgPeerCard(server, index, peer, peerIndex)).join('') : '<div class="empty-state">Peers пока нет.</div>'}
       </div>
     </article>`;
   }
 
   function awgPlanPanel() {
     const plan = state.serverModePreview?.awgPlan || state.serverMode?.awgPlan || {};
+    const runtime = state.serverMode?.awgRuntime || {};
     const servers = array(plan.servers);
     if (!servers.length) return '';
     const globalIssues = [...array(plan.errors), ...array(plan.warnings)];
+    const runtimeLabel = runtime.healthy
+      ? `работает ${runtime.running || 0}/${runtime.expected || 0}`
+      : runtime.active
+        ? `частично ${runtime.running || 0}/${runtime.expected || 0}`
+        : 'остановлен';
     return `<section class="server-mode-awg-plan">
       <div class="server-mode-awg-plan-head">
         <div>
           <h3>План AmneziaWG server</h3>
-          <p>RuOpenRay пока только готовит конфиг интерфейса и команды. Маршрутизация трафика peer-ов в выбранный outbound будет отдельным безопасным шагом.</p>
+          <p>Managed runtime поднимает native AmneziaWG, изолирует peers от роутера и направляет их напрямую в WAN. Xray-outbound пока не поддерживается.</p>
         </div>
-        <span class="pill ${plan.ok ? 'ok' : 'warn'}">${plan.ok ? 'готов' : 'нужна правка'}</span>
+        <div class="server-mode-row-actions">
+          <span class="pill ${runtime.healthy ? 'ok' : runtime.active ? 'warn' : ''}">${escapeHtml(runtimeLabel)}</span>
+          <button class="btn compact" type="button" data-action="applyServerModeAWGRuntime" ${plan.ok && runtime.available !== false ? '' : 'disabled'}>Запустить AWG</button>
+          <button class="btn secondary compact" type="button" data-action="disableServerModeAWGRuntime" ${runtime.active || runtime.enabled || runtime.reconcileRequired ? '' : 'disabled'}>${runtime.reconcileRequired && !runtime.active ? 'Очистить остатки' : 'Остановить'}</button>
+        </div>
       </div>
       ${globalIssues.length ? `<div class="server-mode-awg-plan-issues">
         ${globalIssues.map((issue) => `<span class="${escapeHtml(issue.severity || 'warning')}">${escapeHtml(issue.title || 'AWG')}${issue.source ? ` · ${escapeHtml(issue.source)}` : ''}</span>`).join('')}
@@ -222,6 +266,8 @@ export function createServerModeView({ state, escapeHtml }) {
 
   function managedStats() {
     const managed = state.serverMode?.managed || state.serverModePreview?.summary || {};
+    const total = Number(managed.inbounds || 0) + Number(managed.clients || 0) + Number(managed.routingRules || 0) + Number(managed.outbounds || 0);
+    if (!total) return '';
     return `<div class="grid four">
       <article class="stat"><span>Входы</span><strong>${escapeHtml(managed.inbounds ?? 0)}</strong><small>managed Xray</small></article>
       <article class="stat"><span>Клиенты</span><strong>${escapeHtml(managed.clients ?? 0)}</strong><small>VLESS users</small></article>
@@ -236,15 +282,19 @@ export function createServerModeView({ state, escapeHtml }) {
 
   function clientSecurityRows(model) {
     const rows = [];
+    const awgRuntimeManaged = state.serverMode?.awgRuntime?.healthy === true;
     array(model.xray).forEach((inbound) => {
       array(inbound.clients).forEach((client) => {
         const enabled = inbound.enabled !== false && client.enabled !== false;
-        const lan = client.allowLan ? 'allowed' : 'blocked';
+        const limitedLAN = !client.allowLan && Boolean(String(client.lanAllowedIps || '').trim());
+        const lan = client.allowLan ? 'allowed' : (limitedLAN ? 'limited' : 'blocked');
         const router = client.allowLan || client.allowRouter ? 'allowed' : 'blocked';
         const dns = client.allowDns ? 'allowed' : 'blocked';
-        const risk = client.allowLan ? 'high' : ((client.allowRouter || client.allowDns) ? 'medium' : 'low');
+        const risk = client.allowLan ? 'high' : ((limitedLAN || client.allowRouter || client.allowDns) ? 'medium' : 'low');
         let rules = enabled ? 1 : 0;
         if (enabled && !client.allowDns) rules += 1;
+        if (enabled && client.allowLan) rules += 1;
+        if (enabled && limitedLAN) rules += 1;
         if (enabled && !client.allowLan) rules += 1;
         if (enabled && client.allowRouter && !client.allowLan) rules += 1;
         rows.push({
@@ -264,17 +314,22 @@ export function createServerModeView({ state, escapeHtml }) {
     array(model.awg).forEach((server) => {
       array(server.peers).forEach((peer) => {
         const enabled = server.enabled === true && peer.enabled !== false;
+        const managed = enabled && awgRuntimeManaged;
+        const fullLAN = server.allowLan || peer.allowLan;
+        const limitedLAN = !fullLAN && Boolean(String(peer.lanAllowedIps || '').trim());
+        const routerAllowed = Boolean(peer.allowRouter);
+        const dnsAllowed = Boolean(peer.allowDns);
         rows.push({
           kind: 'AWG',
           name: peer.name || peer.id || 'Peer',
           parent: server.name || server.id || 'AWG',
           enabled,
           egress: server.egressTag || 'direct',
-          lan: server.allowLan ? 'allowed' : 'blocked',
-          router: server.allowLan ? 'allowed' : 'blocked',
-          dns: 'client',
-          risk: server.allowLan ? 'high' : 'low',
-          rules: 0
+          lan: managed ? (fullLAN ? 'allowed' : (limitedLAN ? 'limited' : 'blocked')) : 'not-enforced',
+          router: managed ? (routerAllowed ? 'allowed' : 'blocked') : 'not-enforced',
+          dns: managed ? (dnsAllowed ? 'allowed' : 'blocked') : 'not-enforced',
+          risk: managed ? (fullLAN ? 'high' : ((limitedLAN || routerAllowed || dnsAllowed) ? 'medium' : 'low')) : 'unmanaged',
+          rules: managed ? 2 + (fullLAN || limitedLAN ? 1 : 0) + (routerAllowed ? (dnsAllowed ? 1 : 2) : (dnsAllowed ? 1 : 0)) : 0
         });
       });
     });
@@ -283,6 +338,7 @@ export function createServerModeView({ state, escapeHtml }) {
 
   function securityPanel(model) {
     const rows = clientSecurityRows(model);
+    if (!rows.length) return '';
     const enabledRows = rows.filter((row) => row.enabled);
     const lanOpen = enabledRows.filter((row) => row.lan === 'allowed').length;
     const dnsOpen = enabledRows.filter((row) => row.dns === 'allowed').length;
@@ -310,10 +366,10 @@ export function createServerModeView({ state, escapeHtml }) {
           </div>
           <div class="server-mode-policy-chips">
             ${policyChip(row.enabled ? 'включен' : 'выключен', row.enabled ? 'ok' : 'muted')}
-            ${policyChip(row.lan === 'allowed' ? 'LAN открыт' : 'LAN закрыт', row.lan === 'allowed' ? 'danger' : 'ok')}
-            ${policyChip(row.router === 'allowed' ? 'router открыт' : 'router закрыт', row.router === 'allowed' ? 'warn' : 'ok')}
-            ${policyChip(row.dns === 'allowed' ? 'DNS открыт' : (row.dns === 'client' ? 'DNS клиента' : 'DNS закрыт'), row.dns === 'allowed' ? 'warn' : 'ok')}
-            ${policyChip(row.risk === 'high' ? 'высокий риск' : (row.risk === 'medium' ? 'средний риск' : 'низкий риск'), row.risk === 'high' ? 'danger' : (row.risk === 'medium' ? 'warn' : 'ok'))}
+            ${policyChip(row.lan === 'not-enforced' ? 'LAN не контролируется' : (row.lan === 'allowed' ? 'LAN открыт' : (row.lan === 'limited' ? 'LAN ограничен' : 'LAN закрыт')), row.lan === 'not-enforced' ? 'danger' : (row.lan === 'allowed' ? 'danger' : (row.lan === 'limited' ? 'warn' : 'ok')))}
+            ${policyChip(row.router === 'not-enforced' ? 'router не контролируется' : (row.router === 'allowed' ? 'router открыт' : 'router закрыт'), row.router === 'not-enforced' ? 'danger' : (row.router === 'allowed' ? 'warn' : 'ok'))}
+            ${policyChip(row.dns === 'not-enforced' ? 'DNS не контролируется' : (row.dns === 'allowed' ? 'DNS открыт' : 'DNS закрыт'), row.dns === 'not-enforced' ? 'danger' : (row.dns === 'allowed' ? 'warn' : 'ok'))}
+            ${policyChip(row.risk === 'unmanaged' ? 'политика не применена' : (row.risk === 'high' ? 'высокий риск' : (row.risk === 'medium' ? 'средний риск' : 'низкий риск')), row.risk === 'unmanaged' || row.risk === 'high' ? 'danger' : (row.risk === 'medium' ? 'warn' : 'ok'))}
           </div>
         </article>`).join('')}
       </div>` : '<div class="empty-state compact">Добавьте Xray-клиента или AWG peer, чтобы увидеть политики доступа.</div>'}
@@ -403,6 +459,22 @@ export function createServerModeView({ state, escapeHtml }) {
     </section>`;
   }
 
+  function awgClientExportPanel() {
+    const data = state.serverModeAWGClientExport;
+    if (!data?.text) return '';
+    return `<section class="server-mode-export server-mode-awg-client-export">
+      <div class="server-mode-export-head">
+        <div>
+          <h3>AmneziaWG client.conf</h3>
+          <p>${escapeHtml(`${data.peerName || 'Клиент'} · ${data.serverName || 'AWG server'}`)}. Приватный ключ находится только в этой вкладке браузера.</p>
+        </div>
+        <button class="btn secondary compact" type="button" data-action="downloadServerModeAWGClientExport">Скачать client.conf</button>
+      </div>
+      <div class="notice warn compact"><strong>Сохраните файл сейчас</strong><span>После обновления страницы приватный ключ клиента восстановить нельзя — потребуется создать новую пару.</span></div>
+      <label class="server-mode-export-field"><span>Конфигурация клиента</span><textarea class="input" readonly rows="16">${escapeHtml(data.text)}</textarea></label>
+    </section>`;
+  }
+
   function serverModePanel() {
     const model = draft();
     const preflight = state.serverModePreflight || state.serverMode?.preflight || {};
@@ -417,9 +489,9 @@ export function createServerModeView({ state, escapeHtml }) {
         </div>
         <div class="actions">
           <button class="btn secondary" type="button" data-action="refreshServerMode">Обновить</button>
-          <button class="btn secondary" type="button" data-action="previewServerMode">Preview</button>
-          <button class="btn warning" type="button" data-action="saveServerMode">Сохранить</button>
-          <button class="btn" type="button" data-action="applyServerMode">Записать в Xray</button>
+          <button class="btn secondary" type="button" data-action="previewServerMode">Проверить</button>
+          <button class="btn secondary" type="button" data-action="saveServerMode">Сохранить черновик</button>
+          <button class="btn" type="button" data-action="applyServerMode">Применить к Xray</button>
         </div>
       </div>
       <div class="server-mode-hero">
@@ -427,21 +499,28 @@ export function createServerModeView({ state, escapeHtml }) {
         ${checkbox('monitorClients', model.monitorClients !== false, 'Мониторить клиентов')}
         <p>По умолчанию внешний клиент не получает доступ к LAN и DNS-порту роутера. Доступ открывается только явными галочками на клиенте.</p>
       </div>
+      <div class="server-mode-toolbar server-mode-onboarding">
+        <div>
+          <strong>${xray.length || awg.length ? 'Входящие серверы' : 'Добавьте первый входящий сервер'}</strong>
+          <span>${xray.length || awg.length ? 'Настройте подключения и клиентов, затем выполните проверку.' : 'Xray Reality подходит для большинства клиентов; AmneziaWG использует отдельный UDP-туннель.'}</span>
+        </div>
+        <div class="server-mode-row-actions">
+          <button class="btn" type="button" data-action="addServerModeXrayInbound">Добавить Xray Reality</button>
+          <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AmneziaWG</button>
+        </div>
+      </div>
+      <div class="server-mode-list">
+        ${xray.length ? xray.map((inbound, index) => inboundCard(inbound, index)).join('') : ''}
+        ${awg.length ? awg.map((server, index) => awgCard(server, index)).join('') : ''}
+      </div>
       ${managedStats()}
       ${securityPanel(model)}
       ${clientTrafficPanel()}
       ${clientExportPanel()}
-      ${issueList(preflight)}
+      ${awgClientExportPanel()}
+      ${issueList(preflight, model)}
       ${awgPlanPanel()}
-      ${firewallPanel()}
-      <div class="server-mode-toolbar">
-        <button class="btn secondary" type="button" data-action="addServerModeXrayInbound">Добавить Xray вход</button>
-        <button class="btn secondary" type="button" data-action="addServerModeAWGServer">Добавить AWG сервер</button>
-      </div>
-      <div class="server-mode-list">
-        ${xray.length ? xray.map((inbound, index) => inboundCard(inbound, index)).join('') : '<article class="empty-state">Входов пока нет. Добавьте Reality-вход, затем клиента и выход для его трафика.</article>'}
-        ${awg.length ? awg.map((server, index) => awgCard(server, index)).join('') : ''}
-      </div>
+      ${xray.length || awg.length ? firewallPanel() : ''}
       ${preview ? `<div class="notice ${preview.ok ? 'ok' : 'warn'}"><strong>${preview.ok ? 'Preview готов' : 'Preview требует внимания'}</strong><span>${escapeHtml(preview.error || preview.restart?.message || 'Xray config был проверен без перезапуска сервиса.')}</span></div>` : ''}
     </section>`;
   }

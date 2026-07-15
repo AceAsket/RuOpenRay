@@ -54,7 +54,7 @@ import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSettingsActions } from './settings-actions.js';
 import { createSetupActions } from './setup-actions.js';
-import { createSetupView } from './setup-view.js';
+import { createSetupView, setupWizardStepIds } from './setup-view.js';
 import { createUpdatesActions } from './updates-actions.js';
 import { createSetupModel } from './setup-model.js';
 import { createSniActions } from './sni-actions.js';
@@ -689,6 +689,10 @@ const {
   addServerModeClient,
   addServerModeAWGServer,
   addServerModeAWGPeer,
+  generateServerModeAWGServerKey,
+  generateServerModeAWGPeerKey,
+  exportServerModeAWGPeer,
+  downloadServerModeAWGClientExport,
   generateServerModeRealityKey,
   exportServerModeClient,
   downloadServerModeClientExport,
@@ -697,6 +701,8 @@ const {
   previewServerModeFirewall,
   applyServerModeFirewall,
   disableServerModeFirewall,
+  applyServerModeAWGRuntime,
+  disableServerModeAWGRuntime,
   applyServerMode,
   deleteServerModeInbound,
   deleteServerModeClient,
@@ -761,6 +767,7 @@ const {
   ensureDnsBootstrapHosts,
   isSetupManagedRule,
   normalizeSetupRules,
+  setupFallbackModeFromConfig,
   prepareSetupDraft
 } = setupModel;
 
@@ -776,6 +783,7 @@ const setupActions = createSetupActions({
   captureSetupSnapshot,
   clearSetupSnapshot,
   lanDnsRestorePayload,
+  setupFallbackModeFromConfig,
   prepareSetupDraft,
   applyFirewallWithRetry,
   firewallReadyStatus
@@ -964,6 +972,18 @@ async function applyConfigAndFirewall() {
     state.busyLabel = '';
     render();
   }
+}
+
+async function discardPendingChanges() {
+  if (state.configApplying || state.firewallSaving || state.busyAction === 'apply') return;
+  cancelServerDraftSave();
+  state.serverDraftSaving = false;
+  state.serverDraftError = '';
+  await request('/api/config/draft', { method: 'DELETE' });
+  state.applySteps = [];
+  await refresh({ renderAfter: false });
+  state.message = 'Черновик удалён. Показана действующая конфигурация роутера.';
+  render();
 }
 
 
@@ -1750,98 +1770,80 @@ function pendingChangesBanner() {
   const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
   const applySteps = Array.isArray(state.applySteps) && state.applySteps.length && applying ? state.applySteps : [];
   const risks = pendingApplyRisks(configDirty, firewallDirty);
+  const totalChanges = changeItems.length
+    + Math.max(0, xrayReasons.length - visibleXrayReasons.length)
+    + Math.max(0, firewallReasons.length - visibleFirewallReasons.length);
+  const summary = `${totalChanges} ${totalChanges === 1 ? 'изменение' : totalChanges < 5 ? 'изменения' : 'изменений'}${risks.length ? ` · рисков: ${risks.length}` : ''}`;
   return `
     <section class="pending-changes" role="status" aria-live="polite">
-      <div>
-        <strong>Есть непримененные изменения</strong>
-        <span>Ниже показано, что будет изменено и где потребуется перезапуск.</span>
-        <ul class="pending-change-list">
-          ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-        </ul>
-        ${xrayReasons.length > visibleXrayReasons.length ? `<small class="pending-more">Еще ${xrayReasons.length - visibleXrayReasons.length} ${xrayReasons.length - visibleXrayReasons.length === 1 ? 'отличие' : 'отличия'} в черновике Xray</small>` : ''}
-        ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
-        ${risks.length ? `<div class="pending-risk-list">
-          ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
-        </div>` : ''}
+      <div class="pending-summary">
+        <div>
+          <strong>Есть непримененные изменения</strong>
+          <span>${escapeHtml(summary)}</span>
+        </div>
         ${applySteps.length ? `<ol class="apply-step-list">
           ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
         </ol>` : ''}
       </div>
+      <details class="pending-details">
+        <summary>Что изменится</summary>
+        <div class="pending-details-body">
+          <ul class="pending-change-list">
+            ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+          ${xrayReasons.length > visibleXrayReasons.length ? `<small class="pending-more">Еще ${xrayReasons.length - visibleXrayReasons.length} ${xrayReasons.length - visibleXrayReasons.length === 1 ? 'отличие' : 'отличия'} в черновике Xray</small>` : ''}
+          ${firewallReasons.length > visibleFirewallReasons.length ? `<small class="pending-more">Еще ${firewallReasons.length - visibleFirewallReasons.length} ${firewallReasons.length - visibleFirewallReasons.length === 1 ? 'отличие' : 'отличия'} в настройках перехвата</small>` : ''}
+          ${risks.length ? `<div class="pending-risk-list">
+            ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
+          </div>` : ''}
+        </div>
+      </details>
       <div class="pending-actions">
-        <button class="btn warning ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
+        <button class="btn secondary ${state.busyAction === 'discardPendingChanges' ? 'is-busy' : ''}" data-action="discardPendingChanges" ${applying || state.configTesting ? 'disabled' : ''}>Отменить</button>
+        <button class="btn ${risks.length ? 'warning' : ''} ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
     </section>
   `;
 }
 
 function setupStepOrder() {
-  return ['environment', 'mode', 'dns', 'server', 'routing', 'fallback', 'firewall', 'verify'];
+  return [...setupWizardStepIds];
 }
 
 function setupStepGate(step) {
   const readiness = setupReadiness();
   const byKey = new Map((readiness.items || []).map((item) => [item.key, item]));
   const proxyCount = proxyOutbounds().length;
-  const transparentReady = Boolean(byKey.get('transparent')?.ok);
-  const defaultRouteReady = Boolean(byKey.get('defaultRoute')?.ok);
-  const firewallReady = typeof firewallReadyStatus === 'function' ? firewallReadyStatus(state.firewallStatus || {}) : false;
   const notice = (level, title, detail) => ({ ok: false, notice: { step, level, title, detail } });
-  if (step === 'environment') {
-    if (!byKey.get('core')?.ok) return notice('bad', 'Xray не найден', 'Сначала установите xray-core и зависимости OpenWrt. Откройте установку Xray на этом шаге.');
+  if (step === 'connection') {
+    if (!byKey.get('core')?.ok) return notice('bad', 'Сначала установите Xray', 'Нажмите «Установить Xray», дождитесь завершения и вернитесь в мастер.');
+    if (proxyCount < 1) return notice('bad', 'Добавьте подключение', 'Вставьте ссылку на сервер или адрес подписки. Мастер продолжит после появления хотя бы одного подключения.');
     if (!byKey.get('geo')?.ok) {
       return {
         ok: true,
         notice: {
           step,
           level: 'warn',
-          title: 'Geo-файлы не готовы',
-          detail: 'Для правил geoip/geosite нужны geoip.dat и geosite.dat. Мастер может идти дальше, но финальная проверка покажет ошибку, если правило ссылается на отсутствующую категорию.'
+          title: 'Каталог сайтов пока не загружен',
+          detail: 'Можно продолжить. Он понадобится только сценариям, использующим категории стран и сервисов.'
         }
       };
     }
   }
-  if (step === 'server' && proxyCount < 1) {
-    return notice('bad', 'Нет прокси-сервера', 'Добавьте сервер или подписку в разделе “Серверы”, затем вернитесь в мастер.');
-  }
-  if (step === 'fallback' && !defaultRouteReady) {
-    if (proxyCount < 1) {
-      return notice('bad', 'Некуда вести остальной трафик', 'Добавьте хотя бы один proxy: мастер должен явно выбрать направление для LAN-трафика, который не совпал с правилами выше.');
+  if (step === 'scenarios') {
+    if (proxyCount < 1) return notice('bad', 'Нет подключения', 'Вернитесь назад и добавьте сервер или подписку.');
+    if (state.setupFallbackMode !== 'proxy' && readiness.proxyRuleCount < 1) {
+      return notice('bad', 'Выберите, что направлять', 'Добавьте готовый сценарий, своё правило или выберите режим «Весь интернет».');
     }
-    prepareSetupDraft({ message: false });
     return {
       ok: true,
       notice: {
         step,
-        level: 'warn',
-        title: 'Правило для остального трафика подготовлено',
-        detail: 'Мастер добавил финальное правило transparent_ipv4 в конец маршрутизации. Оно сработает только после пользовательских правил, direct/block и служебных исключений.'
+        level: 'ok',
+        title: 'Всё готово к запуску',
+        detail: 'DNS, перехват локальной сети и защита firewall будут настроены автоматически.'
       }
     };
-  }
-  if (step === 'firewall') {
-    if (!transparentReady) {
-      prepareSetupDraft({ message: false });
-      return {
-        ok: true,
-        notice: {
-          step,
-          level: 'warn',
-          title: 'Черновик перехвата подготовлен',
-          detail: 'Мастер добавил входящий поток перехвата и служебные правила в черновик. На финальном шаге он проверит Xray и применит firewall.'
-        }
-      };
-    }
-    if (!firewallReady) {
-      return {
-        ok: true,
-        notice: {
-          step,
-          level: 'warn',
-          title: 'Firewall еще не применен',
-          detail: 'Это нормально перед финальным шагом: мастер покажет, что изменится, и применит nftables вместе с Xray.'
-        }
-      };
-    }
   }
   return { ok: true, notice: null };
 }
@@ -1870,11 +1872,9 @@ function content() {
 function compatibilityDetected() {
   const compat = state.compatStatus || {};
   const adguard = compat.adguardHome || state.lanDnsStatus?.adguardHome || {};
-  const podkop = compat.podkop || state.status?.podkop || {};
   const b4 = compat.b4 || state.status?.b4 || {};
   return Boolean(
     adguard.available || adguard.configPath ||
-    podkop.available || podkop.active || podkop.running ||
     b4.available || b4.active || b4.running
   );
 }
@@ -2002,7 +2002,7 @@ function firewallPreflightDialog() {
           <button class="icon-btn" type="button" data-action="closeFirewallPreflight" aria-label="Закрыть">×</button>
         </div>
         <div class="firewall-preflight-body">
-          <p>RuOpenRay обнаружил Podkop/B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
+          <p>RuOpenRay обнаружил B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
           <div class="firewall-preflight-meta">
             <span>Режим: ${escapeHtml(preflight.routerMode || 'неизвестно')}</span>
             <span>DNS-перехват: ${preflight.dnsIntercept ? 'включен' : 'выключен'}</span>
@@ -2034,11 +2034,19 @@ function render() {
   const xrayOwner = state.status?.service?.external && state.status?.service?.owner
     ? ` через ${state.status.service.owner}`
     : '';
+  const coreVersionText = String(state.status?.core?.version || '').split('\n')[0];
+  const coreVersionMatch = coreVersionText.match(/Xray\s+([vV]?\d+(?:\.\d+){1,3}(?:[-+][^\s]+)?)/i);
+  const xrayVersionLabel = coreVersionMatch?.[1]?.replace(/^v/i, '') || '';
+  const xrayUpdate = statusLoaded ? coreUpdateInfo() : {};
+  const xrayUpdateTarget = xrayUpdate.target?.tag || '';
+  const xrayVersionTitle = xrayUpdate.hasUpdate
+    ? `Доступно обновление Xray: ${xrayUpdate.current || xrayVersionLabel || 'текущая версия'} → ${xrayUpdateTarget}`
+    : (state.status?.core?.available ? 'Версия и обновление Xray' : 'Установить Xray');
   const serviceBusy = ['start', 'stop', 'restart'].includes(state.busyAction);
   const xrayStatusText = statusLoaded
     ? running
-      ? `Xray работает${xrayOwner}${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
-      : 'Xray остановлен'
+      ? `Xray${xrayVersionLabel ? ` ${xrayVersionLabel}` : ''} · работает${xrayOwner}${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
+      : `Xray${xrayVersionLabel ? ` ${xrayVersionLabel}` : ''} · остановлен`
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
   const hasApplySteps = Array.isArray(state.applySteps) && state.applySteps.length > 0 && state.busyAction === 'apply';
@@ -2049,24 +2057,25 @@ function render() {
   const showRuOpenRayStop = statusLoaded && (
     Boolean(state.firewallStatus?.active || state.firewallStatus?.persistent)
     || Boolean(running && serviceManaged)
-    || Boolean(state.status?.podkop?.active || state.status?.b4?.active)
+    || Boolean(state.status?.b4?.active)
   );
-  const serviceButtons = [
-    showRuOpenRayStop
-      ? `<button class="service-mode-stop ${ruOpenRayModeBusy ? 'is-busy' : ''}" data-action="stopRuOpenRayMode" title="Остановить режим RuOpenRay: снять перехват и остановить управляемый Xray" ${state.firewallSaving || ruOpenRayModeBusy ? 'disabled' : ''}>Остановить RuOpenRay</button>`
-      : null,
+  const serviceModeButton = showRuOpenRayStop
+    ? `<button class="service-mode-stop ${ruOpenRayModeBusy ? 'is-busy' : ''}" data-action="stopRuOpenRayMode" title="Остановить режим RuOpenRay: снять перехват и остановить управляемый Xray" ${state.firewallSaving || ruOpenRayModeBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2v10"></path><path d="M6.35 5.35a8 8 0 1 0 11.3 0"></path></svg><span>Остановить RuOpenRay</span></button>`
+    : '';
+  const xrayServiceButtons = [
     !statusLoaded
       ? null
       : running
         ? null
-        : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
+        : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path class="fill" d="m8 5 11 7-11 7z"></path></svg></button>`,
     statusLoaded && running && serviceManaged
-      ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
+      ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"></path><path d="M20 4v7h-7"></path></svg></button>`
       : null,
     statusLoaded && running && serviceManaged
-      ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
+      ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><rect class="fill" x="7" y="7" width="10" height="10" rx="1"></rect></svg></button>`
       : null,
   ].filter(Boolean).join('');
+  const serviceButtons = `${serviceModeButton}${serviceModeButton && xrayServiceButtons ? '<span class="service-controls-divider" aria-hidden="true"></span>' : ''}${xrayServiceButtons ? `<span class="service-secondary-actions">${xrayServiceButtons}</span>` : ''}`;
   app.innerHTML = `
     ${routeRuleDialog()}
     ${routeBalancerDialog()}
@@ -2107,14 +2116,12 @@ function render() {
           <div class="top-actions">
             ${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
             ${appVersionPill()}
-            <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
-            <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
-            <div class="service-controls" aria-label="Управление сервисом Xray">
-              ${serviceButtons}
-            </div>
+            <button class="pill xray-version-pill ${xrayUpdate.hasUpdate ? 'has-update' : ''}" type="button" data-action="${state.status?.core?.available ? 'openCoreDialog' : 'openInstallWizard'}" title="${escapeHtml(xrayVersionTitle)}" aria-label="${escapeHtml(xrayVersionTitle)}" ${statusLoaded ? '' : 'disabled'}><i class="dot ${xrayUpdate.hasUpdate ? 'warn' : running ? 'ok' : ''}"></i><span>${escapeHtml(xrayStatusText)}</span>${xrayUpdate.hasUpdate ? '<span class="xray-update-indicator" aria-hidden="true">↑</span>' : ''}</button>
+            <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль"><svg class="profile-pill-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.75 19c.75-3.25 3-5 6.25-5s5.5 1.75 6.25 5"></path></svg><span>${escapeHtml(activeProfile)}</span></button>
+            ${serviceButtons ? `<div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>` : ''}
           </div>
         </header>
-        ${pendingChangesBanner()}
+        ${state.tab === 'setup' ? '' : pendingChangesBanner()}
         ${content()}
       </main>
     </div>
@@ -2123,6 +2130,7 @@ function render() {
     ${selectedRouteGroupDialog()}
     ${routePresetDialog()}
   `;
+  enhanceFormAccessibility();
   bind();
   bindDetailsPersistence();
   decorateBusyActionButtons();
@@ -2168,6 +2176,7 @@ function busyButtonLabel(action, fallback = '') {
     refresh: 'Обновляю',
     test: 'Проверяю',
     apply: 'Применяю изменения',
+    discardPendingChanges: 'Отменяю изменения',
     applyFirewall: 'Применяю firewall',
     disableFirewall: 'Отключаю',
     refreshFirewallStatus: 'Обновляю',
@@ -2269,6 +2278,7 @@ function bind() {
       updateApp,
       test: testConfig,
       apply: applyConfigAndFirewall,
+      discardPendingChanges,
       applyFirewall,
       closeFirewallPreflight,
       confirmFirewallPreflight,
@@ -2280,6 +2290,10 @@ function bind() {
       addServerModeClient,
       addServerModeAWGServer,
       addServerModeAWGPeer,
+      generateServerModeAWGServerKey,
+      generateServerModeAWGPeerKey,
+      exportServerModeAWGPeer,
+      downloadServerModeAWGClientExport,
       generateServerModeRealityKey,
       exportServerModeClient,
       downloadServerModeClientExport,
@@ -2288,6 +2302,8 @@ function bind() {
       previewServerModeFirewall,
       applyServerModeFirewall,
       disableServerModeFirewall,
+      applyServerModeAWGRuntime,
+      disableServerModeAWGRuntime,
       applyServerMode,
       deleteServerModeInbound,
       deleteServerModeClient,
@@ -2401,21 +2417,21 @@ function bind() {
       },
       setupStepBack: () => {
         const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
-        state.setupStep = steps[Math.max(0, index - 1)] || 'environment';
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
+        state.setupStep = steps[Math.max(0, index - 1)] || 'connection';
         state.setupStepNotice = null;
         render();
       },
       setupStepNext: () => {
-        const gate = setupStepGate(state.setupStep || 'environment');
+        const gate = setupStepGate(state.setupStep || 'connection');
         if (!gate.ok) {
           state.setupStepNotice = gate.notice;
           render();
           return;
         }
         const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'environment'));
-        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'verify';
+        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
+        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'launch';
         state.setupStep = nextStep;
         state.setupStepNotice = gate.notice ? { ...gate.notice, step: nextStep } : null;
         render();
@@ -2740,6 +2756,11 @@ function bind() {
       state.amneziaUserspaceUrl = input.value;
     });
   });
+  document.querySelectorAll('[data-amnezia-userspace-sha256]').forEach((input) => {
+    input.addEventListener('input', () => {
+      state.amneziaUserspaceSha256 = input.value;
+    });
+  });
 
 }
 
@@ -2749,6 +2770,20 @@ if (state.token) {
   configureStatusTimer();
   refresh({ background: true });
   refreshServerMode({ silent: true }).catch(() => {});
+}
+
+function enhanceFormAccessibility() {
+  document.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach((control) => {
+    if (control.hasAttribute('aria-label') || control.hasAttribute('aria-labelledby')) return;
+    if (control.closest('label')) return;
+    if (control.id && document.querySelector(`label[for="${CSS.escape(control.id)}"]`)) return;
+    const container = control.closest('.form-row, .settings-field, .server-mode-export-field, .route-field, .field');
+    const visibleLabel = container?.querySelector(':scope > label, :scope > span, :scope > strong');
+    const label = String(visibleLabel?.textContent || control.getAttribute('placeholder') || control.id || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (label) control.setAttribute('aria-label', label);
+  });
 }
 
 document.addEventListener('focusout', () => {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -45,7 +46,7 @@ func TestB4RouteOutputActiveIgnoresMissingTableErrors(t *testing.T) {
 func TestB4ProcessLinesIgnoresDiagnosticShell(t *testing.T) {
 	output := `29251 root 1348 S ash -c echo status; /etc/init.d/b4 status 2>&1 || true
 29299 root 1348 S grep b4
-29300 root 1348 S ash -c /usr/bin/ruopenray-ui diagnostics | jq '{podkop:.podkop, b4:.b4}'
+29300 root 1348 S ash -c /usr/bin/ruopenray-ui diagnostics | jq '{b4:.b4}'
 29310 root 2048 S /usr/bin/b4 --config /etc/b4/config.json`
 	lines := b4ProcessLines(output)
 	if len(lines) != 1 {
@@ -141,5 +142,16 @@ func TestB4APIStatusDoesNotTreatDefaultIPv4AsActiveQueue(t *testing.T) {
 	}
 	if boolMap(status, "queueActive") {
 		t.Fatalf("api status = %#v, default ipv4 without firewall backend must not be queueActive", status)
+	}
+	config := status["config"].(map[string]any)
+	if config["queueScope"] != "all" || config["queueConfigured"] != true {
+		t.Fatalf("empty interfaces must be reported as all-interface scope: %#v", config)
+	}
+}
+
+func TestB4ParsePolicyRulesFindsCurrentNumericTablesAndMarkConflict(t *testing.T) {
+	rules := b4ParsePolicyRules(fmt.Sprintf("10123: from all fwmark %s/%s lookup 123\n10124: from all fwmark 0x234 lookup 124\n", amneziaFwMark, amneziaFwMark))
+	if len(rules) != 2 || rules[0].Table != 123 || rules[0].Mark != amneziaFwMark || rules[1].Table != 124 {
+		t.Fatalf("unexpected parsed B4 rules: %#v", rules)
 	}
 }

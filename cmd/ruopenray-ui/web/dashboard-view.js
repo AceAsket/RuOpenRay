@@ -23,9 +23,7 @@ export function createDashboardView(deps) {
     coreReleaseBadge,
     outboundTransport,
     proxyDirectionSummary,
-    proxyDirectionTitle,
     proxyDirectionDetail,
-    dashboardProxyDirectionCards,
     checkForTag,
     checkLabel,
     checkMethodLabel,
@@ -38,7 +36,6 @@ function dashboard() {
   const c = s.config || {};
   const serviceRunning = Boolean(s.service?.running);
   const coreReady = Boolean(s.core?.available);
-  const coreInfo = coreUpdateInfo();
   const activeConfig = s.config?.path || 'config.json';
   const configReady = hasDashboardConfigSurface(state.config, c);
   const liveSnapshot = configReady ? {
@@ -65,14 +62,16 @@ function dashboard() {
         <span class="eyebrow">Ресурсы роутера</span>
         ${dashboardSystemStats(s.system)}
         ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
-        ${dashboardLogWarnings()}
       </div>
       ${configDirty ? `<div class="dash-actions">
         <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
       </div>` : ''}
     </section>
 
-    ${xrayCoreDashboard(s, coreReady, coreInfo)}
+    <div class="dashboard-primary-grid">
+      ${dashboardTrafficPanel(s)}
+      ${dashboardHealthPanel({ serviceRunning, coreReady, configDirty })}
+    </div>
 
     <section class="flow-strip">
       ${flowStep('Устройства', lanDeviceCount, loadingConfig ? 'загружаем LAN и правила' : (state.leases.length ? `${deviceRuleCount} правил LAN · ${devices.proxy} через proxy` : `${devices.proxy} через proxy`))}
@@ -81,11 +80,15 @@ function dashboard() {
       ${flowStep('DNS', loadingConfig ? '…' : dns.servers, loadingConfig ? 'загружаем DNS' : (dns.doh ? `${dns.doh} DoH` : 'системный'))}
     </section>
 
-    <div class="dashboard-layout">
-      <div>
-        <section class="panel">
-          ${dashboardServerSwitch(proxyServers, { loading: loadingConfig })}
-        </section>
+    <section class="panel dashboard-connections-panel">
+      ${dashboardServerSwitch(proxyServers, { loading: loadingConfig })}
+    </section>
+
+    <details class="dashboard-technical-panel">
+      <summary>
+        <span><strong>Технические сведения</strong><small>Активная конфигурация и журнал</small></span>
+      </summary>
+      <div class="dashboard-technical-body">
         <section class="panel config-panel ${state.configExpanded ? 'is-open' : ''}">
           <div class="panel-title">
             <div><h2>Активная конфигурация</h2></div>
@@ -98,22 +101,19 @@ function dashboard() {
           </div>
           ${state.configExpanded ? `<textarea id="jsonDraft" spellcheck="false">${escapeHtml(state.jsonDraft)}</textarea>` : `<p class="muted config-summary">${escapeHtml(activeConfig)} · ${c.inbounds ?? 0} входящих · ${c.outbounds ?? 0} исходящих · ${c.routingRules ?? 0} правил</p>`}
         </section>
-      </div>
-      <aside>
         ${logsPanel(true)}
-      </aside>
-    </div>
+      </div>
+    </details>
   `;
 }
 
-function dashboardLogWarnings() {
+function dashboardWarningItems() {
   const items = [];
   const level = String(state.loggingSettings?.appliedLevel || state.loggingSettings?.level || state.config?.log?.loglevel || '').toLowerCase();
   const accessLog = Boolean(state.loggingAccessLog || state.config?.log?.access);
   const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const monitor = state.domainMonitor || {};
   const dnsmasqLogqueries = monitor?.dnsmasq?.logqueries === true;
-  const podkop = state.status?.podkop || {};
   const b4 = state.status?.b4 || {};
   if (level === 'debug') {
     items.push('Xray пишет подробный debug-log. После проверки лучше вернуть warning или error.');
@@ -124,15 +124,69 @@ function dashboardLogWarnings() {
   if (dnsLog) items.push('DNS-лог Xray включен: доменные ответы могут добавлять много строк.');
   if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
   if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
-  if (podkop.active) items.push('Podkop активен: он может управлять DNS, nftables и transparent proxy. Перед применением перехвата выберите, какой сервис будет главным.');
   if (b4.active) items.push(`B4 активен: ${b4CompatDetail(b4)}. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.`);
   else if (b4.service?.enabled) items.push('B4 включен в автозапуск: сейчас он может быть остановлен, но после перезагрузки снова поднимет свой firewall/NFQUEUE. Если RuOpenRay главный, отключите автозапуск B4.');
   else if (b4.api?.authRequired) items.push('B4 API найден, но защищенные методы требуют токен. RuOpenRay видит только порт/процессы/nft без детальной конфигурации B4.');
-  if (!items.length) return '';
-  return `<div class="settings-warning compact dashboard-log-warning">
-    <strong>Диагностика</strong>
-    <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
-  </div>`;
+  return items;
+}
+
+function dashboardTrafficPanel(status = state.status || {}) {
+  const stats = status.xrayStats || {};
+  const enabled = stats.enabled === true;
+  const groups = stats.groups || {};
+  const totals = xrayStatsTotals(stats);
+  const cards = [
+    ['Через proxy', groups.proxy || {}, 'proxy'],
+    ['Напрямую', groups.direct || {}, 'direct'],
+    ['Заблокировано', groups.block || {}, 'block']
+  ];
+  return `
+    <section class="panel dashboard-traffic-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Трафик и маршрутизация</h2>
+          <span>${enabled ? `Счётчики ${xrayStatsPeriodLabel()}` : 'Счётчики направлений Xray выключены'}</span>
+        </div>
+        <button class="btn secondary" data-tab-jump="diagnostics">Подробнее</button>
+      </div>
+      <div class="dashboard-traffic-grid">
+        ${cards.map(([label, item, tone]) => `<article class="${tone}">
+          <span>${label}</span>
+          <strong>${enabled ? `${byteRate(item.downRate)} ↓ · ${byteRate(item.upRate)} ↑` : 'нет данных'}</strong>
+          <small>${enabled ? `${byteSize(item.downlink)} принято · ${byteSize(item.uplink)} ${tone === 'block' ? 'отброшено' : 'отправлено'}` : 'учёт можно включить в диагностике'}</small>
+        </article>`).join('')}
+      </div>
+      <div class="dashboard-traffic-total">
+        <span>Всего сейчас</span>
+        <strong>${enabled ? `${byteRate(totals.downRate)} приём · ${byteRate(totals.upRate)} отдача` : 'статистика выключена'}</strong>
+      </div>
+    </section>
+  `;
+}
+
+function dashboardHealthPanel({ serviceRunning, coreReady, configDirty }) {
+  const items = [];
+  if (!coreReady) items.push('Xray не установлен или ядро недоступно.');
+  else if (!serviceRunning) items.push('Xray остановлен. Запустите сервис или откройте диагностику.');
+  if (configDirty) items.push('Есть неприменённые изменения конфигурации.');
+  items.push(...dashboardWarningItems());
+  const visible = items.slice(0, 4);
+  const healthy = visible.length === 0;
+  return `
+    <section class="panel dashboard-health-panel ${healthy ? 'is-ok' : 'is-warn'}">
+      <div class="panel-title">
+        <div>
+          <h2>${healthy ? 'Система работает штатно' : 'Требует внимания'}</h2>
+          <span>${healthy ? 'Критичных проблем не обнаружено.' : `${items.length} ${items.length === 1 ? 'пункт' : items.length < 5 ? 'пункта' : 'пунктов'} для проверки`}</span>
+        </div>
+        <button class="btn secondary" data-tab-jump="diagnostics">Диагностика</button>
+      </div>
+      ${healthy ? '<div class="dashboard-health-ok"><i></i><span>Xray и основные компоненты доступны</span></div>' : `
+        <ul class="dashboard-health-list">${visible.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+        ${items.length > visible.length ? `<small class="dashboard-health-more">Ещё ${items.length - visible.length} в диагностике</small>` : ''}
+      `}
+    </section>
+  `;
 }
 
 function b4CompatDetail(b4 = {}) {
@@ -752,6 +806,23 @@ function dashboardServerTech(outbound) {
   return parts.filter(Boolean).join(' · ');
 }
 
+function dashboardServerDisplayName(outbound) {
+  const tag = String(outbound?.tag || '').trim();
+  const configured = String(state.serverMeta?.[tag]?.label || '').trim();
+  if (configured) return configured;
+  const address = String(outboundAddress(outbound) || '').trim();
+  const host = address.replace(/^\[/, '').split(']')[0].split(':')[0];
+  const firstLabel = host.includes('.') ? host.split('.')[0] : '';
+  if (firstLabel && !/^\d+$/.test(firstLabel)) {
+    return firstLabel
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+  return tag || 'Сервер';
+}
+
 function operationProgressView() {
   if (state.configApplying) {
     return `
@@ -845,16 +916,16 @@ function dashboardServerSwitch(servers, options = {}) {
       </div>
     `;
   }
+  const serverCountLabel = `${servers.length} ${servers.length === 1 ? 'подключение' : servers.length < 5 ? 'подключения' : 'подключений'}`;
   return `
     <div class="dashboard-action-block">
       <div class="dashboard-action-head">
         <div>
-          <strong>${escapeHtml(proxyDirectionTitle(summary))}</strong>
-          <span>${escapeHtml(proxyDirectionDetail(summary))}</span>
+          <strong>Серверы</strong>
+          <span>${escapeHtml(`${serverCountLabel} · ${proxyDirectionDetail(summary)}`)}</span>
         </div>
         <button class="btn secondary" data-import-dialog="choose">Добавить</button>
       </div>
-      ${dashboardProxyDirectionCards(summary)}
       ${proxyFailureWarning(active)}
       <div class="dashboard-server-switch">
         ${servers.slice(0, 5).map((outbound) => {
@@ -870,10 +941,10 @@ function dashboardServerSwitch(servers, options = {}) {
             ? dashboardServerActionState(summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный сервер')
             : dashboardServerActionButton({ label: connecting ? 'Подключаю сервер' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-dashboard-connect="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting });
           return `<article class="dashboard-server-option ${activeServer ? 'active' : ''} ${selectedServer ? 'selected' : ''}">
-            <button type="button" class="server-option-pick" ${activeServer || connecting ? 'disabled' : `data-dashboard-select="${escapeHtml(tag)}"`}>
+            <button type="button" class="server-option-pick" title="${escapeHtml(tag)}" ${activeServer || connecting ? 'disabled' : `data-dashboard-select="${escapeHtml(tag)}"`}>
               <span class="server-option-state ${activeServer ? 'active' : selectedServer ? 'selected' : ''}">${stateLabel}</span>
               <span class="server-option-main">
-                <strong>${serverLocationChip(outbound)}${escapeHtml(tag || 'server')}</strong>
+                <strong>${serverLocationChip(outbound)}${escapeHtml(dashboardServerDisplayName(outbound))}</strong>
                 <small>${escapeHtml(outboundAddress(outbound))}</small>
               </span>
               ${serverTrafficView(tag, 'dashboard-server-traffic')}

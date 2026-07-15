@@ -90,6 +90,13 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       render();
     });
   });
+  document.querySelectorAll('[data-setup-fallback]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.setupFallbackMode = button.dataset.setupFallback === 'proxy' ? 'proxy' : 'direct';
+      state.setupStepNotice = null;
+      render();
+    });
+  });
   document.querySelectorAll('[data-setup-step]').forEach((button) => {
     button.addEventListener('click', () => {
       state.setupStep = button.dataset.setupStep || state.setupStep || 'environment';

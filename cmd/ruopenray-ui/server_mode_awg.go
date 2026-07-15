@@ -13,7 +13,7 @@ var serverModeAWGInterfaceNameRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 var serverModeAWGAdvancedKeys = []string{
 	"Jc", "Jmin", "Jmax",
-	"S1", "S2", "S3", "S4", "S5",
+	"S1", "S2", "S3", "S4",
 	"H1", "H2", "H3", "H4",
 	"I1", "I2", "I3", "I4", "I5",
 }
@@ -88,9 +88,16 @@ func serverModeBuildAWGServerPlan(awg serverModeAWGServer, configPath string) ma
 	}
 	if strings.TrimSpace(awg.PrivateKey) == "" {
 		errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG private key is required", Detail: "Server interface config cannot be generated without PrivateKey.", Source: source})
+	} else if !amneziaLooksLikeWGKey(awg.PrivateKey) {
+		errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG private key is invalid", Detail: "PrivateKey must be a base64-encoded 32-byte WireGuard key.", Source: source})
 	}
-	if _, _, err := net.ParseCIDR(strings.TrimSpace(awg.AddressCIDR)); err != nil {
+	var serverNetwork *net.IPNet
+	if ip, network, err := net.ParseCIDR(strings.TrimSpace(awg.AddressCIDR)); err != nil {
 		errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG address is invalid", Detail: fmt.Sprintf("%q is not a CIDR address.", awg.AddressCIDR), Source: source})
+	} else if ip.To4() == nil {
+		errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG IPv6 server address is not supported", Detail: "Managed OpenWrt firewall for AWG runtime currently supports an IPv4 server subnet only.", Source: source})
+	} else {
+		serverNetwork = network
 	}
 	mtu := awg.MTU
 	if mtu == 0 {
@@ -101,6 +108,11 @@ func serverModeBuildAWGServerPlan(awg serverModeAWGServer, configPath string) ma
 	}
 
 	enabledPeers := []serverModeAWGPeer{}
+	type peerNetwork struct {
+		owner   string
+		network *net.IPNet
+	}
+	peerNetworks := []peerNetwork{}
 	for _, peer := range awg.Peers {
 		if !peer.Enabled {
 			continue
@@ -108,6 +120,11 @@ func serverModeBuildAWGServerPlan(awg serverModeAWGServer, configPath string) ma
 		peerSource := source + "/peer:" + peer.ID
 		if strings.TrimSpace(peer.PublicKey) == "" {
 			errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG peer public key is required", Detail: "Enabled peer cannot connect without PublicKey.", Source: peerSource})
+		} else if !amneziaLooksLikeWGKey(peer.PublicKey) {
+			errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG peer public key is invalid", Detail: "PublicKey must be a base64-encoded 32-byte WireGuard key.", Source: peerSource})
+		}
+		if strings.TrimSpace(peer.PresharedKey) != "" && !amneziaLooksLikeWGKey(peer.PresharedKey) {
+			errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG peer preshared key is invalid", Detail: "PresharedKey must be a base64-encoded 32-byte WireGuard key.", Source: peerSource})
 		}
 		normalizedAllowed, peerWarnings, err := serverModeNormalizeAllowedIPs(peer.AllowedIPs)
 		if err != nil {
@@ -117,53 +134,92 @@ func serverModeBuildAWGServerPlan(awg serverModeAWGServer, configPath string) ma
 			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG peer AllowedIPs normalized", Detail: warning, Source: peerSource})
 		}
 		peer.AllowedIPs = normalizedAllowed
+		insideServerNetwork := false
+		for _, allowed := range strings.Split(normalizedAllowed, ",") {
+			_, network, parseErr := net.ParseCIDR(strings.TrimSpace(allowed))
+			if parseErr != nil {
+				continue
+			}
+			if serverNetwork != nil && serverNetwork.Contains(network.IP) {
+				insideServerNetwork = true
+			}
+			for _, existing := range peerNetworks {
+				if serverModeIPNetworksOverlap(network, existing.network) {
+					errors = append(errors, serverModeIssue{Severity: "error", Title: "AWG peer routes overlap", Detail: fmt.Sprintf("%s overlaps with peer %s on %s.", peer.ID, existing.owner, strings.TrimSpace(allowed)), Source: peerSource})
+					break
+				}
+			}
+			peerNetworks = append(peerNetworks, peerNetwork{owner: peer.ID, network: network})
+		}
+		if serverNetwork != nil && !insideServerNetwork {
+			warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG peer has no tunnel address", Detail: "AllowedIPs does not contain an address from the AWG server subnet; automatic client.conf export may not be usable.", Source: peerSource})
+		}
 		enabledPeers = append(enabledPeers, peer)
 	}
 	if len(enabledPeers) == 0 {
 		warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG has no enabled peers", Detail: "Interface can start, but nobody will be able to connect until a peer is enabled.", Source: source})
 	}
-	if strings.TrimSpace(awg.EgressTag) != "" {
-		warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG traffic policy is not applied yet", Detail: "This plan prepares the server interface only. Routing peer traffic to " + awg.EgressTag + " needs the next managed firewall/policy step.", Source: source})
+	egressTag := firstNonEmpty(strings.TrimSpace(awg.EgressTag), "direct")
+	if egressTag != "direct" {
+		warnings = append(warnings, serverModeIssue{Severity: "warning", Title: "AWG outbound is not supported by runtime", Detail: "The plan can be saved, but managed AWG runtime currently supports direct WAN egress only; selected outbound is " + egressTag + ".", Source: source})
 	}
 
 	config := serverModeAWGConfigText(awg, enabledPeers, mtu)
+	setconf := serverModeAWGSetconfText(awg, enabledPeers)
 	configDir := filepath.Dir(configPath)
+	setconfPath := strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".setconf"
 	commands := []string{
 		fmt.Sprintf("install -d -m 700 %s", amneziaShellQuote(configDir)),
-		fmt.Sprintf("cat > %s <<'EOF'\n%sEOF", amneziaShellQuote(configPath), config),
-		fmt.Sprintf("ip link show dev %s >/dev/null 2>&1 || ip link add dev %s type amneziawg 2>/dev/null || ip link add dev %s type wireguard", amneziaShellQuote(iface), amneziaShellQuote(iface), amneziaShellQuote(iface)),
-		fmt.Sprintf("awg setconf %s %s", amneziaShellQuote(iface), amneziaShellQuote(configPath)),
+		fmt.Sprintf("rm -f %s && (umask 077; cat > %s <<'EOF'\n%sEOF\n)", amneziaShellQuote(configPath), amneziaShellQuote(configPath), config),
+		fmt.Sprintf("rm -f %s && (umask 077; cat > %s <<'EOF'\n%sEOF\n)", amneziaShellQuote(setconfPath), amneziaShellQuote(setconfPath), setconf),
+		fmt.Sprintf("ip link show dev %s >/dev/null 2>&1 || ip link add dev %s type amneziawg", amneziaShellQuote(iface), amneziaShellQuote(iface)),
+		fmt.Sprintf("awg setconf %s %s", amneziaShellQuote(iface), amneziaShellQuote(setconfPath)),
 		fmt.Sprintf("ip addr replace %s dev %s", amneziaShellQuote(awg.AddressCIDR), amneziaShellQuote(iface)),
 		fmt.Sprintf("ip link set mtu %s dev %s", amneziaShellQuote(fmt.Sprint(mtu)), amneziaShellQuote(iface)),
 		fmt.Sprintf("ip link set up dev %s", amneziaShellQuote(iface)),
 	}
 
 	return map[string]any{
-		"ok":             len(errors) == 0,
-		"id":             awg.ID,
-		"name":           awg.Name,
-		"interface":      iface,
-		"listenPort":     awg.ListenPort,
-		"addressCidr":    awg.AddressCIDR,
-		"mtu":            mtu,
-		"egressTag":      awg.EgressTag,
-		"peerCount":      len(enabledPeers),
-		"configPath":     configPath,
-		"config":         config,
-		"configRedacted": serverModeAWGRedactConfig(config),
-		"commands":       commands,
-		"errors":         errors,
-		"warnings":       warnings,
+		"ok":              len(errors) == 0,
+		"id":              awg.ID,
+		"name":            awg.Name,
+		"interface":       iface,
+		"listenPort":      awg.ListenPort,
+		"addressCidr":     awg.AddressCIDR,
+		"mtu":             mtu,
+		"egressTag":       awg.EgressTag,
+		"peerCount":       len(enabledPeers),
+		"configPath":      configPath,
+		"setconfPath":     setconfPath,
+		"config":          config,
+		"configRedacted":  serverModeAWGRedactConfig(config),
+		"setconf":         setconf,
+		"setconfRedacted": serverModeAWGRedactConfig(setconf),
+		"commands":        commands,
+		"errors":          errors,
+		"warnings":        warnings,
 	}
 }
 
 func serverModeAWGConfigText(awg serverModeAWGServer, peers []serverModeAWGPeer, mtu int) string {
+	return serverModeAWGConfigTextWithRuntime(awg, peers, mtu, true)
+}
+
+func serverModeAWGSetconfText(awg serverModeAWGServer, peers []serverModeAWGPeer) string {
+	return serverModeAWGConfigTextWithRuntime(awg, peers, 0, false)
+}
+
+func serverModeAWGConfigTextWithRuntime(awg serverModeAWGServer, peers []serverModeAWGPeer, mtu int, includeRuntime bool) string {
 	lines := []string{
 		"[Interface]",
 		"PrivateKey = " + strings.TrimSpace(awg.PrivateKey),
 		"ListenPort = " + fmt.Sprint(awg.ListenPort),
-		"Address = " + strings.TrimSpace(awg.AddressCIDR),
-		"MTU = " + fmt.Sprint(mtu),
+	}
+	if includeRuntime {
+		lines = append(lines,
+			"Address = "+strings.TrimSpace(awg.AddressCIDR),
+			"MTU = "+fmt.Sprint(mtu),
+		)
 	}
 	lines = append(lines, serverModeAWGAdvancedLines(awg.Advanced)...)
 	for _, peer := range peers {

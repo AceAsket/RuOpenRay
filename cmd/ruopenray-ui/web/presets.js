@@ -2,10 +2,10 @@
 
 export const nav = [
   ['dashboard', 'Панель'],
-  ['setup', 'Мастер'],
-  ['servers', 'Серверы'],
+  ['setup', 'Быстрый запуск'],
+  ['servers', 'Подключения'],
   ['serverMode', 'Серверный режим'],
-  ['routing', 'Маршрутизация'],
+  ['routing', 'Сценарии и правила'],
   ['dns', 'DNS'],
   ['diagnostics', 'Диагностика'],
   ['profiles', 'Профили'],

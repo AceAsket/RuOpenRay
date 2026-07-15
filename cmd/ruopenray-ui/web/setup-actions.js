@@ -10,6 +10,7 @@ export function createSetupActions({
   captureSetupSnapshot,
   clearSetupSnapshot,
   lanDnsRestorePayload,
+  setupFallbackModeFromConfig,
   prepareSetupDraft,
   applyFirewallWithRetry,
   firewallReadyStatus
@@ -33,7 +34,10 @@ export function createSetupActions({
     }
     state.setupWizardOpen = false;
     state.tab = 'setup';
-    state.setupStep = state.setupStep || 'environment';
+    if (!['connection', 'scenarios', 'launch'].includes(state.setupStep)) state.setupStep = 'connection';
+    if (!['direct', 'proxy'].includes(state.setupFallbackMode)) {
+      state.setupFallbackMode = typeof setupFallbackModeFromConfig === 'function' ? setupFallbackModeFromConfig() : 'direct';
+    }
     state.setupResult = null;
     state.setupRollbackResult = null;
     loadSetupSnapshot();
@@ -80,6 +84,12 @@ export function createSetupActions({
       render();
       return;
     }
+    if (state.setupFallbackMode !== 'proxy' && readiness.proxyRuleCount < 1) {
+      state.setupResult = { ok: false, steps: [{ ok: false, title: 'Не выбраны сценарии', detail: 'Выберите готовый сценарий, добавьте своё правило или направьте весь интернет через подключение.' }] };
+      state.setupStep = 'scenarios';
+      render();
+      return;
+    }
     state.setupApplying = true;
     state.setupStepNotice = null;
     state.setupResult = { ok: true, steps: [] };
@@ -92,16 +102,16 @@ export function createSetupActions({
     };
     try {
       const snapshot = await captureSetupSnapshot();
-      pushStep(Boolean(snapshot.config), 'Снимок для отката', snapshot.createdAt ? new Date(snapshot.createdAt).toLocaleString('ru-RU') : '');
+      pushStep(Boolean(snapshot.config), 'Точка восстановления', snapshot.createdAt ? new Date(snapshot.createdAt).toLocaleString('ru-RU') : '');
 
-      prepareSetupDraft({ message: false });
+      prepareSetupDraft({ message: false, persist: false });
       const config = JSON.parse(state.jsonDraft);
       const test = await request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) });
-      pushStep(Boolean(test.ok), 'Проверка конфигурации Xray', test.stdout || test.stderr || '');
+      pushStep(Boolean(test.ok), 'Проверка настроек', test.stdout || test.stderr || '');
       if (!test.ok) throw new Error(test.stderr || 'Конфигурация Xray не прошла проверку');
 
       const apply = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config }) });
-      pushStep(Boolean(apply.ok), 'Применение конфигурации Xray', apply.restart?.stdout || apply.test?.stdout || '');
+      pushStep(Boolean(apply.ok), 'Запуск подключения', apply.restart?.stdout || apply.test?.stdout || '');
       if (!apply.ok) throw new Error(apply.restart?.stderr || apply.test?.stderr || 'Не удалось применить конфигурацию Xray');
 
       if (state.setupLanDnsMode !== 'keep') {
@@ -126,19 +136,19 @@ export function createSetupActions({
           if (afterLanDns) syncLanDnsStatus(afterLanDns);
           lanDnsOk = Boolean(afterLanDns?.mode === state.setupLanDnsMode && (state.setupLanDnsMode !== 'xray' || afterLanDns?.readiness?.ready));
         }
-        pushStep(lanDnsOk, 'LAN DNS / dnsmasq', lanDns.mode ? lanDnsModeLabel(lanDns.mode) : (lanDns.error || ''));
+        pushStep(lanDnsOk, 'Настройка DNS', lanDns.mode ? lanDnsModeLabel(lanDns.mode) : (lanDns.error || ''));
         if (!lanDnsOk) throw new Error(lanDns.error || 'Не удалось настроить LAN DNS');
       } else {
-        pushStep(true, 'LAN DNS / dnsmasq', 'Оставлен текущий режим OpenWrt.');
+        pushStep(true, 'Настройка DNS', 'Оставлен текущий режим OpenWrt.');
       }
 
       const firewall = await applyFirewallWithRetry(3);
       state.firewallStatus = firewall.status || state.firewallStatus || firewall;
       const firewallOk = Boolean(firewall.ok && firewallReadyStatus(state.firewallStatus));
       const firewallDetail = firewall.needsConfirmation
-        ? (firewall.error || 'Найдены сторонние правила Podkop/B4. Примените перехват вручную и подтвердите совместимость.')
+        ? (firewall.error || 'Найдены сторонние правила B4/NFQUEUE. Примените перехват вручную и подтвердите совместимость.')
         : (state.firewallStatus?.routerMode || firewall.status?.routerMode || state.firewallRouterMode);
-      pushStep(firewallOk, 'nftables и policy routing', firewallDetail);
+      pushStep(firewallOk, 'Маршрутизация устройств', firewallDetail);
       if (!firewallOk) throw new Error(firewall.needsConfirmation ? firewallDetail : (firewall.error || 'Не удалось включить перехват'));
 
       state.message = 'Активный режим RuOpenRay включен';

@@ -27,6 +27,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 			targetConflict = targetOwner != "" && !strings.Contains(targetOwner, "/xray")
 		}
 	}
+	lanIP := routerLANAddress()
 	suggestedPort, conflictOwner := suggestedXrayDNSPort()
 	if targetConflict {
 		conflictOwner = targetOwner
@@ -38,7 +39,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		"mode":                 "unknown",
 		"noresolv":             false,
 		"servers":              []string{},
-		"routerLan":            "192.168.1.1",
+		"routerLan":            lanIP,
 		"xrayTarget":           xrayTarget,
 		"suggestedXrayPort":    suggestedPort,
 		"suggestedXrayTarget":  fmt.Sprintf("127.0.0.1#%d", suggestedPort),
@@ -50,7 +51,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	if !available {
 		result["mode"] = "manual"
 		result["hint"] = "UCI недоступен, настройте dnsmasq вручную."
-		result["adguardHome"] = s.adGuardHomeStatus("192.168.1.1", xrayTarget)
+		result["adguardHome"] = s.adGuardHomeStatus(lanIP, xrayTarget)
 		if plan != nil {
 			result["plan"] = plan
 		}
@@ -58,13 +59,6 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	}
 	noresolv := strings.TrimSpace(fmt.Sprint(run("uci", "-q", "get", "dhcp.@dnsmasq[0].noresolv")["stdout"])) == "1"
 	servers := dnsmasqServerList()
-	lanIP := firstLine(fmt.Sprint(run("uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")
-	if lanIP == "" || lanIP == "<nil>" {
-		lanIP = "192.168.1.1"
-	}
-	if strings.Contains(lanIP, "/") {
-		lanIP = strings.SplitN(lanIP, "/", 2)[0]
-	}
 	mode := "system"
 	if noresolv && len(servers) == 1 && servers[0] == xrayTarget {
 		mode = "xray"

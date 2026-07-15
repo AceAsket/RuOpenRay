@@ -1,5 +1,7 @@
 import { isServiceOutbound } from './outbound-tags.js';
 
+export const setupWizardStepIds = Object.freeze(['connection', 'scenarios', 'launch']);
+
 export function createSetupView({
   state,
   shellQuote,
@@ -16,19 +18,54 @@ function normalizeCoreVersion(value = '') {
   return explicit ? explicit[0].replace(/^v/i, '') : '';
 }
 
-function versionParts(version = '') {
-  return normalizeCoreVersion(version).split(/[.-]/).map((part) => Number.parseInt(part, 10)).filter((part) => Number.isFinite(part));
+function parsedCoreVersion(version = '') {
+  const normalized = normalizeCoreVersion(version);
+  if (!normalized) return null;
+  const [withoutBuild] = normalized.split('+', 1);
+  const dash = withoutBuild.indexOf('-');
+  const main = dash >= 0 ? withoutBuild.slice(0, dash) : withoutBuild;
+  const prerelease = dash >= 0 ? withoutBuild.slice(dash + 1).split('.').filter(Boolean) : [];
+  const numbers = main.split('.').map((part) => Number.parseInt(part, 10));
+  if (numbers.some((part) => !Number.isFinite(part))) return null;
+  return { normalized, numbers, prerelease };
 }
 
-function compareCoreVersions(a = '', b = '') {
-  const left = versionParts(a);
-  const right = versionParts(b);
+function versionParts(version = '') {
+  return parsedCoreVersion(version)?.numbers || [];
+}
+
+function comparePrereleaseParts(left = [], right = []) {
+  if (!left.length && !right.length) return 0;
+  if (!left.length) return 1;
+  if (!right.length) return -1;
   const size = Math.max(left.length, right.length);
   for (let i = 0; i < size; i += 1) {
-    const diff = (left[i] || 0) - (right[i] || 0);
+    if (left[i] === undefined) return -1;
+    if (right[i] === undefined) return 1;
+    const leftNumeric = /^\d+$/.test(left[i]);
+    const rightNumeric = /^\d+$/.test(right[i]);
+    if (leftNumeric && rightNumeric) {
+      const diff = Number(left[i]) - Number(right[i]);
+      if (diff) return diff;
+      continue;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    const diff = left[i].localeCompare(right[i], undefined, { sensitivity: 'base' });
     if (diff) return diff;
   }
   return 0;
+}
+
+function compareCoreVersions(a = '', b = '') {
+  const left = parsedCoreVersion(a);
+  const right = parsedCoreVersion(b);
+  if (!left || !right) return left ? 1 : right ? -1 : 0;
+  const size = Math.max(left.numbers.length, right.numbers.length);
+  for (let i = 0; i < size; i += 1) {
+    const diff = (left.numbers[i] || 0) - (right.numbers[i] || 0);
+    if (diff) return diff;
+  }
+  return comparePrereleaseParts(left.prerelease, right.prerelease);
 }
 
 function installedCoreVersion() {
@@ -50,13 +87,32 @@ function filteredCoreReleases() {
 function coreUpdateInfo() {
   const installed = installedCoreVersion();
   const installable = state.coreReleases.filter((release) => release.assetUrl);
-  const latestStable = installable.find((release) => !release.prerelease);
-  const latestAny = installable[0];
-  const target = latestStable || latestAny;
+  const sorted = [...installable].sort((left, right) => compareCoreVersions(right.tag, left.tag));
+  const latestStable = sorted.find((release) => !release.prerelease && !(parsedCoreVersion(release.tag)?.prerelease.length));
+  const latestAny = sorted[0];
+  const installedVersion = parsedCoreVersion(installed);
+  const installedPrereleaseChannel = installedVersion?.prerelease[0]?.toLowerCase() || '';
+  const channelReleases = installedPrereleaseChannel
+    ? sorted.filter((release) => {
+        const candidate = parsedCoreVersion(release.tag);
+        if (!candidate) return false;
+        if (!candidate.prerelease.length) return true;
+        return candidate.prerelease[0]?.toLowerCase() === installedPrereleaseChannel;
+      })
+    : sorted.filter((release) => !release.prerelease && !(parsedCoreVersion(release.tag)?.prerelease.length));
+  const target = channelReleases[0] || (installedPrereleaseChannel ? latestAny : latestStable);
   const current = installed ? `v${installed}` : '';
   const targetVersion = target?.tag || '';
   const hasUpdate = Boolean(targetVersion && (!installed || compareCoreVersions(targetVersion, installed) > 0));
-  return { installed, current, target, latestStable, latestAny, hasUpdate };
+  return {
+    installed,
+    current,
+    target,
+    latestStable,
+    latestAny,
+    channel: installedPrereleaseChannel || 'stable',
+    hasUpdate,
+  };
 }
 
 function coreReleaseBadge(release) {
@@ -103,22 +159,12 @@ function githubInstallCommand(withXray = false) {
 
 function setupWizardSteps(readiness) {
   const xrayReady = Boolean(state.status?.core?.available);
-  const geoReady = Boolean(state.geoStatus?.geoip?.exists && state.geoStatus?.geosite?.exists);
   const proxyReady = proxyOutboundsSafe().length > 0;
-  const dnsReady = Boolean(state.lanDnsStatus?.mode === 'xray' && state.lanDnsStatus?.readiness?.ready);
-  const fwReady = firewallReadyStatus(state.firewallStatus || {});
-  const transparentReady = Boolean(readiness.items.find((item) => item.key === 'transparent')?.ok);
-  const defaultRouteReady = Boolean(readiness.items.find((item) => item.key === 'defaultRoute')?.ok);
-  const statsReady = Boolean(state.status?.xrayStats?.enabled);
+  const scenariosReady = state.setupFallbackMode === 'proxy' || readiness.proxyRuleCount > 0;
   return [
-    { id: 'environment', title: 'Проверка', detail: 'Xray, geo-файлы, место', ok: xrayReady && geoReady },
-    { id: 'mode', title: 'Режим', detail: 'Как вести LAN-трафик', ok: true },
-    { id: 'dns', title: 'DNS', detail: 'dnsmasq, Xray, Pi-hole или AdGuard', ok: dnsReady || state.setupLanDnsMode === 'keep' || state.setupLanDnsMode === 'upstream' },
-    { id: 'server', title: 'Сервер', detail: 'Прокси или подписка', ok: proxyReady },
-    { id: 'routing', title: 'Правила', detail: 'Маршрутизация и geo', ok: true },
-    { id: 'fallback', title: 'Остальное', detail: 'Куда вести unmatched traffic', ok: defaultRouteReady },
-    { id: 'firewall', title: 'Перехват', detail: 'Firewall и LAN', ok: fwReady && transparentReady },
-    { id: 'verify', title: 'Запуск', detail: 'Финальная проверка', ok: statsReady || Boolean(state.setupResult?.ok) }
+    { id: setupWizardStepIds[0], title: 'Подключение', detail: 'Сервер или подписка', ok: xrayReady && proxyReady },
+    { id: setupWizardStepIds[1], title: 'Сценарии', detail: 'Что направлять', ok: proxyReady && scenariosReady },
+    { id: setupWizardStepIds[2], title: 'Запуск', detail: 'Всё остальное — автоматически', ok: Boolean(state.setupResult?.ok) }
   ];
 }
 
@@ -140,7 +186,7 @@ function setupWizardStepper(steps) {
   return `<nav class="setup-stepper setup-step-rail" aria-label="Шаги мастера">
     ${steps.map((step, index) => {
       const stateClass = index === activeIndex ? 'active' : step.ok ? 'ok' : index < activeIndex ? 'warn' : 'pending';
-      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}">
+      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}"${index === activeIndex ? ' aria-current="step"' : ''}>
         <span>${step.ok ? '✓' : index + 1}</span>
         <strong>${escapeHtml(step.title)}</strong>
         <small>${escapeHtml(step.detail || '')}</small>
@@ -158,26 +204,23 @@ function setupWizardSummary(steps) {
   return `<section class="setup-step-summary">
     <div class="setup-step-summary-head">
       <div>
-      <span>${current?.ok ? 'Шаг готов' : 'Проверьте шаг'}</span>
-      <strong>${escapeHtml(current?.title || 'Проверка')}</strong>
+      <span>${current?.ok ? 'Готово' : 'Осталось настроить'}</span>
+      <strong>${escapeHtml(current?.title || 'Подключение')}</strong>
       </div>
       <em>${done}/${steps.length}</em>
     </div>
     <div class="setup-progress" aria-hidden="true"><span style="width: ${progress}%"></span></div>
-    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}. Если что-то опасно применять, мастер остановится и покажет причину.` : 'Все ключевые пункты готовы, можно запускать финальную проверку.'}</p>
+    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}.` : 'Можно запускать RuOpenRay.'}</p>
   </section>`;
 }
 
-function setupStepPrimaryLabel(isLast) {
-  if (state.setupApplying) return 'Применяю...';
-  if (isLast) return 'Проверить и применить';
-  return 'Проверить шаг и дальше';
+function setupStepPrimaryLabel(step, isLast) {
+  if (state.setupApplying) return 'Запускаю RuOpenRay...';
+  if (isLast || step === 'launch') return 'Запустить RuOpenRay';
+  return 'Продолжить';
 }
 
 function setupStepSecondaryAction(step) {
-  if (step === 'routing' || step === 'fallback' || step === 'firewall' || step === 'verify') {
-    return `<button class="btn" type="button" data-action="setupPrepareDraft" ${state.setupApplying ? 'disabled' : ''}>Подготовить черновик</button>`;
-  }
   return '';
 }
 
@@ -191,9 +234,93 @@ function setupStepNotice() {
 }
 
 function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
-  const step = state.setupStep || 'environment';
+  const step = state.setupStep || 'connection';
   const proxyCount = proxyOutboundsSafe().length;
   const fwMode = state.firewallRouterMode || state.firewallStatus?.routerMode || 'off';
+  if (step === 'connection') {
+    const xrayReady = Boolean(state.status?.core?.available);
+    const geoReady = Boolean(state.geoStatus?.geoip?.exists && state.geoStatus?.geosite?.exists);
+    const subscriptionCount = Array.isArray(state.subscriptionPools) ? state.subscriptionPools.length : 0;
+    return `<section class="setup-step-panel setup-simple-step">
+      <div class="setup-simple-hero">
+        <span class="setup-kicker">Шаг 1</span>
+        <h3>Добавьте подключение</h3>
+        <p>Подойдёт ссылка на один сервер или адрес подписки. RuOpenRay сам подготовит сетевые настройки роутера.</p>
+      </div>
+      ${xrayReady ? '' : `<section class="setup-callout warn">
+        <div><strong>Сначала нужен Xray</strong><span>Мастер установит ядро и необходимые компоненты для OpenWrt.</span></div>
+        <button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button>
+      </section>`}
+      <div class="setup-connection-card ${proxyCount ? 'ready' : ''}">
+        <div class="setup-connection-icon">${proxyCount ? '✓' : '+'}</div>
+        <div>
+          <span>${proxyCount ? 'Подключение найдено' : 'Подключения пока нет'}</span>
+          <strong>${proxyCount ? 'Основное подключение' : 'Сервер или подписка'}</strong>
+          <small>${proxyCount ? `${proxyCount} доступных выходов${subscriptionCount ? ` · ${subscriptionCount} подписок` : ''}` : 'Добавьте данные, которые выдал провайдер VPN или прокси.'}</small>
+        </div>
+      </div>
+      <div class="setup-big-actions">
+        <button class="setup-action-card primary" type="button" data-import-dialog="server">
+          <span>＋</span><strong>Добавить сервер</strong><small>VLESS, VMess, Trojan или Shadowsocks</small>
+        </button>
+        <button class="setup-action-card" type="button" data-import-dialog="subscription">
+          <span>↻</span><strong>Добавить подписку</strong><small>Ссылка со списком серверов и автообновлением</small>
+        </button>
+      </div>
+      ${proxyCount ? `<button class="btn secondary setup-manage-link" type="button" data-tab-jump="servers">Проверить или сменить сервер</button>` : ''}
+      <details class="setup-technical-details">
+        <summary>Что мастер проверил автоматически</summary>
+        <div class="setup-auto-checks">
+          <span class="${xrayReady ? 'ok' : 'warn'}">${xrayReady ? '✓' : '!'} Xray</span>
+          <span class="${geoReady ? 'ok' : 'warn'}">${geoReady ? '✓' : '!'} Каталог сайтов</span>
+          <span class="ok">✓ Свободно ${escapeHtml(byteSize(diskFree))}</span>
+        </div>
+      </details>
+    </section>`;
+  }
+  if (step === 'scenarios') {
+    const userRuleCount = Number(readiness.proxyRuleCount || 0);
+    const allTraffic = state.setupFallbackMode === 'proxy';
+    return `<section class="setup-step-panel setup-simple-step">
+      <div class="setup-simple-hero">
+        <span class="setup-kicker">Шаг 2</span>
+        <h3>Выберите, что направлять через подключение</h3>
+        <p>Можно взять готовые сценарии для сервисов, добавить свои правила или направить через подключение весь интернет.</p>
+      </div>
+      <div class="setup-big-actions">
+        <button class="setup-action-card primary" type="button" data-tab-jump="routing" data-routing-view-jump="scenarios">
+          <span>▦</span><strong>Готовые сценарии</strong><small>YouTube, Discord, AI, игры и другие подборки</small>
+        </button>
+        <button class="setup-action-card" type="button" data-action="openRouteRuleDialog">
+          <span>＋</span><strong>Добавить своё правило</strong><small>Сайт, IP, устройство, порт или протокол</small>
+        </button>
+      </div>
+      <div class="setup-rule-summary ${userRuleCount ? 'ready' : ''}">
+        <div><span>${userRuleCount ? 'Правила выбраны' : 'Правила ещё не выбраны'}</span><strong>${userRuleCount}</strong></div>
+        <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Посмотреть правила</button>
+      </div>
+      <fieldset class="setup-fallback-choice">
+        <legend>Остальной интернет</legend>
+        <button type="button" class="${allTraffic ? '' : 'active'}" data-setup-fallback="direct" aria-pressed="${allTraffic ? 'false' : 'true'}">
+          <span class="setup-choice-mark">${allTraffic ? '' : '✓'}</span>
+          <strong>Напрямую</strong>
+          <small>Через подключение пойдут только выбранные сценарии и правила. Рекомендуется.</small>
+        </button>
+        <button type="button" class="${allTraffic ? 'active' : ''}" data-setup-fallback="proxy" aria-pressed="${allTraffic ? 'true' : 'false'}">
+          <span class="setup-choice-mark">${allTraffic ? '✓' : ''}</span>
+          <strong>Через подключение</strong>
+          <small>Весь интернет устройств локальной сети пойдёт через выбранный сервер.</small>
+        </button>
+      </fieldset>
+      <details class="setup-technical-details">
+        <summary>Дополнительные параметры</summary>
+        <div class="setup-advanced-summary">
+          <span>DNS через Xray</span><span>${escapeHtml(String(fwMode).toUpperCase())} для LAN</span><span>Локальная сеть доступна напрямую</span>
+          <button class="btn secondary compact" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Выбрать устройства</button>
+        </div>
+      </details>
+    </section>`;
+  }
   if (step === 'environment') {
     return `<section class="setup-step-panel">
       <h3>Проверка роутера</h3>
@@ -211,6 +338,64 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
         <article><span>Свободно</span><strong>${escapeHtml(byteSize(diskFree))}</strong><small>Если места мало, используйте компактные geo и обновляйте без резервной копии.</small></article>
         <article><span>Прокси</span><strong>${proxyCount}</strong><small>Нужен хотя бы один сервер или подписка.</small></article>
         <article><span>Firewall</span><strong>${escapeHtml(String(fwMode).toUpperCase())}</strong><small>Фактический режим сверяется перед финальным применением.</small></article>
+      </div>
+    </section>`;
+  }
+  if (step === 'configure') {
+    const defaultRoute = readiness.items.find((item) => item.key === 'defaultRoute');
+    const transparent = readiness.items.find((item) => item.key === 'transparent');
+    const ruleCount = Number((state.config?.routing?.rules || []).length || 0);
+    return `<section class="setup-step-panel">
+      <div class="setup-section-head">
+        <div>
+          <h3>Настройка трафика</h3>
+          <p>Соберите рабочую схему на одном экране: DNS, прокси, маршрутизация и перехват LAN. Подробные редакторы открываются отдельно и возвращают вас в этот шаг.</p>
+        </div>
+        <span class="status-chip ${proxyCount && defaultRoute?.ok && transparent?.ok ? 'ok' : 'warn'}">${proxyCount && defaultRoute?.ok && transparent?.ok ? 'основа готова' : 'нужно настроить'}</span>
+      </div>
+      <div class="setup-config-grid">
+        <article class="setup-config-card">
+          <div class="setup-config-card-head">
+            <div><span>01</span><strong>DNS для LAN</strong></div>
+            <small>${escapeHtml(state.setupLanDnsMode === 'xray' ? 'через Xray' : state.setupLanDnsMode === 'upstream' ? 'внешний DNS' : 'без изменений')}</small>
+          </div>
+          <p>Куда dnsmasq будет отправлять запросы устройств локальной сети.</p>
+          ${setupLanDnsBlock()}
+        </article>
+        <article class="setup-config-card">
+          <div class="setup-config-card-head">
+            <div><span>02</span><strong>Сервер и правила</strong></div>
+            <small>${proxyCount ? `${proxyCount} прокси` : 'нет прокси'}</small>
+          </div>
+          <p>Активный выход: <strong>${escapeHtml(activeProxyName())}</strong>. Правил маршрутизации: <strong>${ruleCount}</strong>.</p>
+          <div class="setup-inline-actions">
+            <button class="btn" type="button" data-tab-jump="servers">Серверы</button>
+            <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Правила</button>
+            <button class="btn secondary" type="button" data-import-dialog="server">Добавить сервер</button>
+          </div>
+        </article>
+        <article class="setup-config-card ${defaultRoute?.ok ? 'ok' : 'warn'}">
+          <div class="setup-config-card-head">
+            <div><span>03</span><strong>Остальной трафик</strong></div>
+            <small>${defaultRoute?.ok ? 'правило найдено' : 'нужно правило'}</small>
+          </div>
+          <p>${escapeHtml(defaultRoute?.detail || 'Мастер добавит финальное правило для LAN-трафика, который не совпал с правилами выше.')}</p>
+          <div class="setup-inline-actions">
+            <button class="btn" type="button" data-action="setupPrepareDraft">Подготовить черновик</button>
+            <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="rules">Проверить порядок</button>
+          </div>
+        </article>
+        <article class="setup-config-card ${transparent?.ok ? 'ok' : 'warn'}">
+          <div class="setup-config-card-head">
+            <div><span>04</span><strong>Перехват LAN</strong></div>
+            <small>${escapeHtml(String(fwMode).toUpperCase())}</small>
+          </div>
+          <p>${escapeHtml(transparent?.detail || 'Мастер подготовит transparent inbound и firewall для выбранных LAN-клиентов.')}</p>
+          <div class="setup-inline-actions">
+            <button class="btn" type="button" data-tab-jump="routing" data-routing-view-jump="intercept">Перехват</button>
+            <button class="btn secondary" type="button" data-tab-jump="routing" data-routing-view-jump="leaks">Защита от утечек</button>
+          </div>
+        </article>
       </div>
     </section>`;
   }
@@ -305,11 +490,29 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
       </div>
     </section>`;
   }
-  return `<section class="setup-step-panel">
-    <h3>Финальная проверка и применение</h3>
-    <p>На этом шаге мастер сохранит снимок для отката, подготовит конфигурацию, проверит Xray вместе с Geo Doctor, применит настройки Xray, DNS и firewall.</p>
-    ${setupSnapshotBlock(snapshot)}
+  const allTraffic = state.setupFallbackMode === 'proxy';
+  const launchReady = readiness.canApply && (allTraffic || readiness.proxyRuleCount > 0);
+  return `<section class="setup-step-panel setup-simple-step setup-launch-step ${result?.ok ? 'complete' : ''}">
+    <div class="setup-simple-hero">
+      <span class="setup-kicker">Шаг 3</span>
+      <h3>${result?.ok ? 'RuOpenRay запущен' : launchReady ? 'Всё готово к запуску' : 'Осталось завершить настройку'}</h3>
+      <p>${result?.ok ? 'Подключение работает, а настройки сохранены на роутере.' : launchReady ? 'Проверьте итог. После запуска мастер сам настроит Xray, DNS и перехват локальной сети.' : 'Вернитесь к предыдущим шагам: добавьте подключение и выберите сценарии либо весь интернет.'}</p>
+    </div>
+    <div class="setup-launch-summary">
+      <article><span>Подключение</span><strong>${proxyCount ? 'Готово' : 'Не выбрано'}</strong><small>${proxyCount} доступных выходов</small></article>
+      <article><span>Через подключение</span><strong>${allTraffic ? 'Весь интернет' : `${readiness.proxyRuleCount} правил`}</strong><small>${allTraffic ? 'Кроме локальной сети и служебных адресов' : 'Остальной интернет — напрямую'}</small></article>
+      <article><span>Устройства</span><strong>Локальная сеть</strong><small>Охват можно ограничить позднее</small></article>
+    </div>
+    <section class="setup-auto-plan">
+      <strong>${state.setupApplying ? 'Запускаю и проверяю' : 'Мастер сделает автоматически'}</strong>
+      <div><span>✓ Сохранит точку отката</span><span>✓ Проверит подключение</span><span>✓ Настроит DNS</span><span>✓ Включит маршрутизацию</span></div>
+    </section>
     ${resultBlock(result, rollback)}
+    <details class="setup-technical-details">
+      <summary>Резервная копия и технические параметры</summary>
+      ${setupSnapshotBlock(snapshot)}
+      <div class="setup-advanced-summary"><span>DNS: ${escapeHtml(state.setupLanDnsMode === 'xray' ? 'через Xray' : state.setupLanDnsMode)}</span><span>Перехват: ${escapeHtml(String(fwMode).toUpperCase())}</span></div>
+    </details>
   </section>`;
 }
 
@@ -393,6 +596,11 @@ function geoDoctorText() {
 
 function setupPage() {
   const readiness = setupReadiness();
+  if (!['direct', 'proxy'].includes(state.setupFallbackMode)) {
+    const proxyTags = new Set(proxyOutboundsSafe().map((item) => String(item?.tag || '').trim()).filter(Boolean));
+    state.setupFallbackMode = readiness.defaultRouteTarget && proxyTags.has(readiness.defaultRouteTarget) ? 'proxy' : 'direct';
+  }
+  if (!setupWizardStepIds.includes(state.setupStep)) state.setupStep = setupWizardStepIds[0];
   const result = state.setupResult;
   const rollback = state.setupRollbackResult;
   const snapshot = loadSetupSnapshot();
@@ -403,13 +611,14 @@ function setupPage() {
   const isLast = activeIndex >= steps.length - 1;
   const currentStep = steps[activeIndex] || steps[0];
   const primaryAction = isLast ? 'runSetupWizard' : 'setupStepNext';
-  const primaryDisabled = state.setupApplying || (isLast && !readiness.canApply);
+  const launchReady = readiness.canApply && (state.setupFallbackMode === 'proxy' || readiness.proxyRuleCount > 0);
+  const primaryDisabled = state.setupApplying || (isLast && !launchReady);
   return `
     <section class="setup-page">
       <div class="setup-page-head">
         <div>
-          <h2>Мастер настройки RuOpenRay</h2>
-          <p>Пошагово собирает самостоятельный режим: Xray, DNS, серверы, правила, перехват и проверку трафика. Каждый шаг проверяет себя перед переходом дальше.</p>
+          <h2>Быстрый запуск RuOpenRay</h2>
+          <p>Добавьте подключение, выберите нужные сервисы и запустите. Сетевые параметры роутера мастер настроит сам.</p>
         </div>
         <div class="split-actions">
           <button class="btn secondary" type="button" data-action="openInstallWizard">Установка Xray</button>
@@ -420,8 +629,8 @@ function setupPage() {
       <div class="setup-guided-layout">
         <aside class="setup-guide-rail">
           <div class="setup-rail-title">
-            <strong>Шаги настройки</strong>
-            <span>Идите сверху вниз. Вернуться можно к любому шагу, а перед запуском мастер проверит всю цепочку.</span>
+            <strong>Три простых шага</strong>
+            <span>Технические параметры уже подобраны. Их можно изменить позже в отдельных разделах.</span>
           </div>
           ${setupWizardStepper(steps)}
           ${setupWizardSummary(steps)}
@@ -432,7 +641,7 @@ function setupPage() {
           <div class="setup-actions setup-step-actions">
             <button class="btn secondary" type="button" data-action="setupStepBack" ${activeIndex <= 0 || state.setupApplying ? 'disabled' : ''}>Назад</button>
             ${setupStepSecondaryAction(currentStep?.id)}
-            <button class="btn warning" type="button" data-action="${primaryAction}" ${primaryDisabled ? 'disabled' : ''}>${setupStepPrimaryLabel(isLast)}</button>
+            <button class="btn warning" type="button" data-action="${primaryAction}" ${primaryDisabled ? 'disabled' : ''}>${setupStepPrimaryLabel(currentStep?.id, isLast)}</button>
           </div>
         </div>
       </div>

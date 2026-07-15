@@ -51,30 +51,6 @@ export function createCompatView({ state, escapeHtml }) {
     </article>`;
   }
 
-  function podkopCard(compat = {}) {
-    const item = compat.podkop || {};
-    const found = Boolean(item.available || item.active || item.running);
-    return `<article class="compat-card ${serviceTone(item)} ${found ? '' : 'muted-card'}">
-      <div class="compat-card-head">
-        <div>
-          <span class="eyebrow">Podkop</span>
-          <h2>${escapeHtml(serviceStateLabel(item))}</h2>
-          <p>${escapeHtml(item.summary || 'Проверяет признаки Podkop: DNS, nftables, TPROXY и policy routing.')}</p>
-        </div>
-        <span class="status-chip ${item.active ? 'warn' : ''}">${escapeHtml(item.active ? 'влияет на перехват' : (found ? 'без следов' : 'нет'))}</span>
-      </div>
-      <div class="compat-metrics">
-        <article><span>DNS</span><strong>${escapeHtml(item.dnsmasq?.usesPodkopDNS ? 'dnsmasq → Podkop' : 'не найдено')}</strong></article>
-        <article><span>nftables</span><strong>${escapeHtml(item.nft?.active ? 'таблица активна' : 'нет таблицы')}</strong></article>
-        <article><span>Policy routing</span><strong>${escapeHtml(item.routing?.ipRule || item.routing?.route ? 'найден' : 'не найден')}</strong></article>
-      </div>
-      <div class="split-actions">
-        ${externalLink(compat.links?.podkop, 'Открыть Podkop')}
-        <button class="btn secondary" data-tab-jump="diagnostics">Диагностика</button>
-      </div>
-    </article>`;
-  }
-
   function b4Card(compat = {}) {
     const item = compat.b4 || {};
     const found = Boolean(item.available || item.active || item.running);
@@ -111,34 +87,30 @@ export function createCompatView({ state, escapeHtml }) {
     const adguardPort = Number(adguardFallback.webPort || 3000) || 3000;
     const compat = state.compatStatus || {
       adguardHome: state.lanDnsStatus?.adguardHome || {},
-      podkop: state.status?.podkop || {},
       b4: state.status?.b4 || {},
       links: {
         adguardHome: `http://${routerLan}:${adguardPort}/`,
-        podkop: `http://${routerLan}/cgi-bin/luci/admin/services/podkop`,
         b4: `http://${routerLan}:7000/`
       }
     };
     const detected = Boolean(
       compat.adguardHome?.available || compat.adguardHome?.configPath ||
-      compat.podkop?.available || compat.podkop?.active ||
       compat.b4?.available || compat.b4?.active || compat.b4?.running
     );
     return `<section class="panel compat-panel">
       <div class="panel-title">
         <div>
           <h2>Сторонние сервисы</h2>
-          <span>AdGuard Home, Podkop и B4 могут управлять DNS, nftables или DPI-обходом рядом с RuOpenRay.</span>
+          <span>AdGuard Home и B4 могут управлять DNS, nftables или DPI-обходом рядом с RuOpenRay.</span>
         </div>
         <div class="split-actions">
           ${commandButton('refreshCompatibility', 'Обновить')}
           ${commandButton('stopRuOpenRayMode', 'Остановить RuOpenRay')}
         </div>
       </div>
-      ${detected ? '' : `<div class="empty-state">Сторонние сервисы пока не найдены. Когда RuOpenRay обнаружит AdGuard Home, Podkop или B4, здесь появятся быстрые действия.</div>`}
+      ${detected ? '' : `<div class="empty-state">Сторонние сервисы пока не найдены. Когда RuOpenRay обнаружит AdGuard Home или B4, здесь появятся быстрые действия.</div>`}
       <div class="compat-grid">
         ${adguardCard(compat)}
-        ${podkopCard(compat)}
         ${b4Card(compat)}
       </div>
     </section>`;

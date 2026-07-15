@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  routePresetByTitleFor,
   routePresetInstallSummaryFor,
   routePresetSequenceAt,
   routeRulePresetMatchesFor
@@ -64,6 +65,13 @@ test('single rule preset match uses conditions, not current outbound target', ()
   );
 
   assert.deepEqual(matches, [{ key: 'telegram', title: 'Telegram' }]);
+});
+
+test('saved scenario title restores its icon association after rules change', () => {
+  const match = routePresetByTitleFor('  TELEGRAM  ', entries(), titleForKey);
+
+  assert.deepEqual(match, { key: 'telegram', title: 'Telegram' });
+  assert.equal(routePresetByTitleFor('My unrelated rule', entries(), titleForKey), null);
 });
 
 test('install summary counts already installed preset rules by condition', () => {

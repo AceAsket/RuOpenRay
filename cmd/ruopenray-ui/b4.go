@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -102,11 +104,13 @@ func (s *serverState) b4Status() map[string]any {
 		}
 	}
 
+	b4Identity := boolMap(nft, "hasB4") || boolMap(iptables, "hasB4") ||
+		service["exists"] == true || processText != "" || boolMap(api, "available") || len(configs) > 0
+	routingActive := (boolMap(routing, "ipRule") || boolMap(routing, "route")) && b4Identity
 	active := boolMap(nft, "hasB4") ||
 		boolMap(nft, "hasQueue") ||
 		boolMap(iptables, "hasNFQUEUE") ||
-		boolMap(routing, "ipRule") ||
-		boolMap(routing, "route")
+		routingActive
 	result["active"] = active
 	warnings := b4Warnings(result)
 	result["warnings"] = warnings
@@ -282,22 +286,30 @@ func b4APISummarizeConfig(payload map[string]any) map[string]any {
 	}
 	queue, _ := data["queue"].(map[string]any)
 	setsSummary := b4APISummarizeSets(data["sets"])
+	interfaces := b4StringSliceFromAny(queue["interfaces"], 12)
+	queueConfigured := boolMap(queue, "ipv4") || boolMap(queue, "ipv6")
+	queueScope := "selected"
+	if queueConfigured && len(interfaces) == 0 {
+		queueScope = "all"
+	}
 	result := map[string]any{
 		"version":         b4FirstString(data["version"]),
 		"success":         boolMap(data, "success"),
 		"warnings":        b4StringSliceFromAny(data["warnings"], 10),
 		"availableIfaces": b4StringSliceFromAny(data["available_ifaces"], 12),
 		"queue": map[string]any{
-			"interfaces": b4StringSliceFromAny(queue["interfaces"], 12),
+			"interfaces": interfaces,
 			"ipv4":       boolMap(queue, "ipv4"),
 			"ipv6":       boolMap(queue, "ipv6"),
 			"mark":       b4IntFromAny(queue["mark"]),
 			"startNum":   b4IntFromAny(queue["start_num"]),
 			"threads":    b4IntFromAny(queue["threads"]),
 		},
-		"sets":        setsSummary,
-		"queueActive": len(b4StringSliceFromAny(queue["interfaces"], 12)) > 0,
-		"setsEnabled": boolMap(setsSummary, "enabled"),
+		"sets":            setsSummary,
+		"queueActive":     len(interfaces) > 0,
+		"queueConfigured": queueConfigured,
+		"queueScope":      queueScope,
+		"setsEnabled":     boolMap(setsSummary, "enabled"),
 	}
 	return result
 }
@@ -443,16 +455,82 @@ func b4RoutingStatus() map[string]any {
 		return map[string]any{"available": false, "ipRule": false, "route": false}
 	}
 	rules := runTimeout(3*time.Second, "ip", "rule", "show")
-	rulesText := strings.ToLower(fmt.Sprint(rules["stdout"]))
-	route := runTimeout(3*time.Second, "ip", "route", "show", "table", b4RouteTable)
-	routeText := strings.TrimSpace(fmt.Sprint(route["stdout"]))
-	return map[string]any{
-		"available": true,
-		"ipRule":    strings.Contains(rulesText, "lookup "+b4RouteTable) || strings.Contains(rulesText, "b4"),
-		"route":     b4RouteOutputActive(route),
-		"table":     b4RouteTable,
-		"stdout":    routeText,
+	rulesText := strings.TrimSpace(fmt.Sprint(rules["stdout"]))
+	policyRules := b4ParsePolicyRules(rulesText)
+	tables := []int{}
+	marks := []string{}
+	tableSeen := map[int]bool{}
+	markSeen := map[string]bool{}
+	markConflict := false
+	routeResults := []map[string]any{runTimeout(3*time.Second, "ip", "route", "show", "table", b4RouteTable)}
+	routeSamples := []string{}
+	for _, rule := range policyRules {
+		if !tableSeen[rule.Table] {
+			tableSeen[rule.Table] = true
+			tables = append(tables, rule.Table)
+			if len(tables) <= 32 {
+				result := runTimeout(3*time.Second, "ip", "route", "show", "table", strconv.Itoa(rule.Table))
+				routeResults = append(routeResults, result)
+				if text := strings.TrimSpace(fmt.Sprint(result["stdout"])); text != "" {
+					routeSamples = append(routeSamples, fmt.Sprintf("table %d:\n%s", rule.Table, text))
+				}
+			}
+		}
+		if rule.Mark != "" && !markSeen[rule.Mark] {
+			markSeen[rule.Mark] = true
+			marks = append(marks, rule.Mark)
+		}
+		if strings.EqualFold(rule.Mark, amneziaFwMark) {
+			markConflict = true
+		}
 	}
+	sort.Ints(tables)
+	sort.Strings(marks)
+	lowerRules := strings.ToLower(rulesText)
+	return map[string]any{
+		"available":        true,
+		"ipRule":           len(policyRules) > 0 || strings.Contains(lowerRules, "lookup "+b4RouteTable) || strings.Contains(lowerRules, "b4"),
+		"route":            b4RouteOutputActive(routeResults...),
+		"legacyTable":      b4RouteTable,
+		"tables":           tables,
+		"marks":            marks,
+		"markConflict":     markConflict,
+		"ruopenrayAWGMark": amneziaFwMark,
+		"rules":            rulesText,
+		"stdout":           strings.Join(routeSamples, "\n"),
+	}
+}
+
+type b4PolicyRule struct {
+	Table int
+	Mark  string
+}
+
+func b4ParsePolicyRules(output string) []b4PolicyRule {
+	rules := []b4PolicyRule{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(strings.ToLower(strings.TrimSpace(line)))
+		table := 0
+		mark := ""
+		for index, field := range fields {
+			if (field == "lookup" || field == "table") && index+1 < len(fields) {
+				value, err := strconv.Atoi(strings.TrimSpace(fields[index+1]))
+				if err == nil {
+					table = value
+				}
+			}
+			if field == "fwmark" && index+1 < len(fields) {
+				mark = strings.SplitN(strings.TrimSpace(fields[index+1]), "/", 2)[0]
+				if value, err := strconv.ParseUint(strings.TrimPrefix(mark, "0x"), 16, 32); err == nil {
+					mark = fmt.Sprintf("0x%x", value)
+				}
+			}
+		}
+		if table >= 100 && table <= 249 {
+			rules = append(rules, b4PolicyRule{Table: table, Mark: mark})
+		}
+	}
+	return rules
 }
 
 func b4RouteOutputActive(results ...map[string]any) bool {
@@ -531,6 +609,14 @@ func b4Warnings(status map[string]any) []string {
 	}
 	if boolMap(routing, "ipRule") || boolMap(routing, "route") {
 		warnings = append(warnings, "Найдены route table/rules B4. При параллельной работе важно не пересекать policy routing и fwmark.")
+	}
+	if boolMap(routing, "markConflict") {
+		warnings = append(warnings, fmt.Sprintf("Критический конфликт: B4 и RuOpenRay AWG используют fwmark %s. Измените mark одной из систем до параллельного запуска.", amneziaFwMark))
+	}
+	if api, ok := status["api"].(map[string]any); ok {
+		if config, ok := api["config"].(map[string]any); ok && fmt.Sprint(config["queueScope"]) == "all" {
+			warnings = append(warnings, "B4 настроен с пустым списком interfaces: это означает обработку всех интерфейсов, включая AWG/Xray-трафик, если его не исключить явно.")
+		}
 	}
 	return warnings
 }

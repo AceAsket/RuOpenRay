@@ -297,7 +297,10 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
   async function prepareAmneziaUserspace() {
     const result = await request('/api/amnezia/userspace/prepare', {
       method: 'POST',
-      body: JSON.stringify({ url: state.amneziaUserspaceUrl || '' })
+      body: JSON.stringify({
+        url: state.amneziaUserspaceUrl || '',
+        sha256: state.amneziaUserspaceSha256 || ''
+      })
     });
     if (!result?.ok) throw new Error(result?.error || 'Не удалось подготовить userspace backend');
     if (result.status?.amnezia || result.status?.clientConfig || result.status?.userspace) {

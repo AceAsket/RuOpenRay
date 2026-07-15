@@ -9,6 +9,7 @@ import {
 } from './routing-values.js';
 import {
   routePresetInstallSummaryFor,
+  routePresetByTitleFor,
   routePresetSequenceAt as findRoutePresetSequenceAt,
   routeRulePresetMatchesFor
 } from './routing-groups.js';
@@ -522,6 +523,10 @@ export function createRoutingActions({
 
   function routeRulePresetMatches(rule) {
     return routeRulePresetMatchesFor(rule, allRoutePresetEntries(), routePresetRules, normalizePresetRule, routePresetTitle);
+  }
+
+  function routePresetBySavedTitle(title) {
+    return routePresetByTitleFor(title, allRoutePresetEntries(), routePresetTitle);
   }
 
   function routePresetSequenceAt(rules, startIndex) {
@@ -1390,7 +1395,7 @@ export function createRoutingActions({
       : nested
         ? `data-route-group-child-index="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}"`
         : `data-route-index="${index}" data-route-range-start="${index}" data-route-range-end="${index + 1}"`;
-    const matchedPreset = !nested && presets.length ? presets[0] : null;
+    const matchedPreset = !nested ? (presets[0] || routePresetBySavedTitle(name)) : null;
     const matchedPresetData = matchedPreset
       ? (externalRoutePreset(matchedPreset.key) || routeBundles[matchedPreset.key] || routePresets[matchedPreset.key] || customRoutePreset(matchedPreset.key) || { title: matchedPreset.title })
       : null;

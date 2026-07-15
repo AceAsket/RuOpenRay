@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	rxraystats "github.com/AceAsket/RuOpenRay/internal/xraystats"
 	"strings"
 	"testing"
@@ -170,7 +171,77 @@ func TestServerModeAllowRouterDoesNotOpenWholeLAN(t *testing.T) {
 	}
 }
 
-func TestServerModeAWGPlanWarnsWithoutApplyingInterface(t *testing.T) {
+func TestServerModeAllowDNSDirectsOnlyRouterDNSBeforePrivateBlock(t *testing.T) {
+	client := serverModeClient{Email: "dns@example", EgressTag: "proxy", AllowDNS: true}
+	rules, needsBlock := serverModeClientRoutingRules("public", client, []string{"192.168.50.117"})
+	if !needsBlock || len(rules) != 3 {
+		t.Fatalf("expected router DNS, private block and egress rules, got %#v", rules)
+	}
+	dnsRule := mapValue(rules[0])
+	if dnsRule["outboundTag"] != "direct" || dnsRule["port"] != "53" {
+		t.Fatalf("router DNS must go direct before private block, got %#v", dnsRule)
+	}
+	if mapValue(rules[1])["outboundTag"] != serverModeBlockTag {
+		t.Fatalf("remaining private addresses must be blocked, got %#v", rules[1])
+	}
+}
+
+func TestServerModeAllowLANUsesDirectBeforeProxyEgress(t *testing.T) {
+	client := serverModeClient{Email: "lan@example", EgressTag: "proxy", AllowLAN: true, AllowDNS: true}
+	rules, needsBlock := serverModeClientRoutingRules("public", client, []string{"192.168.50.117"})
+	if needsBlock || len(rules) != 2 {
+		t.Fatalf("expected direct private and proxy egress rules, got %#v", rules)
+	}
+	lanRule := mapValue(rules[0])
+	if lanRule["outboundTag"] != "direct" {
+		t.Fatalf("private LAN must go direct, got %#v", lanRule)
+	}
+	ips := anySlice(lanRule["ip"])
+	if len(ips) != len(serverModePrivateNetworkCIDRs) {
+		t.Fatalf("direct rule must match built-in private networks, got %#v", lanRule)
+	}
+	want := map[string]bool{"192.168.0.0/16": false, "fc00::/7": false, "127.0.0.0/8": false}
+	for _, item := range ips {
+		if value, ok := item.(string); ok {
+			if _, tracked := want[value]; tracked {
+				want[value] = true
+			}
+		}
+	}
+	for cidr, found := range want {
+		if !found {
+			t.Fatalf("direct rule does not cover %s: %#v", cidr, lanRule)
+		}
+	}
+	if mapValue(rules[1])["outboundTag"] != "proxy" {
+		t.Fatalf("public traffic must retain selected egress, got %#v", rules[1])
+	}
+}
+
+func TestServerModeLimitedLANPrecedesPrivateBlock(t *testing.T) {
+	client := serverModeClient{
+		Email:           "limited@example",
+		EgressTag:       "proxy",
+		AllowDNS:        true,
+		LANAllowedIPs:   "192.168.50.20/32",
+		LANAllowedPorts: "22",
+		LANProtocol:     "tcp",
+	}
+	rules, needsBlock := serverModeClientRoutingRules("public", client, []string{"192.168.50.117"})
+	if !needsBlock || len(rules) != 4 {
+		t.Fatalf("expected limited LAN, router DNS, private block and egress, got %#v", rules)
+	}
+	limited := mapValue(rules[0])
+	if limited["outboundTag"] != "direct" || limited["port"] != "22" || limited["network"] != "tcp" {
+		t.Fatalf("limited LAN rule is invalid: %#v", limited)
+	}
+	if mapValue(rules[2])["outboundTag"] != serverModeBlockTag {
+		t.Fatalf("private block must follow explicit exceptions: %#v", rules)
+	}
+}
+
+func TestServerModeAWGPlanWarnsAboutSeparateRuntime(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(make([]byte, 32))
 	active := map[string]any{
 		"inbounds":  []any{},
 		"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}},
@@ -183,10 +254,12 @@ func TestServerModeAWGPlanWarnsWithoutApplyingInterface(t *testing.T) {
 			Enabled:     true,
 			ListenPort:  51820,
 			AddressCIDR: "10.70.0.1/24",
+			PrivateKey:  key,
 			EgressTag:   "direct",
 			Peers: []serverModeAWGPeer{{
 				ID:         "phone",
 				Enabled:    true,
+				PublicKey:  key,
 				AllowedIPs: "10.70.0.2/32",
 			}},
 		}},
@@ -198,17 +271,20 @@ func TestServerModeAWGPlanWarnsWithoutApplyingInterface(t *testing.T) {
 	warnings := preflight["warnings"].([]serverModeIssue)
 	found := false
 	for _, warning := range warnings {
-		if warning.Title == "AWG server-mode пока не применяет интерфейс" {
+		if warning.Title == "AWG runtime запускается отдельно" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected AWG not-applied warning, got %#v", warnings)
+		t.Fatalf("expected separate AWG runtime warning, got %#v", warnings)
 	}
 }
 
 func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
+	privateKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 32)))
+	publicKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("b", 32)))
+	presharedKey := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("c", 32)))
 	mode := normalizeServerModeConfig(serverModeConfig{
 		Enabled: true,
 		AWG: []serverModeAWGServer{{
@@ -218,7 +294,7 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 			Interface:   "awg-family",
 			ListenPort:  51820,
 			AddressCIDR: "10.70.0.1/24",
-			PrivateKey:  "server-private",
+			PrivateKey:  privateKey,
 			MTU:         1360,
 			EgressTag:   "proxy",
 			Advanced: map[string]interface{}{
@@ -231,8 +307,8 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 				ID:           "phone",
 				Name:         "Phone",
 				Enabled:      true,
-				PublicKey:    "peer-public",
-				PresharedKey: "peer-psk",
+				PublicKey:    publicKey,
+				PresharedKey: presharedKey,
 				AllowedIPs:   "10.70.0.2",
 			}},
 		}},
@@ -246,7 +322,7 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 	config := server["config"].(string)
 	for _, part := range []string{
 		"[Interface]",
-		"PrivateKey = server-private",
+		"PrivateKey = " + privateKey,
 		"ListenPort = 51820",
 		"Address = 10.70.0.1/24",
 		"MTU = 1360",
@@ -254,8 +330,8 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 		"Jmin = 40",
 		"S1 = 1",
 		"[Peer]",
-		"PublicKey = peer-public",
-		"PresharedKey = peer-psk",
+		"PublicKey = " + publicKey,
+		"PresharedKey = " + presharedKey,
 		"AllowedIPs = 10.70.0.2/32",
 	} {
 		if !strings.Contains(config, part) {
@@ -266,18 +342,29 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 		t.Fatalf("unknown advanced option leaked into config:\n%s", config)
 	}
 	redacted := server["configRedacted"].(string)
-	if strings.Contains(redacted, "server-private") || strings.Contains(redacted, "peer-psk") {
+	if strings.Contains(redacted, privateKey) || strings.Contains(redacted, presharedKey) {
 		t.Fatalf("redacted config leaked secrets:\n%s", redacted)
 	}
+	setconf := server["setconf"].(string)
+	for _, runtimeOnly := range []string{"Address =", "MTU ="} {
+		if strings.Contains(setconf, runtimeOnly) {
+			t.Fatalf("setconf must not contain %q:\n%s", runtimeOnly, setconf)
+		}
+	}
 	commands := stringList(server["commands"])
-	if len(commands) < 5 || !strings.Contains(strings.Join(commands, "\n"), "awg setconf 'awg-family'") {
+	commandText := strings.Join(commands, "\n")
+	setconfPath := server["setconfPath"].(string)
+	if len(commands) < 6 || !strings.Contains(commandText, "awg setconf 'awg-family' "+amneziaShellQuote(setconfPath)) {
 		t.Fatalf("expected awg setconf command, got %#v", commands)
+	}
+	if !strings.Contains(commandText, "umask 077") || strings.Contains(commandText, "type wireguard") {
+		t.Fatalf("commands must protect secrets and must not fall back to plain WireGuard: %#v", commands)
 	}
 	warnings := server["warnings"].([]serverModeIssue)
 	foundPolicyWarning := false
 	foundNormalizeWarning := false
 	for _, warning := range warnings {
-		if warning.Title == "AWG traffic policy is not applied yet" {
+		if warning.Title == "AWG outbound is not supported by runtime" {
 			foundPolicyWarning = true
 		}
 		if warning.Title == "AWG peer AllowedIPs normalized" {
@@ -286,6 +373,60 @@ func TestServerModeAWGPlanBuildsConfigAndCommands(t *testing.T) {
 	}
 	if !foundPolicyWarning || !foundNormalizeWarning {
 		t.Fatalf("expected policy and normalization warnings, got %#v", warnings)
+	}
+}
+
+func TestServerModeAWGPlanRejectsInvalidKeys(t *testing.T) {
+	plan := serverModeBuildAWGServerPlan(serverModeAWGServer{
+		ID:          "invalid-keys",
+		Enabled:     true,
+		Interface:   "awg-invalid",
+		ListenPort:  51820,
+		AddressCIDR: "10.70.0.1/24",
+		PrivateKey:  "not-a-wireguard-key",
+		Peers: []serverModeAWGPeer{{
+			ID:           "peer",
+			Enabled:      true,
+			PublicKey:    "also-invalid",
+			PresharedKey: "invalid-psk",
+			AllowedIPs:   "10.70.0.2/32",
+		}},
+	}, "/tmp/invalid.conf")
+	if plan["ok"] == true {
+		t.Fatalf("invalid keys must fail the plan: %#v", plan)
+	}
+	issues := plan["errors"].([]serverModeIssue)
+	if len(issues) < 3 {
+		t.Fatalf("expected private, public and preshared key errors: %#v", issues)
+	}
+}
+
+func TestServerModeAWGPlanRejectsOverlappingPeerRoutes(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 32)))
+	plan := serverModeBuildAWGServerPlan(serverModeAWGServer{
+		ID:          "overlap",
+		Enabled:     true,
+		Interface:   "awg-overlap",
+		ListenPort:  51820,
+		AddressCIDR: "10.70.0.1/24",
+		PrivateKey:  key,
+		EgressTag:   "direct",
+		Peers: []serverModeAWGPeer{
+			{ID: "one", Enabled: true, PublicKey: key, AllowedIPs: "10.70.0.2/32"},
+			{ID: "two", Enabled: true, PublicKey: key, AllowedIPs: "10.70.0.2/32"},
+		},
+	}, "/tmp/overlap.conf")
+	if plan["ok"] == true {
+		t.Fatalf("overlapping peer routes must be rejected: %#v", plan)
+	}
+	found := false
+	for _, issue := range plan["errors"].([]serverModeIssue) {
+		if issue.Title == "AWG peer routes overlap" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing overlap issue: %#v", plan["errors"])
 	}
 }
 
@@ -315,6 +456,102 @@ func TestServerModeSecurityReportShowsClientPolicy(t *testing.T) {
 	}
 	if clients[1]["risk"] != "high" || clients[1]["lan"] != "allowed" || clients[1]["dns"] != "allowed" {
 		t.Fatalf("admin client should be high-risk LAN/DNS allowed, got %#v", clients[1])
+	}
+}
+
+func TestServerModeSecurityReportDoesNotClaimAWGIsolation(t *testing.T) {
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		AWG: []serverModeAWGServer{{
+			ID:      "public-awg",
+			Enabled: true,
+			Peers:   []serverModeAWGPeer{{ID: "phone", Name: "Phone", Enabled: true}},
+		}},
+	})
+	report := serverModeSecurityReport(mode)
+	if report["safe"] == true {
+		t.Fatalf("AWG plan without enforced firewall must not be marked safe: %#v", report)
+	}
+	peers := report["peers"].([]map[string]any)
+	if len(peers) != 1 || peers[0]["lan"] != "not-enforced" || peers[0]["risk"] != "unmanaged" {
+		t.Fatalf("AWG policy must be explicit about missing enforcement: %#v", peers)
+	}
+	summary := report["summary"].(map[string]int)
+	if summary["unmanaged"] != 1 {
+		t.Fatalf("unmanaged AWG peer was not counted: %#v", summary)
+	}
+}
+
+func TestServerModeSecurityReportMarksRunningAWGPolicyManaged(t *testing.T) {
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		AWG: []serverModeAWGServer{{
+			ID:       "public-awg",
+			Enabled:  true,
+			AllowLAN: false,
+			Peers:    []serverModeAWGPeer{{ID: "phone", Name: "Phone", Enabled: true}},
+		}},
+	})
+	report := serverModeSecurityReportWithAWGRuntime(mode, true)
+	if report["safe"] != true {
+		t.Fatalf("running isolated AWG policy should be safe: %#v", report)
+	}
+	peers := report["peers"].([]map[string]any)
+	if len(peers) != 1 || peers[0]["lan"] != "blocked" || peers[0]["router"] != "blocked" || peers[0]["risk"] != "low" {
+		t.Fatalf("running AWG policy should report enforced isolation: %#v", peers)
+	}
+	summary := report["summary"].(map[string]int)
+	if summary["unmanaged"] != 0 || summary["managedRules"] != 2 {
+		t.Fatalf("managed AWG peer was not counted correctly: %#v", summary)
+	}
+}
+
+func TestServerModeListenConflicts(t *testing.T) {
+	cases := []struct {
+		left  string
+		right string
+		want  bool
+	}{
+		{left: "0.0.0.0", right: "127.0.0.1", want: true},
+		{left: "", right: "192.168.1.1", want: true},
+		{left: "::", right: "127.0.0.1", want: true},
+		{left: "127.0.0.1", right: "127.0.0.1", want: true},
+		{left: "127.0.0.1", right: "192.168.1.1", want: false},
+	}
+	for _, tc := range cases {
+		if got := serverModeListenConflicts(tc.left, tc.right); got != tc.want {
+			t.Fatalf("conflict(%q, %q) = %v, want %v", tc.left, tc.right, got, tc.want)
+		}
+	}
+}
+
+func TestServerModePreflightRejectsInvalidAWGKeys(t *testing.T) {
+	active := map[string]any{
+		"inbounds":  []any{},
+		"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}},
+		"routing":   map[string]any{"rules": []any{}},
+	}
+	mode := normalizeServerModeConfig(serverModeConfig{
+		Enabled: true,
+		AWG: []serverModeAWGServer{{
+			ID:          "invalid",
+			Enabled:     true,
+			Interface:   "awg-invalid",
+			ListenPort:  51820,
+			AddressCIDR: "10.70.0.1/24",
+			PrivateKey:  "invalid",
+			EgressTag:   "direct",
+			Peers: []serverModeAWGPeer{{
+				ID:         "peer",
+				Enabled:    true,
+				PublicKey:  "invalid",
+				AllowedIPs: "10.70.0.2/32",
+			}},
+		}},
+	})
+	preflight := serverModePreflight(mode, active)
+	if preflight["ok"] == true {
+		t.Fatalf("invalid AWG keys must block server-mode apply/firewall: %#v", preflight)
 	}
 }
 

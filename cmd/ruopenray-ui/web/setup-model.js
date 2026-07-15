@@ -18,7 +18,16 @@ export function createSetupModel({
     const transparent = firewallInfo();
     const dnsReadiness = lanDns.readiness || {};
     const proxyCount = proxyOutbounds().length;
-    const defaultRoute = transparentCatchAllRoute(state.config || {});
+    const config = state.config || {};
+    const defaultRoute = transparentCatchAllRoute(config);
+    const bootstrapDomains = serverBootstrapDomains(config);
+    const proxyTags = new Set(proxyOutbounds().map((item) => String(item?.tag || '').trim()).filter(Boolean));
+    const userRules = (Array.isArray(config?.routing?.rules) ? config.routing.rules : [])
+      .filter((rule) => !isSetupManagedRule(rule, bootstrapDomains));
+    const proxyRuleCount = userRules.filter((rule) =>
+      Boolean(String(rule?.balancerTag || '').trim())
+      || proxyTags.has(String(rule?.outboundTag || '').trim())
+    ).length;
     const firewallMatchesSelection = typeof firewallReadyStatus === 'function'
       ? firewallReadyStatus(firewall)
       : Boolean(firewall.active && firewall.persistent && !firewall.needsPolicyFix);
@@ -89,7 +98,11 @@ export function createSetupModel({
     return {
       items,
       ready: required.every((item) => item.ok),
-      canApply: Boolean(status.core?.available && proxyCount > 0)
+      canApply: Boolean(status.core?.available && proxyCount > 0),
+      proxyCount,
+      userRuleCount: userRules.length,
+      proxyRuleCount,
+      defaultRouteTarget: defaultRoute.target
     };
   }
 
@@ -222,6 +235,12 @@ export function createSetupModel({
     return { target: '', rule: null };
   }
 
+  function setupFallbackModeFromConfig(config = state.config || {}) {
+    const target = transparentCatchAllRoute(config).target;
+    const proxyTags = new Set(proxyOutbounds().map((item) => String(item?.tag || '').trim()).filter(Boolean));
+    return target && proxyTags.has(target) ? 'proxy' : 'direct';
+  }
+
   function isSetupManagedRule(rule, bootstrapDomains = []) {
     const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
     const ips = Array.isArray(rule?.ip) ? rule.ip : [];
@@ -255,8 +274,9 @@ export function createSetupModel({
       { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
       { type: 'field', outboundTag: 'dns-out', port: '53' }
     ];
-    const catchAllRules = defaultProxyTag
-      ? [{ type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: defaultProxyTag, network: 'tcp,udp' }]
+    const fallbackTag = state.setupFallbackMode === 'proxy' ? defaultProxyTag : 'direct';
+    const catchAllRules = fallbackTag
+      ? [{ type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: fallbackTag, network: 'tcp,udp' }]
       : [];
     const seen = new Set();
     const keptRules = [];
@@ -270,7 +290,7 @@ export function createSetupModel({
     config.routing.rules = [...managedRules, ...keptRules, ...catchAllRules];
   }
 
-  function prepareSetupDraft({ message = true } = {}) {
+  function prepareSetupDraft({ message = true, persist = true } = {}) {
     const next = JSON.parse(JSON.stringify(state.config || {}));
     next.inbounds = Array.isArray(next.inbounds) ? next.inbounds : [];
     next.outbounds = Array.isArray(next.outbounds) ? next.outbounds : [];
@@ -326,7 +346,7 @@ export function createSetupModel({
   
     normalizeSetupRules(next);
   
-    syncConfig(next);
+    syncConfig(next, { persist });
     if (message) state.message = 'Черновик активного режима подготовлен: входящий поток перехвата, DNS-вход Xray, DNS-выход и базовые правила добавлены.';
   }
 
@@ -345,6 +365,7 @@ export function createSetupModel({
     ensureDnsBootstrapHosts,
     firstProxyOutboundTag,
     transparentCatchAllRoute,
+    setupFallbackModeFromConfig,
     isSetupManagedRule,
     normalizeSetupRules,
     prepareSetupDraft
