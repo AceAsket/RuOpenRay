@@ -134,36 +134,94 @@ function dnsLeakChecklist(dns, stats) {
   if (items[4] && dnsInbound && dnsRouting && !dnsPortConflict) {
     items[4].detail = `Xray готов принимать DNS на ${xrayDnsTarget.replace('#', ':')}. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.`;
   }
+  const diagnosticWarnings = Array.isArray(state.dnsDiagnostics?.warnings) ? state.dnsDiagnostics.warnings : [];
+  const attentionItems = items.filter((item) => !item.ok);
+  if (diagnosticWarnings.length) {
+    attentionItems.push({
+      ok: false,
+      warn: true,
+      title: 'DNS роутера требует внимания',
+      detail: diagnosticWarnings.join(' '),
+    });
+  }
+  const badCount = attentionItems.filter((item) => !item.warn).length;
+  const attentionCount = attentionItems.length;
+  const okCount = items.filter((item) => item.ok).length;
+  const guardTone = badCount ? 'bad' : attentionCount ? 'warn' : 'ok';
+  const issueTitle = (count) => {
+    const tail = count % 100;
+    const digit = count % 10;
+    if (digit === 1 && tail !== 11) return `${count} пункт требует проверки`;
+    if (digit >= 2 && digit <= 4 && (tail < 12 || tail > 14)) return `${count} пункта требуют проверки`;
+    return `${count} пунктов требуют проверки`;
+  };
+  const overviewTitle = attentionCount ? issueTitle(attentionCount) : 'Основной DNS-путь защищён';
+  const overviewDetail = badCount
+    ? 'Есть настройки, без которых часть DNS-запросов может обойти контролируемый путь.'
+    : attentionCount
+      ? 'Критических ошибок нет. Проверьте отмеченные ниже рекомендации.'
+      : 'Xray, DNS устройств и маршрутизация согласованы между собой.';
+  const renderGuardItems = (list) => list.map((item) => `<article class="guard-item ${item.ok ? 'ok' : item.warn ? 'warn' : 'bad'}">
+    <span>${item.ok ? '✓' : item.warn ? '!' : '×'}</span>
+    <div>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+      ${item.action ? `<button class="guard-action" type="button" data-action="${escapeHtml(item.action)}">${escapeHtml(item.actionLabel)}</button>` : ''}
+    </div>
+  </article>`).join('');
   return `
     <section class="panel dns-guard-panel">
-      <div class="panel-title">
-        <div><h2>Защита от утечек DNS</h2><span>Проверяем, куда пойдут DNS-запросы LAN-устройств и где может появиться открытый UDP/53.</span></div>
-        <button class="btn secondary ${state.busyAction === 'checkDns' ? 'is-busy' : ''}" data-action="checkDns" ${state.busyAction === 'checkDns' ? 'disabled' : ''}>${state.busyAction === 'checkDns' ? 'Проверяю...' : 'Проверить DNS'}</button>
+      <div class="panel-title dns-guard-title">
+        <div><h2>Проверка и защита DNS</h2><span>Показываем только то, что может повлиять на приватность и работу устройств.</span></div>
       </div>
-      <div class="dns-wizard">
-        <button class="wizard-card" data-action="dnsWizardSecure">
-          <strong>Защищенный DNS</strong>
-          <span>Добавить DoH Google и AdGuard без изменения маршрутов.</span>
-        </button>
-        <button class="wizard-card" data-action="dnsWizardRu">
-          <strong>RU-friendly DNS</strong>
-          <span>Добавить Yandex DoH и AdGuard для российских сценариев.</span>
-        </button>
-        <button class="wizard-card" data-action="dnsWizardStrict">
-          <strong>DoH + QUIC guard</strong>
-          <span>Добавить DoH и правило UDP/443 через активный proxy.</span>
-        </button>
+      <div class="dns-guard-overview ${guardTone}">
+        <span class="dns-guard-overview-icon" aria-hidden="true">${guardTone === 'ok' ? '✓' : guardTone === 'warn' ? '!' : '×'}</span>
+        <div class="dns-guard-overview-copy">
+          <span>Состояние защиты</span>
+          <h3>${escapeHtml(overviewTitle)}</h3>
+          <p>${escapeHtml(overviewDetail)}</p>
+        </div>
+        <div class="dns-guard-overview-counts" aria-label="Результат проверки">
+          <span><strong>${okCount}/${items.length}</strong> пройдено</span>
+          <span class="${attentionCount ? guardTone : 'ok'}"><strong>${attentionCount}</strong> проверить</span>
+        </div>
+        <div class="dns-guard-primary-actions">
+          <button class="btn primary ${state.busyAction === 'checkDns' ? 'is-busy' : ''}" data-action="checkDns" ${state.busyAction === 'checkDns' ? 'disabled' : ''}>${state.busyAction === 'checkDns' ? 'Проверяю...' : 'Проверить DNS'}</button>
+          <button class="btn secondary ${state.busyAction === 'checkDnsDiagnostics' ? 'is-busy' : ''}" data-action="checkDnsDiagnostics" ${state.busyAction === 'checkDnsDiagnostics' ? 'disabled' : ''}>${state.busyAction === 'checkDnsDiagnostics' ? 'Проверяю роутер...' : 'Проверить роутер'}</button>
+        </div>
       </div>
-      <div class="guard-list">
-        ${items.map((item) => `<article class="guard-item ${item.ok ? 'ok' : item.warn ? 'warn' : 'bad'}">
-          <span>${item.ok ? '✓' : item.warn ? '!' : '×'}</span>
-          <div>
-            <strong>${escapeHtml(item.title)}</strong>
-            <small>${escapeHtml(item.detail)}</small>
-            ${item.action ? `<button class="guard-action" type="button" data-action="${escapeHtml(item.action)}">${escapeHtml(item.actionLabel)}</button>` : ''}
+      ${attentionItems.length ? `<div class="dns-guard-attention">
+        <div class="dns-guard-section-head">
+          <div><h3>Что проверить</h3><span>Остальные проверки уже пройдены и не занимают место на экране.</span></div>
+          <strong>${attentionCount}</strong>
+        </div>
+        <div class="guard-list dns-guard-attention-list">${renderGuardItems(attentionItems)}</div>
+      </div>` : ''}
+      <details class="dns-guard-details" data-details-key="dns-guard-quick-setup">
+        <summary><span><strong>Быстрая настройка</strong><em>Готовые варианты защищённого DNS и защиты от QUIC.</em></span><b>3 варианта</b></summary>
+        <div class="dns-guard-details-body">
+          <div class="dns-wizard">
+            <button class="wizard-card" data-action="dnsWizardSecure">
+              <strong>Защищённый DNS</strong>
+              <span>Добавить DoH Google и AdGuard без изменения маршрутов.</span>
+            </button>
+            <button class="wizard-card" data-action="dnsWizardRu">
+              <strong>DNS для российских сервисов</strong>
+              <span>Добавить Yandex DoH и AdGuard для российских сценариев.</span>
+            </button>
+            <button class="wizard-card" data-action="dnsWizardStrict">
+              <strong>DoH и защита от QUIC</strong>
+              <span>Добавить DoH и правило UDP/443 через активное подключение.</span>
+            </button>
           </div>
-        </article>`).join('')}
-      </div>
+        </div>
+      </details>
+      <details class="dns-guard-details" data-details-key="dns-guard-full-checklist">
+        <summary><span><strong>Все проверки</strong><em>Полный технический список состояния DNS и маршрутизации.</em></span><b>${okCount}/${items.length} пройдено</b></summary>
+        <div class="dns-guard-details-body">
+          <div class="guard-list dns-guard-full-list">${renderGuardItems(items)}</div>
+        </div>
+      </details>
       ${dnsDiagnosticsSection()}
     </section>
   `;
@@ -171,6 +229,7 @@ function dnsLeakChecklist(dns, stats) {
 
 function dnsDiagnosticsSection() {
   const diagnostics = state.dnsDiagnostics;
+  if (!diagnostics) return '';
   const probeText = (probe) => {
     if (!probe) return 'не проверялся';
     if (probe.skipped) return 'не требуется';
@@ -182,19 +241,20 @@ function dnsDiagnosticsSection() {
   };
   const autoProbes = Array.isArray(diagnostics?.autoProbes) ? diagnostics.autoProbes : [];
   return `
-    <div class="dns-diagnostics-card">
-      <div>
-        <strong>DNS роутера</strong>
-        <span>${diagnostics ? escapeHtml(diagnostics.summary || 'Проверка выполнена') : 'Проверяет системный DNS OpenWrt, WAN DNS и Xray DNS inbound.'}</span>
+    <details class="dns-guard-details dns-diagnostics-details" data-details-key="dns-guard-diagnostics">
+      <summary>
+        <span><strong>Результаты проверки роутера</strong><em>${escapeHtml(diagnostics.summary || 'Проверка выполнена')}</em></span>
+        <b>${(diagnostics.warnings || []).length ? 'Есть замечания' : 'Проверено'}</b>
+      </summary>
+      <div class="dns-guard-details-body">
+        <div class="dns-diagnostics-grid">
+          <article class="${diagnostics.system?.ok ? 'ok' : 'warn'}"><span>Системный DNS</span><strong>${escapeHtml(probeText(diagnostics.system))}</strong></article>
+          <article class="${autoProbes.some((item) => item.ok) ? 'ok' : 'warn'}"><span>WAN DNS OpenWrt</span><strong>${escapeHtml(autoProbes.length ? autoProbes.map((item) => `${item.server}: ${probeText(item)}`).join(' · ') : 'не найден')}</strong></article>
+          <article class="${diagnostics.xrayDns?.ok || diagnostics.xrayDns?.skipped ? 'ok' : 'warn'}"><span>Xray DNS</span><strong>${escapeHtml(probeText(diagnostics.xrayDns))}</strong></article>
+        </div>
+        ${(diagnostics?.warnings || []).length ? `<div class="settings-warning"><strong>Что важно</strong><span>${escapeHtml(diagnostics.warnings.join(' '))}</span></div>` : ''}
       </div>
-      <button class="btn secondary ${state.busyAction === 'checkDnsDiagnostics' ? 'is-busy' : ''}" data-action="checkDnsDiagnostics" ${state.busyAction === 'checkDnsDiagnostics' ? 'disabled' : ''}>${state.busyAction === 'checkDnsDiagnostics' ? 'Проверяю...' : 'Проверить DNS роутера'}</button>
-      ${diagnostics ? `<div class="dns-diagnostics-grid">
-        <article class="${diagnostics.system?.ok ? 'ok' : 'warn'}"><span>Системный DNS</span><strong>${escapeHtml(probeText(diagnostics.system))}</strong></article>
-        <article class="${autoProbes.some((item) => item.ok) ? 'ok' : 'warn'}"><span>WAN DNS OpenWrt</span><strong>${escapeHtml(autoProbes.length ? autoProbes.map((item) => `${item.server}: ${probeText(item)}`).join(' · ') : 'не найден')}</strong></article>
-        <article class="${diagnostics.xrayDns?.ok || diagnostics.xrayDns?.skipped ? 'ok' : 'warn'}"><span>Xray DNS</span><strong>${escapeHtml(probeText(diagnostics.xrayDns))}</strong></article>
-      </div>` : ''}
-      ${(diagnostics?.warnings || []).length ? `<div class="settings-warning"><strong>Что важно</strong><span>${escapeHtml(diagnostics.warnings.join(' '))}</span></div>` : ''}
-    </div>
+    </details>
   `;
 }
 
