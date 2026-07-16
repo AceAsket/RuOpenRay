@@ -285,6 +285,8 @@ export function createInitialState() {
   routePresetSourceAutoUpdate: false,
   routePresetSourceCheck: null,
   routePresetSourcesUpdating: false,
+  routePresetSearch: '',
+  routePresetFilter: 'all',
   legacyRouteNames: {},
   routeNames: {},
   disabledRouteRules: [],

@@ -78,7 +78,10 @@ body[data-theme="light"] .domain-row,
 body[data-theme="light"] .log-panel,
 body[data-theme="light"] .dashboard-technical-panel,
 body[data-theme="light"] .dashboard-traffic-grid article,
-body[data-theme="light"] .dashboard-selected-server {
+body[data-theme="light"] .dashboard-selected-server,
+body[data-theme="light"] .servers-overview article,
+body[data-theme="light"] .scenario-catalog-toolbar,
+body[data-theme="light"] .route-selection-tools {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--shadow);
@@ -346,6 +349,11 @@ body[data-theme="light"] .pending-risk-list article span,
 body[data-theme="light"] .notice-details-body p,
 body[data-theme="light"] .app-version-pill.has-update {
   color: #6e4a08;
+}
+
+body[data-theme="light"] .servers-overview article.is-ok {
+  border-color: rgba(23, 139, 54, 0.28);
+  background: #eaf8ed;
 }
 
 body[data-theme="light"] .xray-version-pill.has-update {

@@ -2101,7 +2101,7 @@ function render() {
           </button>
         </div>
       </aside>
-      <main class="main">
+      <main class="main main-${escapeHtml(state.tab)}">
         ${state.busyAction && !hasLocalOperationProgress ? `
           <div class="global-action-progress" role="status" aria-live="polite">
             <span>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>

@@ -39,6 +39,7 @@ import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
 import { createRoutingDsl } from '../cmd/ruopenray-ui/web/routing-dsl.js';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
+import { createRoutingView } from '../cmd/ruopenray-ui/web/routing-view.js';
 import { bindServerCheckControls } from '../cmd/ruopenray-ui/web/server-check-bindings.js';
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
 import { patchServerEditField, serverEditFields } from '../cmd/ruopenray-ui/web/server-edit-model.js';
@@ -1913,7 +1914,7 @@ const subscriptionViewState = {
   serverChecking: false,
   serverCheckingTags: [],
   serverCheckHistory: [],
-  serverMeta: [],
+  serverMeta: { proxy: { label: 'Primary' } },
   serverEditDialog: true,
   serverEditIndex: 0,
   serverEditJson: JSON.stringify({
@@ -1949,7 +1950,7 @@ const serversView = createServersView({
   outboundAddress: (outbound) => [outbound?.address, outbound?.port].filter(Boolean).join(':'),
   outboundTransport: () => '',
   outboundUsage: () => 0,
-  proxyOutbounds: () => [],
+  proxyOutbounds: () => [JSON.parse(subscriptionViewState.serverEditJson)],
   proxyRuleStrategyStats: () => ({ primary: 0, pinned: 0 }),
   routingBalancersPanel: () => '',
   serverCheckButton: () => '',
@@ -1958,6 +1959,10 @@ const serversView = createServersView({
   serverStats: () => ({ proxy: 0, system: 0, used: 0 }),
   serverTrafficView: () => '',
 });
+const serversPanelHtml = serversView.serversPanel();
+const serversPanelUsesCompactOverview = serversPanelHtml.includes('class="servers-overview"')
+  && !serversPanelHtml.includes('class="stats route-stats"')
+  && serversPanelHtml.includes('>Primary</strong>');
 const subscriptionCardHtml = serversView.subscriptionPoolCard({
   tag: 'test_subs',
   url: 'https://example.test/sub',
@@ -1990,6 +1995,36 @@ const routingHelpersSetMatches = routePresetRuleSetMatches(
 );
 const routingHelpersKeyIgnoresValueOrder = routeRuleConditionKey({ domain: ['b', 'a'] }) === routeRuleConditionKey({ domain: ['a', 'b'] });
 
+const scenarioCatalogState = {
+  routePresetSources: [{ id: 'catalog', name: 'Catalog', version: '1', count: 2 }],
+  routePresetSourceCheck: null,
+  routePresetSourceUrl: '',
+  routePresetSourceName: '',
+  routePresetSourceAutoUpdate: false,
+  routePresetSourcesUpdating: false,
+  routePresetSearch: '',
+  routePresetFilter: 'all',
+  busyAction: '',
+};
+const scenarioCatalogView = createRoutingView({
+  state: scenarioCatalogState,
+  escapeHtml,
+  builtinRoutePresetEntries: () => [
+    ['youtube', { title: 'YouTube', detail: 'Video', source: 'github', icon: 'youtube' }],
+    ['discord', { title: 'Discord', detail: 'Voice', source: 'github', icon: 'discord' }],
+  ],
+  customRoutePresetEntries: () => [],
+  ruleCountLabel: (count) => `${count} rules`,
+  routePresetConditionCount: () => 3,
+  routePresetInstallSummary: (key) => ({ installed: key === 'youtube', partial: false }),
+  routePresetInstallLabel: (key) => key === 'youtube' ? 'installed' : '',
+});
+const scenarioCatalogHtml = scenarioCatalogView.routingScenariosPanel();
+const scenarioCatalogIsSearchableAndCompact = scenarioCatalogHtml.includes('id="routePresetSearch"')
+  && scenarioCatalogHtml.includes('data-route-preset-filter="installed"')
+  && scenarioCatalogHtml.includes('data-scenario-card')
+  && !scenarioCatalogHtml.includes('class="scenario-source-box" open');
+
 const checks = [
   ['aux devices panel', aux.devicesPanel().includes('LAN')],
   ['aux logs panel', aux.logsPanel(true).includes('log-console')],
@@ -1997,6 +2032,8 @@ const checks = [
   ['dashboard keeps config snapshot during transient empty state', dashboardKeepsLastSnapshot],
   ['dashboard renders one server list without direction summary cards', dashboardHasSingleServerList],
   ['dashboard separates operational and technical information', dashboardOperationalLayout],
+  ['servers page uses one compact overview and short labels', serversPanelUsesCompactOverview],
+  ['scenario catalog is searchable and keeps sources collapsed', scenarioCatalogIsSearchableAndCompact],
   ['amnezia run controls render', amneziaRunControlsRender],
   ['amnezia structured editor render', amneziaStructuredEditorRender],
   ['amnezia config editor builds raw', amneziaConfigEditorBuildsRaw],

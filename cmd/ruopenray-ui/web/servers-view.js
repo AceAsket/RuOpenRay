@@ -51,6 +51,23 @@ function serverActionState(label) {
   </span>`;
 }
 
+function serverDisplayName(outbound) {
+  const tag = String(outbound?.tag || '').trim();
+  const configured = String(state.serverMeta?.[tag]?.label || '').trim();
+  if (configured) return configured;
+  const address = String(outboundAddress(outbound) || '').trim();
+  const host = address.replace(/^\[/, '').split(']')[0].split(':')[0];
+  const firstLabel = host.includes('.') ? host.split('.')[0] : '';
+  if (firstLabel && !/^\d+$/.test(firstLabel)) {
+    return firstLabel
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+  return tag || 'Сервер';
+}
+
 function subscriptionCandidateStatus(check, checking = false) {
   if (checking) return '<span class="server-chip warn subscription-check-status"><i></i>проверяю</span>';
   if (!check) return '<span class="server-chip warn subscription-check-status"><i></i>не проверен</span>';
@@ -88,6 +105,7 @@ function subscriptionCandidateSearchText(candidate, index, location, address) {
 
 function serverCard(outbound, index, activeTag) {
   const tag = outbound?.tag || `outbound-${index + 1}`;
+  const displayName = serverDisplayName(outbound);
   const usage = outboundUsage(tag);
   const check = checkForTag(tag);
   const active = tag === activeTag;
@@ -98,7 +116,7 @@ function serverCard(outbound, index, activeTag) {
     <div class="server-identity">
       <span class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</span>
       <div class="server-main">
-        <strong>${serverLocationChip(outbound)}${escapeHtml(tag)}</strong>
+        <strong title="${escapeHtml(tag)}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(outboundAddress(outbound))}</span>
         ${meta}
       </div>
@@ -442,6 +460,8 @@ function serversPanel() {
   const activeTag = activeProxyTag();
   const proxyServers = proxyOutbounds();
   const alive = proxyServers.filter((outbound) => checkForTag(outbound?.tag || '')?.ok).length;
+  const activeServer = proxyServers.find((outbound) => outbound?.tag === activeTag);
+  const activeName = activeServer ? serverDisplayName(activeServer) : 'не выбран';
   const serverTabs = [
     ['list', 'Прокси'],
     ['balancers', 'Балансировка'],
@@ -453,20 +473,15 @@ function serversPanel() {
   return `
     <section class="route-hero servers-hero">
       <div>
-        <h2>Прокси и группы</h2>
-        <p>Прокси-серверы, подписки и группы балансировки для правил маршрутизации. Служебные direct/block вынесены отдельно.</p>
+        <h2>Подключения</h2>
+        <p>Добавляйте отдельные серверы или подписки, проверяйте доступность и выбирайте основное подключение.</p>
       </div>
-      <div class="route-score">
-        <strong>${proxyServers.length}</strong>
-        <span>прокси</span>
+      <div class="servers-overview" aria-label="Сводка подключений">
+        <article><span>Подключения</span><strong>${proxyServers.length}</strong></article>
+        <article><span>Используются</span><strong>${stats.used}</strong></article>
+        <article class="${alive === proxyServers.length && proxyServers.length ? 'is-ok' : ''}"><span>Доступны</span><strong>${alive} из ${proxyServers.length}</strong></article>
+        <article class="servers-overview-active"><span>Основное</span><strong title="${escapeHtml(activeTag || '')}">${escapeHtml(activeName)}</strong></article>
       </div>
-    </section>
-
-    <section class="stats route-stats">
-      ${stat('Прокси', stats.proxy, 'Пользовательские подключения')}
-      ${stat('Служебные', stats.system, 'direct, block, DNS, fragment')}
-      ${stat('В правилах', stats.used, 'Используются маршрутизацией')}
-      ${stat('Доступны', alive, `По последней проверке: ${state.serverCheckMode === 'http' ? 'HTTP через прокси' : 'порт сервера'}`)}
     </section>
 
     <section class="servers-nav-panel">

@@ -96,6 +96,40 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-route-preset-source-enabled]').forEach((checkbox) => {
     checkbox.addEventListener('change', (event) => toggleRoutePresetSource(checkbox.dataset.routePresetSourceEnabled, event.target.checked));
   });
+  const applyRoutePresetCatalogFilter = () => {
+    const query = String(state.routePresetSearch || '').trim().toLocaleLowerCase('ru-RU');
+    const filter = state.routePresetFilter || 'all';
+    let visible = 0;
+    document.querySelectorAll('[data-scenario-card]').forEach((card) => {
+      const matchesQuery = !query || String(card.dataset.scenarioSearch || '').toLocaleLowerCase('ru-RU').includes(query);
+      const matchesFilter = filter === 'all'
+        || (filter === 'custom' && card.dataset.scenarioKind === 'custom')
+        || (filter === 'installed' && card.dataset.scenarioInstalled === '1');
+      card.hidden = !(matchesQuery && matchesFilter);
+      if (!card.hidden) visible += 1;
+    });
+    document.querySelectorAll('[data-scenario-section]').forEach((section) => {
+      section.hidden = !section.querySelector('[data-scenario-card]:not([hidden])');
+    });
+    const result = document.querySelector('[data-scenario-result-count]');
+    if (result) result.textContent = `Показано ${visible}`;
+    const empty = document.querySelector('[data-scenario-empty]');
+    if (empty) empty.hidden = visible > 0;
+    document.querySelectorAll('[data-route-preset-filter]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.routePresetFilter === filter);
+    });
+  };
+  document.querySelector('#routePresetSearch')?.addEventListener('input', (event) => {
+    state.routePresetSearch = event.target.value;
+    applyRoutePresetCatalogFilter();
+  });
+  document.querySelectorAll('[data-route-preset-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.routePresetFilter = button.dataset.routePresetFilter || 'all';
+      applyRoutePresetCatalogFilter();
+    });
+  });
+  applyRoutePresetCatalogFilter();
   document.querySelectorAll('[data-route-delete]').forEach((button) => {
     button.addEventListener('click', () => removeRoutingRule(Number(button.dataset.routeDelete)));
   });

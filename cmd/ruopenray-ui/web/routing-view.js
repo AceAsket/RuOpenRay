@@ -120,13 +120,16 @@ function routingRulesPanel() {
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
-        <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу${selectedRuleCount ? ` (${selectedRuleCount})` : ''}</button>
-        <button class="btn secondary compact" data-action="disableSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Отключить выбранные</button>
-        <button class="btn danger compact" data-action="removeSelectedRouteRules" ${selectedRuleCount ? '' : 'disabled'}>Удалить выбранные</button>
-        <button class="btn secondary compact" data-action="clearRouteRuleSelection" ${selectedRuleCount ? '' : 'disabled'}>Снять выбор</button>
-        <button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>
-        <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
+        ${state.routeSearch.trim() ? `<button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>` : ''}
+        <span class="muted route-visible-count">Показано ${visibleRules.length} из ${userRulesCount}</span>
       </div>
+      ${selectedRuleCount ? `<div class="route-selection-tools" role="status">
+        <strong>Выбрано: ${selectedRuleCount}</strong>
+        <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу</button>
+        <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить</button>
+        <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить</button>
+        <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
+      </div>` : ''}
       ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       <div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
@@ -188,6 +191,8 @@ function routingScenariosPanel() {
   };
   const presetSource = (preset, fallback = 'builtin') => preset?.source || fallback;
   const sourceCheck = state.routePresetSourceCheck;
+  const scenarioSearchText = (key, preset) => [key, preset?.title, preset?.detail, presetSource(preset)].filter(Boolean).join(' ');
+  const scenarioCount = presetEntries.length + customEntries.length;
   return `
     <section class="panel routing-scenarios-panel">
       <div class="panel-title">
@@ -197,17 +202,30 @@ function routingScenariosPanel() {
           <button class="btn secondary" data-action="newRoutePreset">Добавить подборку</button>
         </div>
       </div>
-      <details class="scenario-source-box" ${state.routePresetSources.length || state.routePresetSourceCheck ? 'open' : ''}>
+      <div class="scenario-catalog-toolbar">
+        <input id="routePresetSearch" type="search" value="${escapeHtml(state.routePresetSearch)}" placeholder="Найти сценарий: YouTube, Discord, игры..." />
+        <div class="segmented scenario-filter" aria-label="Фильтр сценариев">
+          <button type="button" class="${state.routePresetFilter === 'all' ? 'active' : ''}" data-route-preset-filter="all">Все</button>
+          <button type="button" class="${state.routePresetFilter === 'custom' ? 'active' : ''}" data-route-preset-filter="custom">Мои</button>
+          <button type="button" class="${state.routePresetFilter === 'installed' ? 'active' : ''}" data-route-preset-filter="installed">Добавлены</button>
+        </div>
+        <span class="scenario-result-count" data-scenario-result-count>Показано ${scenarioCount}</span>
+      </div>
+      <details class="scenario-source-box" ${state.routePresetSourceCheck ? 'open' : ''}>
         <summary>
           <strong>Источники сценариев</strong>
           <span>${state.routePresetSources.length} git/raw · сценарии не вшиваются в бинарник</span>
         </summary>
         <div class="scenario-source-form">
-          <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
-          <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
-          <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять ежедневно</label>
-          <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
-          <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
+          <div class="scenario-source-fields">
+            <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
+            <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
+          </div>
+          <div class="scenario-source-actions">
+            <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять ежедневно</label>
+            <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
+            <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
+          </div>
         </div>
         ${sourceCheck ? `<div class="scenario-source-check ${sourceCheck.ok ? 'ok' : 'bad'}">
           <strong>${escapeHtml(sourceCheck.ok ? `${sourceCheck.name || 'Источник'} · ${sourceCheck.version || 'без версии'}` : 'Источник не прошел проверку')}</strong>
@@ -228,13 +246,13 @@ function routingScenariosPanel() {
           }).join('')}
         </div>` : ''}
       </details>
-      ${customEntries.length ? `
+      ${customEntries.length ? `<div class="scenario-catalog-section" data-scenario-section>
         <div class="scenario-section-title">Мои подборки</div>
         <div class="scenario-grid">
           ${customEntries.map(([key, preset]) => {
             const install = routePresetInstallSummary(key);
             const label = routePresetInstallLabel(key);
-            return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+            return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}" data-scenario-card data-scenario-kind="custom" data-scenario-installed="${install.installed ? '1' : '0'}" data-scenario-search="${escapeHtml(scenarioSearchText(key, preset))}">
             ${routePresetIconView(escapeHtml, key, preset)}
             <div>
               <strong>${escapeHtml(preset.title)}</strong>
@@ -249,13 +267,14 @@ function routingScenariosPanel() {
           </article>`;
           }).join('')}
         </div>
-      ` : ''}
-      <div class="scenario-section-title">Подборки</div>
-      <div class="scenario-grid">
+      </div>` : ''}
+      <div class="scenario-catalog-section" data-scenario-section>
+        <div class="scenario-section-title">Подборки</div>
+        <div class="scenario-grid">
         ${presetEntries.map(([key, preset]) => {
           const install = routePresetInstallSummary(key);
           const label = routePresetInstallLabel(key);
-          return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+          return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}" data-scenario-card data-scenario-kind="builtin" data-scenario-installed="${install.installed ? '1' : '0'}" data-scenario-search="${escapeHtml(scenarioSearchText(key, preset))}">
           ${routePresetIconView(escapeHtml, key, preset)}
           <div>
             <strong>${escapeHtml(preset.title)}</strong>
@@ -266,7 +285,9 @@ function routingScenariosPanel() {
           <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
         </article>`;
         }).join('')}
+        </div>
       </div>
+      <div class="scenario-empty-state empty-state" data-scenario-empty hidden>По этому запросу сценариев не найдено.</div>
     </section>
   `;
 }

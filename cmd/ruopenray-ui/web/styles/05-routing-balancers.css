@@ -29,6 +29,28 @@
   white-space: nowrap;
 }
 
+.route-visible-count {
+  margin-left: auto;
+}
+
+.route-selection-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(49, 210, 189, 0.28);
+  border-radius: 8px;
+  background: rgba(49, 210, 189, 0.08);
+}
+
+.route-selection-tools strong {
+  margin-right: auto;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
 .routing-nav-panel,
 .servers-nav-panel {
   margin-bottom: 14px;
@@ -78,6 +100,48 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.scenario-catalog-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(8, 15, 19, 0.5);
+}
+
+.scenario-catalog-toolbar input {
+  width: 100%;
+}
+
+.scenario-filter {
+  flex-wrap: nowrap;
+  padding: 3px;
+}
+
+.scenario-filter button {
+  min-height: 34px;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+
+.scenario-result-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.scenario-catalog-section[hidden],
+.scenario-card[hidden] {
+  display: none;
+}
+
+.scenario-empty-state {
+  margin-top: 14px;
 }
 
 .scenario-card {
@@ -191,10 +255,61 @@
 
 .scenario-source-form {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(180px, 260px) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   margin-top: 12px;
+}
+
+.scenario-source-fields {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 260px);
+  gap: 10px;
+}
+
+.scenario-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 1050px) {
+  .scenario-catalog-toolbar,
+  .scenario-source-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scenario-filter {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .scenario-source-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+  .scenario-source-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scenario-filter {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .scenario-filter button {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+
+  .route-visible-count {
+    margin-left: 0;
+  }
 }
 
 .check-row.compact {
