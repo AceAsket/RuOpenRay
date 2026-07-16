@@ -306,6 +306,7 @@ export function createInitialState() {
   dnsCheckHost: 'example.com',
   dnsCheckResult: null,
   dnsBootstrapResult: null,
+  dnsCustomAddOpen: false,
   dnsDiagnostics: null,
   lanDnsStatus: null,
   lanDnsMode: 'xray',

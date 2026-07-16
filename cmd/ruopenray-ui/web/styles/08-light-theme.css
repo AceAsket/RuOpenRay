@@ -81,7 +81,14 @@ body[data-theme="light"] .dashboard-traffic-grid article,
 body[data-theme="light"] .dashboard-selected-server,
 body[data-theme="light"] .servers-overview article,
 body[data-theme="light"] .scenario-catalog-toolbar,
-body[data-theme="light"] .route-selection-tools {
+body[data-theme="light"] .route-selection-tools,
+body[data-theme="light"] .dns-overview article,
+body[data-theme="light"] .dns-provider-card,
+body[data-theme="light"] .dns-custom-add,
+body[data-theme="light"] .lan-dns-current,
+body[data-theme="light"] .lan-dns-action-bar,
+body[data-theme="light"] .lan-dns-details,
+body[data-theme="light"] .lan-dns-upstream-form {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--shadow);
@@ -156,7 +163,10 @@ body[data-theme="light"] .core-stat.has-update,
 body[data-theme="light"] .core-update-banner.has-update,
 body[data-theme="light"] .traffic-overview-panel .traffic-overview-main,
 body[data-theme="light"] .dashboard-current-server,
-body[data-theme="light"] .lan-dns-readiness article.ok {
+body[data-theme="light"] .lan-dns-readiness article.ok,
+body[data-theme="light"] .dns-overview article.is-ok,
+body[data-theme="light"] .dns-provider-card.is-added,
+body[data-theme="light"] .lan-dns-current.ok {
   border-color: rgba(22, 139, 62, 0.26);
   background:
     linear-gradient(135deg, rgba(22, 139, 62, 0.09), rgba(255, 255, 255, 0.92)),
@@ -165,7 +175,9 @@ body[data-theme="light"] .lan-dns-readiness article.ok {
 
 body[data-theme="light"] .nand-plan,
 body[data-theme="light"] .nand-card,
-body[data-theme="light"] .lan-dns-readiness article.warn {
+body[data-theme="light"] .lan-dns-readiness article.warn,
+body[data-theme="light"] .dns-overview article.is-warn,
+body[data-theme="light"] .lan-dns-current.warn {
   border-color: rgba(184, 121, 20, 0.28);
   background: rgba(255, 250, 236, 0.92);
 }

@@ -31,8 +31,12 @@ export function bindDnsControls({
     button.addEventListener('click', () => {
       state.dnsAddress = button.dataset.dnsPreset;
       state.dnsBootstrapResult = null;
+      state.dnsCustomAddOpen = true;
       render();
     });
+  });
+  document.querySelector('[data-dns-custom-add]')?.addEventListener('toggle', (event) => {
+    state.dnsCustomAddOpen = event.target.open;
   });
   document.querySelectorAll('[data-lan-dns-mode]').forEach((button) => {
     button.addEventListener('click', () => {

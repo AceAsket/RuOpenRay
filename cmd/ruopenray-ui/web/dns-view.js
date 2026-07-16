@@ -13,7 +13,6 @@ export function createDnsView(deps) {
     lanDnsModeLabel,
     routeRules,
     state,
-    stat,
   } = deps;
 
 function dnsModeSection() {
@@ -219,26 +218,46 @@ function dnsServersSection(dns) {
   const isDohServer = (server) => String(describeDnsServer(server).address || '').toLowerCase().startsWith('https://');
   const dohCount = (dns.servers || []).filter((server) => isDohServer(server)).length;
   const bootstrap = state.dnsBootstrapResult;
-  const presets = [
-    ['Cloudflare DoH', 'https://cloudflare-dns.com/dns-query'],
-    ['Google DoH', 'https://dns.google:443/dns-query'],
-    ['Quad9 DoH', 'https://dns.quad9.net/dns-query'],
-    ['AdGuard DoH', 'https://dns.adguard-dns.com/dns-query'],
-    ['Yandex DoH', 'https://common.dot.dns.yandex.net/dns-query'],
+  const popularPresets = [
+    ['Cloudflare', 'https://cloudflare-dns.com/dns-query', 'Быстрый универсальный DoH'],
+    ['Google', 'https://dns.google:443/dns-query', 'Стабильный публичный DoH'],
+    ['Quad9', 'https://dns.quad9.net/dns-query', 'Блокировка вредоносных доменов'],
+    ['AdGuard', 'https://dns.adguard-dns.com/dns-query', 'Фильтрация рекламы и трекеров'],
+    ['Yandex', 'https://common.dot.dns.yandex.net/dns-query', 'Для российских сервисов']
+  ];
+  const otherPresets = [
     ['OpenDNS DoH', 'https://doh.opendns.com/dns-query'],
     ['Cloudflare TCP', 'tcp://1.1.1.1:53'],
     ['Quad9 TCP', 'tcp://9.9.9.9:53'],
     ['Cloudflare UDP', '1.1.1.1'],
     ['Google UDP', '8.8.8.8']
   ];
+  const configuredAddresses = new Set((dns.servers || []).map((server) => String(describeDnsServer(server).address || '').replace(/\/$/, '')));
   return `
-    <section class="panel">
+    <div class="dns-servers-layout">
+    <section class="panel dns-add-panel">
       <div class="panel-title">
-        <div><h2>Добавить DNS</h2><span>Обычный IP, tcp:// или DoH URL. Пресеты ниже только подставляют адрес в поле.</span></div>
+        <div><h2>Добавить DNS</h2><span>Выберите готовый защищённый сервис или раскройте форму для своего адреса.</span></div>
       </div>
+      <div class="dns-quick-presets">
+        ${popularPresets.map(([name, address, detail]) => {
+          const configured = configuredAddresses.has(address.replace(/\/$/, ''));
+          return `<button class="dns-provider-card ${configured ? 'is-added' : ''}" type="button" data-dns-preset="${escapeHtml(address)}">
+            <span class="dns-provider-mark">${escapeHtml(name.slice(0, 1))}</span>
+            <span class="dns-provider-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(detail)}</small></span>
+            <em>${configured ? 'Добавлен' : 'Выбрать'}</em>
+          </button>`;
+        }).join('')}
+      </div>
+      <details class="dns-custom-add" data-dns-custom-add ${state.dnsCustomAddOpen || state.dnsAuthEnabled || bootstrap ? 'open' : ''}>
+        <summary>
+          <span><strong>Свой DNS-сервер</strong><em>DoH URL, TCP/UDP, Basic Auth и ограничения по доменам</em></span>
+          <b>Настроить</b>
+        </summary>
+        <div class="dns-custom-add-body">
       <div class="dns-form">
         <div class="form-row dns-address-field">
-          <label>DNS-сервер</label>
+          <label>Адрес DNS-сервера</label>
           <input id="dnsAddress" value="${escapeHtml(state.dnsAddress)}" placeholder="https://dns.google:443/dns-query" />
         </div>
         <label class="check-row dns-auth-toggle">
@@ -260,7 +279,7 @@ function dnsServersSection(dns) {
           <label>Только для доменов</label>
           <input id="dnsDomains" value="${escapeHtml(state.dnsDomains)}" placeholder="dns.google, dns.opendns.com" />
         </div>
-        <button class="btn dns-add-button" data-action="addDns">Добавить DNS</button>
+        <button class="btn dns-add-button" data-action="addDns">Добавить в черновик</button>
       </div>
       ${bootstrap ? `<div class="settings-warning compact ${bootstrap.ok ? 'ok' : ''}">
         <strong>Bootstrap DoH</strong>
@@ -268,13 +287,18 @@ function dnsServersSection(dns) {
           ? `${bootstrap.host}: ${bootstrap.ips.join(', ')} (${bootstrap.source === 'existing' ? 'уже был в hosts' : bootstrap.source === 'builtin' ? 'встроенная запись' : 'проверено и добавлено в hosts'})`
           : `${bootstrap.host}: ${bootstrap.error || 'не удалось получить IP'}. DNS не добавлен, задайте host-запись вручную или проверьте URL.`)}</span>
       </div>` : ''}
-      <div class="preset-grid dns-presets">
-        ${presets.map(([name, address]) => `<button class="preset" type="button" data-dns-preset="${escapeHtml(address)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(address)}</span></button>`).join('')}
+      <div class="dns-other-presets">
+        <span>Другие варианты</span>
+        <div class="preset-grid dns-presets compact">
+          ${otherPresets.map(([name, address]) => `<button class="preset" type="button" data-dns-preset="${escapeHtml(address)}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(address)}</span></button>`).join('')}
+        </div>
       </div>
+        </div>
+      </details>
       <div class="dns-inline-check">
         <div>
-          <strong>Проверка DNS</strong>
-          <span>Проверяет текущий адрес из поля DNS-сервера. Для IP без порта используется 53.</span>
+          <strong>Проверить перед добавлением</strong>
+          <span>Проверяется адрес из формы и выбранный домен.</span>
         </div>
         <div class="dns-check">
           <input id="dnsCheckHost" value="${escapeHtml(state.dnsCheckHost)}" placeholder="ya.ru" />
@@ -288,17 +312,13 @@ function dnsServersSection(dns) {
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel dns-servers-panel">
       <div class="panel-title">
-        <div><h2>DNS-серверы</h2><span>Порядок важен: Xray обрабатывает список сверху вниз. Изменения остаются в черновике до применения.</span></div>
+        <div><h2>DNS-серверы Xray</h2><span>Xray проверяет список сверху вниз. Защищённые DoH-серверы лучше держать выше обычного UDP.</span></div>
         <div class="split-actions">
           <button class="btn secondary" data-dns-prioritize-doh ${dohCount ? '' : 'disabled'}>DoH выше</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
-      </div>
-      <div class="settings-warning compact">
-        <strong>Порядок DNS</strong>
-        <span>Сверху ставьте DoH/TCP, ниже оставляйте обычный UDP только как локальный или аварийный fallback. Xray читает этот список в таком же порядке, как он показан здесь.</span>
       </div>
       <div class="dns-list">
         ${dns.servers
@@ -326,6 +346,7 @@ function dnsServersSection(dns) {
           .join('') || '<p class="muted">DNS-серверы пока не заданы.</p>'}
       </div>
     </section>
+    </div>
   `;
 }
 
@@ -570,107 +591,128 @@ function lanDnsSection() {
     <section class="panel settings-section lan-dns-panel">
       <div class="panel-title">
         <div>
-          <h2>DNS для LAN</h2>
-          <span>Настраивает, куда dnsmasq отправляет DNS-запросы домашних устройств. Это отдельный системный шаг после подготовки DNS inbound в Xray.</span>
+          <h2>DNS домашних устройств</h2>
+          <span>Выберите, куда роутер будет отправлять DNS-запросы телефонов, компьютеров, телевизоров и других LAN-клиентов.</span>
         </div>
       </div>
-      <div class="settings-info-grid">
-        <article><span>Текущий режим</span><strong>${escapeHtml(lanDnsModeLabel(status.mode))}</strong></article>
-        <article><span>Upstream dnsmasq</span><strong>${escapeHtml(current)}</strong></article>
-        <article><span>Адрес роутера</span><strong>${escapeHtml(routerLan)}</strong></article>
-        <article><span>Xray DNS inbound</span><strong>${escapeHtml(xrayTarget)}</strong></article>
-        <article><span>AdGuard Home</span><strong>${escapeHtml(adguardSummary)}</strong><small>${escapeHtml(adguard.listen || adguard.configPath || '')}</small></article>
-      </div>
-      <div class="apply-state-panel ${currentMatchesDraft ? 'ok' : 'warn'}">
-        <div class="apply-state-head">
-          <strong>${currentMatchesDraft ? 'LAN DNS применен' : 'LAN DNS отличается от черновика'}</strong>
-          <span>${currentMatchesDraft ? 'dnsmasq уже настроен так, как выбрано ниже.' : 'Ниже видно текущий upstream dnsmasq и что будет применено после кнопки «Применить LAN DNS».'}</span>
+      <div class="lan-dns-current ${currentMatchesDraft ? 'ok' : 'warn'}">
+        <span class="lan-dns-current-icon">${currentMatchesDraft ? '✓' : '!'}</span>
+        <div class="lan-dns-current-main">
+          <span>Сейчас используется</span>
+          <strong>${escapeHtml(lanDnsModeLabel(status.mode))}</strong>
+          <small>${escapeHtml(current)}</small>
         </div>
-        <div class="apply-state-grid two">
-          <article class="${currentMatchesDraft ? 'ok' : 'warn'}">
-            <span>Сейчас в dnsmasq</span>
-            <strong>${escapeHtml(lanDnsModeLabel(status.mode))}</strong>
-            <small>${escapeHtml(current)}</small>
-          </article>
-          <article class="${currentMatchesDraft ? 'ok' : 'warn'}">
-            <span>Черновик</span>
-            <strong>${escapeHtml(lanDnsModeLabel(draftMode))}</strong>
-            <small>${escapeHtml(draftTarget)}</small>
-          </article>
+        <div class="lan-dns-current-state">
+          <strong>${currentMatchesDraft ? 'Настройки применены' : 'Есть неприменённые изменения'}</strong>
+          <span>${currentMatchesDraft ? 'Устройства уже используют выбранную схему.' : `Выбрано: ${lanDnsModeLabel(draftMode)} · ${draftTarget}`}</span>
         </div>
       </div>
       <div class="advanced-grid three lan-dns-modes">
         <button type="button" class="advanced-card ${state.lanDnsMode === 'xray' ? 'active' : ''}" data-lan-dns-mode="xray">
+          <small>Рекомендуется</small>
           <strong>DNS через Xray</strong>
-          <span>LAN → dnsmasq → ${escapeHtml(xrayTarget)} → Xray DNS. Подходит, когда RuOpenRay управляет DNS-маршрутизацией.</span>
+          <span>Все устройства используют DNS-серверы и правила, настроенные в RuOpenRay.</span>
         </button>
         <button type="button" class="advanced-card ${state.lanDnsMode === 'upstream' ? 'active' : ''}" data-lan-dns-mode="upstream">
-          <strong>Внешний DNS / Pi-hole / AdGuard</strong>
-          <span>LAN → dnsmasq → Pi-hole, AdGuard Home или другой DNS. Укажите адрес ниже, порт 53 добавится автоматически.</span>
+          <small>Отдельный фильтр</small>
+          <strong>Pi-hole, AdGuard или свой DNS</strong>
+          <span>Роутер передаёт запросы на указанный DNS-сервер в локальной сети.</span>
         </button>
         <button type="button" class="advanced-card ${state.lanDnsMode === 'system' ? 'active' : ''}" data-lan-dns-mode="system">
-          <strong>Как в OpenWrt</strong>
-          <span>Убрать переопределение server/noresolv и вернуть dnsmasq к системным настройкам WAN.</span>
+          <small>Без RuOpenRay</small>
+          <strong>Обычный DNS OpenWrt</strong>
+          <span>Вернуть стандартные DNS-настройки интернет-подключения роутера.</span>
         </button>
       </div>
-      <div class="lan-dns-form">
+      ${state.lanDnsMode === 'upstream' ? `<div class="lan-dns-upstream-form">
         <div class="form-row">
-          <label>Порт DNS inbound Xray</label>
-          <input id="dnsInboundPort" type="number" min="1024" max="65535" value="${escapeHtml(state.dnsInboundPort || xrayPort || '10535')}" placeholder="10535" />
-          <small>По умолчанию 10535. Порт 5353 на OpenWrt часто занят mDNS/umdns, из-за этого Xray не стартует.</small>
+          <label>Адрес Pi-hole, AdGuard или другого DNS</label>
+          <input id="lanDnsUpstream" value="${escapeHtml(state.lanDnsUpstream)}" placeholder="192.168.50.10 или 192.168.50.10#53" />
+          <small>Если порт не указан, RuOpenRay использует 53.</small>
         </div>
-        <div class="form-row">
-          <label>Адрес внешнего DNS, Pi-hole или AdGuard Home</label>
-          <input id="lanDnsUpstream" value="${escapeHtml(state.lanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10#53" ${state.lanDnsMode === 'upstream' ? '' : 'disabled'} />
-        </div>
-        <label class="settings-check compact ${state.lanDnsRestart ? 'active' : ''}">
-          <input id="lanDnsRestart" type="checkbox" ${state.lanDnsRestart ? 'checked' : ''} />
-          <span><strong>Перезапустить dnsmasq</strong><em>Изменения UCI начнут работать сразу после restart.</em></span>
-        </label>
-      </div>
-      <div class="lan-dns-readiness">
-        <article class="${readiness.inbound ? 'ok' : 'warn'}"><span>DNS inbound</span><strong>${readiness.inbound ? 'готов' : 'не найден'}</strong></article>
-        <article class="${readiness.outbound ? 'ok' : 'warn'}"><span>dns-out</span><strong>${readiness.outbound ? 'готов' : 'не найден'}</strong></article>
-        <article class="${readiness.rule ? 'ok' : 'warn'}"><span>Маршрут DNS</span><strong>${readiness.rule ? 'готов' : 'не найден'}</strong></article>
-        <article class="${dnsPortConflict ? 'warn' : (readiness.port ? 'ok' : 'warn')}"><span>Порт ${escapeHtml(xrayPort)}</span><strong>${dnsPortConflict ? 'занят' : (readiness.port ? 'слушает' : 'закрыт')}</strong></article>
-      </div>
-      ${commands.length ? `<div class="lan-dns-preview">
-        <strong>Будет выполнено</strong>
-        <pre>${escapeHtml(commands.join('\n'))}</pre>
-      </div>` : '<p class="muted">Сначала нажмите «Проверить и показать команды»: RuOpenRay ничего не изменит, только покажет план.</p>'}
-      ${warnings.length ? `<div class="settings-warning"><strong>Важно</strong><span>${escapeHtml(warnings.join(' '))}</span></div>` : ''}
-      ${dnsPortConflict ? `<div class="settings-warning"><strong>Порт DNS занят</strong><span>UDP ${escapeHtml(xrayTarget)} уже держит ${escapeHtml(conflictOwner || 'другой процесс')}. При подготовке черновика RuOpenRay выберет запасной порт ${escapeHtml(suggestedTarget)}, а dnsmasq нужно направить туда же.</span></div>` : ''}
-      ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт ${escapeHtml(readiness.targetTCP || xrayTarget.replace('#', ':'))} слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
-      <div class="settings-warning">
-        <strong>Если Pi-hole или AdGuard Home главный DNS</strong>
-        <span>Если сервис стоит на этом роутере, в его upstream укажите ${escapeHtml(adguardLocalTarget)}. Если он на отдельном устройстве, используйте ${escapeHtml(adguardLanTarget)} и убедитесь, что Xray DNS inbound доступен с LAN-адреса. Не делайте цепочку DNS-сервис → роутер → тот же DNS-сервис.</span>
-      </div>
-      ${adguardFound ? `<div class="settings-warning ${adguardUsesXray ? 'ok' : ''}">
-        <strong>${adguardUsesXray ? 'AdGuard Home уже совместим' : 'AdGuard Home найден'}</strong>
-        <span>${escapeHtml(adguard.hint || `В AdGuard Home upstream DNS укажите ${adguardLocalTarget}, если он работает на этом роутере.`)}</span>
       </div>` : ''}
-      <div class="advanced-grid three adguard-compat-modes">
-        <article class="advanced-card ${adguardAfterActive ? 'active' : ''}">
-          <strong>AdGuard после Xray</strong>
-          <span>Рекомендуемый режим: LAN → DNS-перехват/Xray DNS → AdGuard Home → внешний DNS. Xray первым видит домены, AdGuard фильтрует ответы.</span>
-          <button class="btn secondary ${state.busyAction === 'prepareAdguardAfterXray' ? 'is-busy' : ''}" data-action="prepareAdguardAfterXray" ${state.busyAction === 'prepareAdguardAfterXray' || !adguardRunning ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardAfterXray' ? 'Готовлю...' : 'Подготовить Xray → AdGuard'}</button>
-        </article>
-        <article class="advanced-card ${adguardBeforeActive ? 'active' : ''}">
-          <strong>AdGuard перед Xray</strong>
-          <span>Для статистики клиентов в AdGuard: LAN → AdGuard Home → Xray DNS. В AdGuard Home upstream укажите ${escapeHtml(adguardLocalTarget)}.</span>
-          <button class="btn secondary ${state.busyAction === 'prepareAdguardBeforeXray' ? 'is-busy' : ''}" data-action="prepareAdguardBeforeXray" ${state.busyAction === 'prepareAdguardBeforeXray' ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardBeforeXray' ? 'Готовлю...' : 'Подготовить AdGuard → Xray'}</button>
-        </article>
-        <article class="advanced-card ${adguardDisabledActive ? 'active' : ''}">
-          <strong>Не использовать AdGuard</strong>
-          <span>RuOpenRay оставит текущие DNS-серверы Xray без локального AdGuard Home. Сам AdGuard и его YAML не меняются.</span>
-          <button class="btn secondary ${state.busyAction === 'disableAdguardCompat' ? 'is-busy' : ''}" data-action="disableAdguardCompat" ${state.busyAction === 'disableAdguardCompat' ? 'disabled' : ''}>${state.busyAction === 'disableAdguardCompat' ? 'Отключаю...' : 'Не использовать AdGuard'}</button>
-        </article>
+      <div class="lan-dns-action-bar ${currentMatchesDraft ? 'ok' : 'warn'}">
+        <div>
+          <span>Выбранная схема</span>
+          <strong>${escapeHtml(lanDnsModeLabel(draftMode))}</strong>
+          <small>${escapeHtml(draftTarget)}</small>
+        </div>
+        <div class="split-actions">
+          <button class="btn secondary ${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'is-busy' : ''}" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'Проверяю...' : 'Проверить изменения'}</button>
+          <button class="btn warning ${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'is-busy' : ''}" data-action="applyLanDnsUpstream" ${applyDisabled ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'Применяю...' : 'Применить'}</button>
+        </div>
       </div>
-      <div class="toolbar">
-        <button class="btn secondary ${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'is-busy' : ''}" data-action="previewLanDnsUpstream" ${state.lanDnsSaving || status.available === false ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'previewLanDnsUpstream' ? 'Проверяю...' : 'Проверить и показать команды'}</button>
-        <button class="btn warning ${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'is-busy' : ''}" data-action="applyLanDnsUpstream" ${applyDisabled ? 'disabled' : ''}>${state.lanDnsSaving && state.busyAction === 'applyLanDnsUpstream' ? 'Применяю LAN DNS...' : 'Применить LAN DNS'}</button>
-        <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить DNS inbound'}</button>
-      </div>
+      ${state.lanDnsMode === 'upstream' && !draftUpstream ? `<div class="settings-warning"><strong>Нужен адрес DNS</strong><span>Укажите IP-адрес Pi-hole, AdGuard или другого сервера, затем проверьте изменения.</span></div>` : ''}
+      ${xrayNeedsReadiness && !readiness.ready ? `<div class="settings-warning"><strong>DNS через Xray пока не готов</strong><span>Сначала подготовьте DNS inbound, примените конфигурацию Xray и убедитесь, что порт ${escapeHtml(readiness.targetTCP || xrayTarget.replace('#', ':'))} слушает. Кнопка применения заблокирована, чтобы не оставить LAN без DNS.</span></div>` : ''}
+
+      <details class="lan-dns-details" data-details-key="lan-dns-technical" ${dnsPortConflict || (xrayNeedsReadiness && !readiness.ready) ? 'open' : ''}>
+        <summary>
+          <span><strong>Технические параметры</strong><em>Порт Xray DNS, состояние компонентов и команды OpenWrt</em></span>
+          <b>${readiness.ready && !dnsPortConflict ? 'Всё готово' : 'Нужна проверка'}</b>
+        </summary>
+        <div class="lan-dns-details-body">
+          <div class="settings-info-grid">
+            <article><span>Upstream dnsmasq</span><strong>${escapeHtml(current)}</strong></article>
+            <article><span>Адрес роутера</span><strong>${escapeHtml(routerLan)}</strong></article>
+            <article><span>Xray DNS inbound</span><strong>${escapeHtml(xrayTarget)}</strong></article>
+            <article><span>Черновик</span><strong>${escapeHtml(lanDnsModeLabel(draftMode))}</strong><small>${escapeHtml(draftTarget)}</small></article>
+          </div>
+          <div class="lan-dns-technical-form">
+            <div class="form-row">
+              <label>Порт DNS inbound Xray</label>
+              <input id="dnsInboundPort" type="number" min="1024" max="65535" value="${escapeHtml(state.dnsInboundPort || xrayPort || '10535')}" placeholder="10535" />
+              <small>По умолчанию 10535. Порт 5353 на OpenWrt часто занят mDNS.</small>
+            </div>
+            <label class="settings-check compact ${state.lanDnsRestart ? 'active' : ''}">
+              <input id="lanDnsRestart" type="checkbox" ${state.lanDnsRestart ? 'checked' : ''} />
+              <span><strong>Перезапустить dnsmasq</strong><em>Новые настройки начнут работать сразу после применения.</em></span>
+            </label>
+          </div>
+          <div class="lan-dns-readiness">
+            <article class="${readiness.inbound ? 'ok' : 'warn'}"><span>DNS inbound</span><strong>${readiness.inbound ? 'готов' : 'не найден'}</strong></article>
+            <article class="${readiness.outbound ? 'ok' : 'warn'}"><span>dns-out</span><strong>${readiness.outbound ? 'готов' : 'не найден'}</strong></article>
+            <article class="${readiness.rule ? 'ok' : 'warn'}"><span>Маршрут DNS</span><strong>${readiness.rule ? 'готов' : 'не найден'}</strong></article>
+            <article class="${dnsPortConflict ? 'warn' : (readiness.port ? 'ok' : 'warn')}"><span>Порт ${escapeHtml(xrayPort)}</span><strong>${dnsPortConflict ? 'занят' : (readiness.port ? 'слушает' : 'закрыт')}</strong></article>
+          </div>
+          ${commands.length ? `<div class="lan-dns-preview"><strong>Будет выполнено</strong><pre>${escapeHtml(commands.join('\n'))}</pre></div>` : '<p class="muted">Нажмите «Проверить изменения», чтобы увидеть точные команды до применения.</p>'}
+          ${warnings.length ? `<div class="settings-warning"><strong>Важно</strong><span>${escapeHtml(warnings.join(' '))}</span></div>` : ''}
+          ${dnsPortConflict ? `<div class="settings-warning"><strong>Порт DNS занят</strong><span>UDP ${escapeHtml(xrayTarget)} уже держит ${escapeHtml(conflictOwner || 'другой процесс')}. RuOpenRay предложит запасной порт ${escapeHtml(suggestedTarget)}.</span></div>` : ''}
+          <div class="toolbar">
+            <button class="btn secondary ${state.busyAction === 'prepareDnsInbound' ? 'is-busy' : ''}" data-action="prepareDnsInbound" ${state.busyAction === 'prepareDnsInbound' ? 'disabled' : ''}>${state.busyAction === 'prepareDnsInbound' ? 'Готовлю...' : 'Подготовить DNS inbound'}</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="lan-dns-details" data-details-key="lan-dns-adguard">
+        <summary>
+          <span><strong>AdGuard Home</strong><em>Необязательная совместимость и порядок обработки запросов</em></span>
+          <b>${escapeHtml(adguardSummary)}</b>
+        </summary>
+        <div class="lan-dns-details-body">
+          <div class="settings-warning">
+            <strong>Как избежать DNS-петли</strong>
+            <span>Если AdGuard находится на роутере, укажите в нём upstream ${escapeHtml(adguardLocalTarget)}. Для отдельного устройства используйте ${escapeHtml(adguardLanTarget)}.</span>
+          </div>
+          ${adguardFound ? `<div class="settings-warning ${adguardUsesXray ? 'ok' : ''}"><strong>${adguardUsesXray ? 'AdGuard Home уже совместим' : 'AdGuard Home найден'}</strong><span>${escapeHtml(adguard.hint || `В AdGuard Home upstream DNS укажите ${adguardLocalTarget}.`)}</span></div>` : ''}
+          <div class="advanced-grid three adguard-compat-modes">
+            <article class="advanced-card ${adguardAfterActive ? 'active' : ''}">
+              <strong>AdGuard после Xray</strong>
+              <span>Xray видит домены первым, затем AdGuard фильтрует ответы.</span>
+              <button class="btn secondary ${state.busyAction === 'prepareAdguardAfterXray' ? 'is-busy' : ''}" data-action="prepareAdguardAfterXray" ${state.busyAction === 'prepareAdguardAfterXray' || !adguardRunning ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardAfterXray' ? 'Готовлю...' : 'Подготовить Xray → AdGuard'}</button>
+            </article>
+            <article class="advanced-card ${adguardBeforeActive ? 'active' : ''}">
+              <strong>AdGuard перед Xray</strong>
+              <span>AdGuard сохраняет статистику клиентов и передаёт запросы в Xray.</span>
+              <button class="btn secondary ${state.busyAction === 'prepareAdguardBeforeXray' ? 'is-busy' : ''}" data-action="prepareAdguardBeforeXray" ${state.busyAction === 'prepareAdguardBeforeXray' ? 'disabled' : ''}>${state.busyAction === 'prepareAdguardBeforeXray' ? 'Готовлю...' : 'Подготовить AdGuard → Xray'}</button>
+            </article>
+            <article class="advanced-card ${adguardDisabledActive ? 'active' : ''}">
+              <strong>Не использовать AdGuard</strong>
+              <span>Оставить DNS-серверы Xray без локальной фильтрации AdGuard.</span>
+              <button class="btn secondary ${state.busyAction === 'disableAdguardCompat' ? 'is-busy' : ''}" data-action="disableAdguardCompat" ${state.busyAction === 'disableAdguardCompat' ? 'disabled' : ''}>${state.busyAction === 'disableAdguardCompat' ? 'Отключаю...' : 'Не использовать AdGuard'}</button>
+            </article>
+          </div>
+        </div>
+      </details>
     </section>
   `;
 }
@@ -678,13 +720,24 @@ function lanDnsSection() {
 function dnsPanel() {
   const dns = dnsConfig();
   const stats = dnsStats();
+  const protectedCount = stats.doh + stats.tcp;
+  const hasDns = stats.servers > 0;
+  const dnsMode = currentDnsMode();
+  const lanMode = lanDnsModeLabel(state.lanDnsStatus?.mode || state.lanDnsMode);
+  const serverCountForm = stats.servers % 100 >= 11 && stats.servers % 100 <= 14
+    ? 'серверов'
+    : stats.servers % 10 === 1
+      ? 'сервер'
+      : stats.servers % 10 >= 2 && stats.servers % 10 <= 4
+        ? 'сервера'
+        : 'серверов';
   const dnsTabs = [
-    ['servers', 'Серверы'],
-    ['policies', 'Политики'],
-    ['hosts', 'Hosts'],
-    ['lan', 'LAN DNS'],
-    ['guard', 'Защита'],
-    ['advanced', 'Режим']
+    ['servers', 'DNS-серверы'],
+    ['policies', 'Для доменов'],
+    ['hosts', 'Локальные имена'],
+    ['lan', 'DNS устройств'],
+    ['guard', 'Проверка и защита'],
+    ['advanced', 'Дополнительно']
   ];
   const view = dnsTabs.some(([value]) => value === state.dnsView) ? state.dnsView : 'servers';
   const views = {
@@ -697,21 +750,19 @@ function dnsPanel() {
   };
   return `
     <section class="route-hero dns-hero">
-      <div>
-        <h2>DNS Xray</h2>
-        <p>DNS-серверы, защита от утечек, проверка резолва и advanced-режимы разделены по вкладкам.</p>
+      <div class="dns-hero-copy">
+        <span class="dns-hero-kicker">Состояние DNS</span>
+        <h2>${hasDns ? (protectedCount ? 'Защищённый DNS настроен' : 'DNS настроен без шифрования') : 'DNS ещё не настроен'}</h2>
+        <p>${hasDns
+          ? `Xray использует ${stats.servers} ${serverCountForm}. ${protectedCount ? `${protectedCount} из них работают через DoH или TCP.` : 'Добавьте DoH, чтобы DNS-запросы не уходили открытым UDP/53.'}`
+          : 'Выберите готовый защищённый DNS или добавьте свой сервер. Изменения сначала сохраняются в черновике Xray.'}</p>
       </div>
-      <div class="route-score">
-        <strong>${stats.servers}</strong>
-        <span>DNS-серверов</span>
+      <div class="dns-overview">
+        <article class="${hasDns ? 'is-ok' : 'is-warn'}"><span>Серверы Xray</span><strong>${stats.servers || 'Нет'}</strong></article>
+        <article class="${protectedCount ? 'is-ok' : 'is-warn'}"><span>Защищённые</span><strong>${protectedCount}</strong></article>
+        <article><span>DNS устройств</span><strong>${escapeHtml(lanMode)}</strong></article>
+        <article><span>Режим Xray</span><strong>${escapeHtml(dnsMode === 'fakedns' ? 'FakeDNS' : 'Обычный')}</strong></article>
       </div>
-    </section>
-
-    <section class="stats route-stats">
-      ${stat('DoH', stats.doh, 'HTTPS DNS-серверы')}
-      ${stat('TCP DNS', stats.tcp, 'Серверы через TCP')}
-      ${stat('Hosts', stats.hosts, 'Локальные подмены')}
-      ${stat('Всего', stats.servers, 'Записи в dns.servers')}
     </section>
 
     <section class="routing-nav-panel dns-nav-panel">
