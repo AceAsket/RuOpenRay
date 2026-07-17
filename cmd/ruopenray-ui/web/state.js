@@ -38,6 +38,7 @@ export function createInitialState() {
   amneziaUserspaceUrl: '',
   amneziaUserspaceSha256: '',
   profiles: [],
+  profileCreateName: '',
   profileEditorOpen: false,
   profileEditName: '',
   profileEditOriginalName: '',

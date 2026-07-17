@@ -5,6 +5,9 @@ export function bindProfileControls({
   deleteProfile,
   downloadProfile
 }) {
+  document.querySelector('#profileCreateName')?.addEventListener('input', (event) => {
+    state.profileCreateName = event.target.value;
+  });
   document.querySelectorAll('[data-profile]').forEach((button) => {
     button.addEventListener('click', () => activateProfile(button.dataset.profile));
   });

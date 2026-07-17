@@ -101,6 +101,23 @@ export function createProfileActions({
     render();
   }
 
+  async function createProfileFromCurrent() {
+    const name = String(state.profileCreateName || '').trim();
+    if (!name) {
+      state.message = 'Введите имя нового профиля';
+      render();
+      return;
+    }
+    const result = await request('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    const savedName = result.profile || name;
+    state.profileCreateName = '';
+    state.message = `Текущая конфигурация сохранена как профиль ${savedName}`;
+    await refresh();
+  }
+
   async function saveProfile() {
     const name = prompt('Имя профиля', 'custom');
     if (!name) return;
@@ -125,6 +142,7 @@ export function createProfileActions({
     saveProfileEditor,
     deleteProfile,
     downloadProfile,
+    createProfileFromCurrent,
     saveProfile,
     backup
   };

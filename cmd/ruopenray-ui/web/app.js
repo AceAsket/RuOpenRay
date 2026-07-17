@@ -1069,6 +1069,7 @@ const {
   saveProfileEditor,
   deleteProfile,
   downloadProfile,
+  createProfileFromCurrent,
   saveProfile,
   backup
 } = profileActions;
@@ -2556,6 +2557,7 @@ function bind() {
       scanSni,
       closeProfileEdit: closeProfileEditor,
       saveProfileEditor,
+      createProfileFromCurrent,
       saveProfile,
       backup,
       restoreLatestBackup,

@@ -107,38 +107,82 @@ function devicesPanel() {
 
 function profilesPanel(compact = false) {
   const rows = compact ? state.profiles.slice(0, 5) : state.profiles;
+  const active = rows.find((profile) => profile.active) || null;
+  const stored = active ? rows.filter((profile) => profile.name !== active.name) : rows;
+  const profileIcon = `<svg class="profile-card-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.75 19c.75-3.25 3-5 6.25-5s5.5 1.75 6.25 5"></path></svg>`;
+  const formatSize = (value) => {
+    const bytes = Number(value || 0);
+    if (bytes < 1024) return `${bytes} Б`;
+    const size = bytes / 1024;
+    return `${size >= 10 ? Math.round(size) : Math.round(size * 10) / 10} КБ`;
+  };
+  const formatUpdated = (value) => {
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return 'дата неизвестна';
+    return date.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+  };
+  const moreActions = (profile) => `<details class="profile-more" data-details-key="profile-more-${escapeHtml(profile.name)}">
+    <summary>Ещё</summary>
+    <div class="profile-more-menu">
+      <button class="btn secondary" data-profile-download="${escapeHtml(profile.name)}">Скачать JSON</button>
+      <button class="btn secondary" data-profile-download-anonymized="${escapeHtml(profile.name)}">Скачать без секретов</button>
+      <button class="btn danger" data-profile-delete="${escapeHtml(profile.name)}">Удалить профиль</button>
+    </div>
+  </details>`;
   return `
-    <section class="panel profile-panel">
-      <div class="panel-title">
-        <div><h2>Профили</h2><span>Каждый профиль хранится отдельным JSON-файлом.</span></div>
-        <div class="split-actions">
-          <button class="btn secondary" data-action="backup">Сохранить резервную копию</button>
-          <button class="btn danger" data-action="restoreLatestBackup">Вернуть последнюю копию</button>
+    <div class="profile-page">
+      <section class="profile-active-overview ${active ? 'ok' : 'warn'}">
+        <div class="profile-active-icon">${profileIcon}</div>
+        <div class="profile-active-copy">
+          <span>Активный профиль</span>
+          <h2>${escapeHtml(active?.name || 'Не сохранён')}</h2>
+          <p>${active ? 'Этот профиль соответствует текущей конфигурации RuOpenRay.' : 'Текущая конфигурация не связана с сохранённым профилем. Сохраните её под понятным именем.'}</p>
+          ${active ? `<div class="profile-meta"><span>Обновлён ${escapeHtml(formatUpdated(active.updatedAt))}</span><span>${escapeHtml(formatSize(active.size))}</span></div>` : ''}
         </div>
-      </div>
-      <div class="table-scroll profile-table-scroll">
-        <table class="table profile-table">
-          <thead><tr><th>Имя</th><th>Обновлен</th><th>Размер</th><th>Статус</th><th>Действия</th></tr></thead>
-          <tbody>
-            ${rows.map((p) => `<tr>
-              <td>${escapeHtml(p.name)}</td>
-              <td>${new Date(p.updatedAt).toLocaleString()}</td>
-              <td>${Math.round(p.size / 10) / 100} KB</td>
-              <td>${p.active ? `<span class="tag">${labels.active}</span>` : `<span class="muted">${labels.stored}</span>`}</td>
-              <td>
-                <div class="profile-row-actions">
-                  <button class="btn secondary" data-profile="${escapeHtml(p.name)}" ${p.active ? 'disabled' : ''}>Активировать</button>
-                  <button class="btn secondary" data-profile-edit="${escapeHtml(p.name)}">Править</button>
-                  <button class="btn secondary" data-profile-download="${escapeHtml(p.name)}">Скачать</button>
-                  <button class="btn secondary" data-profile-download-anonymized="${escapeHtml(p.name)}">Обезличенный</button>
-                  <button class="btn danger" data-profile-delete="${escapeHtml(p.name)}">Удалить</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </section>
+        ${active ? `<div class="profile-active-actions">
+          <button class="btn secondary" data-profile-edit="${escapeHtml(active.name)}">Редактировать JSON</button>
+          ${moreActions(active)}
+        </div>` : ''}
+        <div class="profile-create-inline">
+          <label for="profileCreateName">Сохранить текущую конфигурацию как новый профиль</label>
+          <div>
+            <input id="profileCreateName" value="${escapeHtml(state.profileCreateName || '')}" placeholder="Например: дом, работа, тест" />
+            <button class="btn primary" data-action="createProfileFromCurrent">Сохранить</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel profile-library">
+        <div class="panel-title">
+          <div><h2>${active ? 'Другие профили' : 'Сохранённые профили'}</h2><span>${stored.length ? `${stored.length} доступно для переключения` : 'Здесь появятся сохранённые варианты конфигурации.'}</span></div>
+        </div>
+        <div class="profile-card-list">
+          ${stored.length ? stored.map((profile) => `<article class="profile-config-card">
+            <div class="profile-config-icon">${profileIcon}</div>
+            <div class="profile-config-main">
+              <strong>${escapeHtml(profile.name)}</strong>
+              <span>Обновлён ${escapeHtml(formatUpdated(profile.updatedAt))} · ${escapeHtml(formatSize(profile.size))}</span>
+            </div>
+            <div class="profile-config-actions">
+              <button class="btn primary" data-profile="${escapeHtml(profile.name)}">Выбрать</button>
+              <button class="btn secondary" data-profile-edit="${escapeHtml(profile.name)}">JSON</button>
+              ${moreActions(profile)}
+            </div>
+          </article>`).join('') : `<div class="profile-empty-state"><strong>Других профилей пока нет</strong><span>Введите имя выше, чтобы сохранить копию текущей конфигурации.</span></div>`}
+        </div>
+      </section>
+
+      <details class="panel profile-backup-details" data-details-key="profile-backups">
+        <summary><span><strong>Резервные копии RuOpenRay</strong><em>Полная копия данных интерфейса перед опасными изменениями.</em></span><b>Служебное</b></summary>
+        <div class="profile-backup-body">
+          <div><strong>Восстановление заменяет текущие данные</strong><span>Создавайте копию перед обновлением или крупной перенастройкой.</span></div>
+          <div class="split-actions">
+            <button class="btn secondary" data-action="backup">Создать резервную копию</button>
+            <button class="btn danger" data-action="restoreLatestBackup">Восстановить последнюю</button>
+          </div>
+        </div>
+      </details>
+    </div>
     ${compact ? '' : profileEditorDialog()}
   `;
 }
@@ -150,8 +194,8 @@ function profileEditorDialog() {
       <section class="modal profile-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="profileEditTitle" data-modal>
         <div class="modal-head">
           <div>
-            <h2 id="profileEditTitle">Редактирование профиля</h2>
-            <span>Профиль сохраняется как JSON. Перед сохранением RuOpenRay проверит, что JSON читается.</span>
+            <h2 id="profileEditTitle">Редактирование JSON профиля</h2>
+            <span>Технический режим. Перед сохранением RuOpenRay проверит структуру JSON.</span>
           </div>
           <button class="icon-btn" type="button" data-action="closeProfileEdit">×</button>
         </div>
