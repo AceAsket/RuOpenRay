@@ -325,7 +325,7 @@ export function createInitialState() {
   settingsNewPassword: '',
   settingsConfirmPassword: '',
   settingsPasswordSaving: false,
-  settingsView: 'logging',
+  settingsView: 'overview',
   loggingSettings: null,
   loggingLevel: 'warning',
   loggingAccessLog: false,

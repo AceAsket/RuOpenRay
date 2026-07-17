@@ -44,6 +44,8 @@ body[data-theme="light"] .traffic-overview-panel article,
 body[data-theme="light"] .login-card,
 body[data-theme="light"] .modal,
 body[data-theme="light"] .settings-card,
+body[data-theme="light"] .settings-overview-card,
+body[data-theme="light"] .settings-advanced-details,
 body[data-theme="light"] .settings-check,
 body[data-theme="light"] .settings-info-grid article,
 body[data-theme="light"] .settings-storage-row,
@@ -104,6 +106,22 @@ body[data-theme="light"] .lan-dns-upstream-form {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--shadow);
+}
+
+body[data-theme="light"] .settings-overview-card:hover,
+body[data-theme="light"] .settings-overview-card:focus-visible {
+  border-color: rgba(10, 159, 139, 0.42);
+  background: rgba(235, 249, 245, 0.96);
+}
+
+body[data-theme="light"] .settings-overview-card.attention {
+  border-color: rgba(184, 121, 20, 0.38);
+  background: rgba(255, 248, 229, 0.92);
+}
+
+body[data-theme="light"] .settings-overview-card.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background: rgba(255, 239, 241, 0.92);
 }
 
 body[data-theme="light"] .dash-hero,
