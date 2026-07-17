@@ -1459,10 +1459,38 @@ body[data-theme="light"] .firewall-preflight-note {
   border-color: rgba(17, 160, 140, 0.28);
 }
 
-body[data-theme="light"] .compat-card {
+body[data-theme="light"] .compat-card,
+body[data-theme="light"] .compat-flow-step,
+body[data-theme="light"] .compat-service-summary > div:first-child,
+body[data-theme="light"] .compat-service-details,
+body[data-theme="light"] .compat-secondary-details {
   background: #ffffff;
   border-color: rgba(0, 150, 136, 0.22);
   box-shadow: 0 14px 32px rgba(15, 39, 35, 0.08);
+}
+
+body[data-theme="light"] .compat-hero {
+  border-color: rgba(17, 153, 134, 0.22);
+  background:
+    linear-gradient(135deg, rgba(10, 159, 139, 0.16), transparent 38%),
+    linear-gradient(145deg, #ffffff, #edf7f4);
+}
+
+body[data-theme="light"] .compat-flow-step.ok,
+body[data-theme="light"] .compat-safety.ok {
+  border-color: rgba(20, 156, 75, 0.28);
+  background: #f0fff3;
+}
+
+body[data-theme="light"] .compat-flow-step.warn,
+body[data-theme="light"] .compat-safety.warn {
+  border-color: rgba(184, 121, 20, 0.34);
+  background: #fff9e9;
+}
+
+body[data-theme="light"] .compat-safety.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background: #fff0f2;
 }
 
 body[data-theme="light"] .compat-metrics article {

@@ -21,6 +21,12 @@ func (s *serverState) compatibilityStatus() map[string]any {
 	adguard, _ := lan["adguardHome"].(map[string]any)
 	b4 := s.cachedB4Status()
 	amnezia := s.cachedAmneziaStatus()
+	b4Link := ""
+	if api, ok := b4["api"].(map[string]any); ok && boolMap(api, "available") {
+		b4Link = fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort)
+	} else if ports, ok := b4["ports"].(map[string]any); ok && boolMap(ports, "ui") {
+		b4Link = fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort)
+	}
 	return map[string]any{
 		"ok":        true,
 		"routerLan": routerLan,
@@ -31,7 +37,7 @@ func (s *serverState) compatibilityStatus() map[string]any {
 		},
 		"links": map[string]any{
 			"adguardHome": adGuardHomeWebURL(routerLan, adguard),
-			"b4":          fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort),
+			"b4":          b4Link,
 		},
 		"adguardHome": adguard,
 		"b4":          b4,

@@ -104,19 +104,13 @@ func (s *serverState) b4Status() map[string]any {
 		}
 	}
 
-	b4Identity := boolMap(nft, "hasB4") || boolMap(iptables, "hasB4") ||
-		service["exists"] == true || processText != "" || boolMap(api, "available") || len(configs) > 0
-	routingActive := (boolMap(routing, "ipRule") || boolMap(routing, "route")) && b4Identity
-	active := boolMap(nft, "hasB4") ||
-		boolMap(nft, "hasQueue") ||
-		boolMap(iptables, "hasNFQUEUE") ||
-		routingActive
+	active := b4StatusActive(nft, iptables, routing, api)
 	result["active"] = active
 	warnings := b4Warnings(result)
 	result["warnings"] = warnings
 	switch {
 	case active:
-		result["summary"] = "B4 активен и может вмешиваться в firewall/NFQUEUE"
+		result["summary"] = "B4 перехватывает или перенаправляет трафик"
 	case result["running"] == true || boolMap(result["process"].(map[string]any), "found"):
 		result["summary"] = "B4 запущен, но активных следов firewall/NFQUEUE не видно"
 	case boolMap(service, "enabled") && result["available"] == true:
@@ -132,6 +126,16 @@ func (s *serverState) b4Status() map[string]any {
 		result["ok"] = false
 	}
 	return result
+}
+
+func b4StatusActive(nft, iptables, routing, api map[string]any) bool {
+	return boolMap(nft, "hasB4") ||
+		boolMap(nft, "hasQueue") ||
+		boolMap(iptables, "hasB4") ||
+		boolMap(iptables, "hasNFQUEUE") ||
+		boolMap(routing, "explicitB4") ||
+		boolMap(api, "queueActive") ||
+		boolMap(api, "setsEnabled")
 }
 
 func b4APIStatus() map[string]any {
@@ -462,7 +466,8 @@ func b4RoutingStatus() map[string]any {
 	tableSeen := map[int]bool{}
 	markSeen := map[string]bool{}
 	markConflict := false
-	routeResults := []map[string]any{runTimeout(3*time.Second, "ip", "route", "show", "table", b4RouteTable)}
+	namedRouteResult := runTimeout(3*time.Second, "ip", "route", "show", "table", b4RouteTable)
+	routeResults := []map[string]any{}
 	routeSamples := []string{}
 	for _, rule := range policyRules {
 		if !tableSeen[rule.Table] {
@@ -487,10 +492,15 @@ func b4RoutingStatus() map[string]any {
 	sort.Ints(tables)
 	sort.Strings(marks)
 	lowerRules := strings.ToLower(rulesText)
+	explicitRule := strings.Contains(lowerRules, "lookup "+b4RouteTable) || strings.Contains(lowerRules, "table "+b4RouteTable) || strings.Contains(lowerRules, "b4")
+	explicitRoute := b4RouteOutputActive(namedRouteResult)
 	return map[string]any{
 		"available":        true,
-		"ipRule":           len(policyRules) > 0 || strings.Contains(lowerRules, "lookup "+b4RouteTable) || strings.Contains(lowerRules, "b4"),
-		"route":            b4RouteOutputActive(routeResults...),
+		"ipRule":           explicitRule,
+		"route":            explicitRoute,
+		"explicitB4":       explicitRule || explicitRoute,
+		"policyRule":       len(policyRules) > 0,
+		"policyRoute":      b4RouteOutputActive(routeResults...),
 		"legacyTable":      b4RouteTable,
 		"tables":           tables,
 		"marks":            marks,
@@ -589,10 +599,19 @@ func b4PortsStatus() map[string]any {
 	} else if commandExists("ss") {
 		out = fmt.Sprint(runTimeout(3*time.Second, "sh", "-c", "ss -lntup 2>/dev/null | grep ':7000 '")["stdout"])
 	}
+	text := strings.TrimSpace(out)
+	lower := strings.ToLower(text)
+	b4Owner := strings.Contains(lower, "/b4") || strings.Contains(lower, " b4 ") || strings.Contains(lower, "b4-web")
+	owner := "other"
+	if b4Owner {
+		owner = "b4"
+	}
 	return map[string]any{
-		"ui":     strings.Contains(out, ":7000"),
-		"uiPort": b4UIPort,
-		"text":   strings.TrimSpace(out),
+		"ui":       text != "" && b4Owner,
+		"occupied": text != "",
+		"owner":    owner,
+		"uiPort":   b4UIPort,
+		"text":     text,
 	}
 }
 
@@ -607,7 +626,7 @@ func b4Warnings(status map[string]any) []string {
 	if boolMap(nft, "hasDNSRedirect") {
 		warnings = append(warnings, "Похоже, B4 участвует в обработке DNS. Не включайте одновременно DNS-перехват RuOpenRay и B4 на одни и те же домены без явной схемы.")
 	}
-	if boolMap(routing, "ipRule") || boolMap(routing, "route") {
+	if boolMap(routing, "explicitB4") || (boolMap(status, "running") && (boolMap(routing, "policyRule") || boolMap(routing, "policyRoute"))) {
 		warnings = append(warnings, "Найдены route table/rules B4. При параллельной работе важно не пересекать policy routing и fwmark.")
 	}
 	if boolMap(routing, "markConflict") {

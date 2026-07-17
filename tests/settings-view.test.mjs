@@ -82,3 +82,9 @@ test('Storage keeps free space visible and moves path breakdown below details', 
   assert.match(html, /Что занимает место/);
   assert.match(html, /Очистить резервные копии/);
 });
+
+test('Local proxy help explains Xray without product comparisons', () => {
+  const html = renderSettings({ settingsView: 'local-proxy' });
+  assert.match(html, /Маршрутизация приложений/);
+  assert.doesNotMatch(html, /v2rayA/i);
+});

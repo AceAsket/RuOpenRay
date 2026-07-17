@@ -221,8 +221,8 @@ function settingsPanel() {
         ${proxyCard('http')}
       </div>
       <div class="settings-warning">
-        <strong>Как у v2rayA</strong>
-        <span>Xray сам не поднимает SOCKS5 автоматически: нужен входящий поток в конфигурации. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
+        <strong>Маршрутизация приложений</strong>
+        <span>Для SOCKS5 или HTTP нужен отдельный входящий поток Xray. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
       </div>
       <div class="toolbar">
         <button class="btn warning ${state.busyAction === 'saveLocalProxyDraft' ? 'is-busy' : ''}" data-action="saveLocalProxyDraft" ${state.busyAction === 'saveLocalProxyDraft' ? 'disabled' : ''}>${state.busyAction === 'saveLocalProxyDraft' ? 'Обновляю...' : 'Обновить черновик Xray'}</button>

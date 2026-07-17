@@ -23,11 +23,35 @@ func TestB4Warnings(t *testing.T) {
 	status := map[string]any{
 		"nft":      map[string]any{"hasQueue": true, "hasDNSRedirect": true},
 		"iptables": map[string]any{"hasNFQUEUE": false},
-		"routing":  map[string]any{"ipRule": true},
+		"routing":  map[string]any{"explicitB4": true},
 	}
 	warnings := b4Warnings(status)
 	if len(warnings) != 3 {
 		t.Fatalf("warnings = %#v, want 3 items", warnings)
+	}
+}
+
+func TestB4StatusDoesNotClaimGenericRouterPolicyRoutes(t *testing.T) {
+	active := b4StatusActive(
+		map[string]any{"hasB4": false, "hasQueue": false},
+		map[string]any{"hasB4": false, "hasNFQUEUE": false},
+		map[string]any{"explicitB4": false, "policyRule": true, "policyRoute": true},
+		map[string]any{"queueActive": false, "setsEnabled": false},
+	)
+	if active {
+		t.Fatal("generic policy routes from the router must not be attributed to B4")
+	}
+}
+
+func TestB4StatusRecognizesExplicitInterception(t *testing.T) {
+	for name, active := range map[string]bool{
+		"nft queue": b4StatusActive(map[string]any{"hasQueue": true}, nil, nil, nil),
+		"named route": b4StatusActive(nil, nil, map[string]any{"explicitB4": true}, nil),
+		"api queue": b4StatusActive(nil, nil, nil, map[string]any{"queueActive": true}),
+	} {
+		if !active {
+			t.Fatalf("%s must be recognized as active B4 interception", name)
+		}
 	}
 }
 
