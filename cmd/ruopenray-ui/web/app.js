@@ -708,7 +708,8 @@ const {
   deleteServerModeClient,
   deleteServerModeAWGServer,
   deleteServerModeAWGPeer,
-  updateServerModeField
+  updateServerModeField,
+  setServerModeAccessMode
 } = serverModeActions;
 
 const amneziaActions = createAmneziaActions({
@@ -2696,6 +2697,9 @@ function bind() {
       if (input.dataset.serverModeField === 'enabled') setServerModeEnabled(input.checked);
       else render();
     });
+  });
+  document.querySelectorAll('[data-server-mode-access-base]').forEach((select) => {
+    select.addEventListener('change', () => setServerModeAccessMode(select));
   });
   document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
     textarea.addEventListener('input', () => {

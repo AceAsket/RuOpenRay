@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServerModeView } from '../cmd/ruopenray-ui/web/server-mode-view.js';
+import { applyServerModeAccessPreset } from '../cmd/ruopenray-ui/web/server-mode-actions.js';
 
 test('server mode renders limited LAN controls for Xray and AWG peers', () => {
   const state = {
@@ -31,5 +32,41 @@ test('server mode renders limited LAN controls for Xray and AWG peers', () => {
   ]) {
     assert.match(html, new RegExp(`data-server-mode-field="${field.replaceAll('.', '\\.')}`));
   }
+  assert.match(html, /data-server-mode-access-base="xray\.0\.clients\.0"/);
+  assert.match(html, /data-server-mode-access-base="awg\.0\.peers\.0"/);
+  assert.match(html, /Интернет \+ выбранные устройства LAN/);
+  assert.match(html, /Технические настройки клиента/);
   assert.match(html, /LAN ограничен/);
+});
+
+test('server mode access presets keep LAN permissions explicit', () => {
+  const target = {
+    allowLan: true,
+    allowRouter: true,
+    allowDns: true,
+    lanAllowedIps: '192.168.50.20/32',
+    lanAllowedPorts: '443',
+    lanProtocol: 'tcp'
+  };
+
+  applyServerModeAccessPreset(target, 'internet');
+  assert.deepEqual(target, {
+    allowLan: false,
+    allowRouter: false,
+    allowDns: false,
+    lanAllowedIps: '',
+    lanAllowedPorts: '',
+    lanProtocol: 'any'
+  });
+
+  target.lanAllowedIps = '192.168.50.30/32';
+  applyServerModeAccessPreset(target, 'limited');
+  assert.equal(target.allowLan, false);
+  assert.equal(target.lanAllowedIps, '192.168.50.30/32');
+
+  target.allowDns = true;
+  applyServerModeAccessPreset(target, 'full');
+  assert.equal(target.allowLan, true);
+  assert.equal(target.allowDns, true);
+  assert.equal(target.lanAllowedIps, '');
 });

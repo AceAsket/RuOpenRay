@@ -29,12 +29,33 @@ export function buildAWGClientConfig(server, peer, privateKey) {
   return lines.join('\n');
 }
 
+export function applyServerModeAccessPreset(target, preset) {
+  if (!target || typeof target !== 'object') return target;
+  const mode = ['internet', 'limited', 'full'].includes(preset) ? preset : 'internet';
+  target.allowLan = mode === 'full';
+  if (mode === 'internet') {
+    target.lanAllowedIps = '';
+    target.lanAllowedPorts = '';
+    target.lanProtocol = 'any';
+    target.allowRouter = false;
+    target.allowDns = false;
+  }
+  if (mode === 'full') {
+    target.lanAllowedIps = '';
+    target.lanAllowedPorts = '';
+    target.lanProtocol = 'any';
+    target.allowRouter = false;
+  }
+  return target;
+}
+
 export function createServerModeActions({ state, request, render }) {
   function syncServerMode(result) {
     if (!result || typeof result !== 'object') return;
     state.serverMode = result;
     if (result.config) {
       state.serverModeDraft = JSON.parse(JSON.stringify(result.config));
+      state.serverModeAccessModes = {};
     }
     if (result.preflight) state.serverModePreflight = result.preflight;
   }
@@ -113,6 +134,7 @@ export function createServerModeActions({ state, request, render }) {
       sniffing: true,
       openFirewall: false
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -128,6 +150,7 @@ export function createServerModeActions({ state, request, render }) {
     });
     inbound.clients = Array.isArray(inbound.clients) ? inbound.clients : [];
     inbound.clients.push(result.client);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -153,6 +176,7 @@ export function createServerModeActions({ state, request, render }) {
       peers: [],
       advanced: createDefaultAWGAdvanced()
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -180,6 +204,7 @@ export function createServerModeActions({ state, request, render }) {
       lanProtocol: 'any',
       enabled: true
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -435,6 +460,7 @@ export function createServerModeActions({ state, request, render }) {
     const index = Number(button?.dataset?.serverModeInbound || 0);
     const draft = ensureDraft();
     draft.xray.splice(index, 1);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -446,6 +472,7 @@ export function createServerModeActions({ state, request, render }) {
     const inbound = draft.xray[inboundIndex];
     if (!inbound || !Array.isArray(inbound.clients)) return;
     inbound.clients.splice(clientIndex, 1);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -458,6 +485,7 @@ export function createServerModeActions({ state, request, render }) {
       (server.peers || []).forEach((peer) => delete state.serverModeAWGClientKeys[awgClientKeyId(server, peer)]);
     }
     draft.awg.splice(index, 1);
+    state.serverModeAccessModes = {};
     state.serverModeAWGClientExport = null;
     resetServerModePreviews();
     render();
@@ -472,6 +500,7 @@ export function createServerModeActions({ state, request, render }) {
     const peer = server.peers[peerIndex];
     const keyId = awgClientKeyId(server, peer);
     server.peers.splice(peerIndex, 1);
+    state.serverModeAccessModes = {};
     if (state.serverModeAWGClientKeys) delete state.serverModeAWGClientKeys[keyId];
     state.serverModeAWGClientExport = null;
     resetServerModePreviews();
@@ -496,6 +525,26 @@ export function createServerModeActions({ state, request, render }) {
     }
     target[key] = value;
     resetServerModePreviews();
+  }
+
+  function setServerModeAccessMode(select) {
+    const draft = ensureDraft();
+    const base = String(select?.dataset?.serverModeAccessBase || '');
+    const path = base.split('.').filter(Boolean);
+    if (!path.length) return;
+    let target = draft;
+    for (const part of path) {
+      target = Array.isArray(target) ? target[Number(part)] : target?.[part];
+      if (!target) return;
+    }
+    const preset = String(select?.value || 'internet');
+    applyServerModeAccessPreset(target, preset);
+    state.serverModeAccessModes = {
+      ...(state.serverModeAccessModes || {}),
+      [base]: preset
+    };
+    resetServerModePreviews();
+    render();
   }
 
   return {
@@ -525,6 +574,7 @@ export function createServerModeActions({ state, request, render }) {
     deleteServerModeClient,
     deleteServerModeAWGServer,
     deleteServerModeAWGPeer,
-    updateServerModeField
+    updateServerModeField,
+    setServerModeAccessMode
   };
 }
