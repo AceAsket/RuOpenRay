@@ -87,11 +87,11 @@ function diagnosticsTrafficView() {
   `;
 }
 
-function clientTrafficTestView() {
+function clientTrafficTestView(embedded = false) {
   const baseline = state.clientTrafficBaseline;
   const result = state.clientTrafficResult;
   return `
-    <section class="panel client-traffic-test">
+    <section class="${embedded ? 'client-traffic-test embedded' : 'panel client-traffic-test'}">
       <div class="panel-title">
         <div>
           <h2>Клиентский тест трафика</h2>
@@ -271,30 +271,66 @@ function diagnosticsDpiView() {
 function diagnosticsChainView() {
   const result = state.diagnosticsChainResult;
   const steps = result?.steps || [];
+  const attentionSteps = steps.filter((step) => !step.ok);
+  const badCount = attentionSteps.filter((step) => step.tone !== 'warn').length;
+  const okCount = steps.filter((step) => step.ok).length;
+  const resultTone = badCount ? 'bad' : attentionSteps.length ? 'warn' : 'ok';
+  const renderSteps = (rows) => rows.map((step) => `<article class="${step.ok ? 'ok' : step.tone === 'warn' ? 'warn' : 'bad'}">
+    <span>${step.ok ? '✓' : step.tone === 'warn' ? '!' : '×'}</span>
+    <div><strong>${escapeHtml(step.title)}</strong><small>${escapeHtml(step.detail || '')}</small></div>
+  </article>`).join('');
+  const summaryTitle = state.diagnosticsChainRunning
+    ? `Проверка выполняется · ${steps.length} шагов готово`
+    : badCount
+      ? `Ошибки в цепочке: ${badCount}`
+      : attentionSteps.length
+        ? `Требуют внимания: ${attentionSteps.length}`
+        : 'Цепочка подключения работает';
   return `
     <section class="panel chain-diagnostics">
-      <div class="panel-title">
-        <div>
-          <h2>Проверка цепочки подключения</h2>
-          <span>Проверяет Xray config, LAN DNS, dnsmasq, nftables, policy routing, запрос с роутера и Xray stats.</span>
+      <div class="diagnostics-chain-head">
+        <div class="diagnostics-chain-copy">
+          <span>Основная проверка</span>
+          <h2>Проверить подключение</h2>
+          <p>Xray, DNS устройств, firewall, policy routing и выход в интернет.</p>
         </div>
-        <button class="btn" type="button" data-action="runConnectivityDiagnostics" ${state.diagnosticsChainRunning ? 'disabled' : ''}>${state.diagnosticsChainRunning ? 'Проверяю...' : 'Проверить цепочку'}</button>
+        <button class="btn primary ${state.diagnosticsChainRunning ? 'is-busy' : ''}" type="button" data-action="runConnectivityDiagnostics" ${state.diagnosticsChainRunning ? 'disabled' : ''}>${state.diagnosticsChainRunning ? 'Проверяю...' : steps.length ? 'Проверить снова' : 'Запустить проверку'}</button>
       </div>
-      <div class="chain-url-row">
-        <div class="form-row">
-          <label>URL для проверки с роутера</label>
-          <input id="diagnosticsTestUrl" value="${escapeHtml(state.diagnosticsTestUrl)}" placeholder="https://www.gstatic.com/generate_204" />
+      ${steps.length ? `
+        <div class="diagnostics-chain-summary ${resultTone}">
+          <span class="diagnostics-chain-summary-icon">${state.diagnosticsChainRunning ? '…' : resultTone === 'ok' ? '✓' : resultTone === 'warn' ? '!' : '×'}</span>
+          <div>
+            <strong>${escapeHtml(summaryTitle)}</strong>
+            <small>${state.diagnosticsChainRunning ? 'Результаты появляются по мере выполнения.' : `${okCount}/${steps.length} шагов пройдено.`}</small>
+          </div>
+          <div class="diagnostics-chain-counts"><span><strong>${okCount}</strong> пройдено</span><span><strong>${attentionSteps.length}</strong> проверить</span></div>
         </div>
-        <p>Запрос выполняет сам роутер. Так видно, растут ли nft-счетчики и статистика Xray после реального исходящего запроса.</p>
-      </div>
-      <div class="setup-result-list chain-result-list">
-        ${steps.length ? steps.map((step) => `<article class="${step.ok ? 'ok' : step.tone === 'warn' ? 'warn' : 'bad'}">
-          <span>${step.ok ? '✓' : step.tone === 'warn' ? '!' : '×'}</span>
-          <div><strong>${escapeHtml(step.title)}</strong><small>${escapeHtml(step.detail || '')}</small></div>
-        </article>`).join('') : '<p class="muted">Нажмите проверку: результат появится здесь по шагам.</p>'}
-      </div>
+        ${!state.diagnosticsChainRunning && attentionSteps.length ? `<div class="diagnostics-chain-attention">
+          <div class="diagnostics-chain-section-head"><div><strong>Что проверить</strong><span>Показываем только шаги с замечаниями.</span></div><b>${attentionSteps.length}</b></div>
+          <div class="setup-result-list chain-result-list">${renderSteps(attentionSteps)}</div>
+        </div>` : ''}
+        ${state.diagnosticsChainRunning ? `<div class="setup-result-list chain-result-list">${renderSteps(steps)}</div>` : `<details class="diagnostics-details" data-details-key="diagnostics-chain-results">
+          <summary><span><strong>Все результаты</strong><em>Полный список шагов проверки подключения.</em></span><b>${okCount}/${steps.length} пройдено</b></summary>
+          <div class="diagnostics-details-body"><div class="setup-result-list chain-result-list">${renderSteps(steps)}</div></div>
+        </details>`}
+      ` : ''}
+      <details class="diagnostics-details" data-details-key="diagnostics-chain-options">
+        <summary><span><strong>Параметры проверки</strong><em>Адрес запроса, который выполнит сам роутер.</em></span><b>По умолчанию</b></summary>
+        <div class="diagnostics-details-body">
+          <div class="chain-url-row">
+            <div class="form-row">
+              <label>URL для проверки с роутера</label>
+              <input id="diagnosticsTestUrl" value="${escapeHtml(state.diagnosticsTestUrl)}" placeholder="https://www.gstatic.com/generate_204" />
+            </div>
+            <p>Запрос с роутера проверяет интернет и счётчики, но не заменяет тест реального устройства в LAN.</p>
+          </div>
+        </div>
+      </details>
     </section>
-    ${clientTrafficTestView()}
+    <details class="panel diagnostics-details diagnostics-client-details" data-details-key="diagnostics-client-test">
+      <summary><span><strong>Проверить реальное LAN-устройство</strong><em>Дополнительный тест перехвата трафика с телефона или компьютера.</em></span><b>Точный тест</b></summary>
+      <div class="diagnostics-details-body">${clientTrafficTestView(true)}</div>
+    </details>
   `;
 }
 

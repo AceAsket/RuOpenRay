@@ -177,7 +177,7 @@ export function createInitialState() {
   sniScan: null,
   sniScanning: false,
   sniFocusedIndex: null,
-  diagnosticsView: 'live',
+  diagnosticsView: 'chain',
   diagnosticsChainRunning: false,
   diagnosticsChainResult: null,
   diagnosticsTestUrl: 'https://www.gstatic.com/generate_204',

@@ -22,16 +22,7 @@ export function createDiagnosticsView(deps) {
   const { observatoryPanel } = createDiagnosticsObservatoryView(deps);
 
   function diagnosticsLiveView() {
-    const checks = Object.values(state.serverChecks);
-    return `
-      <section class="stats route-stats">
-        ${stat('Проверки', checks.length || '—', checks.length ? `${checks.filter((item) => item?.ok).length} доступно` : 'серверы еще не проверялись')}
-        ${stat('Live-Xray', state.logLive ? 'Live' : 'Пауза', `${state.logLines} строк · ${state.logSort === 'desc' ? 'новые сверху' : 'новые снизу'}`)}
-        ${stat('Устройства', deviceRules().length, 'source-правила LAN')}
-        ${stat('Домены', domainDiagnosticRows().length, 'доменные правила')}
-      </section>
-      ${logsPanel(false)}
-    `;
+    return logsPanel(false);
   }
 
   function diagnosticsPanel() {
@@ -45,31 +36,32 @@ export function createDiagnosticsView(deps) {
       sni: sniPanel,
       domains: diagnosticsDomainMonitorView
     };
-    const activeView = views[state.diagnosticsView] ? state.diagnosticsView : 'live';
+    const activeView = views[state.diagnosticsView] ? state.diagnosticsView : 'chain';
     return `
-      <section class="route-hero diagnostics-hero">
-        <div>
-          <h2>Диагностика</h2>
-          <p>SNI-поиск, логи в реальном времени, проверка цепочки и мониторинг доменов.</p>
+      <section class="diagnostics-overview">
+        <div class="diagnostics-overview-copy">
+          <span>Центр диагностики</span>
+          <h2>Проверка работы RuOpenRay</h2>
+          <p>Начните с общей проверки подключения. DPI, трафик, домены и журнал нужны для точечного поиска проблемы.</p>
         </div>
-        <div class="route-hero-actions">
-          <div class="route-score">
+        <div class="diagnostics-overview-actions">
+          <div class="diagnostics-server-health ${checks.length && alive === checks.length ? 'ok' : checks.length ? 'warn' : ''}">
             <strong>${checks.length ? `${alive}/${checks.length}` : '—'}</strong>
-            <span>последняя проверка серверов</span>
+            <span>${checks.length ? 'серверов доступны' : 'серверы не проверялись'}</span>
           </div>
-          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать диагностику</a>
+          <a class="btn secondary" href="/api/diagnostics/package" download>Скачать отчёт</a>
         </div>
       </section>
 
       <section class="panel diagnostic-switcher">
         <div class="segmented diagnostics-tabs" aria-label="Режим диагностики">
           ${[
-            ['live', 'Live-Xray'],
-            ['chain', 'Проверка связи'],
+            ['chain', 'Проверка'],
             ['dpi', 'DPI'],
             ['traffic', 'Трафик'],
+            ['domains', 'Домены'],
             ['sni', 'SNI'],
-            ['domains', 'Домены']
+            ['live', 'Журнал Xray']
           ].map(([value, label]) => `<button type="button" class="${activeView === value ? 'active' : ''}" data-diagnostics-view="${value}">${label}</button>`).join('')}
         </div>
       </section>
