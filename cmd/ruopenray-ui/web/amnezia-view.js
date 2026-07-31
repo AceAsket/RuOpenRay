@@ -89,10 +89,10 @@ export function createAmneziaView({ state, escapeHtml }) {
   }
 
   function runtimeLabel(runtime = {}) {
-    if (runtime.connected) return 'connected';
+    if (runtime.connected) return 'подключен';
     if (runtime.interfaceRunning) return 'интерфейс поднят';
-    if (runtime.backendReady) return 'backend готов';
-    return 'нет backend';
+    if (runtime.backendReady) return 'готов к запуску';
+    return 'способ запуска не готов';
   }
 
   function latencyLabel(runtime = {}) {
@@ -105,8 +105,8 @@ export function createAmneziaView({ state, escapeHtml }) {
   function handshakeLabel(runtime = {}) {
     const age = Number(runtime.latestHandshakeAgoSec);
     if (runtime.latestHandshake) return runtime.latestHandshake;
-    if (Number.isFinite(age) && age >= 0) return `${age} sec ago`;
-    return 'нет handshake';
+    if (Number.isFinite(age) && age >= 0) return `${age} сек. назад`;
+    return 'подключений ещё не было';
   }
 
   function profileRuntimeMetrics(item = {}, runtime = {}) {
@@ -161,7 +161,7 @@ export function createAmneziaView({ state, escapeHtml }) {
   function poolStrategyLabel(value) {
     switch (value) {
       case 'round-robin':
-        return 'round-robin';
+        return 'по очереди';
       case 'fallback':
         return 'резерв по порядку';
       case 'random':
@@ -174,26 +174,26 @@ export function createAmneziaView({ state, escapeHtml }) {
   function integrationModeLabel(value) {
     switch (value) {
       case 'mixed':
-        return 'Xray + AmneziaWG';
+        return 'Для выбранных сайтов и устройств';
       case 'amnezia-first':
-        return 'AmneziaWG основной';
+        return 'Основной выход в интернет';
       case 'xray-only':
-        return 'Только Xray';
+        return 'Не использовать AmneziaWG';
       default:
-        return 'Резерв';
+        return 'Подготовить без маршрутизации';
     }
   }
 
   function integrationModeDetail(value) {
     switch (value) {
       case 'mixed':
-        return 'Xray сохраняет свои proxy/balancer правила, AmneziaWG-пул готовится как отдельное направление для policy routing.';
+        return 'Xray продолжит работать, а выбранные сценарии можно будет направлять через AmneziaWG.';
       case 'amnezia-first':
-        return 'AmneziaWG-пул становится основным направлением, Xray остается для локальных прокси и отдельных правил.';
+        return 'Интернет-трафик по умолчанию пойдёт через AmneziaWG; отдельные правила Xray сохранятся.';
       case 'xray-only':
-        return 'AmneziaWG-профили сохраняются, но трафик продолжает идти только по схеме Xray.';
+        return 'Профили останутся сохранены, но трафик продолжит идти только через Xray или напрямую.';
       default:
-        return 'Профили готовы к проверке и запуску, но не участвуют в общей маршрутизации.';
+        return 'Туннель можно проверить и запустить вручную, не меняя текущую маршрутизацию.';
     }
   }
 
@@ -216,12 +216,12 @@ export function createAmneziaView({ state, escapeHtml }) {
       ? state.amneziaSelectedProfileIds.includes(item.id)
       : Boolean(item.selected || item.active);
     return `<article class="amnezia-profile-card ${item.active ? 'ok' : ''} ${selected ? 'selected' : ''}">
-      <label class="amnezia-profile-select" title="Добавить профиль в пул">
+      <label class="amnezia-profile-select" title="Добавить в группу серверов">
         <input type="checkbox" data-amnezia-pool="${escapeHtml(item.id || '')}" ${selected ? 'checked' : ''}>
         <span></span>
       </label>
       <div class="amnezia-profile-main">
-        <span class="eyebrow">${escapeHtml(item.active ? 'активный профиль' : 'профиль')}</span>
+        <span class="eyebrow">${escapeHtml(item.active ? 'используется' : 'сохранённое подключение')}</span>
         <h3>${escapeHtml(item.name || 'AmneziaWG')}</h3>
         <p>${escapeHtml(item.summary || peer.endpoint || 'endpoint не задан')}</p>
         <div class="amnezia-profile-meta">
@@ -232,9 +232,9 @@ export function createAmneziaView({ state, escapeHtml }) {
         ${profileRuntimeMetrics(item, runtime)}
       </div>
       <div class="split-actions">
-        <button class="btn secondary" type="button" data-action="loadAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Открыть</button>
-        <button class="btn secondary" type="button" data-action="activateAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}" ${item.active ? 'disabled' : ''}>Выбрать</button>
-        <button class="btn danger" type="button" data-action="deleteAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Удалить</button>
+        <button class="btn secondary compact" type="button" data-action="loadAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}">Настроить</button>
+        <button class="btn secondary compact" type="button" data-action="activateAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}" ${item.active ? 'disabled' : ''}>Использовать</button>
+        <button class="icon-btn danger" type="button" data-action="deleteAmneziaProfile" data-amnezia-profile="${escapeHtml(item.id || '')}" title="Удалить подключение" aria-label="Удалить подключение">×</button>
       </div>
     </article>`;
   }
@@ -250,28 +250,54 @@ export function createAmneziaView({ state, escapeHtml }) {
     const selectedItems = items.filter((item) => selectedIds.includes(item.id));
     const strategy = state.amneziaPoolStrategy || profiles.strategy || 'single';
     const mode = state.amneziaIntegrationMode || profiles.mode || 'standby';
-    const xray = status.xrayIntegration || {};
     const canManage = Boolean(current || config.exists);
     const managed = Boolean(status.control?.managed || runtime.interfaceRunning || status.running);
+    const checks = array(preflight.checks);
+    const checked = checks.length > 0;
+    const checkPassed = checked && preflight.ok === true;
     const selectedSummary = selectedItems.length ? `${selectedItems.length} проф. выбрано` : 'ничего не выбрано';
-    const configState = config.exists ? `client.conf сохранен${config.updatedAt ? ` · ${config.updatedAt}` : ''}` : 'client.conf не импортирован';
-    return `<section class="panel amnezia-profiles-panel">
+    const connectionState = managed
+      ? 'Туннель работает'
+      : !canManage
+        ? 'Добавьте подключение'
+        : checkPassed
+          ? 'Готов к запуску'
+          : checked
+            ? 'Нужны исправления'
+            : 'Профиль сохранён';
+    const connectionDetail = managed
+      ? 'AmneziaWG запущен. Статистика подключения появится после первого обмена трафиком.'
+      : !canManage
+        ? 'Импортируйте client.conf из приложения Amnezia или от вашего VPN-провайдера.'
+        : checkPassed
+          ? 'Все обязательные проверки пройдены. Можно запускать туннель.'
+          : checked
+            ? 'Откройте результаты проверки ниже и устраните отмеченные проблемы.'
+            : 'RuOpenRay проверит профиль, способ запуска и безопасность маршрутов перед включением.';
+    return `<div class="amnezia-profiles-stack">
+    <section class="panel amnezia-profiles-panel">
       <div class="panel-title">
         <div>
-          <h2>Управление AmneziaWG</h2>
-          <span>Активный сервер, runtime-метрики, пул профилей и назначение маршрутизации в одном месте.</span>
+          <h2>Подключение AmneziaWG</h2>
+          <span>Добавьте профиль, проверьте совместимость роутера и запустите туннель.</span>
         </div>
         <div class="split-actions">
-          <button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
-          <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
+          ${canManage ? '<button class="btn secondary" type="button" data-action="openAmneziaImportDialog">Добавить профиль</button>' : ''}
+          <span class="status-chip ${managed ? 'ok' : (checked && !checkPassed ? 'warn' : '')}">${escapeHtml(connectionState)}</span>
         </div>
       </div>
-      <div class="amnezia-dashboard-grid">
+      <div class="amnezia-setup-progress" aria-label="Порядок подключения AmneziaWG">
+        <article class="${canManage ? 'done' : 'active'}"><span>${canManage ? '✓' : '1'}</span><div><strong>Профиль</strong><small>${canManage ? 'добавлен' : 'нужен client.conf'}</small></div></article>
+        <article class="${checkPassed ? 'done' : (canManage ? 'active' : '')}"><span>${checkPassed ? '✓' : '2'}</span><div><strong>Проверка</strong><small>${checkPassed ? 'пройдена' : (checked ? 'есть замечания' : 'ещё не запускалась')}</small></div></article>
+        <article class="${managed ? 'done' : (checkPassed ? 'active' : '')}"><span>${managed ? '✓' : '3'}</span><div><strong>Туннель</strong><small>${managed ? 'работает' : 'не запущен'}</small></div></article>
+      </div>
+
+      <div class="amnezia-connection-grid">
         <article class="amnezia-active-profile ${current ? 'ok' : ''}">
           <div>
-            <span class="eyebrow">активный сервер</span>
-            <h3>${escapeHtml(current?.name || 'Профиль не выбран')}</h3>
-            <p>${escapeHtml(current ? profileEndpoint(current) : 'Импортируйте client.conf или выберите профиль из списка.')}</p>
+            <span class="eyebrow">выбранное подключение</span>
+            <h3>${escapeHtml(current?.name || 'Подключение не добавлено')}</h3>
+            <p>${escapeHtml(current ? profileEndpoint(current) : 'Здесь появится сервер из импортированного client.conf.')}</p>
           </div>
           <div class="amnezia-profile-meta">
             ${currentIface.address ? `<span>${escapeHtml(currentIface.address)}</span>` : ''}
@@ -281,55 +307,66 @@ export function createAmneziaView({ state, escapeHtml }) {
           ${profileRuntimeMetrics(current || {}, runtime)}
         </article>
 
-        <article class="amnezia-quick-actions">
-          <span class="eyebrow">быстрые действия</span>
-          <div class="amnezia-action-stack">
-            <button class="btn warning" type="button" data-action="openAmneziaImportDialog">Импорт client.conf</button>
-            ${commandButton('refreshAmnezia', 'Обновить статус')}
-            <button class="btn secondary" type="button" data-action="checkAmneziaPreflight" ${current || config.exists ? '' : 'disabled'}>Проверить</button>
-            <button class="btn secondary" type="button" data-action="prepareAmnezia" ${current || config.exists ? '' : 'disabled'}>Подготовить</button>
-          </div>
-          <div class="amnezia-run-controls">
-            ${commandButton('startAmnezia', managed ? 'AWG запущен' : 'Запустить AWG', 'warning', !canManage || managed)}
-            ${commandButton('stopAmnezia', 'Остановить AWG', 'danger', !managed)}
+        <article class="amnezia-next-step ${managed ? 'ok' : (checked && !checkPassed ? 'warn' : '')}">
+          <span class="eyebrow">следующий шаг</span>
+          <h3>${escapeHtml(connectionState)}</h3>
+          <p>${escapeHtml(connectionDetail)}</p>
+          <div class="amnezia-primary-actions">
+            ${!canManage
+              ? '<button class="btn warning" type="button" data-action="openAmneziaImportDialog">Импортировать client.conf</button>'
+              : managed
+                ? commandButton('stopAmnezia', 'Остановить туннель', 'danger')
+                : commandButton('checkAndStartAmnezia', 'Проверить и запустить', 'warning')}
+            ${canManage && !managed ? '<button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Только проверить</button>' : ''}
+            ${canManage ? '<button class="btn secondary" type="button" data-action="loadAmneziaConfig">Настроить профиль</button>' : ''}
+            ${commandButton('refreshAmnezia', 'Обновить состояние')}
           </div>
           <div class="amnezia-dashboard-state">
-            <span>${escapeHtml(configState)}</span>
-            <span class="${preflight.ok ? 'ok' : 'warn'}">${escapeHtml(preflightSummary(preflight))}</span>
-            <span>${escapeHtml(runtime.protocolVersion || 'AWG')}</span>
+            <span class="${checkPassed ? 'ok' : (checked ? 'warn' : '')}">${escapeHtml(preflightSummary(preflight))}</span>
+            <span>${escapeHtml(runtime.protocolVersion || 'AmneziaWG')}</span>
           </div>
         </article>
+      </div>
 
-        <article class="amnezia-pool-editor">
-          <label class="field-label">AWG-пул</label>
-          <strong>${escapeHtml(selectedSummary)}</strong>
-          <span>${escapeHtml(`${selectedItems.length} проф. · ${poolStrategyLabel(strategy)}`)}</span>
-          <select class="input" data-amnezia-strategy aria-label="Стратегия AWG-пула">
-            ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
-          </select>
-          <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool" ${items.length ? '' : 'disabled'}>Сохранить пул</button>
-        </article>
-
-        <article class="amnezia-integration-editor">
-          <label class="field-label">Маршрутизация</label>
-          <strong>${escapeHtml(integrationModeLabel(mode))}</strong>
-          <span>${escapeHtml(integrationModeDetail(mode))}</span>
+      ${canManage ? `<section class="amnezia-usage-mode">
+        <div>
+          <span class="eyebrow">как использовать подключение</span>
+          <h3>${escapeHtml(integrationModeLabel(mode))}</h3>
+          <p>${escapeHtml(integrationModeDetail(mode))}</p>
+        </div>
+        <label>
+          <span class="field-label">Режим трафика</span>
           <select class="input" data-amnezia-mode aria-label="Режим маршрутизации AmneziaWG">
             ${['standby', 'mixed', 'amnezia-first', 'xray-only'].map((item) => `<option value="${escapeHtml(item)}" ${mode === item ? 'selected' : ''}>${escapeHtml(integrationModeLabel(item))}</option>`).join('')}
           </select>
-          <div class="amnezia-integration-metrics">
-            <span>Xray proxy: ${escapeHtml(String(xray.proxyOutbounds ?? 0))}</span>
-            <span>AWG rules: ${escapeHtml(String(xray.rules ?? 0))}</span>
-            <span>${escapeHtml(xray.transparentReady ? 'transparent готов' : 'transparent не найден')}</span>
-          </div>
-          <button class="btn secondary" type="button" data-tab-jump="routing">Открыть маршрутизацию</button>
-        </article>
-
-        <div class="amnezia-profile-list">
-          ${items.length ? items.map((item) => profileCard(item, runtime)).join('') : `<div class="empty-state">Профилей пока нет. Вставьте client.conf в блоке импорта и сохраните.</div>`}
+        </label>
+        <div class="amnezia-usage-actions">
+          <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool">Сохранить режим</button>
+          <button class="btn secondary" type="button" data-tab-jump="routing">Выбрать сценарии</button>
         </div>
-      </div>
-    </section>`;
+      </section>` : ''}
+
+      ${items.length ? `<section class="amnezia-saved-profiles">
+        <div class="amnezia-subsection-head">
+          <div><h3>Сохранённые подключения</h3><p>${escapeHtml(`${items.length} проф. · ${selectedItems.length || 1} используется`)}</p></div>
+          <button class="btn secondary compact" type="button" data-action="openAmneziaImportDialog">Добавить</button>
+        </div>
+        <div class="amnezia-profile-list">${items.map((item) => profileCard(item, runtime)).join('')}</div>
+      </section>` : ''}
+
+      ${items.length > 1 ? `<details class="amnezia-advanced-panel">
+        <summary>Несколько серверов и резервирование <span>${escapeHtml(`${selectedSummary} · ${poolStrategyLabel(strategy)}`)}</span></summary>
+        <div class="amnezia-pool-editor">
+          <label class="field-label">Как выбирать сервер</label>
+          <select class="input" data-amnezia-strategy aria-label="Стратегия AWG-пула">
+            ${['single', 'round-robin', 'fallback', 'random'].map((item) => `<option value="${escapeHtml(item)}" ${strategy === item ? 'selected' : ''}>${escapeHtml(poolStrategyLabel(item))}</option>`).join('')}
+          </select>
+          <button class="btn secondary" type="button" data-action="saveAmneziaProfilePool">Сохранить группу</button>
+        </div>
+      </details>` : ''}
+    </section>
+    ${preflightView(preflight)}
+    </div>`;
   }
 
   function preflightView(preflight = {}) {
@@ -340,8 +377,8 @@ export function createAmneziaView({ state, escapeHtml }) {
     return `<section class="panel amnezia-preflight-panel ${preflight.ok ? 'ok' : 'warn'}">
       <div class="panel-title">
         <div>
-          <h2>Preflight</h2>
-          <span>Проверка только читает систему и показывает, можно ли безопасно готовить AmneziaWG.</span>
+          <h2>Проверка готовности</h2>
+          <span>Проверка ничего не меняет: она сверяет профиль, поддержку роутера и безопасность маршрутов.</span>
         </div>
         <span class="status-chip ${preflight.ok ? 'ok' : 'warn'}">${escapeHtml(preflight.ok ? 'готово' : 'есть блокеры')}</span>
       </div>
@@ -358,20 +395,20 @@ export function createAmneziaView({ state, escapeHtml }) {
         <strong>Предупреждения</strong>
         <span>${escapeHtml(warnings.join(' '))}</span>
       </div>` : ''}
-      ${plan.length ? `<div class="settings-info">
-        <strong>План без применения</strong>
-        <span>${escapeHtml(plan.join(' '))}</span>
-      </div>` : ''}
+      ${plan.length ? `<details class="amnezia-advanced-panel compact">
+        <summary>Технический план запуска</summary>
+        <div class="settings-info"><span>${escapeHtml(plan.join(' '))}</span></div>
+      </details>` : ''}
     </section>`;
   }
 
   function warningsView(status = {}) {
     const warnings = array(status.warnings);
     if (!warnings.length) return '';
-    return `<div class="settings-warning amnezia-warning">
-      <strong>Внимание</strong>
-      <span>${escapeHtml(warnings.join(' '))}</span>
-    </div>`;
+    return `<details class="amnezia-warning-summary">
+      <summary><strong>Запуск требует внимания</strong><span>${escapeHtml(`${warnings.length} ${warnings.length === 1 ? 'пункт' : 'пункта'} для проверки`)}</span></summary>
+      <ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join('')}</ul>
+    </details>`;
   }
 
   function clientConfigView(config = {}) {
@@ -413,8 +450,8 @@ export function createAmneziaView({ state, escapeHtml }) {
       <section class="modal import-dialog amnezia-import-dialog" role="dialog" aria-modal="true" aria-labelledby="amneziaImportTitle" data-modal>
         <div class="modal-head">
           <div>
-            <h2 id="amneziaImportTitle">Импорт client.conf</h2>
-            <span>Вставьте конфиг AmneziaWG, задайте имя профиля и сохраните его в пул AWG.</span>
+            <h2 id="amneziaImportTitle">Новое подключение AmneziaWG</h2>
+            <span>Вставьте client.conf из приложения Amnezia или от вашего VPN-провайдера.</span>
           </div>
           <button class="icon-btn" type="button" data-action="closeAmneziaImportDialog" aria-label="Закрыть">&times;</button>
         </div>
@@ -432,10 +469,9 @@ export function createAmneziaView({ state, escapeHtml }) {
           <strong>Проверьте конфиг</strong>
           <span>${escapeHtml(warnings.join(' '))}</span>
         </div>` : ''}
-      ${amneziaStructuredEditor(text)}
       <div class="amnezia-raw-head">
-        <strong>Raw client.conf</strong>
-        <span>Поля выше собирают этот текст автоматически. Можно редактировать raw вручную для редких параметров.</span>
+        <strong>client.conf</strong>
+        <span>Конфигурация хранится только на роутере и не отправляется во внешние сервисы.</span>
       </div>
       <textarea class="amnezia-config-textarea code-textarea" data-amnezia-config spellcheck="false" placeholder="[Interface]
 PrivateKey = ...
@@ -446,10 +482,14 @@ Jc = ...
 PublicKey = ...
 Endpoint = host:port
 AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
+      <details class="amnezia-advanced-panel">
+        <summary>Изменить отдельные поля <span>адрес, ключи, endpoint и параметры обфускации</span></summary>
+        <div class="amnezia-import-structured-note">Используйте этот редактор вместо ручного изменения текста выше.</div>
+        ${amneziaStructuredEditor(text)}
+      </details>
       <div class="import-action-bar amnezia-import-actions">
-        <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить конфиг</button>
-        <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить</button>
-        <button class="btn secondary" type="button" data-action="prepareAmnezia">Подготовить</button>
+        <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить подключение</button>
+        <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить конфигурацию</button>
       </div>
         ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
       </section>
@@ -527,92 +567,76 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const policyWarnings = array(policy.warnings);
     const trafficDetail = `packets ${Number(runtimeStatus.rxPackets || 0)} / ${Number(runtimeStatus.txPackets || 0)}`;
     const errorDetail = `errors ${Number(runtimeStatus.rxErrors || 0)} / ${Number(runtimeStatus.txErrors || 0)} · drops ${Number(runtimeStatus.rxDropped || 0)} / ${Number(runtimeStatus.txDropped || 0)}`;
+    const backendReady = Boolean(kernel.loaded || userspace.available || glinet.supportsNativeAmnezia);
+    const configReady = Boolean(status.clientConfig?.exists);
+    const tunnelReady = Boolean(runtimeStatus.interfaceRunning || status.running);
     return `<section class="amnezia-system-stack">
       <div class="panel-title amnezia-system-title">
         <div>
-          <h2>Состояние AWG</h2>
-          <span>Backend, команды, kernel module, интерфейсы и будущая схема policy routing.</span>
+          <h2>Диагностика AmneziaWG</h2>
+          <span>Подробности нужны только при проблемах с запуском или раздельной маршрутизацией.</span>
         </div>
-      </div>
-      <div class="amnezia-system-grid">
-        ${glinetBackendView(glinet)}
-        ${userspaceBackendView(userspace)}
       </div>
 
-      <section class="panel amnezia-overview ${runtimeTone(runtimeStatus)}">
-        <div class="panel-title">
-          <div>
-            <h2>AWG 2.0 runtime</h2>
-            <span>Живое состояние backend, endpoint, handshake, задержки и сетевых счетчиков.</span>
-          </div>
-          <span class="status-chip ${runtimeTone(runtimeStatus)}">${escapeHtml(runtimeLabel(runtimeStatus))}</span>
+      <section class="panel amnezia-diagnostics-overview">
+        <div class="amnezia-diagnostics-grid">
+          <article class="${configReady ? 'ok' : 'warn'}"><span>Профиль</span><strong>${configReady ? 'добавлен' : 'не добавлен'}</strong><small>${escapeHtml(status.clientConfig?.name || 'нужен client.conf')}</small></article>
+          <article class="${backendReady ? 'ok' : 'warn'}"><span>Способ запуска</span><strong>${backendReady ? 'готов' : 'не готов'}</strong><small>${escapeHtml(kernel.loaded ? 'модуль ядра' : (userspace.available ? 'userspace' : (glinet.supportsNativeAmnezia ? 'GL.iNet' : 'нужен модуль или userspace')))}</small></article>
+          <article class="${tunnelReady ? 'ok' : ''}"><span>Туннель</span><strong>${tunnelReady ? 'работает' : 'остановлен'}</strong><small>${escapeHtml(runtimeStatus.interface || status.primaryInterface || 'интерфейс не создан')}</small></article>
+          <article class="${policy.active ? 'ok' : ''}"><span>Сценарии</span><strong>${policy.active ? 'применены' : 'не применены'}</strong><small>${escapeHtml(`${Number(policy.ipTargetCount || 0)} IP/CIDR · ${Number(policy.domainTargets || 0)} доменов`)}</small></article>
         </div>
-        <div class="compat-metrics">
+      </section>
+
+      <details class="amnezia-tech-section">
+        <summary><div><strong>Способ запуска</strong><span>Модуль ядра, GL.iNet или userspace</span></div><span class="status-chip ${backendReady ? 'ok' : 'warn'}">${backendReady ? 'готов' : 'требует настройки'}</span></summary>
+        <div class="amnezia-tech-section-body"><div class="amnezia-system-grid">${glinetBackendView(glinet)}${userspaceBackendView(userspace)}</div></div>
+      </details>
+
+      <details class="amnezia-tech-section">
+        <summary><div><strong>Туннель и трафик</strong><span>Сервер, подключение и сетевые счётчики</span></div><span class="status-chip ${tunnelReady ? runtimeTone(runtimeStatus) : ''}">${escapeHtml(tunnelReady ? runtimeLabel(runtimeStatus) : 'остановлен')}</span></summary>
+        <div class="amnezia-tech-section-body"><div class="compat-metrics">
           ${metric('Протокол', runtimeStatus.protocolVersion || runtimeStatus.protocol || 'нет', runtimeStatus.backendVersion || runtimeStatus.backend || '')}
-          ${metric('Endpoint', runtimeStatus.endpoint || 'нет', latencyLabel(runtimeStatus))}
+          ${metric('Сервер', runtimeStatus.endpoint || 'нет', latencyLabel(runtimeStatus))}
           ${metric('Интерфейс', runtimeStatus.interface || status.primaryInterface || 'нет', runtimeStatus.interfaceRunning ? 'UP' : 'DOWN')}
-          ${metric('Peers', String(runtimeStatus.peerCount ?? 0), runtimeStatus.connected ? 'есть handshake' : handshakeLabel(runtimeStatus))}
-          ${metric('RX / TX', `${formatBytes(runtimeStatus.rxBytes)} / ${formatBytes(runtimeStatus.txBytes)}`, trafficDetail)}
-          ${metric('Ошибки / drops', errorDetail, runtimeStatus.endpointProbe ? array(runtimeStatus.endpointProbe).slice(0, 1).join('') : '')}
-        </div>
-      </section>
+          ${metric('Подключение', String(runtimeStatus.peerCount ?? 0), runtimeStatus.connected ? 'есть обмен ключами' : handshakeLabel(runtimeStatus))}
+          ${metric('Получено / отправлено', `${formatBytes(runtimeStatus.rxBytes)} / ${formatBytes(runtimeStatus.txBytes)}`, trafficDetail)}
+          ${metric('Ошибки / потери', errorDetail, runtimeStatus.endpointProbe ? array(runtimeStatus.endpointProbe).slice(0, 1).join('') : '')}
+        </div></div>
+      </details>
 
-      <section class="panel amnezia-overview ${statusTone(status)}">
-        <div class="panel-title">
-          <div>
-            <h2>Техническое состояние</h2>
-            <span>RuOpenRay управляет только своим интерфейсом ruopenray-awg0 и отдельной route table, не меняя основной default route роутера.</span>
+      <details class="amnezia-tech-section">
+        <summary><div><strong>Система и интерфейсы</strong><span>Команды, пакеты и найденные awg/wg-интерфейсы</span></div><span>${escapeHtml(statusLabel(status))}</span></summary>
+        <div class="amnezia-tech-section-body">
+          <div class="compat-metrics">
+            ${metric('Интерфейс', status.primaryInterface || (interfaces.length ? `${interfaces.length} найдено` : 'нет'), interfaces.map((item) => item.name).filter(Boolean).join(', '))}
+            ${metric('Сервис', services.running ? 'запущен' : (services.found ? 'найден' : 'нет'), array(services.items).map((item) => item.path).join(', '))}
+            ${metric('Команда awg', wg.available ? (wg.command || 'доступна') : 'нет', array(wg.interfaces).join(', '))}
+            ${metric('Модуль ядра', kernel.loaded ? 'загружен' : (kernel.installed || kernel.moduleFile ? 'найден' : 'нет'), kernel.package || array(kernel.files).join(', '))}
+            ${metric('Userspace', userspace.available ? (userspace.command || 'найден') : 'нет', userspace.tunDevice ? 'TUN готов' : 'TUN не подтвержден')}
+            ${metric('Конфигурации', configs.found ? `${array(configs.paths).length} найдено` : 'нет', array(configs.paths).join(', '))}
           </div>
-          <div class="split-actions">
-            <button class="btn warning ${state.busyAction === 'startAmnezia' ? 'is-busy' : ''}" type="button" data-action="startAmnezia" ${state.busyAction === 'startAmnezia' ? 'disabled' : ''}>${state.busyAction === 'startAmnezia' ? 'Запускаю...' : 'Запустить'}</button>
-            <button class="btn secondary ${state.busyAction === 'stopAmnezia' ? 'is-busy' : ''}" type="button" data-action="stopAmnezia" ${state.busyAction === 'stopAmnezia' ? 'disabled' : ''}>${state.busyAction === 'stopAmnezia' ? 'Останавливаю...' : 'Остановить'}</button>
-            <span class="status-chip ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span>
-          </div>
+          ${interfaces.length ? `<div class="amnezia-interface-grid">${interfaces.map(interfaceCard).join('')}</div>` : `<div class="empty-state compact">Активные awg/wg-интерфейсы пока не найдены.</div>`}
         </div>
-        <div class="compat-metrics">
-          ${metric('Интерфейс', status.primaryInterface || (interfaces.length ? `${interfaces.length} найдено` : 'нет'), interfaces.map((item) => item.name).filter(Boolean).join(', '))}
-          ${metric('Сервис', services.running ? 'запущен' : (services.found ? 'найден' : 'нет'), array(services.items).map((item) => item.path).join(', '))}
-          ${metric('wg/awg', wg.available ? (wg.command || 'доступен') : 'нет', array(wg.interfaces).join(', '))}
-          ${metric('Kernel module', kernel.loaded ? 'загружен' : (kernel.installed || kernel.moduleFile ? 'найден' : 'нет'), kernel.package || array(kernel.files).join(', '))}
-          ${metric('Userspace', userspace.available ? (userspace.command || 'найден') : 'нет', userspace.tunDevice ? 'TUN готов' : 'TUN не подтвержден')}
-          ${metric('Конфиги', configs.found ? `${array(configs.paths).length} найдено` : 'нет', array(configs.paths).join(', '))}
-        </div>
-      </section>
+      </details>
 
-      <section class="panel">
-        <div class="panel-title">
-          <div>
-            <h2>Интерфейсы</h2>
-            <span>RuOpenRay ищет awg*, wg* и интерфейсы с amnezia в имени.</span>
+      <details class="amnezia-tech-section">
+        <summary><div><strong>Раздельная маршрутизация</strong><span>Технические правила для выбранных сценариев</span></div><span class="status-chip ${policy.active ? 'ok' : ''}">${policy.active ? 'применена' : 'не применена'}</span></summary>
+        <div class="amnezia-tech-section-body">
+          <div class="split-actions amnezia-tech-actions">
+            ${commandButton('applyAmneziaPolicy', policy.active ? 'Обновить правила AWG' : 'Применить правила AWG', 'warning', (Number(policy.ipTargetCount || 0) + Number(policy.domainNftsetCount || 0)) === 0 || !(status.control?.managed || status.running))}
+            ${commandButton('rollbackAmneziaPolicy', 'Снять правила AWG', 'secondary', !policy.active && !policy.persistent)}
           </div>
-        </div>
-        ${interfaces.length ? `<div class="amnezia-interface-grid">${interfaces.map(interfaceCard).join('')}</div>` : `<div class="empty-state">Активные awg/wg интерфейсы пока не найдены.</div>`}
-      </section>
-
-      <section class="panel">
-        <div class="panel-title">
-          <div>
-            <h2>Policy routing</h2>
-            <span>Технический план для отправки части трафика в AWG без глобального default route туннеля.</span>
+          <div class="compat-metrics">
+            ${metric('Таблица маршрутов', plan.table || '5200', plan.tableName || 'ruopenray_awg')}
+            ${metric('Метка трафика', plan.mark || '0x52000000', 'только для выбранных правил')}
+            ${metric('Основной маршрут', routing.defaultViaTunnel ? 'через туннель' : 'не изменён', routing.defaultRoute || '')}
+            ${metric('Системное правило', routing.ipRule ? 'найдено' : 'не настроено', array(routing.rules).join(' · '))}
+            ${metric('Правила AWG', policy.active ? 'применены' : (policy.persistent ? 'сохранены' : 'не применены'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR · ${Number(policy.appliedDomainCount || 0)} из ${Number(policy.domainNftsetCount || 0)} доменов`)}
+            ${metric('Доменные правила', String(Number(policy.domainTargets || 0)), `${Number(policy.domainNftsetCount || 0)} наборов${policyWarnings.length ? ` · ${policyWarnings.join(' · ')}` : ''}`)}
           </div>
-          <div class="split-actions">
-            ${commandButton('applyAmneziaPolicy', policy.active ? 'Обновить AWG policy' : 'Применить AWG policy', 'warning', (Number(policy.ipTargetCount || 0) + Number(policy.domainNftsetCount || 0)) === 0 || !(status.control?.managed || status.running))}
-            ${commandButton('rollbackAmneziaPolicy', 'Откатить AWG policy', 'secondary', !policy.active && !policy.persistent)}
-          </div>
+          <div class="settings-info"><strong>Основной маршрут роутера не меняется</strong><span>Через AmneziaWG пойдут только сайты, подсети или устройства, которые вы явно выбрали в сценариях.</span></div>
         </div>
-        <div class="compat-metrics">
-          ${metric('Route table', plan.table || '5200', plan.tableName || 'ruopenray_awg')}
-          ${metric('fwmark', plan.mark || '0x52000000', 'метка для выбранных правил')}
-          ${metric('Текущий default', routing.defaultViaTunnel ? 'через туннель' : 'не через туннель', routing.defaultRoute || '')}
-          ${metric('ip rule', routing.ipRule ? 'найден' : 'не настроен', array(routing.rules).join(' · '))}
-          ${metric('AWG policy', policy.active ? 'в firewall' : (policy.persistent ? 'сохранена' : 'не применена'), `${Number(policy.appliedCount || 0)} из ${Number(policy.ipTargetCount || 0)} IP/CIDR · ${Number(policy.appliedDomainCount || 0)} из ${Number(policy.domainNftsetCount || 0)} доменов`)}
-          ${metric('Домены policy', String(Number(policy.domainTargets || 0)), `${Number(policy.domainNftsetCount || 0)} через dnsmasq nftset${policyWarnings.length ? ` · ${policyWarnings.join(' · ')}` : ''}`)}
-        </div>
-        <div class="settings-info">
-          <strong>Как это будет работать</strong>
-          <span>RuOpenRay будет резолвить доменные правила в nft-set, ставить отдельную метку и отправлять только выбранные IP в таблицу AmneziaWG. Глобальный default route туннеля для всего роутера лучше не включать.</span>
-        </div>
-      </section>
+      </details>
     </section>`;
   }
 
@@ -629,16 +653,24 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
     const runtime = status.runtime || {};
     const clientConfig = status.clientConfig || {};
     const profiles = clientConfig.profiles || {};
+    const hasProfile = Boolean(clientConfig.exists || array(profiles.items).length);
+    const tunnelRunning = Boolean(status.active || status.running || runtime.interfaceRunning);
     const preflight = state.amneziaPreflight || clientConfig.preflight || {};
     const plan = status.routePlan || {};
     const view = state.amneziaView === 'awg' ? 'awg' : 'profiles';
+    const heroTitle = tunnelRunning ? 'Туннель работает' : (hasProfile ? 'Подключение готово к проверке' : 'Можно начать настройку');
+    const heroDetail = tunnelRunning
+      ? 'AmneziaWG запущен. Вы можете направить через него выбранные сценарии или сделать его основным выходом.'
+      : hasProfile
+        ? 'Профиль сохранён. RuOpenRay проверит поддержку роутера и безопасно запустит отдельный туннель.'
+        : 'Импортируйте client.conf, выберите способ использования и запустите туннель после автоматической проверки.';
     return `<section class="amnezia-page">
       ${amneziaImportDialog(clientConfig)}
       <section class="route-hero amnezia-hero">
         <div>
           <span class="eyebrow">AmneziaWG</span>
-          <h1>${escapeHtml(statusLabel(status))}</h1>
-          <p>${escapeHtml(status.summary || 'RuOpenRay проверяет awg/wg интерфейсы, сервисы, маршруты и готовность к раздельной маршрутизации.')}</p>
+          <h1>${escapeHtml(heroTitle)}</h1>
+          <p>${escapeHtml(heroDetail)}</p>
         </div>
         <div class="split-actions">
           ${commandButton('refreshAmnezia', 'Обновить статус')}
@@ -649,8 +681,8 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
       ${warningsView(status)}
 
       <div class="segmented settings-log-levels amnezia-section-tabs" aria-label="Раздел AmneziaWG">
-        <button type="button" class="${view === 'profiles' ? 'active' : ''}" data-amnezia-view="profiles">Профили</button>
-        <button type="button" class="${view === 'awg' ? 'active' : ''}" data-amnezia-view="awg">AWG</button>
+        <button type="button" class="${view === 'profiles' ? 'active' : ''}" data-amnezia-view="profiles">Подключение</button>
+        <button type="button" class="${view === 'awg' ? 'active' : ''}" data-amnezia-view="awg">Диагностика</button>
       </div>
 
       ${view === 'awg'

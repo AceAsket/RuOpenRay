@@ -45,6 +45,7 @@ const busyLabels = {
   prepareAmneziaXrayOutboundDraft: 'Готовлю out-amnezia',
   deleteAmneziaProfile: 'Удаляю профиль AmneziaWG',
   checkAmneziaPreflight: 'Проверяю AmneziaWG',
+  checkAndStartAmnezia: 'Проверяю и запускаю AmneziaWG',
   prepareAmnezia: 'Готовлю AmneziaWG',
   prepareAmneziaUserspace: 'Готовлю userspace backend',
   startAmnezia: 'Запускаю AmneziaWG',

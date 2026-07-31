@@ -2876,6 +2876,272 @@
   margin-bottom: 16px;
 }
 
+.amnezia-profiles-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.amnezia-setup-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.amnezia-setup-progress article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid rgba(130, 251, 239, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.amnezia-setup-progress article > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  background: rgba(130, 251, 239, 0.08);
+  font-weight: 900;
+}
+
+.amnezia-setup-progress article.active {
+  border-color: rgba(255, 199, 84, 0.32);
+  background: rgba(255, 199, 84, 0.06);
+}
+
+.amnezia-setup-progress article.active > span {
+  color: #ffe3a1;
+  background: rgba(255, 199, 84, 0.16);
+}
+
+.amnezia-setup-progress article.done {
+  border-color: rgba(105, 220, 118, 0.28);
+}
+
+.amnezia-setup-progress article.done > span {
+  color: #d9ffe4;
+  background: rgba(105, 220, 118, 0.16);
+}
+
+.amnezia-setup-progress strong,
+.amnezia-setup-progress small {
+  display: block;
+}
+
+.amnezia-setup-progress small {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.amnezia-connection-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.amnezia-next-step {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(130, 251, 239, 0.18);
+  border-radius: 8px;
+  background: rgba(130, 251, 239, 0.045);
+}
+
+.amnezia-next-step.ok {
+  border-color: rgba(105, 220, 118, 0.32);
+  background: rgba(105, 220, 118, 0.07);
+}
+
+.amnezia-next-step.warn {
+  border-color: rgba(255, 199, 84, 0.32);
+  background: rgba(255, 199, 84, 0.06);
+}
+
+.amnezia-next-step h3,
+.amnezia-next-step p {
+  margin: 0;
+}
+
+.amnezia-next-step p {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.amnezia-primary-actions,
+.amnezia-usage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.amnezia-usage-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.48fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid rgba(130, 251, 239, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.amnezia-usage-mode h3,
+.amnezia-usage-mode p {
+  margin: 0;
+}
+
+.amnezia-usage-mode p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.amnezia-usage-mode label {
+  display: grid;
+  gap: 6px;
+}
+
+.amnezia-saved-profiles {
+  display: grid;
+  gap: 10px;
+}
+
+.amnezia-subsection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.amnezia-subsection-head h3,
+.amnezia-subsection-head p {
+  margin: 0;
+}
+
+.amnezia-subsection-head p {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.amnezia-warning-summary,
+.amnezia-advanced-panel,
+.amnezia-tech-section {
+  border: 1px solid rgba(130, 251, 239, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.amnezia-warning-summary {
+  border-color: rgba(255, 199, 84, 0.32);
+  background: rgba(255, 199, 84, 0.06);
+}
+
+.amnezia-warning-summary summary,
+.amnezia-advanced-panel summary,
+.amnezia-tech-section summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.amnezia-warning-summary summary span,
+.amnezia-advanced-panel summary span,
+.amnezia-tech-section summary span {
+  color: var(--muted);
+}
+
+.amnezia-warning-summary ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 18px 14px 34px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.amnezia-advanced-panel[open] > summary,
+.amnezia-tech-section[open] > summary {
+  border-bottom: 1px solid rgba(130, 251, 239, 0.1);
+}
+
+.amnezia-advanced-panel .amnezia-pool-editor {
+  margin: 12px;
+}
+
+.amnezia-advanced-panel.compact .settings-info {
+  margin: 12px;
+}
+
+.amnezia-import-structured-note {
+  padding: 12px 14px 0;
+  color: var(--muted);
+}
+
+.amnezia-advanced-panel .amnezia-structured-editor {
+  padding: 12px;
+}
+
+.amnezia-diagnostics-overview {
+  padding: 12px;
+}
+
+.amnezia-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.amnezia-diagnostics-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(130, 251, 239, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.amnezia-diagnostics-grid article.ok {
+  border-color: rgba(105, 220, 118, 0.28);
+  background: rgba(105, 220, 118, 0.06);
+}
+
+.amnezia-diagnostics-grid article.warn {
+  border-color: rgba(255, 199, 84, 0.3);
+  background: rgba(255, 199, 84, 0.06);
+}
+
+.amnezia-diagnostics-grid span,
+.amnezia-diagnostics-grid small {
+  color: var(--muted);
+}
+
+.amnezia-tech-section summary > div {
+  display: grid;
+  gap: 3px;
+}
+
+.amnezia-tech-section-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.amnezia-tech-actions {
+  justify-content: flex-end;
+}
+
 .amnezia-dashboard-grid {
   display: grid;
   grid-template-columns: minmax(300px, 1.05fr) minmax(260px, 0.78fr) minmax(320px, 1.3fr);
@@ -3062,8 +3328,6 @@
 }
 
 .amnezia-profile-list {
-  grid-column: 3;
-  grid-row: 1 / span 3;
   align-content: start;
   max-height: 520px;
   overflow: auto;
@@ -3651,6 +3915,15 @@
 
   .amnezia-dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .amnezia-connection-grid,
+  .amnezia-usage-mode {
+    grid-template-columns: 1fr;
+  }
+
+  .amnezia-diagnostics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .amnezia-profile-list {
@@ -4442,6 +4715,29 @@
   .amnezia-structured-editor,
   .amnezia-field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .amnezia-setup-progress,
+  .amnezia-diagnostics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .amnezia-primary-actions,
+  .amnezia-usage-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .amnezia-primary-actions .btn,
+  .amnezia-usage-actions .btn {
+    width: 100%;
+  }
+
+  .amnezia-warning-summary summary,
+  .amnezia-advanced-panel summary,
+  .amnezia-tech-section summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .amnezia-profile-card {

@@ -1526,6 +1526,33 @@ body[data-theme="light"] .amnezia-raw-head span {
   color: #46625f;
 }
 
+body[data-theme="light"] .amnezia-setup-progress article,
+body[data-theme="light"] .amnezia-next-step,
+body[data-theme="light"] .amnezia-usage-mode,
+body[data-theme="light"] .amnezia-warning-summary,
+body[data-theme="light"] .amnezia-advanced-panel,
+body[data-theme="light"] .amnezia-tech-section,
+body[data-theme="light"] .amnezia-diagnostics-grid article {
+  color: #092027;
+  background: #ffffff;
+  border-color: #d4ebe8;
+}
+
+body[data-theme="light"] .amnezia-setup-progress article.done,
+body[data-theme="light"] .amnezia-next-step.ok,
+body[data-theme="light"] .amnezia-diagnostics-grid article.ok {
+  background: #f0fff3;
+  border-color: rgba(20, 156, 75, 0.26);
+}
+
+body[data-theme="light"] .amnezia-setup-progress article.active,
+body[data-theme="light"] .amnezia-next-step.warn,
+body[data-theme="light"] .amnezia-warning-summary,
+body[data-theme="light"] .amnezia-diagnostics-grid article.warn {
+  background: #fff9e9;
+  border-color: rgba(184, 121, 20, 0.34);
+}
+
 body[data-theme="light"] .status-chip {
   color: #31524e;
   background: #eef8f6;

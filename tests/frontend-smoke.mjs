@@ -220,9 +220,9 @@ state.amneziaStatus = {
   },
 };
 const amneziaHtml = amneziaView.amneziaPanel();
-const amneziaRunControlsRender = amneziaHtml.includes('data-action="startAmnezia"')
-  && amneziaHtml.includes('data-action="stopAmnezia"')
-  && amneziaHtml.includes('amnezia-run-controls');
+const amneziaRunControlsRender = amneziaHtml.includes('data-action="checkAndStartAmnezia"')
+  && amneziaHtml.includes('amnezia-next-step')
+  && amneziaHtml.includes('Проверить и запустить');
 state.amneziaImportDialog = true;
 state.amneziaConfigText = `[Interface]
 PrivateKey = private
@@ -237,7 +237,7 @@ const amneziaEditorHtml = amneziaView.amneziaPanel();
 const amneziaStructuredEditorRender = amneziaEditorHtml.includes('amnezia-structured-editor')
   && amneziaEditorHtml.includes('data-amnezia-field="PrivateKey"')
   && amneziaEditorHtml.includes('data-amnezia-extra="interface"')
-  && amneziaEditorHtml.includes('Raw client.conf');
+  && amneziaEditorHtml.includes('Изменить отдельные поля');
 let amneziaEditedConfig = setAmneziaConfigField(state.amneziaConfigText, 'peer', 'Endpoint', 'vpn2.example:443');
 amneziaEditedConfig = setAmneziaConfigExtra(amneziaEditedConfig, 'interface', 'Jc = 8\nJmin = 40');
 const amneziaConfigEditorBuildsRaw = amneziaEditedConfig.includes('Endpoint = vpn2.example:443')
@@ -252,7 +252,7 @@ state.amneziaStatus.policy = { ipTargetCount: 2, appliedCount: 1, domainTargets:
 const amneziaAwgHtml = amneziaView.amneziaPanel();
 const amneziaPolicyControlsRender = amneziaAwgHtml.includes('data-action="applyAmneziaPolicy"')
   && amneziaAwgHtml.includes('data-action="rollbackAmneziaPolicy"')
-  && amneziaAwgHtml.includes('AWG policy');
+  && amneziaAwgHtml.includes('Раздельная маршрутизация');
 state.amneziaView = 'profiles';
 
 const model = createDiagnosticsModel({
