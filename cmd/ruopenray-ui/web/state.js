@@ -252,6 +252,7 @@ export function createInitialState() {
   routeValuesDrawerIndex: null,
   routeValuesDrawerAnchor: null,
   routeDslName: '',
+  routeDslTarget: '',
   routeDsl: '',
   routeDslPreview: null,
   routeRuleDialog: false,

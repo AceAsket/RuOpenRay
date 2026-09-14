@@ -1,4 +1,20 @@
-import { isExplicitRouteDomainValue, looksLikePlainDomain, normalizeRouteDomainValue } from './routing-values.js';
+import { isExplicitRouteDomainValue, isRouteIpValue, looksLikePlainDomain, normalizeRouteDomainValue } from './routing-values.js';
+
+// Direct AWG policies are managed outside Xray routing.rules.
+export function routingListTargetOptions(options) {
+  return options.filter((option) => !/^outbound:ruopenray-amnezia-direct(?::|$)/.test(option.value));
+}
+
+export function routingListTargetPicker(state, options, escapeHtml) {
+  return `<label class="form-row wide">
+    <span>Куда отправляем</span>
+    <select data-route-dsl-target aria-label="Назначение списка правил">
+      <option value="" ${!state.routeDslTarget ? 'selected' : ''}>Выберите назначение</option>
+      ${routingListTargetOptions(options).map((option) => `<option value="${escapeHtml(option.value)}" ${state.routeDslTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+    </select>
+    <small>Для строк без назначения. Если в строке есть →, используется назначение из строки.</small>
+  </label>`;
+}
 
 export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, routeStatsFor }) {
   function stripDslComment(line) {
@@ -26,9 +42,11 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
     return false;
   }
 
-  function parseRoutingDsl(text) {
+  function parseRoutingDsl(text, listTarget = '') {
     const rules = [];
     const warnings = [];
+    const errors = [];
+    const error = (message) => { errors.push(message); warnings.push(message); };
     let defaultOutbound = '';
 
     String(text || '')
@@ -45,25 +63,32 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
         }
 
         const match = line.match(/^(.+?)\s*->\s*([A-Za-z0-9_.:-]+)\s*$/);
-        if (!match) {
-          warnings.push(`Строка ${lineNo}: не понял формат`);
+        if (!match && (!listTarget || line.includes('->'))) {
+          error(`Строка ${lineNo}: ${line.includes('->') ? 'не понял формат назначения' : 'выберите назначение списка или укажите его через ->'}`);
           return;
         }
 
-        const target = match[2].startsWith('balancer:') ? match[2].slice('balancer:'.length) : '';
+        const destination = match ? match[2] : listTarget.replace(/^outbound:/, '');
+        const target = destination.startsWith('balancer:') ? destination.slice('balancer:'.length) : '';
         const rule = target
           ? { type: 'field', balancerTag: target }
-          : { type: 'field', outboundTag: resolveRoutingAlias(match[2]) };
+          : { type: 'field', outboundTag: resolveRoutingAlias(destination) };
         let targets = 0;
-        const parts = match[1].split(/\s*&&\s*/).map((part) => part.trim()).filter(Boolean);
+        let invalid = false;
+        const parts = (match ? match[1] : line).split(/\s*&&\s*/).map((part) => part.trim()).filter(Boolean);
         for (const part of parts) {
           const condition = part.match(/^([A-Za-z][A-Za-z0-9_]*)\((.*)\)$/);
           if (!condition) {
+            if (isRouteIpValue(part) && addDslTarget(rule, 'ip', part)) {
+              targets += 1;
+              continue;
+            }
             if (parts.length === 1 && (looksLikePlainDomain(part) || isExplicitRouteDomainValue(part)) && addDslTarget(rule, 'domain', part)) {
               targets += 1;
               continue;
             }
-            warnings.push(`Строка ${lineNo}: не понял условие "${part}"`);
+            error(`Строка ${lineNo}: не понял условие "${part}"`);
+            invalid = true;
             continue;
           }
           if (addDslTarget(rule, condition[1], condition[2])) {
@@ -73,14 +98,16 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
               warnings.push(`Строка ${lineNo}: ext-списку нужен .dat файл на роутере`);
             }
           } else {
-            warnings.push(`Строка ${lineNo}: условие "${condition[1]}" пока не поддержано`);
+            error(`Строка ${lineNo}: условие "${condition[1]}" пока не поддержано`);
+            invalid = true;
           }
         }
 
         if (!targets && !rule.port) {
-          warnings.push(`Строка ${lineNo}: нет домена, IP, источника или порта`);
+          error(`Строка ${lineNo}: нет домена, IP, источника или порта`);
           return;
         }
+        if (invalid) return;
         rules.push(rule);
       });
 
@@ -95,6 +122,8 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
     return {
       rules,
       warnings,
+      errors,
+      listTarget,
       defaultOutbound,
       proxyAlias: resolveRoutingAlias('proxy')
     };
@@ -131,7 +160,7 @@ export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, route
       <div class="dsl-preview">
         <div class="dsl-preview-head">
           <strong>${stats.total} правил распознано</strong>
-          <span>proxy -> ${escapeHtml(preview.proxyAlias)}</span>
+          <span>${preview.listTarget ? `Назначение списка: ${escapeHtml(preview.listTarget.replace(/^outbound:/, ''))}` : `proxy → ${escapeHtml(preview.proxyAlias)}`}</span>
         </div>
         ${listName ? `<small>Название списка: ${escapeHtml(listName)}</small>` : ''}
         <div class="dsl-preview-stats">

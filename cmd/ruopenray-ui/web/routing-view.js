@@ -1,4 +1,5 @@
 import { noticeView } from './notice-view.js';
+import { routingListTargetPicker } from './routing-dsl.js';
 import { routePresetIconView } from './route-visuals.js';
 
 export function createRoutingView(deps) {
@@ -162,7 +163,7 @@ function routingRulesPanel() {
       </summary>
       <div class="dsl-compact">
         <div class="panel-title">
-          <div><h2>Импорт правил списком</h2><span><code>discord.com -> proxy</code> или <code>domain:discord.com -> proxy</code>, слово proxy сейчас ведет на <code>${escapeHtml(resolveRoutingAlias('proxy'))}</code>.</span></div>
+          <div><h2>Импорт правил списком</h2><span>Вставьте домены, IP-адреса и подсети по одному на строку и выберите назначение. Готовые правила с <code>-></code> также поддерживаются.</span></div>
           <div class="split-actions">
             <button class="btn secondary" data-action="previewRouteDsl">Предпросмотр</button>
             <button class="btn secondary" data-action="analyzeConfig">Проверить</button>
@@ -174,7 +175,8 @@ function routingRulesPanel() {
           <label>Название списка</label>
           <input id="routeDslName" value="${escapeHtml(state.routeDslName)}" placeholder="Например: Discord, YouTube, Игровые сервисы" />
         </div>
-        <textarea id="routeDsl" class="dsl-editor" spellcheck="false" placeholder="default: direct&#10;discord.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
+        ${routingListTargetPicker(state, routeTargetOptions(), escapeHtml)}
+        <textarea id="routeDsl" class="dsl-editor" aria-label="Домены, IP-адреса и правила" spellcheck="false" placeholder="discord.com&#10;youtube.com&#10;104.16.0.1&#10;104.16.0.0/12&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routeDsl)}</textarea>
         ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
         ${configAnalysisView()}
       </div>

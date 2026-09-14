@@ -855,6 +855,12 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeDslName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDslName = event.target.value;
   }));
+  document.querySelectorAll('[data-route-dsl-target]').forEach((select) => select.addEventListener('change', (event) => {
+    state.routeDslTarget = event.target.value;
+    state.routeDslPreview = null;
+    state.message = '';
+    render();
+  }));
   document.querySelectorAll('#routeDsl').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDsl = event.target.value;
     state.routeDslPreview = null;

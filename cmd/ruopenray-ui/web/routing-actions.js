@@ -1,4 +1,5 @@
 import { routePresetExportIcon, routePresetIconView } from './route-visuals.js';
+import { routingListTargetOptions } from './routing-dsl.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -52,8 +53,18 @@ export function createRoutingActions({
   saveRouteNames,
   saveDisabledRouteRules
 }) {
+  function parseRoutingList() {
+    const parsed = parseRoutingDsl(state.routeDsl, state.routeDslTarget || '');
+    if (state.routeDslTarget && !routingListTargetOptions(routeTargetOptions()).some((option) => option.value === state.routeDslTarget)) {
+      const message = 'Назначение списка больше недоступно. Выберите другое.';
+      parsed.errors = [...(parsed.errors || []), message];
+      parsed.warnings.push(message);
+    }
+    return parsed;
+  }
+
   function previewRoutingDsl() {
-    state.routeDslPreview = parseRoutingDsl(state.routeDsl);
+    state.routeDslPreview = parseRoutingList();
     const parsed = state.routeDslPreview;
     state.message = `Распознано правил: ${parsed.rules.length}${parsed.warnings.length ? `, предупреждений: ${parsed.warnings.length}` : ''}`;
     render();
@@ -80,8 +91,13 @@ export function createRoutingActions({
   }
 
   function applyRoutingDsl(mode, closeDialog = false) {
-    const parsed = parseRoutingDsl(state.routeDsl);
+    const parsed = parseRoutingList();
     state.routeDslPreview = parsed;
+    if (parsed.errors?.length) {
+      state.message = `Список не добавлен. ${parsed.errors[0]}`;
+      render();
+      return;
+    }
     if (!parsed.rules.length) {
       state.message = 'Не нашёл правил для импорта';
       render();

@@ -1,4 +1,5 @@
 import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
+import { routingListTargetPicker } from './routing-dsl.js';
 
 export function createRoutingDialogsView({
   state,
@@ -136,10 +137,11 @@ function routeRuleDialog() {
             <label>Название списка</label>
             <input id="routeDslName" value="${escapeHtml(state.routeDslName)}" placeholder="Например: Discord, YouTube, Игровые сервисы" />
           </div>
+          ${routingListTargetPicker(state, routeTargetOptions(), escapeHtml)}
           <div class="form-row wide">
-            <label>Правила списком</label>
-            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="default: direct&#10;discord.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
-            <small>Поддерживается короткий домен без префикса, <code>domain:...</code>, <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code>, <code>network(udp)</code> и назначение через <code>-> proxy/direct/block</code>.</small>
+            <label for="routeDsl">Домены, IP-адреса и правила</label>
+            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="discord.com&#10;youtube.com&#10;104.16.0.1&#10;104.16.0.0/12&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routeDsl)}</textarea>
+            <small>По одному значению на строку: домены, IPv4/IPv6, подсети, <code>geosite:...</code>, <code>geoip:...</code>. Также можно вставить условия <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code> или готовые правила с <code>-></code>.</small>
           </div>
           ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
         </div>
