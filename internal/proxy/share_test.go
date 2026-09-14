@@ -3,6 +3,8 @@ package proxy
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
+	"reflect"
 	"testing"
 )
 
@@ -132,5 +134,86 @@ func TestReplaceOutboundByTagReplacesOnce(t *testing.T) {
 	replaced := got[1].(map[string]any)
 	if replaced["protocol"] != "new" {
 		t.Fatalf("protocol = %v, want new", replaced["protocol"])
+	}
+}
+
+func TestSubscriptionTransportSettings(t *testing.T) {
+	tests := []struct {
+		name, link string
+		expected   map[string]any
+	}{
+		{"vless-grpc-tls", "vless://00000000-0000-0000-0000-000000000000@192.0.2.1:443?type=grpc&security=tls&sni=front.example.com&fp=chrome&alpn=h2%2Chttp%2F1.1&serviceName=tunnel%2Fservice&mode=multi&authority=grpc.example.com", map[string]any{
+			"network": "grpc", "security": "tls",
+			"tlsSettings":  map[string]any{"serverName": "front.example.com", "fingerprint": "chrome", "alpn": []string{"h2", "http/1.1"}},
+			"grpcSettings": map[string]any{"serviceName": "tunnel/service", "multiMode": true, "authority": "grpc.example.com"},
+		}},
+		{"trojan-tls", "trojan://test-password@192.0.2.1:443?sni=front.example.com&fp=firefox&alpn=http%2F1.1", map[string]any{
+			"network": "tcp", "security": "tls",
+			"tlsSettings": map[string]any{"serverName": "front.example.com", "fingerprint": "firefox", "alpn": []string{"http/1.1"}},
+		}},
+		{"trojan-grpc", "trojan://test-password@192.0.2.1:443?type=grpc&serviceName=grpc-service&mode=gun&peer=peer.example.com", map[string]any{
+			"network": "grpc", "security": "tls",
+			"tlsSettings":  map[string]any{"serverName": "peer.example.com", "alpn": []string{"h2"}},
+			"grpcSettings": map[string]any{"serviceName": "grpc-service", "multiMode": false},
+		}},
+		{"subscription-websocket", "vless://00000000-0000-0000-0000-000000000000@192.0.2.1:443?type=ws&security=tls&sni=cdn.example.com&host=cdn.example.com&path=%2Fstream%2Fupdates%2Fexample&fp=chrome&alpn=http%2F1.1", map[string]any{
+			"network": "ws", "security": "tls",
+			"tlsSettings": map[string]any{"serverName": "cdn.example.com", "fingerprint": "chrome", "alpn": []string{"http/1.1"}},
+			"wsSettings":  map[string]any{"path": "/stream/updates/example", "headers": map[string]any{"Host": "cdn.example.com"}},
+		}},
+		{"subscription-xhttp", "vless://00000000-0000-0000-0000-000000000000@192.0.2.1:8443?type=xhttp&security=reality&sni=cdn.example.com&pbk=test-key&sid=abcd&fp=chrome&mode=stream-one&path=%2Fxhttp&concurrency=4", map[string]any{
+			"network": "xhttp", "security": "reality",
+			"realitySettings": map[string]any{"serverName": "cdn.example.com", "publicKey": "test-key", "shortId": "abcd", "fingerprint": "chrome"},
+			"xhttpSettings":   map[string]any{"path": "/xhttp", "mode": "stream-one"},
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Exercise the same subscription decoding and share-link path as a refresh.
+			encoded := base64.StdEncoding.EncodeToString([]byte(tt.link + "\n"))
+			links := DecodeSubscription(encoded)
+			if len(links) != 1 {
+				t.Fatalf("links: %d", len(links))
+			}
+			outbound, err := ParseShareLink(links[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(outbound["streamSettings"], tt.expected) {
+				t.Fatalf("streamSettings = %#v, want %#v", outbound["streamSettings"], tt.expected)
+			}
+		})
+	}
+}
+
+func TestTrojanPasswordAndTLSVerification(t *testing.T) {
+	for _, password := range []string{"p:a@ss+word%value", "simple-password"} {
+		outbound, err := ParseShareLink("trojan://" + url.QueryEscape(password) + "@example.com:443")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := getNested(outbound, "settings", "servers"); got == nil {
+			t.Fatal("missing servers")
+		}
+		server := asArray(getNested(outbound, "settings", "servers"))[0].(map[string]any)
+		if server["password"] != password {
+			t.Fatalf("password did not survive URL decoding")
+		}
+		tls := getNested(outbound, "streamSettings", "tlsSettings").(map[string]any)
+		if tls["serverName"] != "example.com" {
+			t.Fatal("missing TLS server name")
+		}
+		if tls["allowInsecure"] == true {
+			t.Fatal("TLS verification must remain enabled by default")
+		}
+	}
+	for _, value := range []string{"true", "false", "1", "0"} {
+		outbound, err := ParseShareLink("trojan://test@example.com:443?allowInsecure=" + value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := getNested(outbound, "streamSettings", "tlsSettings", "allowInsecure"); got != (value == "true" || value == "1") {
+			t.Fatalf("allowInsecure %s = %v", value, got)
+		}
 	}
 }

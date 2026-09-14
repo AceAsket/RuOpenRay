@@ -1,3 +1,4 @@
+import { parseShareLink } from './share-link.js';
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile, copyFile, stat, statfs, unlink, truncate, rename } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -1520,86 +1521,6 @@ async function analyzeConfig(config = null) {
     }
   }
   return { ok: errors.length === 0, errors, warnings, info, counts };
-}
-
-function decodeBase64Url(value) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
-  return Buffer.from(padded, 'base64').toString('utf8');
-}
-
-function parseShareLink(link) {
-  const trimmed = String(link || '').trim();
-  if (!trimmed) throw new Error('Пустая ссылка для импорта');
-  const url = new URL(trimmed);
-  if (url.protocol === 'vmess:') {
-    const raw = JSON.parse(decodeBase64Url(url.pathname));
-    return {
-      tag: raw.ps || raw.add || 'vmess-out',
-      protocol: 'vmess',
-      settings: {
-        vnext: [
-          {
-            address: raw.add,
-            port: Number(raw.port),
-            users: [{ id: raw.id, alterId: Number(raw.aid || 0), security: raw.scy || 'auto' }]
-          }
-        ]
-      },
-      streamSettings: { network: raw.net || 'tcp', security: raw.tls || 'none' }
-    };
-  }
-
-  const protocol = url.protocol.replace(':', '');
-  if (!['vless', 'trojan', 'ss'].includes(protocol)) {
-    throw new Error(`Неподдерживаемый протокол ссылки: ${protocol}`);
-  }
-
-  const tag = decodeURIComponent(url.hash.replace(/^#/, '')) || `${protocol}-out`;
-  const address = url.hostname;
-  const port = Number(url.port || 443);
-  const query = Object.fromEntries(url.searchParams.entries());
-  const network = query.type || 'tcp';
-  const security = query.security || (protocol === 'trojan' ? 'tls' : 'none');
-
-  if (protocol === 'trojan') {
-    return {
-      tag,
-      protocol,
-      settings: { servers: [{ address, port, password: decodeURIComponent(url.username) }] },
-      streamSettings: { network, security }
-    };
-  }
-
-  if (protocol === 'ss') {
-    return {
-      tag,
-      protocol: 'shadowsocks',
-      settings: {
-        servers: [{ address, port, method: query.method || '2022-blake3-aes-128-gcm', password: decodeURIComponent(url.username) }]
-      }
-    };
-  }
-
-  return {
-    tag,
-    protocol,
-    settings: {
-      vnext: [
-        {
-          address,
-          port,
-          users: [{ id: decodeURIComponent(url.username), encryption: query.encryption || 'none', flow: query.flow || undefined }]
-        }
-      ]
-    },
-    streamSettings: {
-      network,
-      security,
-      realitySettings: security === 'reality' ? { serverName: query.sni, publicKey: query.pbk, shortId: query.sid } : undefined,
-      tlsSettings: security === 'tls' ? { serverName: query.sni || address } : undefined,
-      wsSettings: network === 'ws' ? { path: query.path || '/', headers: query.host ? { Host: query.host } : undefined } : undefined
-    }
-  };
 }
 
 function outboundSummary(outbound) {

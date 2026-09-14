@@ -72,13 +72,13 @@ function subscriptionCandidateStatus(check, checking = false) {
   if (checking) return '<span class="server-chip warn subscription-check-status"><i></i>проверяю</span>';
   if (!check) return '<span class="server-chip warn subscription-check-status"><i></i>не проверен</span>';
   const latency = Number(check.latencyMs || check.httpLatencyMs || check.endpointLatencyMs || 0);
-  const method = check.method === 'endpoint' ? 'TCP' : 'HTTP';
+  const method = check.method === 'endpoint' ? 'Порт сервера' : 'Туннель';
   if (check.ok) {
     return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}`)}</span>`;
   }
   if (check.httpOk === false && check.endpointOk) {
     const endpointLatency = Number(check.endpointLatencyMs || 0);
-    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · HTTP нет`)}</span>`;
+    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · туннель не подтверждён`)}</span>`;
   }
   if (check.endpointOk === false) {
     return '<span class="server-chip bad subscription-check-status"><i></i>порт закрыт</span>';
@@ -294,13 +294,14 @@ function serverAvailabilityPanel() {
         <div class="form-row method-row">
           <label>Метод</label>
           <select id="serverCheckMode">
-            <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Порт сервера</option>
+            <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>Трафик через Xray</option>
+            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Только TCP-порт сервера</option>
           </select>
         </div>
         <div class="form-row check-url-row">
           <label>URL проверки</label>
           <input id="serverCheckUrl" value="${escapeHtml(state.serverCheckUrl)}" placeholder="https://www.gstatic.com/generate_204" />
+          <small>Тестовый сайт открывается через выбранное подключение Xray. HTTP-сайт на порту VLESS или Trojan не нужен. Проверка TCP-порта не проверяет пароль, TLS и передачу трафика.</small>
         </div>
         <div class="availability-note">
           <strong>Активный сервер: ${escapeHtml(activeTag || 'не выбран')}</strong>

@@ -45,9 +45,9 @@ func TestB4StatusDoesNotClaimGenericRouterPolicyRoutes(t *testing.T) {
 
 func TestB4StatusRecognizesExplicitInterception(t *testing.T) {
 	for name, active := range map[string]bool{
-		"nft queue": b4StatusActive(map[string]any{"hasQueue": true}, nil, nil, nil),
+		"nft queue":   b4StatusActive(map[string]any{"hasQueue": true}, nil, nil, nil),
 		"named route": b4StatusActive(nil, nil, map[string]any{"explicitB4": true}, nil),
-		"api queue": b4StatusActive(nil, nil, nil, map[string]any{"queueActive": true}),
+		"api queue":   b4StatusActive(nil, nil, nil, map[string]any{"queueActive": true}),
 	} {
 		if !active {
 			t.Fatalf("%s must be recognized as active B4 interception", name)

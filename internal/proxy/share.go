@@ -255,41 +255,11 @@ func applyOutboundCountry(outbound map[string]any, country string) {
 func parseVless(u *url.URL) map[string]any {
 	q := u.Query()
 	tag, country := tagAndCountryFromURL(u, "vless-out")
-	network := firstNonEmpty(q.Get("type"), "tcp")
-	security := firstNonEmpty(q.Get("security"), "none")
 	user := map[string]any{"id": u.User.Username(), "encryption": firstNonEmpty(q.Get("encryption"), "none")}
 	if flow := q.Get("flow"); flow != "" {
 		user["flow"] = flow
 	}
-	stream := map[string]any{"network": network, "security": security}
-	if security == "tls" {
-		stream["tlsSettings"] = map[string]any{"serverName": firstNonEmpty(q.Get("sni"), u.Hostname())}
-	}
-	if security == "reality" {
-		reality := map[string]any{
-			"serverName": firstNonEmpty(q.Get("sni"), u.Hostname()),
-			"publicKey":  q.Get("pbk"),
-			"shortId":    q.Get("sid"),
-		}
-		if fingerprint := q.Get("fp"); fingerprint != "" {
-			reality["fingerprint"] = fingerprint
-		}
-		if spiderX := q.Get("spx"); spiderX != "" {
-			reality["spiderX"] = spiderX
-		}
-		stream["realitySettings"] = reality
-	}
-	if network == "ws" {
-		stream["wsSettings"] = map[string]any{"path": firstNonEmpty(q.Get("path"), "/")}
-	}
-	if fragment := strings.TrimSpace(q.Get("fragment")); fragment != "" {
-		sockopt, _ := stream["sockopt"].(map[string]any)
-		if sockopt == nil {
-			sockopt = map[string]any{}
-		}
-		sockopt["dialerProxy"] = FragmentOutboundTag(fragment)
-		stream["sockopt"] = sockopt
-	}
+	stream := shareStreamSettings(u, "none")
 	outbound := map[string]any{
 		"tag": tag, "protocol": "vless",
 		"settings":       map[string]any{"vnext": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "users": []any{user}}}},
@@ -306,6 +276,75 @@ func parseVless(u *url.URL) map[string]any {
 		outbound["mux"] = mux
 	}
 	return outbound
+}
+
+// shareStreamSettings is shared by VLESS and Trojan subscription imports.
+func shareStreamSettings(u *url.URL, defaultSecurity string) map[string]any {
+	q := u.Query()
+	network := firstNonEmpty(q.Get("type"), "tcp")
+	security := firstNonEmpty(q.Get("security"), defaultSecurity)
+	stream := map[string]any{"network": network, "security": security}
+	serverName := firstNonEmpty(q.Get("sni"), q.Get("peer"), u.Hostname())
+	if security == "tls" {
+		tls := map[string]any{"serverName": serverName}
+		if fingerprint := q.Get("fp"); fingerprint != "" {
+			tls["fingerprint"] = fingerprint
+		}
+		var alpn []string
+		for _, value := range strings.Split(q.Get("alpn"), ",") {
+			if value = strings.TrimSpace(value); value != "" {
+				alpn = append(alpn, value)
+			}
+		}
+		if len(alpn) == 0 && network == "grpc" {
+			alpn = []string{"h2"}
+		}
+		if len(alpn) > 0 {
+			tls["alpn"] = alpn
+		}
+		if value := firstNonEmpty(q.Get("allowInsecure"), q.Get("insecure")); value != "" {
+			if enabled, err := strconv.ParseBool(value); err == nil {
+				tls["allowInsecure"] = enabled
+			}
+		}
+		stream["tlsSettings"] = tls
+	}
+	if security == "reality" {
+		reality := map[string]any{
+			"serverName": serverName, "publicKey": q.Get("pbk"), "shortId": q.Get("sid"),
+		}
+		if fingerprint := q.Get("fp"); fingerprint != "" {
+			reality["fingerprint"] = fingerprint
+		}
+		if spiderX := q.Get("spx"); spiderX != "" {
+			reality["spiderX"] = spiderX
+		}
+		stream["realitySettings"] = reality
+	}
+	switch network {
+	case "grpc":
+		grpc := map[string]any{"serviceName": q.Get("serviceName"), "multiMode": q.Get("mode") == "multi"}
+		if authority := q.Get("authority"); authority != "" {
+			grpc["authority"] = authority
+		}
+		stream["grpcSettings"] = grpc
+	case "ws":
+		ws := map[string]any{"path": firstNonEmpty(q.Get("path"), "/")}
+		if host := q.Get("host"); host != "" {
+			ws["headers"] = map[string]any{"Host": host}
+		}
+		stream["wsSettings"] = ws
+	case "xhttp", "splithttp":
+		xhttp := map[string]any{"path": firstNonEmpty(q.Get("path"), "/"), "mode": firstNonEmpty(q.Get("mode"), "auto")}
+		if host := q.Get("host"); host != "" {
+			xhttp["host"] = host
+		}
+		stream["xhttpSettings"] = xhttp
+	}
+	if fragment := strings.TrimSpace(q.Get("fragment")); fragment != "" {
+		stream["sockopt"] = map[string]any{"dialerProxy": FragmentOutboundTag(fragment)}
+	}
+	return stream
 }
 
 const FragmentTagPrefix = "ruopenray-fragment-"
@@ -348,12 +387,15 @@ func FragmentOutboundFromTag(tag string) (map[string]any, bool) {
 }
 
 func parseTrojan(u *url.URL) map[string]any {
-	q := u.Query()
+	password := u.User.Username()
+	if suffix, ok := u.User.Password(); ok {
+		password += ":" + suffix
+	}
 	tag, country := tagAndCountryFromURL(u, "trojan-out")
 	outbound := map[string]any{
 		"tag": tag, "protocol": "trojan",
-		"settings":       map[string]any{"servers": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "password": u.User.Username()}}},
-		"streamSettings": map[string]any{"network": firstNonEmpty(q.Get("type"), "tcp"), "security": firstNonEmpty(q.Get("security"), "tls")},
+		"settings":       map[string]any{"servers": []any{map[string]any{"address": u.Hostname(), "port": port(u, 443), "password": password}}},
+		"streamSettings": shareStreamSettings(u, "tls"),
 	}
 	applyOutboundCountry(outbound, country)
 	return outbound
