@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,7 +23,14 @@ func (s *serverState) readSubscriptionStore() rsubscription.Store {
 }
 
 func (s *serverState) writeSubscriptionStore(store rsubscription.Store) error {
-	return rsubscription.SaveStore(s.subscriptionStorePath(), store)
+	if err := os.MkdirAll(s.cfg.DataDir, 0700); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(store, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(s.subscriptionStorePath(), body, 0600)
 }
 
 func (s *serverState) subscriptionReport() map[string]any {
@@ -85,6 +95,7 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
+	previousStore := rsubscription.Store{Pools: append([]rsubscription.Pool(nil), store.Pools...)}
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
 	if poolIndex < 0 {
 		writeJSON(w, 404, map[string]any{"ok": false, "error": "Subscription pool не найден"})
@@ -107,7 +118,16 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		return
 	}
 	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTag(pool.Candidates[selected], pool.Tag))
-	backup, _ := s.backupActive("subscription-select")
+	test := s.validateConfig(cfg)
+	if test["ok"] != true {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Xray отклонил конфигурацию выбранного сервера", "test": test})
+		return
+	}
+	backup, err := s.backupActive("subscription-select")
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": "Не удалось создать резервную копию"})
+		return
+	}
 	if err := s.writeActiveConfig(cfg); err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup})
 		return
@@ -119,12 +139,18 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 	pool.UpdatedAt = time.Now().Format(time.RFC3339)
 	store.Pools[poolIndex] = pool
 	if err := s.writeSubscriptionStore(store); err != nil {
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup})
+		restoreErr := s.restoreSubscriptionConfig(backup)
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "restoreError": fmt.Sprint(restoreErr)})
 		return
 	}
 	restart := map[string]any{"ok": true, "stdout": "Xray не перезапущен"}
 	if boolPayload(payload, "restart", true) {
-		restart = s.serviceAction("restart")
+		restart = s.restartSubscriptionWithRollback(backup)
+	}
+	if restart["ok"] != true {
+		if err := s.writeSubscriptionStore(previousStore); err != nil {
+			restart["storeRollbackError"] = err.Error()
+		}
 	}
 	writeJSON(w, 200, map[string]any{
 		"ok": restart["ok"], "pool": rsubscription.PublicPool(pool),
@@ -335,12 +361,9 @@ func subscriptionOutboundsFromURL(rawURL string) ([]map[string]any, int, error) 
 	if err != nil {
 		return nil, 0, err
 	}
-	outbounds := []map[string]any{}
-	for _, link := range links {
-		outbound, err := rproxy.ParseShareLink(link)
-		if err == nil {
-			outbounds = append(outbounds, outbound)
-		}
+	outbounds, report := rproxy.ParseSubscriptionEntries(links)
+	if report.Skipped > 0 {
+		return nil, len(links), fmt.Errorf("Обновление отменено: пропущено %d из %d записей (запись %d: %s). Рабочие серверы сохранены; подробности доступны в предпросмотре импорта", report.Skipped, report.Total, report.Issues[0].Entry, report.Issues[0].Message)
 	}
 	return outbounds, len(links), nil
 }
@@ -416,6 +439,7 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	outbounds := asArray(cfg["outbounds"])
+	checkTraffic := restart && s.xrayServiceStatus()["running"] == true
 	updated := 0
 	skipped := 0
 	for _, poolIndex := range poolIndexes {
@@ -428,22 +452,42 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 			skipped++
 			continue
 		}
-		outbounds = rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[pool.Active], pool.Tag, activeOutboundDialerProxy(outbounds, pool.Tag)))
+		candidate := rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[pool.Active], pool.Tag, activeOutboundDialerProxy(outbounds, pool.Tag))
+		next := rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, candidate)
+		oldJSON, _ := json.Marshal(outbounds)
+		newJSON, _ := json.Marshal(next)
+		if bytes.Equal(oldJSON, newJSON) {
+			skipped++
+			continue
+		}
+		if checkTraffic {
+			if _, ok, _ := s.httpOutboundProbe(candidate, "https://www.gstatic.com/generate_204", 5000, 1); !ok {
+				return map[string]any{"ok": false, "error": "Обновлённый сервер не прошёл проверку трафика; рабочая конфигурация сохранена"}
+			}
+		}
+		outbounds = next
 		updated++
 	}
 	if updated == 0 {
 		return map[string]any{"ok": true, "updated": 0, "skipped": skipped, "restart": map[string]any{"ok": true, "stdout": "Xray не перезапускался"}}
 	}
 	cfg["outbounds"] = outbounds
-	backup, _ := s.backupActive("subscription-refresh")
+	test := s.validateConfig(cfg)
+	if test["ok"] != true {
+		return map[string]any{"ok": false, "error": "Xray отклонил обновлённую конфигурацию; рабочая конфигурация сохранена", "test": test}
+	}
+	backup, err := s.backupActive("subscription-refresh")
+	if err != nil {
+		return map[string]any{"ok": false, "error": "Не удалось создать резервную копию; обновление отменено"}
+	}
 	if err := s.writeActiveConfig(cfg); err != nil {
 		return map[string]any{"ok": false, "updated": updated, "skipped": skipped, "backup": backup, "error": err.Error()}
 	}
 	restartResult := map[string]any{"ok": true, "stdout": "Xray не перезапускался"}
 	if restart {
-		restartResult = s.serviceAction("restart")
+		restartResult = s.restartSubscriptionWithRollback(backup)
 	}
-	return map[string]any{"ok": restartResult["ok"], "updated": updated, "skipped": skipped, "backup": backup, "restart": restartResult}
+	return map[string]any{"ok": restartResult["ok"], "updated": updated, "skipped": skipped, "backup": backup, "restart": restartResult, "error": restartResult["stderr"]}
 }
 
 func activeOutboundDialerProxy(outbounds []any, tag string) string {
@@ -461,6 +505,7 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
+	previousStore := rsubscription.Store{Pools: append([]rsubscription.Pool(nil), store.Pools...)}
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
 	overrideURL := ""
 	if value, ok := payload["url"]; ok {
@@ -479,6 +524,11 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 		apply := s.applySubscriptionActiveOutbounds(store, []int{poolIndex}, boolPayload(payload, "restart", true))
 		result["activeApply"] = apply
 		if apply["ok"] == false {
+			if err := s.writeSubscriptionStore(previousStore); err != nil {
+				result["storeRollbackError"] = err.Error()
+			}
+			result["ok"] = false
+			result["error"] = apply["error"]
 			writeJSON(w, 500, result)
 			return
 		}
@@ -488,6 +538,7 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 
 func (s *serverState) refreshAllSubscriptions(applyActive bool, restart bool) map[string]any {
 	store := s.readSubscriptionStore()
+	previousStore := rsubscription.Store{Pools: append([]rsubscription.Pool(nil), store.Pools...)}
 	results := []map[string]any{}
 	updatedIndexes := []int{}
 	updated := 0
@@ -513,6 +564,9 @@ func (s *serverState) refreshAllSubscriptions(applyActive bool, restart bool) ma
 		apply := s.applySubscriptionActiveOutbounds(store, updatedIndexes, restart)
 		result["activeApply"] = apply
 		if apply["ok"] == false {
+			if err := s.writeSubscriptionStore(previousStore); err != nil {
+				result["storeRollbackError"] = err.Error()
+			}
 			result["ok"] = false
 			result["error"] = apply["error"]
 		}
@@ -640,7 +694,7 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 	_ = s.writeSubscriptionStore(store)
 	restart := map[string]any{"ok": true, "stdout": "Xray не перезапущен"}
 	if boolPayload(payload, "restart", true) {
-		restart = s.serviceAction("restart")
+		restart = s.restartSubscriptionWithRollback(backup)
 	}
 	writeJSON(w, 200, map[string]any{"ok": restart["ok"], "pool": rsubscription.PublicPool(pool), "selected": rproxy.OutboundSummary(pool.Candidates[selected]), "results": results, "backup": backup, "restart": restart})
 }

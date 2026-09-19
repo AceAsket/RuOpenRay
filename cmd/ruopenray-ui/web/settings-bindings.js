@@ -18,6 +18,12 @@ export function bindSettingsControls({
   document.querySelector('#coreBackup')?.addEventListener('change', (event) => {
     state.coreBackup = event.target.checked;
   });
+  document.querySelector('#appChannel')?.addEventListener('change', (event) => {
+    state.appChannel = event.target.value === 'test' ? 'test' : 'stable';
+    localStorage.setItem('ruopenray.appChannel', state.appChannel);
+    state.appRelease = null;
+    render();
+  });
   document.querySelector('#appBackup')?.addEventListener('change', (event) => {
     state.appBackup = event.target.checked;
     render();

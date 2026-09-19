@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -41,7 +42,7 @@ func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.cfg.ActiveConfig, body, 0o600)
+	return writeFileAtomic(s.cfg.ActiveConfig, body, 0o600)
 }
 
 func (s *serverState) xrayEnv() []string {
@@ -53,7 +54,9 @@ func (s *serverState) xrayEnv() []string {
 }
 
 func (s *serverState) runXray(args ...string) map[string]any {
-	cmd := exec.Command("xray", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xray", args...)
 	cmd.Env = s.xrayEnv()
 	out, err := cmd.CombinedOutput()
 	stdout := strings.TrimSpace(string(out))

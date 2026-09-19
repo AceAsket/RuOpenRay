@@ -207,7 +207,7 @@ func TestTrojanPasswordAndTLSVerification(t *testing.T) {
 			t.Fatal("TLS verification must remain enabled by default")
 		}
 	}
-	for _, value := range []string{"true", "false", "1", "0"} {
+	for _, value := range []string{"false", "0"} {
 		outbound, err := ParseShareLink("trojan://test@example.com:443?allowInsecure=" + value)
 		if err != nil {
 			t.Fatal(err)

@@ -219,6 +219,7 @@ export function createImportActions({
   async function importSubscriptionToCurrent(makeActive = false) {
     if (!state.subscriptionPreview?.outbounds?.length) await previewSubscription();
     const outbounds = state.subscriptionPreview?.outbounds || [];
+    const skipped = state.subscriptionPreview?.report?.skipped || 0;
     if (!outbounds.length) return;
     const subscriptionUrl = subscriptionUrlWithAuth();
     let stableTag = '';
@@ -246,6 +247,7 @@ export function createImportActions({
     state.message = makeActive
       ? `Подписка добавлена в текущий профиль, активная цель ${stableTag || outbounds[0].tag}`
       : `Подписка добавлена в текущий профиль: ${outbounds.length} серверов${stableTag ? `, стабильная цель ${stableTag}` : ''}`;
+    if (skipped) state.message += `; пропущено: ${skipped}`;
     if (makeActive) await applyConfig();
     else await refresh();
   }
@@ -266,11 +268,13 @@ export function createImportActions({
       body: JSON.stringify({ url: subscriptionUrlWithAuth() })
     });
     state.subscriptionPreview = result;
-    state.message = `В подписке найдено серверов: ${result.links}`;
+    state.message = `Распознано: ${result.report?.accepted ?? result.items?.length ?? 0}; пропущено: ${result.report?.skipped || 0}`;
     render();
   }
 
   async function importSubscription() {
+    if (!state.subscriptionPreview?.outbounds?.length) await previewSubscription();
+    if (!state.subscriptionPreview?.outbounds?.length) return;
     const result = await request('/api/import/subscription', {
       method: 'POST',
       body: JSON.stringify({ url: subscriptionUrlWithAuth(), profileName: state.profileName })
@@ -279,7 +283,7 @@ export function createImportActions({
     state.subscriptionAuthPassword = '';
     state.subscriptionPreview = null;
     state.importDialog = '';
-    state.message = `Импортировано серверов: ${result.imported.length}. Профиль: ${result.profile}`;
+    state.message = `Импортировано серверов: ${result.imported.length}. Профиль: ${result.profile}; пропущено: ${result.report?.skipped || 0}`;
     await refresh();
   }
 

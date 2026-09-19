@@ -89,6 +89,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	}
 	var best int64
 	var warmBest int64
+	measuredSuccess, warmSuccess := false, false
 	var lastErr error
 	for attempt := 0; attempt < totalSamples; attempt++ {
 		measured := attempt > 0
@@ -104,15 +105,17 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 			_ = resp.Body.Close()
 			if resp.StatusCode < 500 {
 				if !measured {
-					if warmBest == 0 || latency < warmBest {
+					if !warmSuccess || latency < warmBest {
 						warmBest = latency
 					}
+					warmSuccess = true
 					lastErr = nil
 					continue
 				}
-				if best == 0 || latency < best {
+				if !measuredSuccess || latency < best {
 					best = latency
 				}
+				measuredSuccess = true
 				lastErr = nil
 				continue
 			}
@@ -121,10 +124,10 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 		}
 		lastErr = err
 	}
-	if best > 0 {
+	if measuredSuccess {
 		return best, true, nil
 	}
-	if warmBest > 0 {
+	if warmSuccess {
 		return warmBest, true, nil
 	}
 	if lastErr != nil {

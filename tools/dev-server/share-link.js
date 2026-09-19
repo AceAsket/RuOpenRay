@@ -34,6 +34,15 @@ export function parseShareLink(link) {
   const address = url.hostname.replace(/^\[|\]$/g, '');
   const port = Number(url.port || 443);
   const query = Object.fromEntries(url.searchParams.entries());
+  for (const key of ['allowInsecure', 'insecure']) {
+    for (const value of url.searchParams.getAll(key)) {
+      if (!/^(true|false|1|0)$/i.test(value)) throw new Error(`${key} должен быть true/false или 1/0`);
+      if (/^(true|1)$/i.test(value)) throw new Error('allowInsecure=true удалён из Xray; нужен действительный сертификат сервера и правильный SNI');
+    }
+  }
+  for (const key of ['extra', 'ech', 'echConfigList', 'fm', 'pcs', 'vcn']) {
+    if (query[key]) throw new Error(`Параметр ${key} пока не поддерживается импортом; используйте проверенный JSON-конфиг`);
+  }
   const network = query.type || 'tcp';
   const security = query.security || (protocol === 'trojan' ? 'tls' : 'none');
   const streamSettings = { network, security };

@@ -131,6 +131,11 @@ function importDialog(kind) {
               <button class="btn warning" data-action="importSubscriptionActive">Добавить и выбрать</button>
               <button class="btn secondary" data-action="importSubscription">Отдельным профилем</button>
             </div>
+            ${state.subscriptionPreview?.report ? `<div class="preview-list" role="status">
+              <strong>Записей: ${state.subscriptionPreview.report.total}; распознано: ${state.subscriptionPreview.report.accepted}; пропущено: ${state.subscriptionPreview.report.skipped}</strong>
+              ${state.subscriptionPreview.report.skipped > state.subscriptionPreview.report.issues.length ? '<p>Показаны первые 100 ошибок.</p>' : ''}
+              ${state.subscriptionPreview.report.issues.map((issue) => `<p>Запись ${issue.entry}: ${escapeHtml(issue.message)}</p>`).join('')}
+            </div>` : ''}
             ${state.subscriptionPreview?.items?.length ? `<div class="preview-list">${state.subscriptionPreview.items.slice(0, 8).map(previewBox).join('')}</div>` : ''}
           `
           : `

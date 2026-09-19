@@ -78,6 +78,7 @@ export function createInitialState() {
   setupFallbackMode: '',
   coreReleaseFilter: 'stable',
   coreBackup: false,
+  appChannel: localStorage.getItem('ruopenray.appChannel') === 'test' ? 'test' : 'stable',
   appRelease: null,
   appUpdate: null,
   appUpdating: false,

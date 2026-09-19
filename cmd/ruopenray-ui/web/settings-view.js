@@ -296,6 +296,13 @@ function settingsPanel() {
       <div class="panel-title">
         <div><h2>Обновление RuOpenRay UI</h2><span>Панель может обновить собственный бинарник из релизов GitHub с учетом архитектуры роутера.</span></div>
       </div>
+      <label>Канал обновлений
+        <select id="appChannel" ${state.appUpdating || state.appReleaseChecking ? 'disabled' : ''}>
+          <option value="stable" ${state.appChannel !== 'test' ? 'selected' : ''}>Stable — стабильные релизы</option>
+          <option value="test" ${state.appChannel === 'test' ? 'selected' : ''}>Test — включая предварительные релизы</option>
+        </select>
+      </label>
+      ${appRelease.reason ? `<p>${escapeHtml(appRelease.reason)}</p>` : ''}
       <div class="settings-info-grid">
         <article><span>Установлено</span><strong>${escapeHtml(appVersion)}</strong></article>
         <article><span>Последний релиз</span><strong>${escapeHtml(appTarget)}</strong></article>
@@ -310,7 +317,7 @@ function settingsPanel() {
       </div>
       <div class="toolbar">
         <button class="btn secondary ${state.appReleaseChecking ? 'is-busy' : ''}" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
-        <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
+        <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Нет обновления'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
         <strong>${state.appUpdate.ok ? 'Готово' : 'Ошибка'}</strong>

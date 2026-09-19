@@ -298,7 +298,7 @@ func subscriptionLinks(rawURL string) ([]string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("не удалось загрузить подписку: проверьте URL, доступность и авторизацию")
 	}
 	user := parsed.User
 	if user != nil {
@@ -306,7 +306,7 @@ func subscriptionLinks(rawURL string) ([]string, error) {
 	}
 	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("не удалось загрузить подписку: проверьте URL, доступность и авторизацию")
 	}
 	if user != nil {
 		username := user.Username()
@@ -316,14 +316,17 @@ func subscriptionLinks(rawURL string) ([]string, error) {
 	client := &http.Client{Timeout: 12 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("не удалось загрузить подписку: проверьте URL, доступность и авторизацию")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("subscription HTTP %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
-	return rproxy.DecodeSubscription(string(body)), nil
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
+	if err != nil || len(body) > 2*1024*1024 {
+		return nil, fmt.Errorf("подписка не прочитана полностью или превышает 2 МиБ")
+	}
+	return rproxy.SubscriptionEntries(string(body)), nil
 }
 
 func (s *serverState) importPreview(w http.ResponseWriter, r *http.Request) {
@@ -335,15 +338,11 @@ func (s *serverState) importPreview(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var items []map[string]any
-		var outbounds []map[string]any
-		for _, link := range links {
-			outbound, err := rproxy.ParseShareLink(link)
-			if err == nil {
-				items = append(items, rproxy.OutboundSummary(outbound))
-				outbounds = append(outbounds, outbound)
-			}
+		outbounds, report := rproxy.ParseSubscriptionEntries(links)
+		for _, outbound := range outbounds {
+			items = append(items, rproxy.OutboundSummary(outbound))
 		}
-		writeJSON(w, 200, map[string]any{"ok": true, "source": "subscription", "links": len(links), "items": items, "outbounds": outbounds})
+		writeJSON(w, 200, map[string]any{"ok": true, "source": "subscription", "links": len(links), "items": items, "outbounds": outbounds, "report": report})
 		return
 	}
 	outbound, err := rproxy.ParseShareLink(fmt.Sprint(payload["link"]))
@@ -367,17 +366,14 @@ func (s *serverState) importSubscription(w http.ResponseWriter, r *http.Request)
 	cfg, _ := s.readActiveConfig()
 	outbounds := asArray(cfg["outbounds"])
 	var imported []map[string]any
-	for _, link := range links {
-		outbound, err := rproxy.ParseShareLink(link)
-		if err != nil {
-			continue
-		}
+	parsed, report := rproxy.ParseSubscriptionEntries(links)
+	for _, outbound := range parsed {
 		outbounds = removeOutboundByTag(outbounds, fmt.Sprint(outbound["tag"]))
 		outbounds = append([]any{outbound}, outbounds...)
 		imported = append(imported, rproxy.OutboundSummary(outbound))
 	}
 	if len(imported) == 0 {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": "В подписке не найдены поддерживаемые ссылки"})
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "В подписке не найдены поддерживаемые ссылки; проверьте отчёт импорта", "report": report})
 		return
 	}
 	cfg["outbounds"] = outbounds
@@ -388,7 +384,7 @@ func (s *serverState) importSubscription(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "profile": strings.TrimSuffix(filepath.Base(path), ".json"), "imported": imported})
+	writeJSON(w, 200, map[string]any{"ok": true, "profile": strings.TrimSuffix(filepath.Base(path), ".json"), "imported": imported, "report": report})
 }
 
 func asArray(value any) []any {

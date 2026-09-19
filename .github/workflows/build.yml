@@ -5,7 +5,51 @@ on:
   pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+      - run: go test ./... -count=1 -timeout=120s
+      - run: npm run test:frontend
+  xray:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "26.3.27"
+            sha256: "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
+          - version: "26.9.9"
+            sha256: "1eb9175d0f0a8f8149c9230a7fc5ae66ce332ed20a53155ce61fe62e3f58b7df"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Download verified Xray
+        env:
+          XRAY_VERSION: ${{ matrix.version }}
+          XRAY_SHA256: ${{ matrix.sha256 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/xray"
+          curl --fail --location --retry 3 "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip" -o "$RUNNER_TEMP/xray.zip"
+          echo "$XRAY_SHA256  $RUNNER_TEMP/xray.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/xray.zip" -d "$RUNNER_TEMP/xray"
+          chmod +x "$RUNNER_TEMP/xray/xray"
+      - name: Real tunnels and compatibility
+        env:
+          RUOPENRAY_TEST_XRAY: ${{ runner.temp }}/xray/xray
+        run: go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility' -v -count=1 -timeout=180s
   go:
+    needs: [test, xray]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,15 +72,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
-      - name: Test
-        run: go test ./...
-      - name: Frontend test
-        run: npm run test:frontend
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -48,7 +83,9 @@ jobs:
           suffix="${GOOS}-${GOARCH}"
           if [ -n "${GOARM}" ]; then suffix="${suffix}v${GOARM}"; fi
           if [ -n "${GOMIPS}" ]; then suffix="${suffix}-${GOMIPS}"; fi
-          go build -trimpath -ldflags="-s -w -X main.appVersion=dev" -o "dist/ruopenray-ui-${suffix}" ./cmd/ruopenray-ui
+          version="0.5.0-test.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME}"; fi
+          go build -trimpath -ldflags="-s -w -X main.appVersion=${version}" -o "dist/ruopenray-ui-${suffix}" ./cmd/ruopenray-ui
       - uses: actions/upload-artifact@v4
         with:
           name: ruopenray-ui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}

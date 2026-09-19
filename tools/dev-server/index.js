@@ -1680,17 +1680,28 @@ async function scanSni(payload = {}) {
 }
 
 function decodeSubscription(body) {
-  const text = String(body || '').trim();
+  let text = String(body || '').trim();
   if (!text) return [];
-  const candidates = text.includes('://') ? [text] : [Buffer.from(text, 'base64').toString('utf8'), text];
-  for (const candidate of candidates) {
-    const links = candidate
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter((item) => /^(vless|vmess|trojan|ss):\/\//i.test(item));
-    if (links.length) return links;
+  if (!text.includes('://')) {
+    const decoded = Buffer.from(text.replace(/\s+/g, ''), 'base64url').toString('utf8');
+    if (decoded.includes('://')) text = decoded;
   }
-  return [];
+  return text.split(/\s+/).filter(Boolean);
+}
+
+function subscriptionParseReport(links) {
+  const outbounds = [];
+  const report = { total: links.length, accepted: 0, skipped: 0, issues: [] };
+  links.forEach((link, index) => {
+    try { outbounds.push(parseShareLink(link)); report.accepted++; }
+    catch (error) {
+      report.skipped++;
+      // Never expose a URI included in a native URL/JSON parser exception.
+      const message = /allowInsecure|пока не поддерживается|должен быть/.test(error.message) ? error.message : 'Неподдерживаемая или некорректная ссылка';
+      report.issues.push({ entry: index + 1, message });
+    }
+  });
+  return { outbounds, report };
 }
 
 async function fetchSubscriptionLinks(rawUrl) {
@@ -1711,20 +1722,10 @@ async function fetchSubscriptionLinks(rawUrl) {
 async function importPreview(payload) {
   if (payload.url) {
     const links = await fetchSubscriptionLinks(payload.url);
-    const outbounds = [];
-    const items = [];
-    for (const link of links.slice(0, 50)) {
-      const outbound = parseShareLink(link);
-      outbounds.push(outbound);
-      items.push(outboundSummary(outbound));
-    }
-    return {
-      source: 'subscription',
-      links: links.length,
-      items,
-      outbounds
-    };
+    const { outbounds, report } = subscriptionParseReport(links);
+    return { source: 'subscription', links: links.length, items: outbounds.map(outboundSummary), outbounds, report };
   }
+
   const outbound = parseShareLink(payload.link);
   return { source: 'link', links: 1, items: [outboundSummary(outbound)], outbound };
 }
@@ -1746,20 +1747,16 @@ async function importSubscription({ url, profileName = '' }) {
   const config = await readActiveConfig();
   config.outbounds = Array.isArray(config.outbounds) ? config.outbounds : [];
   const imported = [];
-  for (const link of links) {
-    try {
-      const outbound = parseShareLink(link);
-      config.outbounds = config.outbounds.filter((item) => item.tag !== outbound.tag);
-      config.outbounds.unshift(JSON.parse(JSON.stringify(outbound)));
-      imported.push(outboundSummary(outbound));
-    } catch {
-      // Skip unsupported links and import the rest.
-    }
+  const { outbounds, report } = subscriptionParseReport(links);
+  for (const outbound of outbounds) {
+    config.outbounds = config.outbounds.filter((item) => item.tag !== outbound.tag);
+    config.outbounds.unshift(JSON.parse(JSON.stringify(outbound)));
+    imported.push(outboundSummary(outbound));
   }
   if (!imported.length) throw new Error('Подписка есть, но поддерживаемых ссылок в ней не найдено');
   const path = profilePath(profileNameFallback(profileName, imported[0]?.tag, profileNameFromUrl(url), 'subscription'));
   await writeFile(path, JSON.stringify(config, null, 2));
-  return { profile: basename(path).replace(/\.json$/, ''), imported };
+  return { profile: basename(path).replace(/\.json$/, ''), imported, report };
 }
 
 async function dhcpLeases() {

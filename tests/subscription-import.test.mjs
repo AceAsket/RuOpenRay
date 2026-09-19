@@ -22,3 +22,28 @@ test('development importer preserves XHTTP path/mode and websocket Host', () => 
   assert.deepEqual(parseShareLink(prefix + 'type=xhttp&path=%2Fxhttp&mode=stream-one').streamSettings.xhttpSettings, { path: '/xhttp', mode: 'stream-one' });
   assert.deepEqual(parseShareLink(prefix + 'type=ws&path=%2Fstream%2Fupdates&host=cdn.example.com').streamSettings.wsSettings, { path: '/stream/updates', headers: { Host: 'cdn.example.com' } });
 });
+
+
+test('development importer rejects removed TLS verification bypass and unsupported parameters', () => {
+  for (const query of ['allowInsecure=true', 'insecure=1', 'allowInsecure=false&insecure=true', 'extra=%7B%7D', 'fm=2']) {
+    assert.throws(() => parseShareLink(`trojan://secret@example.com:443?${query}`));
+  }
+});
+
+
+test('empty import preview still renders reasons without exposing markup', async () => {
+  const { createImportDialogView } = await import('../cmd/ruopenray-ui/web/import-dialog-view.js');
+  const escapeHtml = (value) => String(value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  const state = { subscriptionPreview: { items: [], report: { total: 1, accepted: 0, skipped: 1, issues: [{ entry: 1, message: 'bad <script>' }] } } };
+  const html = createImportDialogView({ state, escapeHtml }).importDialog('subscription');
+  assert.match(html, /распознано: 0; пропущено: 1/);
+  assert.match(html, /Запись 1: bad &lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+});
+
+test('background refresh preserves the selected update channel', async () => {
+  const { loadAppSnapshot } = await import('../cmd/ruopenray-ui/web/refresh.js');
+  const paths = [];
+  await loadAppSnapshot({ request: async (path) => { paths.push(path); return {}; }, text: async () => '', logsUrl: () => '/logs', appChannel: 'test' });
+  assert.ok(paths.includes('/api/app/releases?channel=test'));
+});

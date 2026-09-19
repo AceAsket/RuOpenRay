@@ -107,25 +107,13 @@ func ReplaceOutboundByTag(items []any, tag string, outbound map[string]any) []an
 }
 
 func DecodeSubscription(body string) []string {
-	text := strings.TrimSpace(body)
-	candidates := []string{text}
-	if !strings.Contains(text, "://") {
-		if decoded, err := base64.StdEncoding.DecodeString(text); err == nil {
-			candidates = append([]string{string(decoded)}, candidates...)
+	var links []string
+	for _, entry := range SubscriptionEntries(body) {
+		if regexp.MustCompile(`(?i)^(vless|vmess|trojan|ss)://`).MatchString(entry) {
+			links = append(links, entry)
 		}
 	}
-	for _, candidate := range candidates {
-		var links []string
-		for _, item := range strings.Fields(candidate) {
-			if regexp.MustCompile(`(?i)^(vless|vmess|trojan|ss)://`).MatchString(item) {
-				links = append(links, item)
-			}
-		}
-		if len(links) > 0 {
-			return links
-		}
-	}
-	return nil
+	return links
 }
 
 func ParseShareLink(raw string) (map[string]any, error) {
@@ -135,7 +123,39 @@ func ParseShareLink(raw string) (map[string]any, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("некорректный формат ссылки")
+	}
+	if u.Scheme == "vless" || u.Scheme == "trojan" {
+		q := u.Query()
+		if u.Hostname() == "" || u.User == nil || u.User.Username() == "" {
+			return nil, errors.New("в ссылке отсутствует сервер или идентификатор подключения")
+		}
+		for _, key := range []string{"allowInsecure", "insecure"} {
+			for _, value := range q[key] {
+				enabled, err := strconv.ParseBool(value)
+				if err != nil {
+					return nil, fmt.Errorf("%s должен быть true/false или 1/0", key)
+				}
+				if enabled {
+					return nil, errors.New("allowInsecure=true удалён из Xray; нужен действительный сертификат сервера и правильный SNI")
+				}
+			}
+		}
+		for _, key := range []string{"extra", "ech", "echConfigList", "fm", "pcs", "vcn"} {
+			if q.Get(key) != "" {
+				return nil, fmt.Errorf("параметр %s пока не поддерживается импортом; используйте проверенный JSON-конфиг", key)
+			}
+		}
+		switch q.Get("type") {
+		case "", "tcp", "raw", "grpc", "ws", "xhttp", "splithttp":
+		default:
+			return nil, errors.New("транспорт ссылки пока не поддерживается импортом")
+		}
+		switch q.Get("security") {
+		case "", "none", "tls", "reality":
+		default:
+			return nil, errors.New("режим безопасности ссылки пока не поддерживается импортом")
+		}
 	}
 	switch u.Scheme {
 	case "vless":
@@ -145,9 +165,13 @@ func ParseShareLink(raw string) (map[string]any, error) {
 	case "ss":
 		return parseSS(u), nil
 	case "vmess":
-		return parseVMess(u)
+		outbound, err := parseVMess(u)
+		if err != nil {
+			return nil, errors.New("некорректная ссылка VMess")
+		}
+		return outbound, nil
 	default:
-		return nil, fmt.Errorf("неподдерживаемый протокол ссылки: %s", u.Scheme)
+		return nil, errors.New("неподдерживаемый протокол ссылки")
 	}
 }
 

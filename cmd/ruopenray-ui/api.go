@@ -310,11 +310,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateCore(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
 	case path == "/app/releases" && r.Method == http.MethodGet:
-		release, err := appLatestRelease()
+		release, err := appLatestRelease(r.URL.Query().Get("channel"))
 		respond(w, map[string]any{"ok": true, "version": appVersion, "asset": ruOpenRayAssetName(), "arch": systemArchitecture("github-release"), "release": release}, err)
 	case path == "/app/update" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
-		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
+		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false), fmt.Sprint(payload["channel"])))
 	case path == "/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.diagnostics())
 	case path == "/diagnostics/package" && r.Method == http.MethodGet:

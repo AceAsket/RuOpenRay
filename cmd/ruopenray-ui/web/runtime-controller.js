@@ -257,7 +257,7 @@ export function createRuntimeController({
         routeNames,
         routePresets,
         serverMeta
-      } = await loadAppSnapshot({ request, text: api.text, logsUrl });
+      } = await loadAppSnapshot({ request, text: api.text, logsUrl, appChannel: state.appChannel });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
       const activeConfig = hasConfigSurface(config) ? config : state.config;

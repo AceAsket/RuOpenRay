@@ -1,14 +1,9 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -184,85 +179,24 @@ func findReleaseAsset(version string) (string, string, error) {
 			return url, fmt.Sprint(release["asset"]), nil
 		}
 	}
-	return "", "", fmt.Errorf("релиз %s не найден среди последних 10", version)
-}
-
-func (s *serverState) installCoreRelease(version string, keepBackup bool) map[string]any {
-	arch := systemArchitecture("github-release")
-	assetURL, assetName, err := findReleaseAsset(version)
-	if err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch}
-	}
-	downloadURL := s.mirrorURL(assetURL)
-	resp, err := (&http.Client{Timeout: 90 * time.Second}).Get(downloadURL)
-	if err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch, "url": downloadURL}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return map[string]any{"ok": false, "stderr": fmt.Sprintf("download HTTP %d", resp.StatusCode), "arch": arch, "url": downloadURL}
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch}
-	}
-	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
-	if err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch}
-	}
-	var binary []byte
-	for _, file := range reader.File {
-		if filepath.Base(file.Name) != "xray" {
-			continue
-		}
-		rc, err := file.Open()
-		if err != nil {
-			return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch}
-		}
-		binary, err = io.ReadAll(rc)
-		_ = rc.Close()
-		if err != nil {
-			return map[string]any{"ok": false, "stderr": err.Error(), "arch": arch}
-		}
-		break
-	}
-	if len(binary) == 0 {
-		return map[string]any{"ok": false, "stderr": "в архиве не найден бинарник xray"}
-	}
-	target := "/usr/bin/xray"
-	current, _ := os.ReadFile(target)
-	backup := ""
-	if keepBackup && len(current) > 0 {
-		_ = os.MkdirAll(s.cfg.BackupDir, 0o755)
-		backup = filepath.Join(s.cfg.BackupDir, "xray-"+time.Now().Format("20060102-150405"))
-	}
-	_ = os.Remove(target)
-	if err := os.WriteFile(target, binary, 0o755); err != nil {
-		if len(current) > 0 {
-			_ = os.WriteFile(target, current, 0o755)
-		}
-		return map[string]any{"ok": false, "stderr": err.Error()}
-	}
-	if len(current) > 0 && backup != "" {
-		_ = os.WriteFile(backup, current, 0o755)
-	}
-	return map[string]any{"ok": true, "stdout": fmt.Sprintf("Установлен %s из %s", version, assetName), "backup": backup, "backupEnabled": keepBackup, "url": downloadURL}
+	return "", "", fmt.Errorf("релиз %s не найден среди последних 50", version)
 }
 
 func (s *serverState) updateCore(version string, keepBackup bool) map[string]any {
+	if !coreUpdateMu.TryLock() {
+		return map[string]any{"ok": false, "stderr": "Обновление Xray уже выполняется"}
+	}
+	defer coreUpdateMu.Unlock()
 	before := firstLine(fmt.Sprint(run("xray", "version")["stdout"]), "xray не найден")
 	if version != "" && version != "<nil>" {
-		stop := s.serviceAction("stop")
-		install := s.installCoreRelease(version, keepBackup)
-		after := firstLine(fmt.Sprint(run("xray", "version")["stdout"]), "xray не найден")
-		restart := s.serviceAction("restart")
-		ok := install["ok"].(bool) && restart["ok"].(bool)
-		return map[string]any{
-			"ok": ok, "packageManager": "github-release", "version": version,
-			"before": before, "after": after, "stop": stop, "install": install, "restart": restart,
-			"arch":   systemArchitecture("github-release"),
-			"stdout": concatCommandOutput(stop, install, restart),
-		}
+		result := s.installCoreRelease(version, keepBackup)
+		result["before"] = before
+		result["after"] = firstLine(fmt.Sprint(run("xray", "version")["stdout"]), "xray не найден")
+		result["packageManager"] = "github-release"
+		return result
+	}
+	if commandExists("xray") && runtime.GOOS != "windows" {
+		return map[string]any{"ok": false, "stderr": "Для обновления установленного Xray выберите релиз: пакетное обновление не поддерживает проверку и откат"}
 	}
 	if runtime.GOOS == "windows" {
 		return map[string]any{

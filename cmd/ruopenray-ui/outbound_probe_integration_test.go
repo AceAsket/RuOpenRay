@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,14 +53,21 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 	}
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	defer origin.Close()
-	for _, protocol := range []string{"vless", "trojan"} {
-		t.Run(protocol, func(t *testing.T) {
+	version, err := exec.Command(binary, "version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, transport := range []struct {
+		protocol, network string
+		allowLAN          bool
+	}{{"vless", "grpc", true}, {"trojan", "tcp", true}, {"vless", "ws", true}, {"vless", "xhttp", true}, {"vless", "tcp", false}} {
+		protocol, network := transport.protocol, transport.network
+		t.Run(protocol+"-"+network, func(t *testing.T) {
 			port, err := freeLocalPort()
 			if err != nil {
 				t.Fatal(err)
 			}
 			credential := "00000000-0000-0000-0000-000000000000"
-			network := "grpc"
 			settings := map[string]any{"clients": []any{map[string]any{"id": credential}}, "decryption": "none"}
 			if protocol == "trojan" {
 				credential = "test-password"
@@ -70,7 +78,16 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			if network == "grpc" {
 				stream["grpcSettings"] = map[string]any{"serviceName": "test-service"}
 			}
-			config := map[string]any{"log": map[string]any{"loglevel": "warning"}, "inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": protocol, "settings": settings, "streamSettings": stream}}, "outbounds": []any{map[string]any{"protocol": "freedom"}}}
+			if network == "ws" {
+				stream["wsSettings"] = map[string]any{"path": "/test"}
+			}
+			if network == "xhttp" {
+				stream["xhttpSettings"] = map[string]any{"path": "/test", "mode": "stream-one"}
+			}
+			config := map[string]any{"log": map[string]any{"loglevel": "warning"}, "inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": protocol, "settings": settings, "streamSettings": stream}}, "outbounds": []any{map[string]any{"protocol": "freedom", "settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow", "ip": []string{"127.0.0.1/32"}}}}}}}
+			if !transport.allowLAN {
+				config["outbounds"] = []any{map[string]any{"protocol": "freedom"}}
+			}
 			data, err := json.Marshal(config)
 			if err != nil {
 				t.Fatal(err)
@@ -95,7 +112,7 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 				log, _ := os.ReadFile(logFile.Name())
 				t.Fatalf("start: %v; %s", err, log)
 			}
-			link := fmt.Sprintf("%s://%s@127.0.0.1:%d?security=tls&type=%s&sni=proxy.example.test&serviceName=test-service&alpn=h2", protocol, credential, port, network)
+			link := fmt.Sprintf("%s://%s@127.0.0.1:%d?security=tls&type=%s&sni=proxy.example.test&serviceName=test-service&path=%%2Ftest&mode=stream-one", protocol, credential, port, network)
 			outbound, err := rproxy.ParseShareLink(link)
 			if err != nil {
 				t.Fatal(err)
@@ -106,12 +123,23 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			tls["certificates"] = []any{map[string]any{"certificateFile": certFile, "usage": "verify"}}
 			s := &serverState{cfg: appConfig{DataDir: dir}}
 			latency, ok, err := s.httpOutboundProbe(outbound, origin.URL, 3000, 1)
+			if !transport.allowLAN && strings.Contains(string(version), "26.9.9") {
+				if ok {
+					t.Fatal("remote VLESS inbound must not reach private addresses without explicit finalRules")
+				}
+				return
+			}
 			if !ok || err != nil {
 				log, _ := os.ReadFile(logFile.Name())
 				t.Fatalf("tunnel failed: ok=%v latency=%d err=%v; SERVER %s", ok, latency, err, log)
 			}
 			if latency < 0 {
 				t.Fatalf("invalid latency: %d", latency)
+			}
+			wrongCert := rproxy.CloneOutboundWithTag(outbound, "wrong-certificate")
+			wrongCert["streamSettings"].(map[string]any)["tlsSettings"].(map[string]any)["serverName"] = "wrong.example.test"
+			if _, ok, _ := s.httpOutboundProbe(wrongCert, origin.URL, 700, 1); ok {
+				t.Fatal("wrong certificate hostname accepted")
 			}
 			// A TCP listener alone must not make incorrect proxy credentials pass.
 			bad := rproxy.CloneOutboundWithTag(outbound, "bad-credentials")

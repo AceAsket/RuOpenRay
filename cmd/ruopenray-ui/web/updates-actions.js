@@ -43,7 +43,7 @@ export function createUpdatesActions({
     try {
       const result = await request('/api/app/update', {
         method: 'POST',
-        body: JSON.stringify({ version: target, backup: state.appBackup })
+        body: JSON.stringify({ version: target, backup: state.appBackup, channel: state.appChannel || 'stable' })
       });
       state.appUpdate = result;
       state.message = result.ok
@@ -65,7 +65,7 @@ export function createUpdatesActions({
     state.message = 'Проверяю обновления RuOpenRay UI...';
     render();
     try {
-      const result = await request('/api/app/releases');
+      const result = await request(`/api/app/releases?channel=${state.appChannel || 'stable'}`);
       state.appRelease = result?.release || null;
       if (result?.version && state.status?.app) {
         state.status = {
@@ -76,7 +76,7 @@ export function createUpdatesActions({
       const release = state.appRelease || {};
       state.message = release.update && release.assetUrl
         ? `Доступно обновление RuOpenRay UI: ${release.current || result.version || 'текущая'} → ${release.tag}`
-        : `RuOpenRay UI актуален: ${result?.version || state.status?.app?.version || 'dev'}`;
+        : release.reason || 'В выбранном канале нет доступного обновления';
     } catch (error) {
       state.message = error.message || 'Не удалось проверить обновления RuOpenRay UI';
     } finally {
