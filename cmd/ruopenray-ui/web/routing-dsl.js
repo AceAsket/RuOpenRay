@@ -6,14 +6,14 @@ export function routingListTargetOptions(options) {
 }
 
 export function routingListTargetPicker(state, options, escapeHtml) {
-  return `<label class="form-row wide">
+  return `<div class="form-row wide">
     <span>Куда отправляем</span>
-    <select data-route-dsl-target aria-label="Назначение списка правил">
+    <select class="route-outbound" data-route-dsl-target data-route-visual-picker aria-label="Назначение списка правил">
       <option value="" ${!state.routeDslTarget ? 'selected' : ''}>Выберите назначение</option>
       ${routingListTargetOptions(options).map((option) => `<option value="${escapeHtml(option.value)}" ${state.routeDslTarget === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
     </select>
     <small>Для строк без назначения. Если в строке есть →, используется назначение из строки.</small>
-  </label>`;
+  </div>`;
 }
 
 export function createRoutingDsl({ state, escapeHtml, resolveRoutingAlias, routeStatsFor }) {

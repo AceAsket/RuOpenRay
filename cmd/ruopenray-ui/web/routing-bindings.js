@@ -467,6 +467,8 @@ export function bindRoutingControls({
     triggerCaret.textContent = '▾';
     trigger.append(triggerFlag, triggerStatus, triggerText, triggerCaret);
     trigger.disabled = select.disabled;
+    const accessibleLabel = select.getAttribute('aria-label');
+    if (accessibleLabel) trigger.setAttribute('aria-label', `${accessibleLabel}: ${selectedText}`);
     menu.textContent = '';
     [...select.options].forEach((option) => {
       const optionEncoded = routeTargetEncodedValue(select, option.value);
@@ -855,6 +857,9 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeDslName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDslName = event.target.value;
   }));
+  document.querySelectorAll('[data-route-visual-picker]').forEach((select) => {
+    decorateRouteTargetSelect(select, select.value);
+  });
   document.querySelectorAll('[data-route-dsl-target]').forEach((select) => select.addEventListener('change', (event) => {
     state.routeDslTarget = event.target.value;
     state.routeDslPreview = null;

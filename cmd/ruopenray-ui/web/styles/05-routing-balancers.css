@@ -1318,6 +1318,7 @@
 
 .route-target-trigger-text,
 .route-target-option-text {
+  grid-column: 3;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1325,6 +1326,7 @@
 }
 
 .route-target-trigger-caret {
+  grid-column: 4;
   width: 20px;
   height: 20px;
   display: inline-flex;
