@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseShareLink } from '../tools/dev-server/share-link.js';
+import { parseShareLink, decodeSubscriptionEntries } from '../tools/dev-server/share-link.js';
 
 test('development importer preserves VLESS gRPC and TLS settings', () => {
   const outbound = parseShareLink('vless://00000000-0000-0000-0000-000000000000@192.0.2.1:443?type=grpc&security=tls&sni=front.example.com&fp=chrome&alpn=h2%2Chttp%2F1.1&serviceName=tunnel%2Fservice&mode=multi&authority=grpc.example.com');
@@ -46,4 +46,15 @@ test('background refresh preserves the selected update channel', async () => {
   const paths = [];
   await loadAppSnapshot({ request: async (path) => { paths.push(path); return {}; }, text: async () => '', logsUrl: () => '/logs', appChannel: 'test' });
   assert.ok(paths.includes('/api/app/releases?channel=test'));
+});
+
+
+test('subscription names retain spaces and do not create spurious rejected records', () => {
+  const raw = '# provider comment\r\ntrojan://test@example.test:443#Demo server EU 1\r\nvless://id@example.test:443#Demo server EU 2';
+  for (const body of [raw, Buffer.from(raw).toString('base64url')]) {
+    const entries = decodeSubscriptionEntries(body);
+    assert.equal(entries.length, 2);
+    assert.equal(parseShareLink(entries[0]).tag, 'Demo server EU 1');
+    assert.equal(parseShareLink(entries[1]).tag, 'Demo server EU 2');
+  }
 });

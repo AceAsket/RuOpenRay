@@ -111,3 +111,13 @@ export function parseShareLink(link) {
   };
 }
 
+
+export function decodeSubscriptionEntries(body) {
+  let text = String(body || '').trim();
+  if (!text) return [];
+  if (!text.includes('://')) {
+    const decoded = Buffer.from(text.replace(/\s+/g, ''), 'base64url').toString('utf8');
+    if (decoded.includes('://')) text = decoded;
+  }
+  return text.split(/\r\n|\r|\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+}

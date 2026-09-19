@@ -28,3 +28,16 @@ func TestRemovedTLSAndUnsupportedParameters(t *testing.T) {
 		}
 	}
 }
+
+func TestSubscriptionPreservesNamesWithSpaces(t *testing.T) {
+	raw := "# provider comment\r\n\r\nvless://00000000-0000-0000-0000-000000000000@example.test:443#Demo server EU 1\r\ntrojan://test@example.test:443#Demo server EU 2\r\n"
+	for _, body := range []string{raw, base64.RawURLEncoding.EncodeToString([]byte(raw))} {
+		outbounds, report := ParseSubscriptionEntries(SubscriptionEntries(body))
+		if report.Total != 2 || report.Accepted != 2 || report.Skipped != 0 {
+			t.Fatalf("%+v", report)
+		}
+		if outbounds[0]["tag"] != "Demo server EU 1" || outbounds[1]["tag"] != "Demo server EU 2" {
+			t.Fatal("display names truncated")
+		}
+	}
+}

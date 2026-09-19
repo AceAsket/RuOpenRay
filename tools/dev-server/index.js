@@ -1,4 +1,4 @@
-import { parseShareLink } from './share-link.js';
+import { parseShareLink, decodeSubscriptionEntries } from './share-link.js';
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile, copyFile, stat, statfs, unlink, truncate, rename } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -1679,15 +1679,6 @@ async function scanSni(payload = {}) {
   return { ok: true, target, targetIp, cidr, network, scanned: ips.length, results };
 }
 
-function decodeSubscription(body) {
-  let text = String(body || '').trim();
-  if (!text) return [];
-  if (!text.includes('://')) {
-    const decoded = Buffer.from(text.replace(/\s+/g, ''), 'base64url').toString('utf8');
-    if (decoded.includes('://')) text = decoded;
-  }
-  return text.split(/\s+/).filter(Boolean);
-}
 
 function subscriptionParseReport(links) {
   const outbounds = [];
@@ -1716,7 +1707,7 @@ async function fetchSubscriptionLinks(rawUrl) {
   }
   const response = await fetch(parsed.toString(), { headers, signal: AbortSignal.timeout(12000) });
   if (!response.ok) throw new Error(`Subscription HTTP ${response.status}`);
-  return decodeSubscription(await response.text());
+  return decodeSubscriptionEntries(await response.text());
 }
 
 async function importPreview(payload) {

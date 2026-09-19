@@ -28,7 +28,18 @@ func SubscriptionEntries(body string) []string {
 			}
 		}
 	}
-	return strings.Fields(text)
+	// A URI fragment may contain unescaped spaces in provider-generated names.
+	// Split records only on line breaks, never inside the display name.
+	text = strings.TrimPrefix(text, "\ufeff")
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	entries := []string{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			entries = append(entries, line)
+		}
+	}
+	return entries
 }
 
 func ParseSubscriptionEntries(entries []string) ([]map[string]any, ImportReport) {
