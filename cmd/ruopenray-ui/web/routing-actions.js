@@ -2,6 +2,7 @@ import { routePresetExportIcon, routePresetIconView } from './route-visuals.js';
 import { routingListTargetOptions } from './routing-dsl.js';
 import { assignRouteGroup, migrateNamedRouteGroups, routeGroupId } from './routing-group-identity.js';
 import { analyzeRuleImport } from './routing-insights.js';
+import { isDefaultRoute, orderRoutingRules, saveRouteDefaultLast } from './routing-order.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -58,10 +59,11 @@ export function createRoutingActions({
   function parseRoutingList(mode = 'append') {
     const parsed = parseRoutingDsl(state.routeDsl, state.routeDslTarget || '');
     parsed.mode = mode;
-    parsed.fingerprint = JSON.stringify([mode, state.routeDsl, state.routeDslTarget, state.routeDslName, routeRules()]);
+    parsed.fingerprint = JSON.stringify([mode, state.routeDsl, state.routeDslTarget, state.routeDslName, state.routeDefaultLast !== false, routeRules()]);
     if (state.routeDslPreview?.fingerprint !== parsed.fingerprint) state.routeDslExcluded = [];
     parsed.excluded = state.routeDslExcluded || [];
-    parsed.analysis = analyzeRuleImport(mode === 'append' ? routeRules() : [], parsed.rules, parsed.excluded);
+    parsed.analysis = analyzeRuleImport(mode === 'append' ? routeRules() : [], parsed.rules, parsed.excluded,
+      { isPinnedLast: (rule) => state.routeDefaultLast !== false && isDefaultRoute(rule) && !isRuOpenRayManagedRoute?.(rule) });
     const options = routeTargetOptions();
     parsed.targetLabels = Object.fromEntries(options.map((option) => [option.value, option.label]));
     if (state.routeDslTarget && !routingListTargetOptions(routeTargetOptions()).some((option) => option.value === state.routeDslTarget)) {
@@ -76,6 +78,25 @@ export function createRoutingActions({
     state.routeDslPreview = parseRoutingList();
     const parsed = state.routeDslPreview;
     state.message = `Распознано правил: ${parsed.rules.length}${parsed.warnings.length ? `, предупреждений: ${parsed.warnings.length}` : ''}`;
+    render();
+  }
+
+  function setRouteDefaultLast(enabled) {
+    state.routeDefaultLast = Boolean(enabled);
+    saveRouteDefaultLast(state.routeDefaultLast);
+    state.routeDslPreview = null;
+    state.routeDslExcluded = [];
+    const current = routeRules();
+    const ordered = orderRoutingRules(current, state.routeDefaultLast, isRuOpenRayManagedRoute);
+    if (ordered !== current) {
+      state.selectedRouteRuleIndexes = [];
+      setRoutingDraft(ordered);
+      state.message = '«Остальной трафик» перенесён в конец черновика. Проверьте и примените изменения.';
+    } else {
+      state.message = state.routeDefaultLast
+        ? '«Остальной трафик» закреплён внизу при изменении черновика.'
+        : 'Порядок правил задаётся вручную. Новые строки списка добавляются в конец.';
+    }
     render();
   }
 
@@ -1498,7 +1519,8 @@ export function createRoutingActions({
     const selectedTarget = encodedRouteTarget(item.rule);
     const category = routeCategoryForRule(item.rule);
     const managed = isRuOpenRayManagedRoute(item.rule);
-    const dragLocked = managed;
+    const pinned = state.routeDefaultLast !== false && isDefaultRoute(item.rule) && !managed;
+    const dragLocked = managed || pinned;
     const targetLocked = managed || (nested && !nestedEditable);
     const editLocked = managed;
     const actionLocked = managed || (nested && !nestedEditable);
@@ -1510,7 +1532,7 @@ export function createRoutingActions({
     const moveDownAttrs = nested
       ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="1"`
       : `data-route-move="${index}" data-direction="1"`;
-    const moveUpDisabled = managed || (nested ? !canMoveNestedUp : index === 0);
+    const moveUpDisabled = managed || pinned || (nested ? !canMoveNestedUp : index === 0);
     const moveDownDisabled = managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
     const targetOptions = options.some((option) => option.value === selectedTarget)
       ? options
@@ -1965,6 +1987,12 @@ export function createRoutingActions({
     if (fromStart < toIndex) toIndex -= length;
     if (toIndex === fromStart) return;
     rules.splice(toIndex, 0, ...moved);
+    const ordered = orderRoutingRules(rules, state.routeDefaultLast !== false, isRuOpenRayManagedRoute);
+    if (ordered.every((rule, index) => rule === routeRules()[index])) {
+      state.message = '«Остальной трафик» закреплён внизу. Для ручного порядка отключите переключатель.';
+      render();
+      return;
+    }
     setRoutingDraft(rules);
     state.message = length > 1
       ? 'Порядок подборки изменен. Все правила внутри нее остались рядом.'
@@ -2152,6 +2180,7 @@ export function createRoutingActions({
 
 
   return {
+    setRouteDefaultLast,
     migrateLegacyRouteGroups,
     previewRoutingDsl,
     configAnalysisView,

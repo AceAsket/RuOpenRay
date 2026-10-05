@@ -1,6 +1,7 @@
 import { countryFlagMarkup, flagForCountry, serverLocation } from './server-location.js';
 import { isFragmentOutboundTag } from './outbound-tags.js';
 import { displayRouteDomainValues } from './routing-values.js';
+import { isDefaultRoute } from './routing-order.js';
 
 const privateBypassValues = new Set([
   'geoip:private',
@@ -167,22 +168,6 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       .filter(Boolean);
   }
 
-  function isDefaultRoute(rule) {
-    if (!rule) return false;
-    const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
-    const network = String(rule.network || '').replace(/\s+/g, '').toLowerCase();
-    const isAllNetwork = !rule.network || network === 'tcp,udp' || network === 'udp,tcp';
-    const hasConditions = Boolean(
-      (Array.isArray(rule.domain) && rule.domain.length) ||
-      (Array.isArray(rule.ip) && rule.ip.length) ||
-      (Array.isArray(rule.source) && rule.source.length) ||
-      (Array.isArray(rule.inboundTag) && rule.inboundTag.length) ||
-      !isAllNetwork ||
-      (rule.port && String(rule.port) !== '0-65535')
-    );
-    return hasTarget && !hasConditions;
-  }
-  
   function routeTarget(rule) {
     if (isDefaultRoute(rule)) return { kind: 'default', values: ['все, что не совпало выше'] };
     if (Array.isArray(rule.domain) && rule.domain.length) return { kind: 'domain', values: rule.domain };

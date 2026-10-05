@@ -46,6 +46,7 @@ import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
 import { createRoutingDsl } from './routing-dsl.js';
 import { createRoutingModel } from './routing-model.js';
+import { orderRoutingRules } from './routing-order.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServerActions } from './server-actions.js';
 import { createServerModeActions } from './server-mode-actions.js';
@@ -221,6 +222,9 @@ const {
 } = routingModel;
 
 function setRoutingDraft(rules) {
+  const ordered = orderRoutingRules(rules, state.routeDefaultLast !== false, isRuOpenRayManagedRoute);
+  if (ordered !== rules) state.selectedRouteRuleIndexes = [];
+  rules = ordered;
   if (routingActions.migrateLegacyRouteGroups(rules)) saveRouteNames();
   const next = JSON.parse(JSON.stringify(state.config || {}));
   next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
@@ -2640,6 +2644,8 @@ function bind() {
     reorderRoutingRuleInsideGroup,
     moveRoutingRuleRange,
     toggleRouteRuleSelection,
+    setRouteDefaultLast: routingActions.setRouteDefaultLast,
+    isRuOpenRayManagedRoute,
     groupRoutingRuleWithNext,
     renameRoutingRuleGroup,
     openRoutingRuleGroupEditor,

@@ -5,6 +5,7 @@ import {
   loadUiTheme,
   xrayStatsResetAtStorageKey
 } from './storage.js';
+import { loadRouteDefaultLast } from './routing-order.js';
 
 export function createInitialState() {
   const auth = loadAuthToken();
@@ -276,6 +277,7 @@ export function createInitialState() {
   routePresetEditPreview: null,
   routePresetEditChecked: false,
   selectedRouteRuleIndexes: [],
+  routeDefaultLast: loadRouteDefaultLast(),
   routeGroupDialog: false,
   routeGroupTitle: '',
   routeGroupDetail: '',

@@ -1,3 +1,5 @@
+import { isDefaultRoute } from './routing-order.js';
+
 const metadata = new Set(['type', 'ruleTag', 'outboundTag', 'balancerTag']);
 const list = (value) => Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
 const populated = (value) => list(value).length > 0;
@@ -91,15 +93,16 @@ function conditions(rule) {
 }
 export function ruleCovers(earlier, later) {
   if (earlier.type && earlier.type !== 'field') return false;
+  if (isDefaultRoute(earlier)) return true;
   return Object.entries(conditions(earlier)).every(([field, value]) => fieldCovers(field, value, later[field]));
 }
 
-export function analyzeRuleImport(existing, incoming, excluded = []) {
+export function analyzeRuleImport(existing, incoming, excluded = [], { isPinnedLast = () => false } = {}) {
   const skipped = new Set(excluded);
   const earlier = existing.map((rule, index) => ({ rule, location: `текущее правило №${index + 1}` }));
   return incoming.map((rule, index) => {
     const duplicate = earlier.find((item) => stable(conditions(item.rule)) === stable(conditions(rule)) && routeDestination(item.rule) === routeDestination(rule));
-    const shadow = earlier.find((item) => ruleCovers(item.rule, rule));
+    const shadow = earlier.find((item) => (!isPinnedLast(item.rule) || isPinnedLast(rule)) && ruleCovers(item.rule, rule));
     const match = duplicate || shadow;
     const result = { index, kind: duplicate ? 'duplicate' : shadow ? 'shadow' : '', earlier: match?.location || '', destination: routeDestination(rule) };
     if (!skipped.has(index)) earlier.push({ rule, location: `правило списка №${index + 1}` });

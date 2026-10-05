@@ -34,15 +34,34 @@
 }
 
 .route-selection-tools {
+  position: fixed;
+  z-index: 45;
+  left: calc(var(--sidebar-width) + 28px);
+  right: 28px;
+  bottom: max(16px, env(safe-area-inset-bottom));
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: -2px 0 12px;
+  margin: 0;
   padding: 10px 12px;
   border: 1px solid rgba(49, 210, 189, 0.28);
   border-radius: 8px;
-  background: rgba(49, 210, 189, 0.08);
+  background: var(--panel);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.main-routing:has(.route-selection-tools) { padding-bottom: 160px; }
+.route-default-last-option { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 16px; }
+.route-default-last-option input { width: 18px; height: 18px; flex: 0 0 auto; margin: 2px 0 0; }
+.route-default-last-option span { display: grid; gap: 4px; }
+.route-default-last-option small { color: var(--soft); font-weight: normal; }
+@media (max-width: 1040px) {
+  .route-selection-tools { left: 16px; right: 16px; }
+}
+@media (max-width: 560px) {
+  .route-selection-tools strong { width: 100%; }
+  .main-routing:has(.route-selection-tools) { padding-bottom: 220px; }
 }
 
 .route-selection-tools strong {

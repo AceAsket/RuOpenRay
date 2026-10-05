@@ -125,9 +125,12 @@ function routingRulesPanel() {
         ${state.routeSearch.trim() ? `<button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>` : ''}
         <span class="muted route-visible-count">Показано ${visibleRules.length} из ${userRulesCount}</span>
       </div>
-      ${selectedRuleCount ? `<div class="route-selection-tools" role="status">
-        <strong>Выбрано: ${selectedRuleCount}</strong>
-        <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу</button>
+      <label class="route-default-last-option"><input type="checkbox" data-route-default-last ${state.routeDefaultLast !== false ? 'checked' : ''} />
+        <span>Остальной трафик всегда внизу<small>При изменении черновика общие правила остаются после сайтов, адресов и устройств. Отключите для ручного порядка.</small></span>
+      </label>
+      ${selectedRuleCount ? `<div class="route-selection-tools" role="region" aria-label="Действия с выбранными правилами">
+        <strong aria-live="polite">Выбрано: ${selectedRuleCount}</strong>
+        <button class="btn" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу</button>
         <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить</button>
         <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить</button>
         <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>

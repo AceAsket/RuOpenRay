@@ -1,4 +1,5 @@
 import { analyzeRuleImport } from './routing-insights.js';
+import { isDefaultRoute } from './routing-order.js';
 
 export function bindRoutingControls({
   state,
@@ -20,6 +21,7 @@ export function bindRoutingControls({
   reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
   toggleRouteRuleSelection,
+  setRouteDefaultLast,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup,
   openRoutingRuleGroupEditor,
@@ -35,6 +37,7 @@ export function bindRoutingControls({
   reorderRoutingRule,
   reorderRoutingRuleRange,
   routeRules,
+  isRuOpenRayManagedRoute = () => false,
   describeRouteRule,
   routeTargetFlagMarkup,
   routeTargetStatus,
@@ -838,6 +841,9 @@ export function bindRoutingControls({
   document.querySelector('#routeSearch')?.addEventListener('input', (event) => {
     state.routeSearch = event.target.value;
   });
+  document.querySelector('[data-route-default-last]')?.addEventListener('change', (event) => {
+    setRouteDefaultLast(event.target.checked);
+  });
   document.querySelector('#routeSearch')?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') render();
   });
@@ -882,7 +888,8 @@ export function bindRoutingControls({
     state.routeDslExcluded = [...excluded];
     if (state.routeDslPreview) {
       state.routeDslPreview.excluded = state.routeDslExcluded;
-      state.routeDslPreview.analysis = analyzeRuleImport(state.routeDslPreview.mode === 'replace' ? [] : state.config?.routing?.rules || [], state.routeDslPreview.rules, state.routeDslExcluded);
+      state.routeDslPreview.analysis = analyzeRuleImport(state.routeDslPreview.mode === 'replace' ? [] : state.config?.routing?.rules || [], state.routeDslPreview.rules, state.routeDslExcluded,
+        { isPinnedLast: (rule) => state.routeDefaultLast !== false && isDefaultRoute(rule) && !isRuOpenRayManagedRoute(rule) });
     }
     render();
   }));
