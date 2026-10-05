@@ -1287,7 +1287,7 @@ const routeCustomGroupHtml = routeGroupActions.orderedRouteList(
   routeGroupModel.routeTargetOptions(),
   routeGroupState.config.routing.rules.length,
 );
-const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'presetGroup'
+const routeCustomGroupWorks = routeCustomGroupItems[0]?.kind === 'customGroup'
   && routeCustomGroupItems[0]?.items?.length === 2
   && routeGroupState.config.routing.rules[0]?.domain?.includes('domain:one.example')
   && routeGroupState.config.routing.rules[1]?.domain?.includes('domain:three.example')
@@ -1354,7 +1354,7 @@ routeGroupState.config.routing.rules = [];
 routeGroupState.selectedRoutePresets = ['mixedOpenai'];
 routeGroupActions.applySelectedRoutingPresets();
 const routeMixedItems = routeGroupActions.visibleRoutingRuleItems(80);
-const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'presetGroup'
+const routeMixedPresetSplitsConditions = routeMixedItems[0]?.kind === 'customGroup'
   && routeMixedItems[0]?.items?.length === 2
   && routeGroupState.config.routing.rules.some((rule) => rule.domain?.includes('domain:chatgpt.com') && !rule.ip)
   && routeGroupState.config.routing.rules.some((rule) => rule.ip?.includes('172.64.150.0/24') && !rule.domain);

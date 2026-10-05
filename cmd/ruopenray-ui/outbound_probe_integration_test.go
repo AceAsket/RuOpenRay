@@ -51,7 +51,13 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 	if err = os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0600); err != nil {
 		t.Fatal(err)
 	}
-	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/failed" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	defer origin.Close()
 	version, err := exec.Command(binary, "version").Output()
 	if err != nil {
@@ -135,6 +141,12 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			}
 			if latency < 0 {
 				t.Fatalf("invalid latency: %d", latency)
+			}
+			_, fallbackOK, probes, fallbackErr := runSubscriptionProbes([]string{origin.URL + "/failed", origin.URL}, func(target string) (int64, bool, error) {
+				return s.httpOutboundProbeStatus(outbound, target, 3000, 1, true)
+			})
+			if !fallbackOK || fallbackErr != nil || len(probes) != 2 || probes[0].OK || probes[0].Code != "http" || !probes[1].OK {
+				t.Fatalf("HTTP fallback through tunnel: %v %v", probes, fallbackErr)
 			}
 			wrongCert := rproxy.CloneOutboundWithTag(outbound, "wrong-certificate")
 			wrongCert["streamSettings"].(map[string]any)["tlsSettings"].(map[string]any)["serverName"] = "wrong.example.test"

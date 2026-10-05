@@ -1,5 +1,7 @@
 import { routePresetExportIcon, routePresetIconView } from './route-visuals.js';
 import { routingListTargetOptions } from './routing-dsl.js';
+import { assignRouteGroup, migrateNamedRouteGroups, routeGroupId } from './routing-group-identity.js';
+import { analyzeRuleImport } from './routing-insights.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -53,8 +55,15 @@ export function createRoutingActions({
   saveRouteNames,
   saveDisabledRouteRules
 }) {
-  function parseRoutingList() {
+  function parseRoutingList(mode = 'append') {
     const parsed = parseRoutingDsl(state.routeDsl, state.routeDslTarget || '');
+    parsed.mode = mode;
+    parsed.fingerprint = JSON.stringify([mode, state.routeDsl, state.routeDslTarget, state.routeDslName, routeRules()]);
+    if (state.routeDslPreview?.fingerprint !== parsed.fingerprint) state.routeDslExcluded = [];
+    parsed.excluded = state.routeDslExcluded || [];
+    parsed.analysis = analyzeRuleImport(mode === 'append' ? routeRules() : [], parsed.rules, parsed.excluded);
+    const options = routeTargetOptions();
+    parsed.targetLabels = Object.fromEntries(options.map((option) => [option.value, option.label]));
     if (state.routeDslTarget && !routingListTargetOptions(routeTargetOptions()).some((option) => option.value === state.routeDslTarget)) {
       const message = 'Назначение списка больше недоступно. Выберите другое.';
       parsed.errors = [...(parsed.errors || []), message];
@@ -91,7 +100,8 @@ export function createRoutingActions({
   }
 
   function applyRoutingDsl(mode, closeDialog = false) {
-    const parsed = parseRoutingList();
+    const previous = state.routeDslPreview;
+    const parsed = parseRoutingList(mode);
     state.routeDslPreview = parsed;
     if (parsed.errors?.length) {
       state.message = `Список не добавлен. ${parsed.errors[0]}`;
@@ -103,17 +113,27 @@ export function createRoutingActions({
       render();
       return;
     }
-    const nextRules = mode === 'append' ? [...routeRules(), ...parsed.rules] : parsed.rules;
-    setRoutingDraft(nextRules);
+    if (previous?.fingerprint !== parsed.fingerprint) {
+      state.message = 'Проверьте предпросмотр и отметьте строки для исключения. Затем нажмите добавление ещё раз.';
+      render();
+      return;
+    }
+    const kept = parsed.rules.filter((_, index) => !parsed.excluded.includes(index));
+    if (!kept.length) { state.message = 'Все правила исключены; черновик не изменён.'; render(); return; }
     const listName = state.routeDslName.trim();
     if (listName) {
-      parsed.rules
-        .filter((rule) => !isDslDefaultRule(rule, parsed))
-        .forEach((rule) => setRouteRuleName(rule, listName));
+      const members = kept.filter((rule) => !isDslDefaultRule(rule, parsed));
+      state.routeNames ||= {};
+      assignRouteGroup(members, state.routeNames, routeRuleKey, listName);
+      saveRouteNames();
     }
+    const nextRules = mode === 'append' ? [...routeRules(), ...kept] : kept;
+    setRoutingDraft(nextRules);
     state.message = mode === 'append'
-      ? `Добавлено правил: ${parsed.rules.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`
-      : `Черновик маршрутизации заменен: ${parsed.rules.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`;
+      ? `Добавлено правил: ${kept.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`
+      : `Черновик маршрутизации заменен: ${kept.length}${listName ? ` · список «${listName}»` : ''}. Проверьте конфигурацию и примените изменения.`;
+    state.routeDslPreview = null;
+    state.routeDslExcluded = [];
     if (closeDialog) {
       state.routeRuleDialog = false;
       state.routeRuleMode = 'single';
@@ -494,6 +514,8 @@ export function createRoutingActions({
       render();
       return;
     }
+    if (migrateLegacyRouteGroups(current)) saveRouteNames();
+    if (oldRule.ruleTag) nextRule.ruleTag = oldRule.ruleTag;
     if (isAmneziaDirectOutboundTag(nextRule.outboundTag)) {
       await addAmneziaPolicyFromRoute(nextRule, state.routeName);
       delete nextRule.outboundTag;
@@ -517,15 +539,25 @@ export function createRoutingActions({
   }
 
   function addRoutingPreset(name) {
-    const rules = routePresetRules(name);
+    const rules = routePresetRules(name).map(normalizePresetRule);
     if (!rules.length) return;
-    setRoutingDraft([...rules.map(normalizePresetRule), ...routeRules()]);
+    groupPresetRules(name, rules);
+    setRoutingDraft([...rules, ...routeRules()]);
     state.message = `Подборка добавлена: ${routePresetTitle(name)}`;
     render();
   }
 
+  function groupPresetRules(key, rules, title = routePresetTitle(key)) {
+    if (!rules.length) return;
+    state.routeNames ||= {};
+    const id = assignRouteGroup(rules, state.routeNames, routeRuleKey, title);
+    if (key && key !== 'custom:new') state.routeNames[`@group-source:${id}`] = key;
+    saveRouteNames();
+  }
+
   function normalizePresetRule(rule) {
     const next = JSON.parse(JSON.stringify(rule));
+    if (String(next.ruleTag || '').startsWith('ruopenray-rule:')) delete next.ruleTag;
     if (next.outboundTag === 'proxy') next.outboundTag = activeProxyTag() || 'proxy';
     return next;
   }
@@ -546,15 +578,53 @@ export function createRoutingActions({
   }
 
   function routePresetSequenceAt(rules, startIndex) {
-    return findRoutePresetSequenceAt(rules, startIndex, allRoutePresetEntries(), routePresetRules, normalizePresetRule, routePresetTitle);
+    const sequence = findRoutePresetSequenceAt(rules, startIndex, allRoutePresetEntries(), routePresetRules, normalizePresetRule, routePresetTitle);
+    if (sequence && rules.slice(startIndex, startIndex + sequence.rules.length).some((rule) => routeGroupId(rule, state.routeNames))) return null;
+    return sequence;
+  }
+
+  function legacyNamedPresetGroupAt(rules, start) {
+    if (rules[start]?.ruleTag || isRuOpenRayManagedRoute(rules[start])) return null;
+    const candidates = allRoutePresetEntries().map(([key, preset]) => ({ key, preset, title: routePresetTitle(key),
+      keys: new Set(routePresetRules(key).map(routeRuleConditionKey)) })).filter((entry) => entry.keys.has(routeRuleConditionKey(rules[start])));
+    let best = null;
+    for (const candidate of candidates) {
+      let end = start, anchored = false;
+      while (end < rules.length && !rules[end].ruleTag && !isRuOpenRayManagedRoute(rules[end])) {
+        const name = state.routeNames?.[routeRuleKey(rules[end])] || '';
+        if (name && name !== candidate.title) break;
+        if (!name && !candidate.keys.has(routeRuleConditionKey(rules[end]))) break;
+        if (name === candidate.title) anchored = true;
+        end++;
+      }
+      // Recover legacy membership only with an existing, explicitly named anchor.
+      // Rendering the range preserves routing order and does not rewrite the config.
+      if (anchored && end - start > 1 && (!best || end > best.end)) best = { ...candidate, end };
+    }
+    return best;
+  }
+
+  function migrateLegacyRouteGroups(rules) {
+    let changed = false;
+    for (let start = 0; start < rules.length;) {
+      const legacy = legacyNamedPresetGroupAt(rules, start);
+      if (!legacy) { start++; continue; }
+      const id = assignRouteGroup(rules.slice(start, legacy.end), state.routeNames, routeRuleKey, legacy.title);
+      state.routeNames[`@group-source:${id}`] = legacy.key;
+      changed = true;
+      start = legacy.end;
+    }
+    return migrateNamedRouteGroups(rules, state.routeNames, routeRuleKey, isRuOpenRayManagedRoute) || changed;
   }
 
   function routeRuleSourceWithPresets(rule) {
     if (isRuOpenRayManagedRoute(rule)) return routeRuleSource(rule);
+    const groupId = routeGroupId(rule, state.routeNames);
+    if (groupId) return `Группа: ${state.routeNames?.[routeRuleKey(rule)] || 'Пользовательская группа'}`;
     const matches = routeRulePresetMatches(rule);
     if (matches.length) {
       const titles = matches.map((item) => item.title);
-      return `Подборка: ${titles.slice(0, 2).join(', ')}${titles.length > 2 ? ` +${titles.length - 2}` : ''}`;
+      return `Совпадает с подборкой: ${titles.slice(0, 2).join(', ')}${titles.length > 2 ? ` +${titles.length - 2}` : ''}`;
     }
     return routeRuleSource(rule);
   }
@@ -580,18 +650,20 @@ export function createRoutingActions({
       render();
       return;
     }
-    const requestedRules = [
-      ...selectedPresets.flatMap((key) => routePresetRules(key).map(normalizePresetRule)),
-      ...selectedCustom.flatMap((key) => routePresetRules(key).map(normalizePresetRule))
-    ];
+    const requestedRules = selected.map((key) => ({ key, rules: routePresetRules(key).map(normalizePresetRule) }));
     const currentRules = routeRules();
     const seen = new Set(currentRules.map(routeRuleConditionKey));
     const rules = [];
-    for (const rule of requestedRules) {
-      const key = routeRuleConditionKey(rule);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      rules.push(rule);
+    for (const entry of requestedRules) {
+      const members = [];
+      for (const rule of entry.rules) {
+        const key = routeRuleConditionKey(rule);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        members.push(rule);
+      }
+      groupPresetRules(entry.key, members);
+      rules.push(...members);
     }
     if (!rules.length) {
       state.routePresetDialog = false;
@@ -607,7 +679,7 @@ export function createRoutingActions({
     state.routeRuleDialog = false;
     state.routeRuleMode = 'single';
     state.selectedRoutePresets = [];
-    const skipped = requestedRules.length - rules.length;
+    const skipped = requestedRules.reduce((sum, entry) => sum + entry.rules.length, 0) - rules.length;
     state.message = `Добавлено подборок: ${selected.length}, новых правил: ${rules.length}${skipped ? `, уже были: ${skipped}` : ''}`;
     render();
   }
@@ -881,20 +953,26 @@ export function createRoutingActions({
 
   function routeRuleToDslLines(rule) {
     const outbound = rule.balancerTag ? `balancer:${rule.balancerTag}` : (rule.outboundTag || 'proxy');
-    const prefix = rule.network ? [`network(${rule.network})`] : [];
-    const lines = [];
-    const addMany = (kind, values) => {
-      for (const value of values || []) {
-        lines.push([...prefix, `${kind}(${value})`].join(' && ') + ` -> ${outbound}`);
-      }
-    };
-    addMany('domain', rule.domain);
-    addMany('ip', rule.ip);
-    addMany('source', rule.source);
-    addMany('inboundTag', rule.inboundTag);
-    if (rule.port) lines.push([...prefix, `port(${rule.port})`].join(' && ') + ` -> ${outbound}`);
-    if (!lines.length && prefix.length) lines.push(`${prefix.join(' && ')} -> ${outbound}`);
-    return lines;
+    const parts = rule.network ? [`network(${rule.network})`] : [];
+    for (const field of ['domain', 'ip', 'source', 'inboundTag']) {
+      const values = Array.isArray(rule[field]) ? rule[field] : rule[field] ? [rule[field]] : [];
+      if (values.length) parts.push(`${field}(${values.length === 1 ? values[0] : JSON.stringify(values)})`);
+    }
+    if (rule.port) parts.push(`port(${rule.port})`);
+    return [parts.length ? `${parts.join(' && ')} -> ${outbound}` : `default: ${outbound}`];
+  }
+
+  function parseRoutePresetEditor() {
+    if (String(state.routePresetEditDsl || '').trim().startsWith('[')) {
+      try {
+        const rules = JSON.parse(state.routePresetEditDsl);
+        if (!Array.isArray(rules) || rules.some((rule) => !rule || typeof rule !== 'object' || Array.isArray(rule))) throw new Error();
+        return { rules, warnings: [], errors: [], name: state.routePresetEditTitle || 'Новая подборка', defaultOutbound: '', proxyAlias: activeProxyTag() || 'proxy', listTarget: state.routePresetEditTarget || 'outbound:proxy' };
+      } catch { return { rules: [], warnings: ['Некорректный JSON-массив правил'], errors: ['Некорректный JSON-массив правил'] }; }
+    }
+    const parsed = parseRoutingDsl(state.routePresetEditDsl, state.routePresetEditTarget || 'outbound:proxy');
+    parsed.name = state.routePresetEditTitle || 'Новая подборка';
+    return parsed;
   }
 
   function clearRoutePresetEditor() {
@@ -903,6 +981,7 @@ export function createRoutingActions({
     state.routePresetEditDetail = '';
     state.routePresetEditIcon = '';
     state.routePresetEditDsl = '';
+    state.routePresetEditTarget = 'outbound:proxy';
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
   }
@@ -915,6 +994,7 @@ export function createRoutingActions({
     state.routePresetEditDetail = '';
     state.routePresetEditIcon = '';
     state.routePresetEditDsl = '';
+    state.routePresetEditTarget = 'outbound:proxy';
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
     state.message = '';
@@ -932,14 +1012,27 @@ export function createRoutingActions({
     state.routePresetEditDetail = routePresetDetail(key);
     state.routePresetEditIcon = routePresetIconFieldValue(key, routePresetData(key) || {});
     state.routePresetEditDsl = [`# ${title}`, ...rules.flatMap(routeRuleToDslLines)].join('\n');
-    state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
+    const targets = [...new Set(rules.map((rule) => rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || 'proxy'}`))];
+    state.routePresetEditTarget = targets.length === 1 ? targets[0] : 'outbound:proxy';
+    // Keep explicit arrows only for rules whose destination differs from the picker.
+    if (targets.length === 1) state.routePresetEditDsl = state.routePresetEditDsl.replace(/ -> [^\n]+/g, '');
+    const editableFields = new Set(['type', 'outboundTag', 'balancerTag', 'ruleTag', 'domain', 'ip', 'source', 'inboundTag', 'network', 'port']);
+    if (rules.some((rule) => Object.keys(rule).some((key) => !editableFields.has(key)))) {
+      // Advanced conditions cannot be flattened into simple lines without data loss.
+      state.routePresetEditDsl = JSON.stringify(rules.map((rule) => {
+        const copy = { ...rule };
+        if (String(copy.ruleTag || '').startsWith('ruopenray-rule:')) delete copy.ruleTag;
+        return copy;
+      }), null, 2);
+    }
+    state.routePresetEditPreview = parseRoutePresetEditor();
     state.routePresetEditChecked = false;
     state.message = '';
     render();
   }
 
   function previewRoutePresetEdit() {
-    state.routePresetEditPreview = parseRoutingDsl(state.routePresetEditDsl);
+    state.routePresetEditPreview = parseRoutePresetEditor();
     state.routePresetEditChecked = true;
     state.message = '';
     render();
@@ -947,7 +1040,7 @@ export function createRoutingActions({
 
   function routePresetCheckResultView(preview) {
     const stats = dslPreviewStats(preview);
-    const tone = stats.total ? 'ok' : 'bad';
+    const tone = stats.total && !preview.errors?.length ? 'ok' : 'bad';
     const text = stats.total
       ? `Распознано правил: ${stats.total}. Через proxy: ${stats.proxy}, напрямую: ${stats.direct}, блокировка: ${stats.block}, другое: ${stats.other}.`
       : 'Правила пока не распознаны. Вставьте строки маршрутизации и нажмите “Проверить” еще раз.';
@@ -962,11 +1055,11 @@ export function createRoutingActions({
   }
 
   function applyRoutePresetEdit() {
-    const parsed = parseRoutingDsl(state.routePresetEditDsl);
+    const parsed = parseRoutePresetEditor();
     state.routePresetEditPreview = parsed;
     state.routePresetEditChecked = true;
-    if (!parsed.rules.length) {
-      state.message = 'Не нашёл правил в изменённом сценарии';
+    if (parsed.errors?.length || !parsed.rules.length) {
+      state.message = parsed.errors?.[0] || 'Не нашёл правил в изменённом сценарии';
       render();
       return;
     }
@@ -984,8 +1077,9 @@ export function createRoutingActions({
       render();
       return;
     }
-    setRoutingDraft([...rules, ...currentRules]);
     const title = state.routePresetEditTitle.trim() || routePresetTitle(state.routePresetEditor);
+    groupPresetRules(state.routePresetEditor, rules, title);
+    setRoutingDraft([...rules, ...currentRules]);
     clearRoutePresetEditor();
     state.routePresetDialog = false;
     state.selectedRoutePresets = [];
@@ -994,11 +1088,11 @@ export function createRoutingActions({
   }
 
   function saveRoutePresetEdit() {
-    const parsed = parseRoutingDsl(state.routePresetEditDsl);
+    const parsed = parseRoutePresetEditor();
     state.routePresetEditPreview = parsed;
     state.routePresetEditChecked = true;
-    if (!parsed.rules.length) {
-      state.message = 'Не нашёл правил в сценарии';
+    if (parsed.errors?.length || !parsed.rules.length) {
+      state.message = parsed.errors?.[0] || 'Не нашёл правил в сценарии';
       render();
       return;
     }
@@ -1011,6 +1105,7 @@ export function createRoutingActions({
       title,
       detail: state.routePresetEditDetail.trim(),
       rules: parsed.rules.map((rule) => JSON.parse(JSON.stringify(rule))),
+      preserveMixed: true,
       updatedAt: new Date().toISOString()
     };
     if (icon) state.customRoutePresets[id].icon = icon;
@@ -1188,7 +1283,18 @@ export function createRoutingActions({
     const rules = routeRules();
     const items = [];
     for (let index = 0; index < rules.length;) {
-      const sequence = routePresetSequenceAt(rules, index);
+      const legacy = legacyNamedPresetGroupAt(rules, index);
+      if (legacy) {
+        const group = { kind: 'customGroup', key: `legacy:${legacy.key}:${index}`, preset: legacy.preset, title: legacy.title, index,
+          items: rules.slice(index, legacy.end).map((rule, offset) => routeRuleListItem(rule, index + offset)) };
+        if (routeItemMatchesSearch(group, search)) items.push(group);
+        index = legacy.end;
+        continue;
+      }
+      const savedName = state.routeNames?.[routeRuleKey(rules[index])] || '';
+      const hasNamedNeighbours = savedName && !rules[index].ruleTag && rules[index + 1] && !rules[index + 1].ruleTag &&
+        state.routeNames?.[routeRuleKey(rules[index + 1])] === savedName;
+      const sequence = routeGroupId(rules[index], state.routeNames) || hasNamedNeighbours ? null : routePresetSequenceAt(rules, index);
       if (sequence) {
         if (sequence.rules.every((rule) => isRuOpenRayManagedRoute(rule))) {
           index += sequence.rules.length;
@@ -1211,20 +1317,24 @@ export function createRoutingActions({
         continue;
       }
       const customName = state.routeNames?.[routeRuleKey(rules[index])] || '';
+      const groupId = routeGroupId(rules[index], state.routeNames);
       if (customName) {
         let end = index + 1;
         while (
           end < rules.length &&
           !isRuOpenRayManagedRoute(rules[end]) &&
-          state.routeNames?.[routeRuleKey(rules[end])] === customName
+          (groupId ? routeGroupId(rules[end], state.routeNames) === groupId :
+            !rules[end].ruleTag && !rules[index].ruleTag && state.routeNames?.[routeRuleKey(rules[end])] === customName)
         ) {
           end += 1;
         }
-        if (end - index > 1) {
+        if (groupId || end - index > 1) {
+          const sourceKey = groupId && state.routeNames?.[`@group-source:${groupId}`];
+          const sourcePreset = sourceKey ? routePresetData(sourceKey) : state.customRoutePresets?.[groupId];
           const group = {
             kind: 'customGroup',
-            key: `custom:${customName}`,
-            preset: { title: customName, detail: 'Пользовательская группа правил' },
+            key: `custom:${groupId || customName}`,
+            preset: { ...sourcePreset, title: customName, detail: sourcePreset?.detail || 'Пользовательская группа правил' },
             title: customName,
             index,
             items: rules.slice(index, end).map((rule, offset) => routeRuleListItem(rule, index + offset))
@@ -1761,8 +1871,19 @@ export function createRoutingActions({
   function routeOrderBlocks(rules = routeRules()) {
     const blocks = [];
     for (let index = 0; index < rules.length;) {
-      const sequence = routePresetSequenceAt(rules, index);
-      const length = sequence?.rules?.length || 1;
+      const groupId = routeGroupId(rules[index], state.routeNames);
+      const name = state.routeNames?.[routeRuleKey(rules[index])];
+      const namedNeighbours = name && !rules[index].ruleTag && rules[index + 1] && !rules[index + 1].ruleTag && state.routeNames?.[routeRuleKey(rules[index + 1])] === name;
+      const legacy = legacyNamedPresetGroupAt(rules, index);
+      const sequence = groupId || namedNeighbours || legacy ? null : routePresetSequenceAt(rules, index);
+      let length = legacy ? legacy.end - index : sequence?.rules?.length || 1;
+      if (groupId) {
+        while (index + length < rules.length && routeGroupId(rules[index + length], state.routeNames) === groupId) length++;
+      } else if (!sequence && !rules[index].ruleTag) {
+        const name = state.routeNames?.[routeRuleKey(rules[index])];
+        while (name && index + length < rules.length && !rules[index + length].ruleTag &&
+          !isRuOpenRayManagedRoute(rules[index + length]) && state.routeNames?.[routeRuleKey(rules[index + length])] === name) length++;
+      }
       const blockRules = rules.slice(index, index + length);
       blocks.push({
         start: index,
@@ -1944,10 +2065,7 @@ export function createRoutingActions({
     const insertAt = rules.slice(0, indexes[0]).filter((_, index) => !selected.has(index)).length;
     const remaining = rules.filter((_, index) => !selected.has(index));
     remaining.splice(insertAt, 0, ...groupRules);
-    groupRules.forEach((rule) => {
-      state.routeNames[routeRuleKey(rule)] = title;
-    });
-    const id = title;
+    const id = assignRouteGroup(groupRules, state.routeNames, routeRuleKey, title);
     state.customRoutePresets[id] = {
       title,
       detail: String(state.routeGroupDetail || '').trim(),
@@ -1974,11 +2092,14 @@ export function createRoutingActions({
     const rule = rules[index];
     if (!rule || isRuOpenRayManagedRoute(rule)) return;
     const existingName = state.routeNames?.[routeRuleKey(rule)] || '';
+    const groupId = routeGroupId(rule, state.routeNames);
+    const sameGroup = (other) => groupId ? routeGroupId(other, state.routeNames) === groupId :
+      !other.ruleTag && !rule.ruleTag && state.routeNames?.[routeRuleKey(other)] === existingName;
     let start = index;
     let end = index + 1;
     if (existingName) {
-      while (start > 0 && !isRuOpenRayManagedRoute(rules[start - 1]) && state.routeNames?.[routeRuleKey(rules[start - 1])] === existingName) start -= 1;
-      while (end < rules.length && !isRuOpenRayManagedRoute(rules[end]) && state.routeNames?.[routeRuleKey(rules[end])] === existingName) end += 1;
+      while (start > 0 && !isRuOpenRayManagedRoute(rules[start - 1]) && sameGroup(rules[start - 1])) start -= 1;
+      while (end < rules.length && !isRuOpenRayManagedRoute(rules[end]) && sameGroup(rules[end])) end += 1;
     }
     if (end >= rules.length || isRuOpenRayManagedRoute(rules[end])) {
       state.message = 'Ниже нет пользовательского правила, которое можно добавить в группу';
@@ -1994,10 +2115,9 @@ export function createRoutingActions({
       render();
       return;
     }
-    for (let ruleIndex = start; ruleIndex <= end; ruleIndex += 1) {
-      state.routeNames[routeRuleKey(rules[ruleIndex])] = cleanName;
-    }
+    assignRouteGroup(rules.slice(start, end + 1), state.routeNames, routeRuleKey, cleanName, groupId || undefined);
     saveRouteNames();
+    setRoutingDraft(rules);
     state.message = `Группа «${cleanName}» собрана: ${end - start + 1} правил. Перетащите группу, чтобы менять порядок целиком.`;
     render();
   }
@@ -2032,6 +2152,7 @@ export function createRoutingActions({
 
 
   return {
+    migrateLegacyRouteGroups,
     previewRoutingDsl,
     configAnalysisView,
     applyRoutingDsl,

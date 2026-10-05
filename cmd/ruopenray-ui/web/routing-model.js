@@ -194,6 +194,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function routeRuleKey(rule) {
+    if (rule?.ruleTag && (rule.ruleTag.startsWith('ruopenray-rule:') || state.routeNames?.[`@group:${rule.ruleTag}`])) return `@rule:${rule.ruleTag}`;
     const target = routeTarget(rule || {});
     return JSON.stringify({
       type: rule?.type || 'field',
@@ -339,7 +340,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const name = state.routeNames[oldKey];
     if (!name) return;
     state.routeNames[routeRuleKey(toRule)] = name;
-    delete state.routeNames[oldKey];
+    if (oldKey !== routeRuleKey(toRule)) delete state.routeNames[oldKey];
     saveRouteNames();
   }
   

@@ -1,3 +1,5 @@
+import { analyzeRuleImport } from './routing-insights.js';
+
 export function bindRoutingControls({
   state,
   render,
@@ -856,6 +858,8 @@ export function bindRoutingControls({
   });
   document.querySelectorAll('#routeDslName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDslName = event.target.value;
+    state.routeDslPreview = null;
+    document.querySelectorAll('.dsl-preview').forEach((view) => view.remove());
   }));
   document.querySelectorAll('[data-route-visual-picker]').forEach((select) => {
     decorateRouteTargetSelect(select, select.value);
@@ -869,7 +873,25 @@ export function bindRoutingControls({
   document.querySelectorAll('#routeDsl').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDsl = event.target.value;
     state.routeDslPreview = null;
+    document.querySelectorAll('.dsl-preview').forEach((view) => view.remove());
   }));
+  document.querySelectorAll('[data-route-dsl-exclude]').forEach((input) => input.addEventListener('change', (event) => {
+    const excluded = new Set(state.routeDslExcluded || []);
+    const index = Number(input.dataset.routeDslExclude);
+    if (event.target.checked) excluded.add(index); else excluded.delete(index);
+    state.routeDslExcluded = [...excluded];
+    if (state.routeDslPreview) {
+      state.routeDslPreview.excluded = state.routeDslExcluded;
+      state.routeDslPreview.analysis = analyzeRuleImport(state.routeDslPreview.mode === 'replace' ? [] : state.config?.routing?.rules || [], state.routeDslPreview.rules, state.routeDslExcluded);
+    }
+    render();
+  }));
+  document.querySelector('[data-route-explain]')?.addEventListener('click', () => {
+    state.routeExplainInput = document.querySelector('#routeExplainInput')?.value || '';
+    state.routeExplainContext = Object.fromEntries([...document.querySelectorAll('[data-route-explain-context]')].map((input) => [input.dataset.routeExplainContext, input.value.trim()]));
+    state.openDetails = { ...state.openDetails, 'routing:explain': true };
+    render();
+  });
   document.querySelector('#routePresetEditTitle')?.addEventListener('input', (event) => {
     state.routePresetEditTitle = event.target.value;
   });
@@ -885,6 +907,12 @@ export function bindRoutingControls({
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
   });
+  document.querySelectorAll('[data-route-preset-target]').forEach((select) => select.addEventListener('change', (event) => {
+    state.routePresetEditTarget = event.target.value;
+    state.routePresetEditPreview = null;
+    state.routePresetEditChecked = false;
+    render();
+  }));
   document.querySelector('#routeGroupTitleInput')?.addEventListener('input', (event) => {
     state.routeGroupTitle = event.target.value;
   });

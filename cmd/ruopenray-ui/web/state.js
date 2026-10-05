@@ -272,6 +272,7 @@ export function createInitialState() {
   routePresetEditDetail: '',
   routePresetEditIcon: '',
   routePresetEditDsl: '',
+  routePresetEditTarget: 'outbound:proxy',
   routePresetEditPreview: null,
   routePresetEditChecked: false,
   selectedRouteRuleIndexes: [],

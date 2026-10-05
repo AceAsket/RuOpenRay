@@ -3526,3 +3526,13 @@
   background: rgba(185, 60, 71, 0.16);
 }
 
+
+.route-import-analysis { grid-column: 1 / -1; max-height: 22rem; overflow: auto; }
+.route-import-row { display: flex; align-items: flex-start; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.route-import-row input { flex: 0 0 auto; width: auto; margin-top: .3rem; }
+.route-import-row span { min-width: 0; }
+.route-explanation > summary { cursor: pointer; font-weight: 700; }
+.route-explanation .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.route-explain-trace { max-height: 22rem; overflow: auto; padding-left: 1.5rem; overflow-wrap: anywhere; }
+.route-explain-trace li { padding: .3rem 0; }
+

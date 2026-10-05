@@ -159,12 +159,14 @@ function cancelServerDraftSave() {
   state.serverDraftSaving = false;
 }
 
+let routeNamesSaveQueue = Promise.resolve();
 function saveRouteNamesToServer(names) {
   if (!state.token) return;
-  request('/api/routing/names', {
+  const body = JSON.stringify({ names: names || {} });
+  routeNamesSaveQueue = routeNamesSaveQueue.then(() => request('/api/routing/names', {
     method: 'POST',
-    body: JSON.stringify({ names: names || {} })
-  }).catch((error) => {
+    body
+  })).catch((error) => {
     state.message = error.message || 'Не удалось сохранить названия маршрутов на роутере';
     render();
   });
@@ -219,6 +221,7 @@ const {
 } = routingModel;
 
 function setRoutingDraft(rules) {
+  if (routingActions.migrateLegacyRouteGroups(rules)) saveRouteNames();
   const next = JSON.parse(JSON.stringify(state.config || {}));
   next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
   next.routing.rules = rules;
@@ -520,6 +523,7 @@ function checkForTag(tag) {
 function checkLabel(result) {
   if (!result) return 'не проверен';
   if (result.skipped) return 'нет адреса для проверки';
+  if (!result.ok && result.errorCode) return ({ dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля', connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка запуска Xray', mixed: 'Несколько ошибок проверки', tunnel: 'Ошибка туннеля' })[result.errorCode] || 'Ошибка проверки';
   if (result.httpOk === false && result.endpointOk) {
     const error = String(result.error || '').toLowerCase();
     if (error.includes('timeout') || error.includes('deadline')) return 'порт открыт, HTTP таймаут';

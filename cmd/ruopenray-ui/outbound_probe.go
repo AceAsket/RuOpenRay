@@ -20,6 +20,10 @@ import (
 )
 
 func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string, timeoutMs int, attempts int) (int64, bool, error) {
+	return s.httpOutboundProbeStatus(outbound, probeURL, timeoutMs, attempts, false)
+}
+
+func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
 	port, err := freeLocalPort()
 	if err != nil {
 		return 0, false, err
@@ -57,7 +61,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
 	cmd.Env = s.xrayEnv()
-	var stderr bytes.Buffer
+	var stderr probeLogBuffer
 	cmd.Stdout = &stderr
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
@@ -87,6 +91,10 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 			},
 		},
 	}
+	defer client.CloseIdleConnections()
+	if strict {
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var best int64
 	var warmBest int64
 	measuredSuccess, warmSuccess := false, false
@@ -103,7 +111,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 		if err == nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 			_ = resp.Body.Close()
-			if resp.StatusCode < 500 {
+			if (!strict && resp.StatusCode < 500) || (strict && resp.StatusCode >= 200 && resp.StatusCode < 300) {
 				if !measured {
 					if !warmSuccess || latency < warmBest {
 						warmBest = latency
@@ -119,7 +127,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 				lastErr = nil
 				continue
 			}
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			lastErr = fmt.Errorf("HTTP status %d", resp.StatusCode)
 			continue
 		}
 		lastErr = err
@@ -132,7 +140,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	}
 	if lastErr != nil {
 		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return 0, false, fmt.Errorf("%w: %s", lastErr, lastLine(detail))
+			return 0, false, fmt.Errorf("%w: %s", lastErr, detail)
 		}
 	}
 	return 0, false, lastErr

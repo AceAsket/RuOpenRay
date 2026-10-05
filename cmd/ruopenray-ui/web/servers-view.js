@@ -74,7 +74,12 @@ function subscriptionCandidateStatus(check, checking = false) {
   const latency = Number(check.latencyMs || check.httpLatencyMs || check.endpointLatencyMs || 0);
   const method = check.method === 'endpoint' ? 'Порт сервера' : 'Туннель';
   if (check.ok) {
-    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}`)}</span>`;
+    const fallback = (check.probeResults || []).some((probe) => !probe.ok) ? ' · резервный адрес доступен' : '';
+    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}${fallback}`)}</span>`;
+  }
+  if (check.errorCode) {
+    const label = ({ dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля', connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка Xray', mixed: 'Ошибки проверки', tunnel: 'Ошибка туннеля' })[check.errorCode] || 'Ошибка проверки';
+    return `<span class="server-chip bad subscription-check-status" title="${escapeHtml(check.error || label)}"><i></i>${escapeHtml(label)}</span>`;
   }
   if (check.httpOk === false && check.endpointOk) {
     const endpointLatency = Number(check.endpointLatencyMs || 0);

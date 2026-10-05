@@ -1,5 +1,5 @@
 import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
-import { routingListTargetPicker } from './routing-dsl.js';
+import { routingDestinationPicker, routingListTargetPicker } from './routing-dsl.js';
 
 export function createRoutingDialogsView({
   state,
@@ -532,8 +532,10 @@ function routePresetDialog() {
             </div>
             <label>
               <span>Правила</span>
-              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="example.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;ip(.../24) -> proxy&#10;network(udp) &amp;&amp; ip(.../16) -> proxy&#10;source(192.168.1.50) -> direct">${escapeHtml(state.routePresetEditDsl)}</textarea>
+              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="example.com&#10;youtube.com&#10;192.0.2.0/24&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routePresetEditDsl)}</textarea>
+              <small>Домены, IP и подсети — по одному на строку. Назначение выбирается ниже; → в каждой строке не требуется. Сложные правила можно сохранить JSON-массивом.</small>
             </label>
+            ${routingDestinationPicker(state.routePresetEditTarget || 'outbound:proxy', [{ value: 'outbound:proxy', label: 'Через активный proxy' }, ...routeTargetOptions().filter((item) => item.value !== 'outbound:proxy')], escapeHtml, 'data-route-preset-target', 'Назначение подборки')}
             ${showCheckResult ? routePresetCheckResultView(editorPreview) : '<div class="preset-editor-hint">Проверка покажет, сколько правил распознано, куда они направлены и какие строки требуют внимания.</div>'}
           </div>
           <div class="modal-actions">

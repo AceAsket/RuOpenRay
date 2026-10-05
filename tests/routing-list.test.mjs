@@ -23,6 +23,8 @@ function fixture() {
     routeRules: () => rules,
     setRoutingDraft: (next) => { rules = next; },
     setRouteRuleName: (rule, name) => names.push(name),
+    saveRouteNames: () => names.push(...Object.entries(state.routeNames).filter(([key]) => !key.startsWith('@group:')).map(([, name]) => name)),
+    routeRuleKey: (rule) => rule.ruleTag || JSON.stringify(rule),
   });
   return { state, actions, rules: () => rules, names };
 }
@@ -32,6 +34,8 @@ test('preview and append use the current selection and retain list names', () =>
   f.actions.previewRoutingDsl();
   assert.ok(f.state.routeDslPreview.rules.every((rule) => rule.outboundTag === 'server-de'));
   f.state.routeDslTarget = 'balancer:pool';
+  f.actions.applyRoutingDsl('append', true);
+  assert.equal(f.rules().length, 1, 'changed target requires a fresh preview');
   f.actions.applyRoutingDsl('append', true);
   assert.equal(f.rules().length, 3);
   assert.equal(f.rules()[0].outboundTag, 'direct');
@@ -62,6 +66,33 @@ test('destination dropdown includes server, direct, block and balancer destinati
   for (const value of ['outbound:server-de', 'outbound:direct', 'outbound:block', 'balancer:pool']) assert.ok(html.includes(value));
   assert.match(html, /value="balancer:pool" selected/);
   assert.ok(!html.includes('ruopenray-amnezia-direct'));
+});
+
+test('import requires review and removes only explicitly excluded rules', () => {
+  const f = fixture();
+  f.state.routeDsl = 'example.com\nexample.com\n192.0.2.1';
+  f.actions.applyRoutingDsl('append');
+  assert.equal(f.rules().length, 1);
+  assert.equal(f.state.routeDslPreview.analysis[1].kind, 'duplicate');
+  f.state.routeDslExcluded = [1];
+  f.actions.applyRoutingDsl('append');
+  assert.equal(f.rules().length, 3);
+  assert.equal(f.rules()[1].domain[0], 'domain:example.com');
+  assert.equal(f.rules()[2].ip[0], '192.0.2.1');
+});
+
+test('exclusions reset when input or existing rules change; replacement uses its own preview', () => {
+  const f = fixture();
+  f.actions.previewRoutingDsl();
+  f.state.routeDslExcluded = [0];
+  f.state.routeDsl += '\nnew.example';
+  f.actions.applyRoutingDsl('append');
+  assert.deepEqual(f.state.routeDslExcluded, []);
+  f.actions.applyRoutingDsl('replace');
+  assert.equal(f.rules().length, 1);
+  assert.equal(f.state.routeDslPreview.mode, 'replace');
+  f.actions.applyRoutingDsl('replace');
+  assert.equal(f.rules().length, 3);
 });
 
 test('changing the dropdown updates state and clears the stale preview', () => {

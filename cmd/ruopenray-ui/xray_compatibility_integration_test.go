@@ -75,6 +75,8 @@ func TestXrayCompatibility(t *testing.T) {
 			}
 			inbound := map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "http"}
 			cfg := map[string]any{"inbounds": []any{inbound}, "outbounds": []any{freedom}, "log": map[string]any{"loglevel": "warning"}}
+			freedom["tag"] = "direct"
+			cfg["routing"] = map[string]any{"rules": []any{map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": "direct", "ruleTag": "ruopenray-rule:compatibility-test"}}}
 			requestURL := origin.URL
 			if strings.HasPrefix(scenario, "dns-") {
 				cfg["dns"] = map[string]any{"hosts": map[string]any{"compat.example.test": "127.0.0.1"}, "servers": []string{}, "queryStrategy": "UseIPv4"}

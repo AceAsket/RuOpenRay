@@ -254,7 +254,11 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 		if endpointErr != nil {
 			result["endpointError"] = endpointErr.Error()
 		}
-		latency, httpOK, httpErr := s.httpOutboundProbe(candidate, options.probeURL, options.timeoutMs, options.attempts)
+		latency, httpOK, probeResults, httpErr := s.subscriptionTrafficProbe(candidate, options.probeURL, options.timeoutMs, options.attempts)
+		result["probeResults"] = probeResults
+		if httpErr != nil {
+			result["errorCode"] = subscriptionProbeCode(httpErr)
+		}
 		ok = httpOK
 		err = httpErr
 		result["httpOk"] = httpOK
@@ -461,8 +465,8 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 			continue
 		}
 		if checkTraffic {
-			if _, ok, _ := s.httpOutboundProbe(candidate, "https://www.gstatic.com/generate_204", 5000, 1); !ok {
-				return map[string]any{"ok": false, "error": "Обновлённый сервер не прошёл проверку трафика; рабочая конфигурация сохранена"}
+			if _, ok, probes, probeErr := s.subscriptionTrafficProbe(candidate, "", 5000, 1); !ok {
+				return map[string]any{"ok": false, "error": "Рабочая конфигурация сохранена. " + probeErr.Error(), "errorCode": subscriptionProbeCode(probeErr), "probeResults": probes}
 			}
 		}
 		outbounds = next
@@ -791,7 +795,11 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 			results = append(results, result)
 			continue
 		}
-		httpBest, httpOK, httpErr := s.httpOutboundProbe(outbound, probeURL, timeoutMs, attempts)
+		httpBest, httpOK, probeResults, httpErr := s.subscriptionTrafficProbe(outbound, probeURL, timeoutMs, attempts)
+		result["probeResults"] = probeResults
+		if httpErr != nil {
+			result["errorCode"] = subscriptionProbeCode(httpErr)
+		}
 		result["url"] = probeURL
 		result["httpOk"] = httpOK
 		result["ok"] = httpOK

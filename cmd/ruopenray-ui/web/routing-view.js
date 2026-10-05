@@ -1,5 +1,6 @@
 import { noticeView } from './notice-view.js';
 import { routingListTargetPicker } from './routing-dsl.js';
+import { routeExplanationView } from './routing-insights.js';
 import { routePresetIconView } from './route-visuals.js';
 
 export function createRoutingView(deps) {
@@ -156,6 +157,7 @@ function routingRulesPanel() {
       </div>` : ''}
     </section>
 
+    ${routeExplanationView(state, escapeHtml)}
     <details class="panel route-advanced">
       <summary>
         <span>Дополнительно</span>
