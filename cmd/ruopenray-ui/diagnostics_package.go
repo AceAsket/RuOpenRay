@@ -125,7 +125,7 @@ func (s *serverState) diagnosticsStatusPayloads() []diagnosticsNamedPayload {
 		{name: "status/lan-dns.json", payload: s.lanDNSUpstreamStatus(nil)},
 		{name: "status/adguard-home.json", payload: s.adGuardHomeStatus("", s.xrayDNSUpstreamTarget())},
 		{name: "status/b4.json", payload: s.b4Status()},
-		{name: "status/b4-api.json", payload: b4APIStatus()},
+		{name: "status/b4-api.json", payload: s.b4APIStatus()},
 		{name: "status/amneziawg.json", payload: s.amneziaStatus()},
 		{name: "status/server-mode.json", payload: redactDiagnosticAny(s.serverModeReport(), nil, "", "")},
 		{name: "status/geo.json", payload: s.geoStatus()},

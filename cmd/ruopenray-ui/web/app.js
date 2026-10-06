@@ -6,6 +6,7 @@ import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
 import { createCompatActions } from './compat-actions.js';
 import { createCompatView } from './compat-view.js';
+import { bindB4Controls } from './b4-bindings.js';
 import { createConfigActions } from './config-actions.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
@@ -679,11 +680,16 @@ const compatActions = createCompatActions({
   state,
   request,
   render,
-  refresh
+  refresh,
+  syncConfig
 });
 const {
   refreshCompatibility,
-  controlB4
+  controlB4,
+  b4Connect,
+  b4Api,
+  b4PrepareDirect,
+  b4Direct
 } = compatActions;
 
 const serverModeActions = createServerModeActions({
@@ -2347,6 +2353,10 @@ function bind() {
       startAmnezia,
       stopAmnezia,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
+      b4Connect,
+      b4Api,
+      b4PrepareDirect,
+      b4Direct,
       refreshFirewallStatus,
       downloadFirewallRules,
       enableXrayStats: () => setXrayStats(true),
@@ -2710,6 +2720,7 @@ function bind() {
   bindProfileControls({ state, activateProfile, openProfileEditor, deleteProfile, downloadProfile });
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
+  bindB4Controls({ state });
   bindServerCheckControls({ state, render });
   document.querySelectorAll('[data-server-mode-field]').forEach((input) => {
     input.addEventListener('input', () => updateServerModeField(input));

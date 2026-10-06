@@ -2,6 +2,14 @@ package main
 
 import "testing"
 
+func TestFirewallCompatibilityPreflightAllowsOwnedDirectB4Queue(t *testing.T) {
+	status := map[string]any{"active": true, "managedDirectOnly": true, "nft": map[string]any{"hasQueue": true}, "service": map[string]any{"enabled": true}}
+	result := firewallCompatibilityPreflightFromStatuses(map[string]any{"dnsIntercept": true}, nil, status)
+	if !boolMap(result, "ok") || boolMap(result, "requiresConfirmation") {
+		t.Fatal("Isolated direct-b4 queue must not conflict with LAN or DNS interception", result)
+	}
+}
+
 func TestFirewallCompatibilityPreflightClean(t *testing.T) {
 	got := firewallCompatibilityPreflightFromStatuses(
 		map[string]any{"dnsIntercept": true},

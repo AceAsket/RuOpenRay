@@ -137,7 +137,8 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       block: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>',
       balancer: '<path d="M12 3v6M5 15v-3h14v3"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/>',
     };
-    const icon = type === 'balancer' ? icons.balancer : type === 'outbound' && Object.hasOwn(icons, tag) ? icons[tag] : '';
+    const iconTag = tag === 'direct-b4' ? 'direct' : tag;
+    const icon = type === 'balancer' ? icons.balancer : type === 'outbound' && Object.hasOwn(icons, iconTag) ? icons[iconTag] : '';
     if (icon) return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>`;
     if (type !== 'outbound') return '';
     if (!isProxyTargetTag(tag)) return '';
@@ -381,7 +382,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
     const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean), ...subscriptionTags]);
     if (proxyTags.has(outbound)) return 'proxy';
-    if (outbound === 'direct') return 'direct';
+    if (outbound === 'direct' || outbound === 'direct-b4') return 'direct';
     if (outbound === 'block') return 'block';
     return 'other';
   }

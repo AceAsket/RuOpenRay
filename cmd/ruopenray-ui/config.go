@@ -47,6 +47,11 @@ type serverState struct {
 	logCacheAt       time.Time
 	fallbackMu       sync.Mutex
 	adguardMu        sync.Mutex
+	b4Mu             sync.Mutex
+	b4ControlMu      sync.Mutex
+	b4Token          string
+	b4LoginAfter     time.Time
+	b4LoginKey       string
 	fallbackProgress map[string]any
 }
 

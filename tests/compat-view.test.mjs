@@ -53,7 +53,7 @@ test('Integrations explain the Xray, AWG and B4 roles as one safe scheme', () =>
   assert.match(html, /Выбор маршрута/);
   assert.match(html, /Дополнительный выход/);
   assert.match(html, /DPI-обход direct/);
-  assert.match(html, /Добавьте профиль AmneziaWG/);
+  assert.match(html, /Для B4 и AdGuard Home профиль AWG не нужен/);
   assert.match(html, /Порт 7000 занят/);
   assert.match(html, /Фильтрация DNS/);
   assert.match(html, /Технические сведения AdGuard Home/);

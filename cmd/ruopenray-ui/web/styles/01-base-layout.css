@@ -821,3 +821,23 @@ button:disabled {
 .grid > * {
   min-width: 0;
 }
+/* B4 API controls remain usable alongside the integration cards. */
+.b4-api-panel { display: grid; gap: 18px; }
+.b4-api-panel details { border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.b4-api-panel details summary { cursor: pointer; }
+.b4-connection-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.b4-api-panel label { display: grid; gap: 8px; min-width: 0; }
+.b4-api-panel input { width: 100%; min-width: 0; }
+.b4-live-metrics { margin-top: 4px; }
+.b4-sets { display: grid; gap: 12px; }
+.b4-set { border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+.b4-set-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+.b4-set-head > div { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.b4-set p { overflow-wrap: anywhere; }
+.b4-domain-add, .b4-domain-check { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.b4-domain-add label, .b4-domain-check label { flex: 1 1 250px; }
+@media (max-width: 720px) {
+  .b4-connection-fields { grid-template-columns: 1fr; }
+  .b4-set-head { align-items: start; flex-wrap: wrap; }
+  .b4-api-panel > .panel-title { flex-direction: column; align-items: stretch; }
+}

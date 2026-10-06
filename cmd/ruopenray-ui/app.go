@@ -24,6 +24,10 @@ func main() {
 		fmt.Println(string(body))
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--b4-direct-restore" {
+		state.restoreB4Direct()
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--route-presets-update-scheduled" {
 		payload := state.runScheduledRoutePresetSourceUpdate()
 		body, _ := json.MarshalIndent(payload, "", "  ")
@@ -40,6 +44,7 @@ func main() {
 		os.Exit(state.runCLI(os.Args[1:]))
 	}
 	mux := http.NewServeMux()
+	go state.maintainB4Direct()
 	mux.HandleFunc("/api/", state.handleAPI)
 	mux.HandleFunc("/", state.handleStatic)
 	addr := cfg.Host + ":" + cfg.Port

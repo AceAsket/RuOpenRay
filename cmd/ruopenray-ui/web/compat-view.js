@@ -1,4 +1,5 @@
 import { adguardAdminUrl } from './adguard-view.js';
+import { b4Panel } from './b4-view.js';
 
 export function createCompatView({ state, escapeHtml, pageUrl = globalThis.location?.href }) {
   function externalLink(url, label) {
@@ -65,11 +66,11 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
     const found = Boolean(item.available || item.active || item.running || item.config?.found);
     const enabled = Boolean(item.service?.enabled);
     const apiReady = Boolean(item.api?.available);
-    const queueActive = Boolean(item.active || item.api?.queueActive || item.nft?.hasQueue || item.iptables?.hasNFQUEUE);
+    const queueActive = Boolean(item.active || item.api?.queueActive);
     const configPaths = Array.isArray(item.config?.paths) ? item.config.paths : [];
     const portOccupied = Boolean(item.ports?.occupied && !item.ports?.ui);
     const mark = item.api?.config?.queue?.mark;
-    const title = queueActive ? 'обрабатывает трафик' : item.running ? 'запущен без активного перехвата' : found ? 'установлен, сейчас выключен' : 'не найден';
+    const title = queueActive ? 'найдены правила перехвата' : item.running ? 'запущен без активного перехвата' : found ? 'установлен, сейчас выключен' : 'не найден';
     return `<details class="panel compat-secondary-details compat-b4-details" data-details-key="compat-b4-service">
       <summary>
         <span><strong>Технические сведения B4</strong><em>${escapeHtml(item.summary || title)}</em></span>
@@ -96,6 +97,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
           <article><span>Автозапуск</span><strong>${escapeHtml(enabled ? 'включен' : 'выключен')}</strong></article>
         </div>` : ''}
         <div class="split-actions compat-primary-actions">
+          ${found && !item.running ? b4Button('start', 'Запустить B4') : ''}
           ${found ? (enabled ? b4Button('disable', 'Убрать автозапуск') : b4Button('enable', 'Включить автозапуск')) : ''}
           ${item.running ? b4Button('restart', 'Перезапустить') : ''}
           ${externalLink(compat.links?.b4, 'Открыть B4')}
@@ -137,15 +139,16 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
     const awgProfiles = Array.isArray(awg.clientConfig?.profiles?.items) ? awg.clientConfig.profiles.items.length : 0;
     const awgConfigured = awgProfiles > 0;
     const awgMode = awg.clientConfig?.profiles?.mode || 'standby';
-    const b4Active = Boolean(b4.active || b4.api?.queueActive || b4.nft?.hasQueue || b4.iptables?.hasNFQUEUE);
+    const b4Active = Boolean(b4.active || b4.api?.queueActive);
     const b4Running = Boolean(b4.running || b4.service?.running);
     const b4Installed = Boolean(b4.available || b4.config?.found || b4.service?.exists);
     const markConflict = Boolean(b4.routing?.markConflict);
-    const queueAll = b4.api?.config?.queueScope === 'all';
+    const queueAll = b4.api?.config?.queueScope === 'all' && !b4.api?.config?.skipSetup;
     const issues = [];
+    if (b4.api?.engine?.state === 'failed') issues.push({ tone: 'warn', text: 'Движок B4 не запустился; DPI-обход не работает. Проверьте NFQUEUE или причину ошибки в карточке B4.' });
     if (markConflict) issues.push({ tone: 'danger', text: `B4 и AWG используют одинаковую fwmark ${b4.routing?.ruopenrayAWGMark || ''}. Сначала измените метку одной из систем.` });
     if (b4Active && queueAll) issues.push({ tone: 'danger', text: 'B4 настроен на все интерфейсы. Исключите интерфейсы Xray и AWG до параллельного запуска.' });
-    else if (b4Active && xrayTransparent) issues.push({ tone: 'warn', text: 'Xray и B4 одновременно перехватывают трафик. Оставьте Xray владельцем LAN-маршрутизации, а B4 ограничьте direct-трафиком.' });
+    else if (b4Active && xrayTransparent && !b4.managedDirectOnly) issues.push({ tone: 'warn', text: 'Xray и B4 одновременно перехватывают трафик. Оставьте Xray владельцем LAN-маршрутизации, а B4 ограничьте direct-трафиком.' });
     const safetyTone = issues.some((item) => item.tone === 'danger') ? 'danger' : issues.length ? 'warn' : 'ok';
     const safetyTitle = safetyTone === 'danger' ? 'Есть конфликт перед параллельным запуском' : safetyTone === 'warn' ? 'Нужно проверить границы перехвата' : 'Явных конфликтов не найдено';
     const awgStatus = awgRunning ? 'подключен' : !awgConfigured ? 'нет профиля' : awgReady ? 'готов к запуску' : 'не готов';
@@ -157,7 +160,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         : !xrayRunning
           ? 'Сначала запустите Xray'
           : !awgConfigured
-            ? 'Настройте дополнительный выход'
+            ? 'Подключайте нужные компоненты'
             : !awgRunning
               ? 'Почти готово к совместной работе'
               : !b4Active
@@ -189,9 +192,9 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
     } else if (!awgConfigured) {
       nextStep = {
         tone: 'warn',
-        label: 'Следующий шаг',
-        title: 'Добавьте профиль AmneziaWG',
-        detail: 'Импортируйте client.conf и выберите, какие сценарии должны использовать отдельный VPN-выход.',
+        label: 'Необязательный выход',
+        title: 'AmneziaWG можно настроить отдельно',
+        detail: 'Для B4 и AdGuard Home профиль AWG не нужен. Импортируйте client.conf, если требуется дополнительный VPN-выход.',
         action: '<button class="btn warning" data-tab-jump="amnezia">Настроить AmneziaWG</button>'
       };
     } else if (!awgRunning) {
@@ -272,6 +275,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         ${issues.length > 1 ? `<div class="compat-safety ${safetyTone}"><ul>${issues.slice(1).map((item) => `<li>${escapeHtml(item.text)}</li>`).join('')}</ul></div>` : ''}
       </section>
 
+      ${b4Panel({ state, escapeHtml, pageUrl })}
       ${b4Section(compat)}
       ${adguardSection(compat)}
     </div>`;

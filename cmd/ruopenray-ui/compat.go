@@ -19,7 +19,8 @@ func (s *serverState) compatibilityStatus() map[string]any {
 		routerLan = "192.168.1.1"
 	}
 	adguard, _ := lan["adguardHome"].(map[string]any)
-	b4 := s.cachedB4Status()
+	// This endpoint is an explicit integration refresh; use live API/engine data.
+	b4 := s.b4Status()
 	amnezia := s.cachedAmneziaStatus()
 	b4Link := ""
 	if api, ok := b4["api"].(map[string]any); ok && boolMap(api, "available") {
@@ -154,6 +155,8 @@ func intFromAny(value any) int {
 }
 
 func (s *serverState) controlB4(payload map[string]any) map[string]any {
+	s.b4ControlMu.Lock()
+	defer s.b4ControlMu.Unlock()
 	action := strings.TrimSpace(fmt.Sprint(payload["action"]))
 	if action == "" || action == "<nil>" {
 		action = "status"
@@ -172,13 +175,17 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		return result
 	}
 	steps := []map[string]any{}
+	if action == "start" || action == "restart" || action == "enable" {
+		if issues := s.b4ServiceStartIssues(); len(issues) > 0 {
+			return map[string]any{"ok": false, "action": action, "message": "Запуск B4 заблокирован: " + strings.Join(issues, " "), "issues": issues}
+		}
+	}
 	switch action {
 	case "status":
 	case "start":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "start"))
 	case "stop":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "stop"))
-		steps = append(steps, b4ClearTablesStep())
 	case "restart":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "restart"))
 	case "enable":
@@ -187,7 +194,17 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		steps = append(steps, runTimeout(5*time.Second, b4ServicePath, "disable"))
 	case "clear":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "stop"))
-		steps = append(steps, b4ClearTablesStep())
+		if steps[0]["ok"] == true {
+			s.b4Mu.Lock()
+			cfg, err := s.loadB4Settings()
+			if err != nil {
+				steps = append(steps, b4Error("Настройки очереди B4 не прочитаны"))
+			} else {
+				steps = append(steps, s.b4DisableDirectLocked(cfg))
+			}
+			s.b4Mu.Unlock()
+			steps = append(steps, b4ClearTablesStep())
+		}
 	default:
 		result["ok"] = false
 		result["message"] = "Неподдерживаемое действие B4."
@@ -204,6 +221,9 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		result["stdout"] = concatCommandOutput(steps...)
 	}
 	s.clearB4Cache()
+	if result["ok"] == true && (action == "start" || action == "restart") {
+		go func() { time.Sleep(time.Second); s.restoreB4Direct() }()
+	}
 	time.Sleep(350 * time.Millisecond)
 	result["status"] = s.b4Status()
 	return result
@@ -219,6 +239,9 @@ func b4ClearTablesStep() map[string]any {
 	}
 	if fileExists("/usr/bin/b4") {
 		return runTimeout(8*time.Second, "/usr/bin/b4", "--clear-tables", "--config", config)
+	}
+	if fileExists("/opt/bin/b4") {
+		return runTimeout(8*time.Second, "/opt/bin/b4", "--clear-tables", "--config", config)
 	}
 	return map[string]any{"ok": true, "skipped": true, "message": "b4 binary не найден, очистка таблиц пропущена"}
 }

@@ -45,7 +45,7 @@ func TestB4StatusDoesNotClaimGenericRouterPolicyRoutes(t *testing.T) {
 
 func TestB4StatusRecognizesExplicitInterception(t *testing.T) {
 	for name, active := range map[string]bool{
-		"nft queue":   b4StatusActive(map[string]any{"hasQueue": true}, nil, nil, nil),
+		"b4 queue":    b4StatusActive(map[string]any{"hasB4": true, "hasQueue": true}, nil, nil, nil),
 		"named route": b4StatusActive(nil, nil, map[string]any{"explicitB4": true}, nil),
 		"api queue":   b4StatusActive(nil, nil, nil, map[string]any{"queueActive": true}),
 	} {
@@ -90,6 +90,10 @@ func TestB4APIStatusSummarizesReadOnlyEndpoints(t *testing.T) {
 			_, _ = w.Write([]byte(`{"success":true,"data":{"b4":{"running":true,"pid":123,"version":"1.64.0","config_path":"/etc/b4/config.json","service_manager":"procd"}}}`))
 		case "/api/config":
 			_, _ = w.Write([]byte(`{"success":true,"version":"1.64.0","available_ifaces":["br-lan"],"queue":{"interfaces":["br-lan"],"ipv4":true,"ipv6":false,"mark":4,"start_num":400,"threads":2},"sets":[{"id":"discord","name":"Discord","enabled":true},{"id":"off","name":"Disabled","enabled":false}]}`))
+		case "/api/metrics":
+			_, _ = w.Write([]byte(`{"engine":{"state":"running","mode":"nfqueue","threads":2,"firewall":"nftables"}}`))
+		case "/api/sets":
+			_, _ = w.Write([]byte(`[{"id":"discord","name":"Discord","revision":"r1","enabled":true}]`))
 		case "/api/metrics/summary":
 			_, _ = w.Write([]byte(`{"success":true,"data":{"total_packets":42,"active_connections":3}}`))
 		default:

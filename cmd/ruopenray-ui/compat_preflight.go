@@ -21,7 +21,7 @@ func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map
 	if value, ok := meta["dnsIntercept"].(bool); ok {
 		dnsIntercept = value
 	}
-	if b4 != nil && b4["active"] == true {
+	if b4 != nil && b4["active"] == true && !boolMap(b4, "managedDirectOnly") {
 		severity := "warn"
 		detail := "B4 уже может использовать NFQUEUE/firewall для DPI-обхода. Перед параллельной работой нужно понимать, кто владеет LAN-перехватом."
 		if nft, ok := b4["nft"].(map[string]any); ok && boolMap(nft, "hasDNSRedirect") {
@@ -41,7 +41,7 @@ func firewallCompatibilityPreflightFromStatuses(payload map[string]any, meta map
 			}
 		}
 		issues = append(issues, compatibilityIssue("b4", severity, "B4 активен", detail))
-	} else if b4 != nil {
+	} else if b4 != nil && !boolMap(b4, "managedDirectOnly") {
 		nft, _ := b4["nft"].(map[string]any)
 		iptables, _ := b4["iptables"].(map[string]any)
 		service, _ := b4["service"].(map[string]any)

@@ -207,6 +207,27 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/compat/b4" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.controlB4(payload))
+	case path == "/compat/b4/connect" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4Connect(payload))
+	case path == "/compat/b4/api" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4APIAction(payload))
+	case path == "/compat/b4/direct" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4DirectControl(boolPayload(payload, "enabled", false)))
 	case path == "/amnezia/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.amneziaStatus())
 	case path == "/amnezia/config" && r.Method == http.MethodGet:
