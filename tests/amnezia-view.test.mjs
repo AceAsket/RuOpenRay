@@ -3,8 +3,33 @@ import test from 'node:test';
 
 import { createAmneziaActions } from '../cmd/ruopenray-ui/web/amnezia-actions.js';
 import { createAmneziaView } from '../cmd/ruopenray-ui/web/amnezia-view.js';
+import { createConfigStateHelpers } from '../cmd/ruopenray-ui/web/config-state.js';
 
 const escapeHtml = (value) => String(value ?? '');
+
+test('automatic and manual AWG outbounds keep DNS resolution on the marked socket without legacy freedom settings', async () => {
+  const profile = { id: 'home', active: true, selected: true };
+  for (const mode of ['automatic', 'manual']) {
+    const direct = { tag: 'direct', protocol: 'freedom', settings: {} };
+    const original = { outbounds: [direct] };
+    const state = { config: original, amneziaStatus: { clientConfig: { profiles: { items: [profile] } } } };
+    const helpers = createConfigStateHelpers(state);
+    if (mode === 'automatic') {
+      helpers.syncConfig(structuredClone(original), { fromServer: true });
+      helpers.syncConfig(state.config, { fromServer: true });
+    } else {
+      const actions = createAmneziaActions({ state, render() {}, syncConfig: helpers.syncConfig });
+      await actions.prepareAmneziaXrayOutboundDraft();
+      await actions.prepareAmneziaXrayOutboundDraft();
+    }
+    assert.equal(state.config.outbounds.length, 2);
+    assert.deepEqual(state.config.outbounds[0], direct);
+    assert.deepEqual(original, { outbounds: [direct] });
+    const awg = state.config.outbounds[1];
+    assert.equal(awg.settings.domainStrategy, undefined);
+    assert.deepEqual(awg.streamSettings.sockopt, { mark: 20992, domainStrategy: 'UseIP' });
+  }
+});
 
 test('empty AmneziaWG page leads with one import action and hides technical noise', () => {
   const state = {

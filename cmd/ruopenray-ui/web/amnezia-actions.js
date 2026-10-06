@@ -269,12 +269,11 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     return {
       tag: 'out-amnezia',
       protocol: 'freedom',
-      settings: {
-        domainStrategy: 'UseIP'
-      },
+      settings: {},
       streamSettings: {
         sockopt: {
-          mark: 20992
+          mark: 20992,
+          domainStrategy: 'UseIP'
         }
       }
     };
