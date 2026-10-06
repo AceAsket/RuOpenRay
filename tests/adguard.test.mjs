@@ -1,9 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adguardSection } from '../cmd/ruopenray-ui/web/adguard-view.js';
+import { adguardAdminUrl, adguardSection } from '../cmd/ruopenray-ui/web/adguard-view.js';
 import { createAdguardActions } from '../cmd/ruopenray-ui/web/adguard-actions.js';
 
 const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+
+test('AdGuard admin link uses the router host and preserves its own protocol and port', () => {
+  assert.equal(adguardAdminUrl('http://127.0.0.1:3001', 'http://192.168.50.117:9090/'), 'http://192.168.50.117:3001/');
+  assert.equal(adguardAdminUrl('https://[::1]:3443/', 'http://[2001:db8::1]:9090/'), 'https://[2001:db8::1]:3443/');
+  assert.equal(adguardAdminUrl('http://127.0.0.1', 'https://router.example:8443/'), 'http://router.example/');
+  const html = adguardSection({ adguardStatus: { configured: true, ok: false, url: 'http://127.0.0.1:3001' } }, escapeHtml, 'http://192.168.50.117:9090/');
+  assert.match(html, /href="http:\/\/192\.168\.50\.117:3001\/" target="_blank" rel="noopener noreferrer">Открыть AdGuard Home/);
+  const unconfigured = adguardSection({ adguardStatus: { url: 'http://127.0.0.1:3001' } }, escapeHtml, 'http://192.168.50.117:9090/');
+  assert.doesNotMatch(unconfigured, /Открыть AdGuard Home/);
+  for (const invalid of ['', 'javascript:alert(1)', 'http://user:secret@127.0.0.1:3001', 'http://127.0.0.1:3001/?token=secret', 'http://outside.example:3001']) {
+    assert.equal(adguardAdminUrl(invalid, 'http://192.168.50.117:9090/'), '');
+  }
+});
 
 test('AdGuard controls reflect protection and never render credentials', () => {
   const html = adguardSection({ adguardStatus: { configured: true, ok: true, running: true, protectionEnabled: true, filteringEnabled: true, queries: 10, blocked: 2, enabled: true }, adguardPassword: 'secret-never-render' }, escapeHtml);

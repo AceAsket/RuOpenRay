@@ -16,14 +16,30 @@ function filteringReason(reason) {
   return Object.hasOwn(labels, reason) ? labels[reason] : (reason ? `Неизвестный результат AdGuard: ${reason}` : 'Нет результата проверки');
 }
 
-export function adguardSection(state, escapeHtml) {
+export function adguardAdminUrl(apiUrl, pageUrl = globalThis.location?.href) {
+  try {
+    const api = new URL(apiUrl);
+    const page = new URL(pageUrl);
+    if (!['http:', 'https:'].includes(api.protocol) || !['http:', 'https:'].includes(page.protocol)
+      || !(/^127(?:\.\d{1,3}){3}$/.test(api.hostname) || api.hostname === '[::1]')
+      || api.username || api.password || (api.pathname !== '/' && api.pathname !== '') || api.search || api.hash) return '';
+    api.hostname = page.hostname;
+    return api.href;
+  } catch {
+    return '';
+  }
+}
+
+export function adguardSection(state, escapeHtml, pageUrl = globalThis.location?.href) {
   const status = state.adguardStatus || {};
   const busy = String(state.busyAction || '').startsWith('adguard');
   const disabled = busy || !status.configured || !status.ok;
   const chain = state.lanDnsStatus?.adguardHome || {};
-  return `<section class="panel settings-section">
+  const adminUrl = status.configured ? adguardAdminUrl(status.url, pageUrl) : '';
+  return `<section class="panel settings-section adguard-section">
     <div class="panel-title"><div><h2>Фильтрация рекламы — AdGuard Home</h2><span>Фильтрация на уровне DNS. Реклама с того же домена, что и контент, может оставаться.</span></div>
-      <button class="btn secondary" data-action="adguardRefresh" ${busy ? 'disabled' : ''}>Обновить статус</button></div>
+      <div class="split-actions adguard-header-actions">${adminUrl ? `<a class="btn secondary" href="${escapeHtml(adminUrl)}" target="_blank" rel="noopener noreferrer">Открыть AdGuard Home ↗</a>` : ''}
+      <button class="btn secondary" data-action="adguardRefresh" ${busy ? 'disabled' : ''}>Обновить статус</button></div></div>
     ${status.error ? `<p class="settings-warning">${escapeHtml(status.error)}</p>` : ''}
     ${chain.dnsPath === 'doh-vpn' ? `<div class="settings-warning ${chain.relayReady ? 'ok' : ''}"><strong>AdGuard → DoH → Xray</strong><span>${escapeHtml(chain.hint)}</span></div>` : ''}
     ${status.configured ? `<div class="dns-overview">

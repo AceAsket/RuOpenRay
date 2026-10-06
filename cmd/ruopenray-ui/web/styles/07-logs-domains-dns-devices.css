@@ -1801,6 +1801,34 @@
   text-transform: uppercase;
 }
 
+.adguard-section {
+  display: grid;
+  gap: 14px;
+}
+
+.adguard-section > * {
+  min-width: 0;
+  margin: 0;
+}
+
+.adguard-section > .panel-title {
+  flex-wrap: wrap;
+}
+
+.adguard-header-actions {
+  flex-wrap: wrap;
+}
+
+.adguard-section > .btn {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .adguard-section > .settings-warning {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .dns-overview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
