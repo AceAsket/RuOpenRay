@@ -142,11 +142,17 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			if latency < 0 {
 				t.Fatalf("invalid latency: %d", latency)
 			}
+			var rawProbeErrors []string
 			_, fallbackOK, probes, fallbackErr := runSubscriptionProbes([]string{origin.URL + "/failed", origin.URL}, func(target string) (int64, bool, error) {
-				return s.httpOutboundProbeStatus(outbound, target, 3000, 1, true)
+				latency, ok, err := s.httpOutboundProbeStatus(outbound, target, 3000, 1, true)
+				if err != nil {
+					rawProbeErrors = append(rawProbeErrors, err.Error())
+				}
+				return latency, ok, err
 			})
 			if !fallbackOK || fallbackErr != nil || len(probes) != 2 || probes[0].OK || probes[0].Code != "http" || !probes[1].OK {
-				t.Fatalf("HTTP fallback through tunnel: %v %v", probes, fallbackErr)
+				log, _ := os.ReadFile(logFile.Name())
+				t.Fatalf("HTTP fallback through tunnel: %v %v; raw errors: %v; SERVER %s", probes, fallbackErr, rawProbeErrors, log)
 			}
 			wrongCert := rproxy.CloneOutboundWithTag(outbound, "wrong-certificate")
 			wrongCert["streamSettings"].(map[string]any)["tlsSettings"].(map[string]any)["serverName"] = "wrong.example.test"

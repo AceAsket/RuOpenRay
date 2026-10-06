@@ -31,7 +31,7 @@ func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL 
 	config := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"inbounds": []any{map[string]any{
-			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": false},
 		}},
 		"outbounds": ensureFragmentOutbounds([]any{outbound}),
 	}
@@ -81,7 +81,10 @@ func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL 
 		return 0, false, err
 	}
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+	// Carry HTTP directly over the tunnel. Xray's plain HTTP inbound closes the
+	// origin connection after each response and can replace a short WebSocket
+	// response with a synthetic 503 when the remote stream closes.
+	proxyURL, _ := url.Parse(fmt.Sprintf("socks5://127.0.0.1:%d", port))
 	client := &http.Client{
 		Timeout: time.Duration(timeoutMs) * time.Millisecond,
 		Transport: &http.Transport{
