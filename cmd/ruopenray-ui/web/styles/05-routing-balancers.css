@@ -2604,3 +2604,60 @@
   overflow-wrap: anywhere;
 }
 
+.routing-audit {
+  margin-top: 16px;
+  border-color: rgba(242, 189, 82, 0.35);
+}
+
+.routing-audit .panel-title,
+.routing-audit-finding-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.routing-audit-filters,
+.routing-audit-finding-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.routing-audit-filters .active {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.routing-audit-results {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.routing-audit-finding {
+  padding: 14px;
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: rgba(13, 20, 25, 0.74);
+  overflow-wrap: anywhere;
+}
+
+.routing-audit-finding p {
+  margin: 8px 0;
+}
+
+.routing-audit-finding small,
+.routing-audit-finding-head span {
+  color: var(--muted);
+}
+
+.routing-audit-finding .split-actions {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.routing-audit-shadow,
+.routing-audit-format {
+  border-color: rgba(242, 189, 82, 0.4);
+}
+

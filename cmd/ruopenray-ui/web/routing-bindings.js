@@ -1,5 +1,6 @@
 import { analyzeRuleImport } from './routing-insights.js';
 import { isDefaultRoute } from './routing-order.js';
+import { bindRoutingAudit } from './routing-conflicts.js';
 
 export function bindRoutingControls({
   state,
@@ -63,6 +64,7 @@ export function bindRoutingControls({
   moveRouteBalancerSelector,
   balancerOptions,
 }) {
+  bindRoutingAudit({ state, render, routeRules, isRuOpenRayManagedRoute, openRoutingRuleEditor, disableRoutingRule });
   document.querySelectorAll('[data-preset]').forEach((button) => {
     button.addEventListener('click', () => addRoutingPreset(button.dataset.preset));
   });

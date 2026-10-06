@@ -2,6 +2,7 @@ import { noticeView } from './notice-view.js';
 import { routingListTargetPicker } from './routing-dsl.js';
 import { routeExplanationView } from './routing-insights.js';
 import { routePresetIconView } from './route-visuals.js';
+import { routingAuditView } from './routing-conflicts.js';
 
 export function createRoutingView(deps) {
   const {
@@ -106,10 +107,12 @@ function routingRulesPanel() {
       <div class="panel-title">
         <div><h2>Правила маршрутизации</h2><span>${userRulesCount} пользовательских · ${managedRules.length} служебных скрыто. Xray читает правила сверху вниз.</span></div>
         <div class="split-actions">
+          <button class="btn secondary ${state.routeAuditRunning ? 'is-busy' : ''}" data-route-audit ${state.routeAuditRunning ? 'disabled' : ''}>${state.routeAuditRunning ? 'Проверяю пересечения...' : 'Найти дубли и пересечения'}</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       ${operationProgressView()}
+      ${routingAuditView(state, escapeHtml, { describeRouteRule, routeRuleName })}
       ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AWG policy routing</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся мимо Xray.</span></div>` : ''}
       <div class="routing-summary">
         ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
