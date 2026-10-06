@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// API credentials stay outside Xray profiles, backups and exported configs.
+// API credentials stay outside Xray profiles, exported configs and diagnostics.
 type b4Settings struct {
 	DirectEnabled bool   `json:"directEnabled"`
 	URL           string `json:"url"`

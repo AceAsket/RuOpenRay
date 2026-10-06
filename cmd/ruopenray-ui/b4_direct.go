@@ -14,6 +14,19 @@ import (
 const b4DirectMark = 0x80000
 const b4DirectTable = "ruopenray_b4_direct"
 
+func (s *serverState) validateB4DirectCandidate(candidate map[string]any) error {
+	cfg, err := s.loadB4Settings()
+	if err != nil {
+		return fmt.Errorf("Не удалось проверить настройки очереди B4 перед записью Xray")
+	}
+	if cfg.DirectEnabled {
+		if issues := b4DirectConfigIssues(candidate); len(issues) > 0 {
+			return fmt.Errorf("При включённом direct → B4 выход direct-b4 и его метка должны сохраняться. Сначала выключите очередь B4. %s", strings.Join(issues, " "))
+		}
+	}
+	return nil
+}
+
 func b4DirectConfigIssues(config map[string]any) []string {
 	issues := []string{}
 	marked := false

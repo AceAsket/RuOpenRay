@@ -33,6 +33,10 @@ func (s *serverState) writeActiveConfig(cfg map[string]any) error {
 }
 
 func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
+	// Serialize config writes with queue activation: the B4 mark must never
+	// switch to a VPN outbound between validation and the atomic write.
+	s.b4ControlMu.Lock()
+	defer s.b4ControlMu.Unlock()
 	normalizeCatchAllRoutingRules(cfg)
 	ensureFragmentOutboundsInConfig(cfg)
 	if err := os.MkdirAll(filepath.Dir(s.cfg.ActiveConfig), 0o755); err != nil {
@@ -43,6 +47,9 @@ func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
 		return err
 	}
 	if err := s.validateAdGuardTransportCandidate(cfg); err != nil {
+		return err
+	}
+	if err := s.validateB4DirectCandidate(cfg); err != nil {
 		return err
 	}
 	return s.withAdGuardBootstrap(cfg, func() error { return writeFileAtomic(s.cfg.ActiveConfig, body, 0o600) })

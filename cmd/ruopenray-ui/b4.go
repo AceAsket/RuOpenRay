@@ -120,10 +120,11 @@ func (s *serverState) b4Status() map[string]any {
 	active := b4StatusActive(nft, iptables, routing, api)
 	result["active"] = active
 	issues, _ := api["startIssues"].([]string)
+	result["externalConfigSafe"] = boolMap(api, "authenticated") && boolMap(mapValue(api["config"]), "skipSetup") && len(issues) == 0 && api["setsError"] == nil
 	result["managedDirectOnly"] = boolMap(result, "directEnabled") && boolMap(result, "directPrepared") &&
 		boolMap(nft, "managedDirect") && !boolMap(nft, "otherB4") && !boolMap(nft, "foreignQueue") &&
 		!boolMap(iptables, "hasB4") && !boolMap(iptables, "hasNFQUEUE") && !boolMap(routing, "explicitB4") &&
-		boolMap(api, "authenticated") && boolMap(mapValue(api["config"]), "skipSetup") && len(issues) == 0 && api["setsError"] == nil
+		boolMap(result, "externalConfigSafe")
 	warnings := b4Warnings(result)
 	result["warnings"] = warnings
 	switch {

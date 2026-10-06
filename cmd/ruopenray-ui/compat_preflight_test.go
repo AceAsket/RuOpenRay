@@ -51,6 +51,17 @@ func TestFirewallCompatibilityPreflightB4Enabled(t *testing.T) {
 	}
 }
 
+func TestFirewallCompatibilityPreflightSafeExternalB4Autostart(t *testing.T) {
+	status := map[string]any{"active": false, "externalConfigSafe": true, "service": map[string]any{"enabled": true}}
+	if result := firewallCompatibilityPreflightFromStatuses(nil, nil, status); !boolMap(result, "ok") {
+		t.Fatal("Verified external B4 autostart must not imply LAN interception", result)
+	}
+	status["nft"] = map[string]any{"hasQueue": true}
+	if result := firewallCompatibilityPreflightFromStatuses(nil, nil, status); boolMap(result, "ok") {
+		t.Fatal("External B4 config must not hide unrelated NFQUEUE", result)
+	}
+}
+
 func TestFirewallCompatibilityPreflightMarksAllInterfaceB4AsDanger(t *testing.T) {
 	got := firewallCompatibilityPreflightFromStatuses(
 		map[string]any{"dnsIntercept": false},

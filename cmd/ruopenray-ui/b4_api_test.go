@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -303,5 +304,38 @@ func TestB4ActiveEditRefusesUnsafeFirewallButAllowsDisabling(t *testing.T) {
 	result = s.b4APIAction(map[string]any{"action": "set-enabled", "id": "test", "revision": "r1", "enabled": false})
 	if !boolMap(result, "ok") || writes != 1 {
 		t.Fatal("safe disable was refused", result)
+	}
+}
+
+func TestB4EnabledQueueProtectsActiveConfigButAllowsProfileStorage(t *testing.T) {
+	dir := t.TempDir()
+	s := &serverState{cfg: appConfig{DataDir: dir, ActiveConfig: filepath.Join(dir, "xray.json"), ProfilesDir: filepath.Join(dir, "profiles")}}
+	valid := map[string]any{"outbounds": []any{map[string]any{"tag": "direct-b4", "protocol": "freedom", "streamSettings": map[string]any{"sockopt": map[string]any{"mark": b4DirectMark}}}}}
+	if err := s.saveB4Settings(b4Settings{DirectEnabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.writeActiveConfigRaw(valid); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(s.cfg.ActiveConfig)
+	invalid := cloneConfigMap(valid)
+	mapValue(anySlice(invalid["outbounds"])[0])["protocol"] = "vless"
+	for _, candidate := range []map[string]any{invalid, {"outbounds": []any{}}} {
+		if err := s.writeActiveConfigRaw(candidate); err == nil {
+			t.Fatal("Enabled queue accepted a removed or reassigned outbound")
+		}
+		after, _ := os.ReadFile(s.cfg.ActiveConfig)
+		if !bytes.Equal(before, after) {
+			t.Fatal("Rejected candidate changed active config")
+		}
+	}
+	if _, err := s.saveProfileConfig("without-b4", map[string]any{"outbounds": []any{}}); err != nil {
+		t.Fatal("Storing an inactive profile must remain possible", err)
+	}
+	if err := s.saveB4Settings(b4Settings{DirectEnabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.writeActiveConfigRaw(map[string]any{"outbounds": []any{}}); err != nil {
+		t.Fatal("Queue-off config change refused", err)
 	}
 }

@@ -124,9 +124,9 @@ function dashboardWarningItems() {
   if (dnsLog) items.push('DNS-лог Xray включен: доменные ответы могут добавлять много строк.');
   if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
   if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
-  if (b4.active) items.push(`B4 активен: ${b4CompatDetail(b4)}. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.`);
-  else if (b4.service?.enabled) items.push('B4 включен в автозапуск: сейчас он может быть остановлен, но после перезагрузки снова поднимет свой firewall/NFQUEUE. Если RuOpenRay главный, отключите автозапуск B4.');
-  else if (b4.api?.authRequired) items.push('B4 API найден, но защищенные методы требуют токен. RuOpenRay видит только порт/процессы/nft без детальной конфигурации B4.');
+  if (b4.active && !b4.managedDirectOnly) items.push(`B4 активен: ${b4CompatDetail(b4)}. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.`);
+  else if (b4.service?.enabled && !b4.externalConfigSafe) items.push('B4 включен в автозапуск: конфигурация внешнего перехвата не подтверждена. Проверьте настройки B4 до совместного запуска с RuOpenRay.');
+  else if (b4.api?.authRequired && !b4.api?.authenticated) items.push('B4 API найден, но защищенные методы требуют входа. Подключите API B4 в «Интеграциях».');
   return items;
 }
 
