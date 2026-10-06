@@ -681,7 +681,8 @@ const compatActions = createCompatActions({
   request,
   render,
   refresh,
-  syncConfig
+  syncConfig,
+  refreshDomainMonitor
 });
 const {
   refreshCompatibility,
@@ -1189,7 +1190,7 @@ const {
   previewLanDnsUpstream
 } = dnsActions;
 
-const adguardActions = createAdguardActions({ state, request, render, syncLanDnsStatus });
+const adguardActions = createAdguardActions({ state, request, render, syncLanDnsStatus, refreshDomainMonitor });
 
 const setupView = createSetupView({
   state,

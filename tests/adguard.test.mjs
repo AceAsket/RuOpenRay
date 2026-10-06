@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { adguardAdminUrl, adguardSection } from '../cmd/ruopenray-ui/web/adguard-view.js';
 import { createAdguardActions } from '../cmd/ruopenray-ui/web/adguard-actions.js';
+import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
 
 const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 
@@ -69,4 +70,61 @@ test('Failed connection clears the secret and does not report success', async ()
   await assert.rejects(actions.adguardConfigure(), /auth failed/);
   assert.equal(state.adguardPassword, '');
   assert.equal(state.message, undefined);
+});
+
+test('DNS client logging controls distinguish off, on, unavailable and stopped monitor', () => {
+  const section = (monitor, busyAction = '') => adguardSection({ domainMonitor: monitor, busyAction }, escapeHtml);
+  const off = section({ running: true, dnsmasq: { logqueries: false } });
+  assert.match(off, /data-action="enableDnsmasqLogqueries" >Включить журнал DNS/);
+  assert.match(off, /перезапускает dnsmasq/);
+  assert.match(off, /адрес клиента в самом AdGuard не изменится/);
+  assert.match(off, /data-tab-jump="diagnostics" data-diagnostics-jump="domains"/);
+  const on = section({ running: false, dnsmasq: { logqueries: true } });
+  assert.match(on, /Журнал включён/);
+  assert.match(on, /data-action="disableDnsmasqLogqueries" >Выключить журнал DNS/);
+  assert.match(on, /Монитор доменов остановлен/);
+  for (const monitor of [null, {}, { dnsmasq: {} }]) {
+    const unknown = section(monitor);
+    assert.match(unknown, /Статус недоступен/);
+    assert.match(unknown, /data-action="enableDnsmasqLogqueries" disabled/);
+    assert.doesNotMatch(unknown, /Журнал выключен/);
+  }
+  assert.match(section({ dnsmasq: { logqueries: false } }, 'enableDnsmasqLogqueries'), /disabled>Сохраняю…/);
+});
+
+test('AdGuard refresh obtains actual DNS logging status even when monitor view is paused and clears stale status on failure', async () => {
+  const state = { domainMonitorPaused: true, domainMonitor: { dnsmasq: { logqueries: false } } };
+  let offline = false;
+  const actions = createAdguardActions({ state, render() {}, request: async () => ({ configured: true }), refreshDomainMonitor: async (renderAfter, options) => {
+    assert.equal(renderAfter, false);
+    assert.deepEqual(options, { force: true });
+    if (offline) throw new Error('Monitor unavailable');
+    state.domainMonitor = { running: true, dnsmasq: { logqueries: true } };
+  } });
+  await actions.adguardRefresh();
+  assert.equal(state.domainMonitor.dnsmasq.logqueries, true);
+  assert.equal(state.domainMonitorPaused, true);
+  offline = true;
+  await actions.adguardRefresh();
+  assert.equal(state.domainMonitor, null);
+  assert.equal(state.adguardStatus.configured, true);
+});
+
+test('DNS logging action refreshes real state and reports a failed restart instead of a successful stdout', async () => {
+  const state = { domainMonitorPaused: true };
+  const requests = [];
+  let failed = true;
+  const actual = { running: true, dnsmasq: { logqueries: true } };
+  const runtime = createRuntimeController({ state, render() {}, request: async (path, options) => {
+    requests.push({ path, body: options?.body && JSON.parse(options.body) });
+    return options ? { ok: !failed, stdout: 'dnsmasq parser включен', stderr: failed ? 'restart failed' : '' } : actual;
+  } });
+  await assert.rejects(runtime.controlDomainMonitor('dnsmasq-logqueries', { enabled: true }), /restart failed/);
+  assert.equal(state.message, undefined);
+  assert.equal(state.domainMonitor, actual);
+  assert.deepEqual(requests[0], { path: '/api/domain-monitor', body: { action: 'dnsmasq-logqueries', enabled: true } });
+  failed = false;
+  await runtime.controlDomainMonitor('dnsmasq-logqueries', { enabled: false });
+  assert.equal(requests[2].body.enabled, false);
+  assert.equal(state.message, 'dnsmasq parser включен');
 });

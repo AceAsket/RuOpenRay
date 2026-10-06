@@ -1819,7 +1819,8 @@
   flex-wrap: wrap;
 }
 
-.adguard-upstreams {
+.adguard-upstreams,
+.adguard-dns-clients {
   display: grid;
   gap: 12px;
   min-width: 0;
@@ -1828,8 +1829,9 @@
   border-radius: 10px;
 }
 
-.adguard-upstreams > * { min-width: 0; margin: 0; }
-.adguard-upstreams .split-actions { flex-wrap: wrap; }
+.adguard-upstreams > *, .adguard-dns-clients > * { min-width: 0; margin: 0; }
+.adguard-upstreams .split-actions, .adguard-dns-clients .split-actions { flex-wrap: wrap; }
+.adguard-dns-clients .panel-title { flex-wrap: wrap; }
 #adguardUpstreams { min-height: 104px; }
 .adguard-upstream-table { width: 100%; }
 .adguard-upstream-table th, .adguard-upstream-table td { padding: 10px; text-align: left; vertical-align: top; }

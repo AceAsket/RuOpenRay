@@ -1,8 +1,11 @@
 import { adguardUpstreamList, adguardUpstreamText } from './adguard-upstreams-view.js';
 
-export function createAdguardActions({ state, request, render, syncLanDnsStatus }) {
+export function createAdguardActions({ state, request, render, syncLanDnsStatus, refreshDomainMonitor }) {
   async function adguardRefresh() {
-    state.adguardStatus = await request('/api/dns/adguard');
+    await Promise.all([
+      request('/api/dns/adguard').then((status) => { state.adguardStatus = status; }),
+      refreshDomainMonitor?.(false, { force: true }).catch(() => { state.domainMonitor = null; }),
+    ]);
     render();
   }
   async function action(payload, message) {

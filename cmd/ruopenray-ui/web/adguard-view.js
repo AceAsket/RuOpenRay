@@ -32,6 +32,25 @@ export function adguardAdminUrl(apiUrl, pageUrl = globalThis.location?.href) {
   }
 }
 
+function dnsClientJournal(state) {
+  const monitor = state.domainMonitor;
+  const known = typeof monitor?.dnsmasq?.logqueries === 'boolean';
+  const enabled = monitor?.dnsmasq?.logqueries === true;
+  const busy = ['enableDnsmasqLogqueries', 'disableDnsmasqLogqueries'].includes(state.busyAction);
+  return `<section class="adguard-dns-clients" aria-label="DNS-запросы по устройствам">
+    <div class="panel-title"><div><h3>DNS-запросы по устройствам</h3><span>IP клиента и имя из DHCP в журнале RuOpenRay.</span></div>
+      <strong class="status-chip ${known ? (enabled ? 'ok' : 'warn') : ''}">${known ? (enabled ? 'Журнал включён' : 'Журнал выключен') : 'Статус недоступен'}</strong></div>
+    <p class="muted">В схеме dnsmasq → AdGuard Home журнал AdGuard показывает локального посредника — 127.0.0.1. RuOpenRay берёт исходный IP устройства из журнала dnsmasq; адрес клиента в самом AdGuard не изменится.</p>
+    ${enabled && monitor.running === false ? '<p class="settings-warning">Монитор доменов остановлен. Запустите его в Диагностике, чтобы видеть DNS-запросы устройств.</p>' : ''}
+    <p class="muted">Включение и выключение перезапускает dnsmasq: возможна короткая пауза DNS. Запросы записываются в системный журнал; VPN и маршрут DoH не меняются.</p>
+    <div class="split-actions">
+      <button class="btn ${enabled ? 'secondary' : 'primary'}" data-action="${enabled ? 'disableDnsmasqLogqueries' : 'enableDnsmasqLogqueries'}" ${!known || state.busyAction ? 'disabled' : ''}>${busy ? 'Сохраняю…' : enabled ? 'Выключить журнал DNS' : 'Включить журнал DNS'}</button>
+      <button class="btn secondary" data-tab-jump="diagnostics" data-diagnostics-jump="domains">Открыть журнал RuOpenRay</button>
+      ${known ? '' : '<button class="btn secondary" data-action="adguardRefresh">Обновить статус</button>'}
+    </div>
+  </section>`;
+}
+
 export function adguardSection(state, escapeHtml, pageUrl = globalThis.location?.href) {
   const status = state.adguardStatus || {};
   const busy = String(state.busyAction || '').startsWith('adguard');
@@ -52,6 +71,7 @@ export function adguardSection(state, escapeHtml, pageUrl = globalThis.location?
     </div>
     <p class="muted">Активных списков: ${Number(status.filters) || 0}. Версия: ${escapeHtml(status.version || '—')}.</p>
     <button class="btn ${status.protectionEnabled ? 'secondary' : 'primary'}" data-action="adguardProtection" ${disabled ? 'disabled' : ''}>${status.protectionEnabled ? 'Выключить фильтрацию' : 'Включить фильтрацию'}</button>` : '<p class="muted">Подключите установленный на роутере AdGuard Home. Это не меняет DNS устройств и не устанавливает новый сервис.</p>'}
+    ${dnsClientJournal(state)}
     ${adguardUpstreamsSection(state, escapeHtml)}
     <div class="panel-title"><div><h3>Проверить домен и добавить исключение</h3><span>Исключение действует на домен и его поддомены.</span></div></div>
     <label class="field"><span>Домен</span><input id="adguardDomain" value="${escapeHtml(state.adguardDomain || '')}" placeholder="example.com" autocomplete="off"></label>

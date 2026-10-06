@@ -8,7 +8,13 @@ test('Refreshing integrations reads both component detection and actual AdGuard 
   const state = { status: {}, lanDnsStatus: {}, busyAction: '' };
   const adguard = { configured: true, ok: true, running: true, protectionEnabled: false, filteringEnabled: true };
   let renders = 0;
-  const actions = createCompatActions({ state, render: () => { renders++; }, request: async (path, options) => {
+  let monitorRefreshed = false;
+  const actions = createCompatActions({ state, render: () => { renders++; }, refreshDomainMonitor: async (renderAfter, options) => {
+    assert.equal(renderAfter, false);
+    assert.deepEqual(options, { force: true });
+    monitorRefreshed = true;
+    state.domainMonitor = { dnsmasq: { logqueries: true } };
+  }, request: async (path, options) => {
     assert.equal(options, undefined);
     paths.push(path);
     return path === '/api/dns/adguard' ? adguard : { adguardHome: { running: true } };
@@ -20,6 +26,8 @@ test('Refreshing integrations reads both component detection and actual AdGuard 
   assert.equal(renders, 1);
   assert.equal(state.busyAction, '');
   assert.equal(state.message, undefined);
+  assert.equal(monitorRefreshed, true);
+  assert.equal(state.domainMonitor.dnsmasq.logqueries, true);
 });
 
 test('AdGuard API failure clears its successful state while retaining the admin address and other integrations', async () => {

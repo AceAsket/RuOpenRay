@@ -1,4 +1,4 @@
-export function createCompatActions({ state, request, render, refresh, syncConfig }) {
+export function createCompatActions({ state, request, render, refresh, syncConfig, refreshDomainMonitor }) {
   function syncCompatStatus(result) {
     if (!result || typeof result !== 'object') return;
     state.compatStatus = result;
@@ -18,7 +18,8 @@ export function createCompatActions({ state, request, render, refresh, syncConfi
         request('/api/compat/status'),
         request('/api/dns/adguard').catch((error) => ({
           ...state.adguardStatus, ok: false, error: error.message || 'Не удалось проверить AdGuard Home'
-        }))
+        })),
+        refreshDomainMonitor?.(false, { force: true }).catch(() => { state.domainMonitor = null; }),
       ]);
       syncCompatStatus(result);
       state.adguardStatus = adguard;
