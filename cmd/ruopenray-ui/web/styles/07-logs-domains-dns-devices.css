@@ -1830,6 +1830,7 @@
 
 .adguard-upstreams > * { min-width: 0; margin: 0; }
 .adguard-upstreams .split-actions { flex-wrap: wrap; }
+#adguardUpstreams { min-height: 104px; }
 .adguard-upstream-table { width: 100%; }
 .adguard-upstream-table th, .adguard-upstream-table td { padding: 10px; text-align: left; vertical-align: top; }
 .adguard-upstream-table .muted { display: block; margin-top: 5px; font-size: 12px; }
