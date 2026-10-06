@@ -1,7 +1,9 @@
-export function createCompatView({ state, escapeHtml }) {
+import { adguardAdminUrl } from './adguard-view.js';
+
+export function createCompatView({ state, escapeHtml, pageUrl = globalThis.location?.href }) {
   function externalLink(url, label) {
     if (!url) return '';
-    return `<a class="btn secondary" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+    return `<a class="btn secondary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
   }
 
   function commandButton(action, label) {
@@ -35,7 +37,7 @@ export function createCompatView({ state, escapeHtml }) {
     const found = Boolean(item.available || item.configPath);
     return `<details class="panel compat-secondary-details" data-details-key="compat-dns-services">
       <summary>
-        <span><strong>DNS рядом с RuOpenRay</strong><em>AdGuard Home можно использовать как фильтр перед DNS Xray</em></span>
+        <span><strong>Технические сведения AdGuard Home</strong><em>DNS-путь, порты и конфигурация сервиса</em></span>
         <b>${escapeHtml(found ? (item.running ? 'запущен' : 'найден') : 'не найден')}</b>
       </summary>
       <div class="compat-secondary-body">
@@ -44,19 +46,15 @@ export function createCompatView({ state, escapeHtml }) {
             <span class="eyebrow">AdGuard Home</span>
             <h2>${escapeHtml(found ? (item.running ? 'работает' : 'обнаружен') : 'не найден')}</h2>
             <p>${escapeHtml(item.hint || (found
-              ? 'Для совместной работы AdGuard фильтрует запросы, а DNS Xray остается его upstream.'
+              ? 'AdGuard фильтрует DNS; upstream и маршрут запросов задаются в настройках DNS.'
               : 'RuOpenRay не нашел AdGuard Home на этом роутере.'))}</p>
           </div>
           <span class="status-chip ${item.running ? 'ok' : ''}">${escapeHtml(item.running ? 'запущен' : (found ? 'остановлен' : 'нет'))}</span>
         </div>
         <div class="compat-metrics compact">
           <article><span>Слушает</span><strong>${escapeHtml(item.listen || (item.port ? `:${item.port}` : 'неизвестно'))}</strong></article>
-          <article><span>Upstream</span><strong>${escapeHtml(item.usesXray ? 'DNS Xray' : (found ? 'не настроен' : 'нет'))}</strong></article>
+          <article><span>Upstream</span><strong>${escapeHtml(item.dnsPath === 'doh-vpn' ? 'DoH → Xray' : item.usesXray ? 'DNS Xray' : (found ? 'не подтверждён' : 'нет'))}</strong></article>
           <article><span>Конфигурация</span><strong>${escapeHtml(item.configPath || 'не найдена')}</strong></article>
-        </div>
-        <div class="split-actions">
-          ${externalLink(compat.links?.adguardHome, 'Открыть AdGuard')}
-          <button class="btn secondary" data-tab-jump="dns">Настроить DNS</button>
         </div>
       </div>
     </details>`;
@@ -117,6 +115,18 @@ export function createCompatView({ state, escapeHtml }) {
       amnezia: state.amneziaStatus || state.status?.amnezia || {},
       links: { adguardHome: `http://${routerLan}:${adguardPort}/`, b4: '' }
     };
+    const adguard = compat.adguardHome || adguardFallback;
+    const adguardStatus = state.adguardStatus || {};
+    const adguardFound = Boolean(adguardStatus.configured || adguard.available || adguard.configPath);
+    const adguardApiReady = Boolean(adguardStatus.configured && adguardStatus.ok);
+    const adguardRunning = adguardApiReady ? Boolean(adguardStatus.running) : Boolean(adguard.running);
+    const adguardFiltering = adguardApiReady && adguardStatus.running && adguardStatus.protectionEnabled && adguardStatus.filteringEnabled;
+    const adguardLabel = adguardStatus.configured && !adguardApiReady ? 'API не отвечает' : adguardRunning ? 'работает' : adguardFound ? 'остановлен' : 'не найден';
+    const adguardMeta = adguardApiReady ? (adguardFiltering ? 'Фильтрация включена' : 'Фильтрация выключена') : adguardFound ? 'Фильтрация не проверена' : 'не установлен';
+    const adguardUrl = adguardStatus.configured ? adguardAdminUrl(adguardStatus.url, pageUrl) : compat.links?.adguardHome;
+    const adguardDetail = adguardStatus.error || (adguard.dnsPath === 'doh-vpn'
+      ? 'Фильтрует DNS и передаёт запросы через DoH в Xray. Направление выбирают правила Xray.'
+      : 'Фильтрует рекламу и трекеры на уровне DNS. Настройки и исключения доступны в разделе «Рекламорезка».');
     const awg = compat.amnezia || state.amneziaStatus || state.status?.amnezia || {};
     const b4 = compat.b4 || {};
     const xrayRunning = Boolean(state.status?.service?.running);
@@ -213,9 +223,9 @@ export function createCompatView({ state, escapeHtml }) {
     return `<div class="compat-page">
       <section class="compat-hero ${safetyTone === 'danger' ? 'danger' : safetyTone === 'warn' ? 'warn' : ''}">
         <div>
-          <span class="eyebrow">Xray + AmneziaWG + B4</span>
+          <span class="eyebrow">Xray + AmneziaWG + B4 + AdGuard Home</span>
           <h2>${escapeHtml(heroTitle)}</h2>
-          <p>Все три компонента могут работать одновременно, если Xray выбирает маршрут, AWG служит отдельным выходом, а B4 обрабатывает только явно ограниченный direct-трафик.</p>
+          <p>Xray выбирает маршрут, AmneziaWG предоставляет дополнительный VPN-выход, B4 обрабатывает ограниченный direct-трафик, а AdGuard Home фильтрует DNS. Дополнительные компоненты можно включать независимо.</p>
         </div>
         ${commandButton('refreshCompatibility', 'Обновить проверку')}
       </section>
@@ -243,6 +253,12 @@ export function createCompatView({ state, escapeHtml }) {
             detail: 'Работает только с выбранным direct-трафиком и не забирает метки или интерфейсы Xray/AWG.',
             meta: b4Active ? 'NFQUEUE активен' : b4Running ? 'перехват не подтвержден' : b4Installed ? 'перехват не найден' : 'не установлен',
             action: b4Installed ? b4Button('status', 'Проверить B4') : ''
+          })}
+          ${integrationStep({
+            number: '4', title: 'AdGuard Home', role: 'Фильтрация DNS',
+            status: adguardLabel, tone: adguardFiltering ? 'ok' : adguardFound ? 'warn' : '',
+            detail: adguardDetail, meta: adguardMeta,
+            action: `<div class="split-actions compat-adguard-actions"><button class="btn secondary compact" data-tab-jump="dns" data-dns-view-jump="adguard">Рекламорезка</button>${adguardFound ? externalLink(adguardUrl, 'Открыть AdGuard Home ↗') : ''}</div>`
           })}
         </div>
         <div class="compat-next-step ${nextStep.tone}">

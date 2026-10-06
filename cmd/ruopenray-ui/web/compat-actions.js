@@ -14,15 +14,21 @@ export function createCompatActions({ state, request, render, refresh }) {
       render();
     }
     try {
-      const result = await request('/api/compat/status');
+      const [result, adguard] = await Promise.all([
+        request('/api/compat/status'),
+        request('/api/dns/adguard').catch((error) => ({
+          ...state.adguardStatus, ok: false, error: error.message || 'Не удалось проверить AdGuard Home'
+        }))
+      ]);
       syncCompatStatus(result);
+      state.adguardStatus = adguard;
       if (!silent) state.message = 'Статус совместимости обновлен';
       return result;
     } finally {
       if (!silent && state.busyAction === 'refreshCompatibility') {
         state.busyAction = '';
-        render();
       }
+      render();
     }
   }
 

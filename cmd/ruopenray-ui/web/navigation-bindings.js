@@ -1,4 +1,4 @@
-export function bindNavigationControls({ state, render, configureLogTimer }) {
+export function bindNavigationControls({ state, render, configureLogTimer, onTabChange }) {
   function finishNavigation() {
     render();
     if (typeof configureLogTimer === 'function') configureLogTimer();
@@ -21,6 +21,7 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       state.tab = button.dataset.tab;
       state.mobileNavOpen = false;
       finishNavigation();
+      onTabChange?.(state.tab);
     });
   });
   document.querySelectorAll('[data-tab-jump]').forEach((button) => {
@@ -28,9 +29,11 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       state.tab = button.dataset.tabJump;
       if (button.dataset.routingViewJump) state.routingView = button.dataset.routingViewJump;
       if (button.dataset.diagnosticsJump) state.diagnosticsView = button.dataset.diagnosticsJump;
+      if (button.dataset.dnsViewJump) state.dnsView = button.dataset.dnsViewJump;
       state.mobileNavOpen = false;
       closeDialogsForNavigation();
       finishNavigation();
+      onTabChange?.(state.tab);
     });
   });
   document.querySelectorAll('[data-diagnostics-view]').forEach((button) => {
