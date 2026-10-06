@@ -7,7 +7,7 @@ export function adguardSection(state, escapeHtml) {
     <div class="panel-title"><div><h2>Фильтрация рекламы — AdGuard Home</h2><span>Фильтрация на уровне DNS. Реклама с того же домена, что и контент, может оставаться.</span></div>
       <button class="btn secondary" data-action="adguardRefresh" ${busy ? 'disabled' : ''}>Обновить статус</button></div>
     ${status.error ? `<p class="settings-warning">${escapeHtml(status.error)}</p>` : ''}
-    ${chain.dnsPath === 'doh-vpn' ? `<div class="settings-warning ${chain.relayReady ? 'ok' : ''}"><strong>AdGuard → DoH → VPN</strong><span>${escapeHtml(chain.hint)}</span></div>` : ''}
+    ${chain.dnsPath === 'doh-vpn' ? `<div class="settings-warning ${chain.relayReady ? 'ok' : ''}"><strong>AdGuard → DoH → Xray</strong><span>${escapeHtml(chain.hint)}</span></div>` : ''}
     ${status.configured ? `<div class="dns-overview">
       <article class="${status.running ? 'is-ok' : 'is-warn'}"><span>AdGuard Home</span><strong>${status.running ? 'Работает' : 'Не отвечает'}</strong></article>
       <article class="${status.protectionEnabled && status.filteringEnabled ? 'is-ok' : 'is-warn'}"><span>Фильтрация</span><strong>${status.protectionEnabled && status.filteringEnabled ? 'Включена' : 'Выключена'}</strong></article>

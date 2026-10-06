@@ -312,7 +312,7 @@ func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string
 	}
 	if status.Available && status.Hint == "" {
 		if status.DNSPath == "doh-vpn" {
-			status.Hint = "AdGuard Home фильтрует DNS и отправляет все типы записей через DoH и VPN. Только имена VPN-серверов используют отдельный зашифрованный bootstrap. Порты TLS-транспорта не являются обычным DNS."
+			status.Hint = "AdGuard Home фильтрует DNS и передаёт все типы записей через DoH в локальный SOCKS Xray. Направление выбирают правила Xray: для работы через VPN нужен маршрут в proxy. Имена VPN-серверов используют отдельный зашифрованный bootstrap. Порты TLS-транспорта не являются обычным DNS."
 		} else if status.UsesXray {
 			status.Hint = "AdGuard Home уже отправляет upstream DNS в Xray."
 		} else if status.RecommendedLocal != "" {
