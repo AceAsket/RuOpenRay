@@ -63,7 +63,8 @@ function dnsLeakChecklist(dns, stats) {
   const hasDomainProtection = state.firewallKillSwitchEnabled && leakTargets.domainLike > 0;
   const lanUsesXrayDns = lanDns.mode === 'xray' || lanDns.plan?.mode === 'xray';
   const adguardVpn = lanDns.adguardLanActive && lanDns.adguardHome?.dnsPath === 'doh-vpn' && lanDns.adguardHome?.running && lanDns.adguardHome?.relayReady;
-  const dnsGuardReady = Boolean(state.firewallDnsIntercept || lanUsesXrayDns || adguardVpn);
+  const adguardDirect = lanDns.adguardLanActive && lanDns.adguardHome?.dnsPath === 'doh-direct' && lanDns.adguardHome?.running;
+  const dnsGuardReady = Boolean(state.firewallDnsIntercept || lanUsesXrayDns || adguardVpn || adguardDirect);
   const items = [
     {
       ok: hasDns,
@@ -140,6 +141,12 @@ function dnsLeakChecklist(dns, stats) {
     items[0] = { ok: true, title: 'DNS устройств через AdGuard', detail: 'AdGuard принимает DNS и передаёт все типы записей через DoH в Xray.' };
     items[1] = { ok: true, title: 'DoH через Xray', detail: 'Сертификаты проверяет AdGuard Home. Направление DoH выбирают правила Xray.' };
     items[4] = { ok: true, title: 'DNS устройств настроен', detail: 'Сохранён путь dnsmasq → AdGuard → TLS-транспорт → SOCKS Xray.' };
+  }
+  if (adguardDirect) {
+    items[0] = { ok: true, title: 'DNS устройств через AdGuard', detail: 'AdGuard принимает DNS и фильтрует рекламу.' };
+    items[1] = { ok: true, title: 'DoH напрямую', detail: 'Запросы идут по HTTPS к IP-адресам DNS-серверов, независимо от Xray и VPN.' };
+    items[2] = { ok: true, title: 'Upstream без открытого DNS', detail: 'Основные и резервные upstream AdGuard используют HTTPS.' };
+    items[4] = { ok: true, title: 'DNS устройств настроен', detail: 'Сохранён путь dnsmasq → AdGuard → DoH. DNS-вход Xray не требуется.' };
   }
   const diagnosticWarnings = Array.isArray(state.dnsDiagnostics?.warnings) ? state.dnsDiagnostics.warnings : [];
   const attentionItems = items.filter((item) => !item.ok);
@@ -634,7 +641,7 @@ function lanDnsSection() {
   const adguardBeforeActive = adguardUsesXray && !adguardAfterActive;
   const adguardDisabledActive = !adguardAfterActive && !adguardBeforeActive;
   const adguardSummary = adguardFound
-    ? adguard.dnsPath === 'doh-vpn' ? 'DoH через Xray' : adguardUsesXray
+    ? adguard.dnsPath === 'doh-direct' ? 'DoH напрямую' : adguard.dnsPath === 'doh-vpn' ? 'DoH через Xray' : adguardUsesXray
       ? 'смотрит в Xray'
       : adguardRunning
         ? 'запущен'
@@ -756,12 +763,12 @@ function lanDnsSection() {
           <b>${escapeHtml(adguardSummary)}</b>
         </summary>
         <div class="lan-dns-details-body">
-          ${adguard.dnsPath === 'doh-vpn' ? `<div class="settings-warning ok"><strong>DoH через Xray</strong><span>${escapeHtml(adguard.hint)}</span></div>` : `<div class="settings-warning">
+          ${['doh-vpn', 'doh-direct'].includes(adguard.dnsPath) ? `<div class="settings-warning ok"><strong>${adguard.dnsPath === 'doh-direct' ? 'DoH напрямую' : 'DoH через Xray'}</strong><span>${escapeHtml(adguard.hint)}</span></div>` : `<div class="settings-warning">
             <strong>Как избежать DNS-петли</strong>
             <span>Если AdGuard находится на роутере, укажите в нём upstream ${escapeHtml(adguardLocalTarget)}. Для отдельного устройства используйте ${escapeHtml(adguardLanTarget)}.</span>
           </div>`}
           ${adguardFound ? `<div class="settings-warning ${adguardUsesXray ? 'ok' : ''}"><strong>${adguardUsesXray ? 'AdGuard Home уже совместим' : 'AdGuard Home найден'}</strong><span>${escapeHtml(adguard.hint || `В AdGuard Home upstream DNS укажите ${adguardLocalTarget}.`)}</span></div>` : ''}
-          ${adguard.dnsPath === 'doh-vpn' ? '<p class="muted">Управление фильтрацией доступно на вкладке «Рекламорезка».</p>' : `<div class="advanced-grid three adguard-compat-modes">
+          ${['doh-vpn', 'doh-direct'].includes(adguard.dnsPath) ? '<p class="muted">Управление фильтрацией доступно на вкладке «Рекламорезка».</p>' : `<div class="advanced-grid three adguard-compat-modes">
             <article class="advanced-card ${adguardAfterActive ? 'active' : ''}">
               <strong>AdGuard после Xray</strong>
               <span>Xray видит домены первым, затем AdGuard фильтрует ответы.</span>
@@ -791,6 +798,7 @@ function dnsPanel() {
   const hasDns = stats.servers > 0;
   const dnsMode = currentDnsMode();
   const adguardVpn = state.lanDnsStatus?.adguardLanActive && state.lanDnsStatus?.adguardHome?.dnsPath === 'doh-vpn';
+  const adguardDirect = state.lanDnsStatus?.adguardLanActive && state.lanDnsStatus?.adguardHome?.dnsPath === 'doh-direct';
   const lanMode = lanDnsModeLabel(state.lanDnsStatus?.mode || state.lanDnsMode);
   const serverCountForm = stats.servers % 100 >= 11 && stats.servers % 100 <= 14
     ? 'серверов'
@@ -822,8 +830,8 @@ function dnsPanel() {
     <section class="route-hero dns-hero">
       <div class="dns-hero-copy">
         <span class="dns-hero-kicker">Состояние DNS</span>
-        <h2>${adguardVpn ? 'DNS устройств через AdGuard и Xray' : hasDns ? (protectedCount ? 'Защищённый DNS настроен' : 'DNS настроен без шифрования') : 'DNS ещё не настроен'}</h2>
-        <p>${adguardVpn ? 'AdGuard фильтрует рекламу, DoH передаёт DNS в Xray. Маршрут через VPN выбирают активные правила Xray. Имена VPN-серверов используют отдельный защищённый bootstrap.' : hasDns
+        <h2>${adguardDirect ? 'DNS устройств через AdGuard и DoH' : adguardVpn ? 'DNS устройств через AdGuard и Xray' : hasDns ? (protectedCount ? 'Защищённый DNS настроен' : 'DNS настроен без шифрования') : 'DNS ещё не настроен'}</h2>
+        <p>${adguardDirect ? 'AdGuard фильтрует рекламу и отправляет DNS напрямую по HTTPS. DNS продолжает работать при остановке VPN; DNS-серверам не нужен bootstrap через Xray.' : adguardVpn ? 'AdGuard фильтрует рекламу, DoH передаёт DNS в Xray. Маршрут через VPN выбирают активные правила Xray. Имена VPN-серверов используют отдельный защищённый bootstrap.' : hasDns
           ? `Xray использует ${stats.servers} ${serverCountForm}. ${protectedCount ? `${protectedCount} из них работают через DoH или TCP.` : 'Добавьте DoH, чтобы DNS-запросы не уходили открытым UDP/53.'}`
           : 'Выберите готовый защищённый DNS или добавьте свой сервер. Изменения сначала сохраняются в черновике Xray.'}</p>
       </div>

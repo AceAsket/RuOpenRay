@@ -6,12 +6,46 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 )
 
 const adGuardRelayConfigPath = "/etc/ruopenray-adguard/doh-relay.json"
+
+// Literal public IPs avoid bootstrap DNS, including a resolver supplied by
+// Xray. Check every route and fallback before describing DNS as independent.
+func adGuardDirectDoH(upstreams, fallbacks []string) bool {
+	if len(upstreams) == 0 {
+		return false
+	}
+	general := false
+	for index, value := range append(append([]string{}, upstreams...), fallbacks...) {
+		value = cleanYAMLScalar(value)
+		if strings.HasPrefix(value, "[/") {
+			end := strings.LastIndex(value, "]")
+			if end < 0 {
+				return false
+			}
+			value = value[end+1:]
+		} else if index < len(upstreams) {
+			general = true
+		}
+		u, err := url.Parse(strings.TrimSpace(value))
+		if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path == "" {
+			return false
+		}
+		ip := net.ParseIP(u.Hostname())
+		if ip == nil || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() {
+			return false
+		}
+		if port := u.Port(); port != "" && (number(port, 0) < 1 || number(port, 0) > 65535) {
+			return false
+		}
+	}
+	return general
+}
 
 // A DoH stamp carries the bootstrap IP and a separate TLS provider name. The
 // provider's port (not ServerAddr's port) selects the local TLS relay in AGH.

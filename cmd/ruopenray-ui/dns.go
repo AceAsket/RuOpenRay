@@ -117,7 +117,7 @@ func (s *serverState) dnsDiagnostics() map[string]any {
 	if fmt.Sprint(lan["mode"]) == "xray" && readiness["ready"] != true {
 		warnings = append(warnings, "dnsmasq направлен в Xray DNS, но Xray DNS еще не готов. LAN-клиенты могут остаться без DNS.")
 	}
-	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["running"] == true && adguard["usesXray"] != true && readiness["inbound"] == true {
+	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["running"] == true && adguard["usesXray"] != true && adguard["dnsPath"] != "doh-direct" && readiness["inbound"] == true {
 		target := strings.TrimSpace(fmt.Sprint(adguard["recommendedLocal"]))
 		if target == "" || target == "<nil>" {
 			target = "127.0.0.1:10535"
@@ -299,6 +299,10 @@ func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string
 			if status.UsesXray {
 				status.DNSPath = "xray-dns"
 			}
+			if !status.UsesXray && cfg["upstreamFile"] != true && adGuardDirectDoH(stringSlice(cfg["upstreams"]), stringSlice(cfg["fallbacks"])) {
+				status.DNSPath = "doh-direct"
+				status.RecommendedLocal, status.RecommendedLan = "", ""
+			}
 			if adGuardRelayMatches(stringSlice(cfg["upstreams"]), readAdGuardRelay(), active) {
 				status.DNSPath = "doh-vpn"
 				status.UsesXray = true
@@ -313,6 +317,8 @@ func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string
 	if status.Available && status.Hint == "" {
 		if status.DNSPath == "doh-vpn" {
 			status.Hint = "AdGuard Home фильтрует DNS и передаёт все типы записей через DoH в локальный SOCKS Xray. Направление выбирают правила Xray: для работы через VPN нужен маршрут в proxy. Имена VPN-серверов используют отдельный зашифрованный bootstrap. Порты TLS-транспорта не являются обычным DNS."
+		} else if status.DNSPath == "doh-direct" {
+			status.Hint = "AdGuard Home фильтрует DNS и отправляет запросы напрямую по HTTPS. DoH использует IP-адреса серверов, поэтому bootstrap и основной Xray не нужны. Доступ к DNS сохраняется при остановке VPN, пока доступен интернет и хотя бы один DoH-сервер."
 		} else if status.UsesXray {
 			status.Hint = "AdGuard Home уже отправляет upstream DNS в Xray."
 		} else if status.RecommendedLocal != "" {
@@ -412,10 +418,48 @@ func readAdGuardHomeConfig(path string) map[string]any {
 	}
 	bindHost, port, upstreams := parseAdGuardHomeConfig(string(body))
 	return map[string]any{
-		"bindHost":  bindHost,
-		"port":      port,
-		"upstreams": upstreams,
+		"bindHost":     bindHost,
+		"port":         port,
+		"upstreams":    upstreams,
+		"fallbacks":    adGuardHomeDNSList(string(body), "fallback_dns"),
+		"upstreamFile": len(adGuardHomeDNSList(string(body), "upstream_dns_file")) > 0,
 	}
+}
+
+func adGuardHomeDNSList(body, key string) []string {
+	inDNS, inList := false, false
+	listIndent := 0
+	values := []string{}
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		value := strings.TrimSpace(line)
+		if value == "" || strings.HasPrefix(value, "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			inDNS, inList = value == "dns:", false
+			continue
+		}
+		if !inDNS {
+			continue
+		}
+		if strings.HasPrefix(value, key+":") {
+			inList, listIndent = true, indent
+			rest := cleanYAMLScalar(strings.TrimPrefix(value, key+":"))
+			if rest != "" && rest != "[]" {
+				// Unknown inline YAML must not be mistaken for an empty fallback.
+				values = append(values, rest)
+			}
+			continue
+		}
+		if inList && strings.HasPrefix(value, "- ") && indent >= listIndent {
+			values = append(values, cleanYAMLScalar(strings.TrimPrefix(value, "- ")))
+		} else if indent <= listIndent {
+			inList = false
+		}
+	}
+	return values
 }
 
 func parseAdGuardHomeConfig(body string) (string, int, []string) {

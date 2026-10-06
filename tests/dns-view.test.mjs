@@ -21,6 +21,19 @@ test('Managed TLS transport is shown without plain DNS advice', () => {
   assert.doesNotMatch(guard, /data-action="prepareDnsInbound"/);
 });
 
+test('Direct AdGuard DoH is shown independently of Xray without inbound setup advice', () => {
+  const status = { adguardLanActive: true, available: true, mode: 'upstream', servers: ['127.0.0.1#10536'], noresolv: true,
+    adguardHome: { available: true, running: true, usesXray: false, dnsPath: 'doh-direct', hint: 'DNS работает независимо от VPN' } };
+  const html = renderDns({ dnsView: 'lan', lanDnsStatus: status });
+  assert.match(html, /DNS устройств через AdGuard и DoH/);
+  assert.match(html, /DoH напрямую/);
+  assert.doesNotMatch(html, /в нём upstream 127.0.0.1:10535|data-action="prepareAdguardBeforeXray"/);
+  const guard = renderDns({ dnsView: 'guard', lanDnsStatus: status });
+  assert.match(guard, /независимо от Xray и VPN/);
+  assert.match(guard, /DNS-вход Xray не требуется/);
+  assert.doesNotMatch(guard, /data-action="prepareDnsInbound"/);
+});
+
 function renderDns(overrides = {}) {
   const state = {
     dnsView: 'servers',

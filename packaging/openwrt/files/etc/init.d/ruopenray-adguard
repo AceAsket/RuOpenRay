@@ -6,22 +6,25 @@ STOP=10
 start_service() {
     [ -x /opt/ruopenray-adguard/AdGuardHome ] || return 1
     [ -f /etc/ruopenray-adguard/AdGuardHome.yaml ] || return 1
-    [ -f /etc/ruopenray-adguard/doh-relay.json ] || return 1
-    if ! [ /usr/bin/xray -ef /opt/ruopenray-adguard/doh-transport ]; then
-        ln -f /usr/bin/xray /opt/ruopenray-adguard/doh-transport || {
-            cp /usr/bin/xray /opt/ruopenray-adguard/doh-transport.next || return 1
-            chmod 755 /opt/ruopenray-adguard/doh-transport.next
-            mv /opt/ruopenray-adguard/doh-transport.next /opt/ruopenray-adguard/doh-transport || return 1
-        }
+    # Native HTTPS upstreams work without Xray. Start the optional relay only
+    # when its configuration exists (the earlier SOCKS-based installation).
+    if [ -f /etc/ruopenray-adguard/doh-relay.json ]; then
+        if ! [ /usr/bin/xray -ef /opt/ruopenray-adguard/doh-transport ]; then
+            ln -f /usr/bin/xray /opt/ruopenray-adguard/doh-transport || {
+                cp /usr/bin/xray /opt/ruopenray-adguard/doh-transport.next || return 1
+                chmod 755 /opt/ruopenray-adguard/doh-transport.next
+                mv /opt/ruopenray-adguard/doh-transport.next /opt/ruopenray-adguard/doh-transport || return 1
+            }
+        fi
+        procd_open_instance doh-relay
+        procd_set_param command /opt/ruopenray-adguard/doh-transport run -config /etc/ruopenray-adguard/doh-relay.json
+        procd_set_param env XRAY_LOCATION_ASSET=/usr/share/xray
+        procd_set_param file /etc/ruopenray-adguard/doh-relay.json
+        procd_set_param respawn 3600 5 5
+        procd_set_param stdout 1
+        procd_set_param stderr 1
+        procd_close_instance
     fi
-    procd_open_instance doh-relay
-    procd_set_param command /opt/ruopenray-adguard/doh-transport run -config /etc/ruopenray-adguard/doh-relay.json
-    procd_set_param env XRAY_LOCATION_ASSET=/usr/share/xray
-    procd_set_param file /etc/ruopenray-adguard/doh-relay.json
-    procd_set_param respawn 3600 5 5
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
 
     procd_open_instance adguard
     procd_set_param command /opt/ruopenray-adguard/AdGuardHome -c /etc/ruopenray-adguard/AdGuardHome.yaml -w /opt/ruopenray-adguard --no-check-update

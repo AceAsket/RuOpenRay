@@ -133,6 +133,16 @@ test('Detected service without API does not claim working filtering; missing ser
   assert.match(missing, /data-compat-view="adguard"/);
 });
 
+test('Direct DoH integration does not claim to depend on Xray', () => {
+  const compatStatus = { adguardHome: { available: true, running: true, dnsPath: 'doh-direct' }, links: {} };
+  const html = renderCompat({ compatStatus });
+  assert.match(html, /DNS работает независимо от VPN/);
+  assert.doesNotMatch(html, /DoH в Xray/);
+  const details = renderCompat({ compatStatus, compatView: 'adguard' });
+  assert.match(details, /DoH напрямую/);
+  assert.doesNotMatch(details, /<strong>не подтверждён<\/strong>/);
+});
+
 test('Integrations offer B4 only after Xray and AmneziaWG are ready', () => {
   const html = renderCompat({
     compatStatus: {

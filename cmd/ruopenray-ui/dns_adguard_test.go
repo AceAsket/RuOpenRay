@@ -1,6 +1,50 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestAdGuardDirectDoHRequiresIndependentEncryptedResolvers(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		upstreams, fallbacks []string
+		want                 bool
+	}{
+		{"direct", []string{"https://8.8.8.8/dns-query", "https://9.9.9.9/dns-query", "[/vpn.example/]https://1.1.1.1/dns-query"}, nil, true},
+		{"empty", nil, nil, false},
+		{"only domain route", []string{"[/vpn.example/]https://1.1.1.1/dns-query"}, nil, false},
+		{"needs bootstrap", []string{"https://dns.google/dns-query"}, nil, false},
+		{"local relay", []string{"https://127.0.0.1:10535/dns-query"}, nil, false},
+		{"mixed plaintext", []string{"https://8.8.8.8/dns-query", "8.8.8.8"}, nil, false},
+		{"xray domain route", []string{"https://8.8.8.8/dns-query", "[/vpn.example/]127.0.0.1:10535"}, nil, false},
+		{"plaintext fallback", []string{"https://8.8.8.8/dns-query"}, []string{"1.1.1.1"}, false},
+		{"direct fallback", []string{"https://8.8.8.8/dns-query"}, []string{"https://1.1.1.1/dns-query"}, true},
+		{"bad port", []string{"https://8.8.8.8:70000/dns-query"}, nil, false},
+		{"credentials", []string{"https://user:secret@8.8.8.8/dns-query"}, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := adGuardDirectDoH(tc.upstreams, tc.fallbacks); got != tc.want {
+				t.Fatalf("direct DoH = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAdGuardConfigDoesNotHideFallbackDNS(t *testing.T) {
+	for _, fallback := range []string{"\n    - 1.1.1.1", " [1.1.1.1]"} {
+		path := filepath.Join(t.TempDir(), "AdGuardHome.yaml")
+		body := "dns:\n  bind_hosts:\n    - 127.0.0.1\n  port: 10536\n  upstream_dns:\n    - https://8.8.8.8/dns-query\n  fallback_dns:" + fallback + "\nfilters: []\n"
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg := readAdGuardHomeConfig(path)
+		if adGuardDirectDoH(stringSlice(cfg["upstreams"]), stringSlice(cfg["fallbacks"])) {
+			t.Fatal("plaintext fallback was incorrectly classified as encrypted direct DoH")
+		}
+	}
+}
 
 func TestDNSPortDetectsTLSRelayEvenWhenUDPIsOwnedByXray(t *testing.T) {
 	text := "udp 0 0 127.0.0.1:10535 0.0.0.0:* 123/xray\ntcp 0 0 127.0.0.1:10535 0.0.0.0:* LISTEN 124/doh-transport"

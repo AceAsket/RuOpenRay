@@ -41,7 +41,7 @@ export function adguardSection(state, escapeHtml, pageUrl = globalThis.location?
       <div class="split-actions adguard-header-actions">${adminUrl ? `<a class="btn secondary" href="${escapeHtml(adminUrl)}" target="_blank" rel="noopener noreferrer">Открыть AdGuard Home ↗</a>` : ''}
       <button class="btn secondary" data-action="adguardRefresh" ${busy ? 'disabled' : ''}>Обновить статус</button></div></div>
     ${status.error ? `<p class="settings-warning">${escapeHtml(status.error)}</p>` : ''}
-    ${chain.dnsPath === 'doh-vpn' ? `<div class="settings-warning ${chain.relayReady ? 'ok' : ''}"><strong>AdGuard → DoH → Xray</strong><span>${escapeHtml(chain.hint)}</span></div>` : ''}
+    ${['doh-vpn', 'doh-direct'].includes(chain.dnsPath) ? `<div class="settings-warning ${chain.dnsPath === 'doh-direct' || chain.relayReady ? 'ok' : ''}"><strong>${chain.dnsPath === 'doh-direct' ? 'AdGuard → DoH напрямую' : 'AdGuard → DoH → Xray'}</strong><span>${escapeHtml(chain.hint)}</span></div>` : ''}
     ${status.configured ? `<div class="dns-overview">
       <article class="${status.running ? 'is-ok' : 'is-warn'}"><span>AdGuard Home</span><strong>${status.running ? 'Работает' : 'Не отвечает'}</strong></article>
       <article class="${status.protectionEnabled && status.filteringEnabled ? 'is-ok' : 'is-warn'}"><span>Фильтрация</span><strong>${status.protectionEnabled && status.filteringEnabled ? 'Включена' : 'Выключена'}</strong></article>

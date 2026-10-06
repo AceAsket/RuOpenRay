@@ -56,7 +56,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         </div>
         <div class="compat-metrics compact">
           <article><span>Слушает</span><strong>${escapeHtml(item.listen || (item.port ? `:${item.port}` : 'неизвестно'))}</strong></article>
-          <article><span>Upstream</span><strong>${escapeHtml(item.dnsPath === 'doh-vpn' ? 'DoH → Xray' : item.usesXray ? 'DNS Xray' : (found ? 'не подтверждён' : 'нет'))}</strong></article>
+          <article><span>Upstream</span><strong>${escapeHtml(item.dnsPath === 'doh-direct' ? 'DoH напрямую' : item.dnsPath === 'doh-vpn' ? 'DoH → Xray' : item.usesXray ? 'DNS Xray' : (found ? 'не подтверждён' : 'нет'))}</strong></article>
           <article><span>Конфигурация</span><strong>${escapeHtml(item.configPath || 'не найдена')}</strong></article>
         </div>
       </div>
@@ -141,7 +141,9 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
     const adguardUrl = adguardStatus.configured ? adguardAdminUrl(adguardStatus.url, pageUrl) : compat.links?.adguardHome;
     const adguardDetail = adguardStatus.error || (adguard.dnsPath === 'doh-vpn'
       ? 'Фильтрует DNS и передаёт запросы через DoH в Xray. Направление выбирают правила Xray.'
-      : 'Фильтрует рекламу и трекеры на уровне DNS. Настройки и исключения доступны в разделе «Рекламорезка».');
+      : adguard.dnsPath === 'doh-direct'
+        ? 'Фильтрует DNS и отправляет запросы напрямую по HTTPS. DNS работает независимо от VPN.'
+        : 'Фильтрует рекламу и трекеры на уровне DNS. Настройки и исключения доступны в разделе «Рекламорезка».');
     const awg = compat.amnezia || state.amneziaStatus || state.status?.amnezia || {};
     const b4 = compat.b4 || {};
     const b4Url = b4.api?.available
