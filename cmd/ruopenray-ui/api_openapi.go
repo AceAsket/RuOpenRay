@@ -126,8 +126,8 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/firewall/restore", "Firewall", "Restore firewall snapshot", "Restores firewall/DNS state captured earlier.", "GenericObject", "Object"},
 
 		{"get", "/dns/diagnostics", "DNS", "Get DNS diagnostics", "Reports dnsmasq, Xray DNS inbound/outbound, ports and AdGuard compatibility.", "", "Object"},
-		{"get", "/dns/adguard", "DNS", "Get AdGuard integration", "Returns protection, statistics and managed VPN bootstrap domains. Credentials are never returned.", "", "Object"},
-		{"post", "/dns/adguard", "DNS", "Manage local AdGuard", "Configure authenticated loopback API, sync bootstrap, toggle protection, check filtering or add/remove domain exceptions.", "GenericObject", "Object"},
+		{"get", "/dns/adguard", "DNS", "Get AdGuard integration", "Returns protection, upstreams, response statistics in ms and managed VPN bootstrap domains. Credentials are never returned.", "", "Object"},
+		{"post", "/dns/adguard", "DNS", "Manage local AdGuard", "Configure loopback API, sync bootstrap, toggle protection or domain exceptions. upstream-check measures 1-8 public-IP HTTPS upstreams without applying them; upstream-save validates them in AdGuard and requires baseUpstreams matching upstreamSnapshot. Domain routes and other DNS settings are preserved.", "GenericObject", "Object"},
 		{"post", "/dns/check", "DNS", "Check DNS server", "Tests DNS resolution through a selected DNS server.", "GenericObject", "Object"},
 		{"get", "/dns/lan-upstream", "DNS", "Get LAN DNS mode", "Shows current dnsmasq upstream mode and Xray/AdGuard compatibility state.", "", "Object"},
 		{"post", "/dns/lan-upstream", "DNS", "Apply LAN DNS mode", "Applies LAN DNS mode: Xray, AdGuard after Xray, external DNS/Pi-hole or OpenWrt resolver.", "GenericObject", "Object"},

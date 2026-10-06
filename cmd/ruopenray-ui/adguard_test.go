@@ -18,6 +18,14 @@ type adGuardFake struct {
 	failRulesOnce                   bool
 	pendingFilterReads, cacheClears int
 	server                          *httptest.Server
+	dnsExtra                        map[string]any
+	dnsWrites                       []map[string]any
+	upstreamFailure                 string
+	omitUpstreamProbe               bool
+	failDNSAfterWriteOnce           bool
+	upstreamTestHook                func()
+	statsInterval                   float64
+	statsRecent                     string
 }
 
 func newAdGuardFake(t *testing.T) (*serverState, *adGuardFake) {
@@ -37,11 +45,18 @@ func newAdGuardFake(t *testing.T) (*serverState, *adGuardFake) {
 		case "/control/status":
 			writeJSON(w, 200, map[string]any{"running": true, "protection_enabled": true, "version": "test"})
 		case "/control/dns_info":
-			writeJSON(w, 200, map[string]any{"upstream_dns": fake.upstreams})
+			info := map[string]any{"upstream_dns": fake.upstreams}
+			for key, value := range fake.dnsExtra {
+				info[key] = value
+			}
+			writeJSON(w, 200, info)
 		case "/control/filtering/status":
 			writeJSON(w, 200, map[string]any{"user_rules": fake.rules, "enabled": true})
 		case "/control/stats":
+			fake.statsRecent = r.URL.Query().Get("recent")
 			writeJSON(w, 200, map[string]any{"num_dns_queries": 10, "num_blocked_filtering": 2})
+		case "/control/stats/config":
+			writeJSON(w, 200, map[string]any{"enabled": fake.statsInterval > 0, "interval": fake.statsInterval})
 		case "/control/cache_clear":
 			fake.cacheClears++
 			_, _ = w.Write([]byte("OK"))
@@ -60,7 +75,13 @@ func newAdGuardFake(t *testing.T) (*serverState, *adGuardFake) {
 			}
 			writeJSON(w, 200, result)
 		case "/control/dns_config":
+			fake.dnsWrites = append(fake.dnsWrites, payload)
 			fake.upstreams = stringSlice(payload["upstream_dns"])
+			if fake.failDNSAfterWriteOnce {
+				fake.failDNSAfterWriteOnce = false
+				w.WriteHeader(500)
+				return
+			}
 			_, _ = w.Write([]byte("OK"))
 		case "/control/filtering/set_rules":
 			if fake.failRulesOnce {
@@ -71,9 +92,18 @@ func newAdGuardFake(t *testing.T) (*serverState, *adGuardFake) {
 			fake.rules = stringSlice(payload["rules"])
 			_, _ = w.Write([]byte("OK"))
 		case "/control/test_upstream_dns":
+			if fake.upstreamTestHook != nil {
+				fake.upstreamTestHook()
+			}
 			probes := map[string]string{}
 			for _, resolver := range stringSlice(payload["upstream_dns"]) {
+				if fake.omitUpstreamProbe {
+					continue
+				}
 				probes[adGuardDoHURLKey(resolver)] = "OK"
+				if adGuardDoHURLKey(resolver) == adGuardDoHURLKey(fake.upstreamFailure) {
+					probes[adGuardDoHURLKey(resolver)] = "timeout"
+				}
 			}
 			writeJSON(w, 200, probes)
 		default:

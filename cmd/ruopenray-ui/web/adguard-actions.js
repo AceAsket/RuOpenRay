@@ -1,3 +1,5 @@
+import { adguardUpstreamList, adguardUpstreamText } from './adguard-upstreams-view.js';
+
 export function createAdguardActions({ state, request, render, syncLanDnsStatus }) {
   async function adguardRefresh() {
     state.adguardStatus = await request('/api/dns/adguard');
@@ -16,6 +18,38 @@ export function createAdguardActions({ state, request, render, syncLanDnsStatus 
   }
   return {
     adguardRefresh,
+    adguardUpstreamReset: async () => {
+      await adguardRefresh();
+      state.adguardUpstreamDraft = null;
+      state.adguardUpstreamBase = null;
+      state.adguardUpstreamResult = null;
+      render();
+    },
+    adguardUpstreamCheck: async () => {
+      const text = adguardUpstreamText(state);
+      state.adguardUpstreamResult = null;
+      const result = await request('/api/dns/adguard', { method: 'POST', body: JSON.stringify({ action: 'upstream-check', upstreams: adguardUpstreamList(state) }) });
+      if (!result.ok) throw new Error(result.error || 'Не удалось проверить DoH');
+      if (adguardUpstreamText(state) === text) {
+        state.adguardUpstreamResult = result;
+        state.message = 'Замер DoH завершён; DNS-настройки не изменены';
+      } else state.message = 'Список изменён во время замера. Запустите проверку заново';
+      render();
+    },
+    adguardUpstreamSave: async () => {
+      const text = adguardUpstreamText(state);
+      const result = await request('/api/dns/adguard', { method: 'POST', body: JSON.stringify({ action: 'upstream-save', upstreams: adguardUpstreamList(state),
+        baseUpstreams: state.adguardUpstreamBase ?? state.adguardStatus?.upstreamSnapshot }) });
+      if (!result.ok) throw new Error(result.error || 'Не удалось сохранить DoH');
+      if (adguardUpstreamText(state) === text) {
+        state.adguardUpstreamDraft = null;
+        state.adguardUpstreamBase = null;
+      }
+      state.message = 'DoH проверены и сохранены в AdGuard Home';
+      await adguardRefresh();
+      syncLanDnsStatus(await request('/api/dns/lan-upstream'));
+      render();
+    },
     adguardConfigure: async () => {
       try {
         await action({ action: 'configure', url: state.adguardUrl || state.adguardStatus?.url || 'http://127.0.0.1:3001',

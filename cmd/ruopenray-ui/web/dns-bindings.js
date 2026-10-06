@@ -1,3 +1,5 @@
+import { adguardUpstreamText, dohUrlKey } from './adguard-upstreams-view.js';
+
 export function bindDnsControls({
   state,
   render,
@@ -20,6 +22,22 @@ export function bindDnsControls({
     });
   }
   document.querySelector('#adguardSyncEnabled')?.addEventListener('change', (event) => { state.adguardSyncEnabled = event.target.checked; });
+  const editUpstreams = (value) => {
+    if (state.adguardUpstreamDraft == null) state.adguardUpstreamBase = state.adguardStatus?.upstreamSnapshot?.slice();
+    state.adguardUpstreamDraft = value;
+    state.adguardUpstreamResult = null;
+  };
+  document.querySelector('#adguardUpstreams')?.addEventListener('input', (event) => { editUpstreams(event.target.value); });
+  document.querySelectorAll('[data-adguard-upstream-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const value = button.dataset.adguardUpstreamPreset;
+      const lines = adguardUpstreamText(state).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.some((line) => dohUrlKey(line) === dohUrlKey(value))) {
+        editUpstreams([...lines, value].join('\n'));
+        render();
+      }
+    });
+  });
   document.querySelectorAll('[data-dns-delete]').forEach((button) => {
     button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
   });

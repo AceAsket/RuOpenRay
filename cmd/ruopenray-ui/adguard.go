@@ -415,15 +415,43 @@ func (s *serverState) adGuardIntegrationStatus() map[string]any {
 	if cfg.URL == "" {
 		return result
 	}
-	var status, stats, filtering map[string]any
+	var status, stats, filtering, dns, statsConfig map[string]any
 	if err := adGuardCall(cfg, "status", nil, &status); err != nil {
 		result["ok"] = false
 		result["error"] = err.Error()
 		return result
 	}
 	result["running"], result["protectionEnabled"], result["version"] = status["running"], status["protection_enabled"], status["version"]
-	if err := adGuardCall(cfg, "stats", nil, &stats); err == nil {
+	statsPath := "stats"
+	if err := adGuardCall(cfg, "stats/config", nil, &statsConfig); err == nil {
+		// encoding/json decodes numbers as float64. The generic integer text
+		// parser cannot parse scientific notation used by large intervals.
+		period, _ := statsConfig["interval"].(float64)
+		if period >= 3600000 && statsConfig["enabled"] == true {
+			if period > 86400000 {
+				period = 86400000
+			}
+			hours := int(period / 3600000)
+			statsPath += "?recent=" + fmt.Sprint(hours*3600000)
+			result["statsPeriodHours"] = hours
+		}
+	}
+	if err := adGuardCall(cfg, statsPath, nil, &stats); err == nil {
 		result["queries"], result["blocked"], result["averageProcessingTime"] = stats["num_dns_queries"], stats["num_blocked_filtering"], stats["avg_processing_time"]
+		result["upstreamStats"] = adGuardUpstreamStatistics(stats)
+	} else {
+		result["statsError"] = err.Error()
+		delete(result, "statsPeriodHours")
+	}
+	if err := adGuardCall(cfg, "dns_info", nil, &dns); err == nil {
+		upstreams := stringSlice(dns["upstream_dns"])
+		result["upstreams"] = adGuardGeneralUpstreams(upstreams)
+		result["upstreamSnapshot"] = upstreams
+		result["upstreamFile"] = dns["upstream_dns_file"]
+		result["upstreamMode"] = dns["upstream_mode"]
+		result["domainUpstreams"] = len(upstreams) - len(adGuardGeneralUpstreams(upstreams))
+	} else {
+		result["upstreamsError"] = err.Error()
 	}
 	if err := adGuardCall(cfg, "filtering/status", nil, &filtering); err == nil {
 		result["filteringEnabled"] = filtering["enabled"]
@@ -439,6 +467,15 @@ func (s *serverState) adGuardIntegrationStatus() map[string]any {
 }
 
 func (s *serverState) adGuardAction(payload map[string]any) (map[string]any, error) {
+	// Measurements do not change AdGuard and must not block profile/bootstrap
+	// writes behind the integration mutex while contacting public resolvers.
+	if payload["action"] == "upstream-check" {
+		upstreams, err := adGuardValidateUpstreams(payload)
+		if err != nil {
+			return nil, err
+		}
+		return adGuardBenchmark(upstreams), nil
+	}
 	s.adguardMu.Lock()
 	defer s.adguardMu.Unlock()
 	cfg, err := s.loadAdGuardSettings()
@@ -523,6 +560,8 @@ func (s *serverState) adGuardAction(payload map[string]any) (map[string]any, err
 		return nil, errors.New("Сначала подключите локальный API AdGuard Home")
 	}
 	switch action {
+	case "upstream-save":
+		return adGuardSaveUpstreams(cfg, payload)
 	case "sync":
 		if !cfg.Enabled {
 			return nil, errors.New("Автоматическая синхронизация отключена")
