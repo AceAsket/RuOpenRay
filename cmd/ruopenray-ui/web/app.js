@@ -2274,7 +2274,10 @@ async function loadCoreReleases({ force = false } = {}) {
 
 function bind() {
   bindNavigationControls({ state, render, configureLogTimer, onTabChange: (tab) => {
-    const pending = tab === 'compat' ? refreshCompatibility({ silent: true })
+    const pending = tab === 'compat' ? Promise.all([
+      refreshCompatibility({ silent: true }),
+      ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
+    ])
       : tab === 'dns' && state.dnsView === 'adguard' ? adguardActions.adguardRefresh() : null;
     pending?.catch((error) => { state.message = error.message; render(); });
   } });

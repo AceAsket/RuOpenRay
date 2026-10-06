@@ -1,7 +1,9 @@
-import { adguardAdminUrl } from './adguard-view.js';
+import { adguardAdminUrl, adguardSection as adguardSettings } from './adguard-view.js';
+import { createAmneziaView } from './amnezia-view.js';
 import { b4Panel } from './b4-view.js';
 
 export function createCompatView({ state, escapeHtml, pageUrl = globalThis.location?.href }) {
+  const { amneziaPanel } = createAmneziaView({ state, escapeHtml });
   function externalLink(url, label) {
     if (!url) return '';
     return `<a class="btn secondary" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
@@ -117,6 +119,17 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
       amnezia: state.amneziaStatus || state.status?.amnezia || {},
       links: { adguardHome: `http://${routerLan}:${adguardPort}/`, b4: '' }
     };
+    const sections = [['overview', 'Обзор'], ['b4', 'B4'], ['adguard', 'AdGuard Home'], ['amnezia', 'AmneziaWG']];
+    const view = sections.some(([value]) => value === state.compatView) ? state.compatView : 'overview';
+    const tabPage = (content) => `<div class="compat-page">
+      <div class="routing-subnav compat-tabs" role="tablist" aria-label="Разделы интеграций">
+        ${sections.map(([value, label]) => `<button type="button" id="compat-tab-${value}" role="tab" aria-selected="${view === value}" aria-controls="compat-panel-${value}" class="${view === value ? 'active' : ''}" data-compat-view="${value}">${label}</button>`).join('')}
+      </div>
+      <div class="compat-tab-panel" id="compat-panel-${view}" role="tabpanel" aria-labelledby="compat-tab-${view}">${content}</div>
+    </div>`;
+    if (view === 'b4') return tabPage(`${b4Panel({ state, escapeHtml, pageUrl })}${b4Section(compat)}`);
+    if (view === 'adguard') return tabPage(`${adguardSettings(state, escapeHtml, pageUrl)}${adguardSection(compat)}`);
+    if (view === 'amnezia') return tabPage(amneziaPanel());
     const adguard = compat.adguardHome || adguardFallback;
     const adguardStatus = state.adguardStatus || {};
     const adguardFound = Boolean(adguardStatus.configured || adguard.available || adguard.configPath);
@@ -131,6 +144,9 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
       : 'Фильтрует рекламу и трекеры на уровне DNS. Настройки и исключения доступны в разделе «Рекламорезка».');
     const awg = compat.amnezia || state.amneziaStatus || state.status?.amnezia || {};
     const b4 = compat.b4 || {};
+    const b4Url = b4.api?.available
+      ? adguardAdminUrl(b4.api.url || 'http://127.0.0.1:7000', pageUrl)
+      : compat.links?.b4;
     const xrayRunning = Boolean(state.status?.service?.running);
     const xrayRules = Number(state.status?.config?.routingRules || 0);
     const xrayTransparent = Boolean(awg.xrayIntegration?.transparentReady);
@@ -195,7 +211,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         label: 'Необязательный выход',
         title: 'AmneziaWG можно настроить отдельно',
         detail: 'Для B4 и AdGuard Home профиль AWG не нужен. Импортируйте client.conf, если требуется дополнительный VPN-выход.',
-        action: '<button class="btn warning" data-tab-jump="amnezia">Настроить AmneziaWG</button>'
+        action: '<button class="btn warning" data-compat-view="amnezia">Настроить AmneziaWG</button>'
       };
     } else if (!awgRunning) {
       nextStep = {
@@ -203,7 +219,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         label: 'Следующий шаг',
         title: 'Проверьте и запустите AmneziaWG',
         detail: 'RuOpenRay сначала проверит профиль и способ запуска, затем поднимет отдельный туннель.',
-        action: '<button class="btn warning" data-tab-jump="amnezia">Открыть AmneziaWG</button>'
+        action: '<button class="btn warning" data-compat-view="amnezia">Открыть AmneziaWG</button>'
       };
     } else if (!b4Installed) {
       nextStep = {
@@ -223,7 +239,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
       };
     }
 
-    return `<div class="compat-page">
+    return tabPage(`
       <section class="compat-hero ${safetyTone === 'danger' ? 'danger' : safetyTone === 'warn' ? 'warn' : ''}">
         <div>
           <span class="eyebrow">Xray + AmneziaWG + B4 + AdGuard Home</span>
@@ -248,20 +264,20 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
             number: '2', title: 'AmneziaWG', role: 'Дополнительный выход',
             status: awgStatus, tone: awgTone,
             detail: 'Используется как out-amnezia или отдельная policy-маршрутизация, не переключая весь роутер.',
-            meta: `${awgProfiles} профилей · ${awgMode}`, action: '<button class="btn secondary compact" data-tab-jump="amnezia">Настроить AWG</button>'
+            meta: `${awgProfiles} профилей · ${awgMode}`, action: '<button class="btn secondary compact" data-compat-view="amnezia">Настроить AWG</button>'
           })}
           ${integrationStep({
             number: '3', title: 'B4', role: 'DPI-обход direct',
             status: b4Active ? 'перехватывает' : b4Running ? 'запущен' : b4Installed ? 'выключен' : 'не найден', tone: b4Active ? (issues.length ? 'warn' : 'ok') : b4Running ? 'warn' : '',
             detail: 'Работает только с выбранным direct-трафиком и не забирает метки или интерфейсы Xray/AWG.',
             meta: b4Active ? 'NFQUEUE активен' : b4Running ? 'перехват не подтвержден' : b4Installed ? 'перехват не найден' : 'не установлен',
-            action: b4Installed ? b4Button('status', 'Проверить B4') : ''
+            action: b4Installed ? `<div class="split-actions compat-component-actions">${b4Button('status', 'Проверить B4')}${externalLink(b4Url, 'Открыть B4 ↗')}</div>` : ''
           })}
           ${integrationStep({
             number: '4', title: 'AdGuard Home', role: 'Фильтрация DNS',
             status: adguardLabel, tone: adguardFiltering ? 'ok' : adguardFound ? 'warn' : '',
             detail: adguardDetail, meta: adguardMeta,
-            action: `<div class="split-actions compat-adguard-actions"><button class="btn secondary compact" data-tab-jump="dns" data-dns-view-jump="adguard">Рекламорезка</button>${adguardFound ? externalLink(adguardUrl, 'Открыть AdGuard Home ↗') : ''}</div>`
+            action: `<div class="split-actions compat-component-actions"><button class="btn secondary compact" data-compat-view="adguard">Рекламорезка</button>${adguardFound ? externalLink(adguardUrl, 'Открыть AdGuard Home ↗') : ''}</div>`
           })}
         </div>
         <div class="compat-next-step ${nextStep.tone}">
@@ -275,10 +291,7 @@ export function createCompatView({ state, escapeHtml, pageUrl = globalThis.locat
         ${issues.length > 1 ? `<div class="compat-safety ${safetyTone}"><ul>${issues.slice(1).map((item) => `<li>${escapeHtml(item.text)}</li>`).join('')}</ul></div>` : ''}
       </section>
 
-      ${b4Panel({ state, escapeHtml, pageUrl })}
-      ${b4Section(compat)}
-      ${adguardSection(compat)}
-    </div>`;
+    `);
   }
 
   return { compatPanel };

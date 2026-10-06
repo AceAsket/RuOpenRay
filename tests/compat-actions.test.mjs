@@ -57,3 +57,26 @@ test('Integration navigation refreshes on entry and jumps directly to AdGuard se
     globalThis.document = previousDocument;
   }
 });
+
+test('Component tab navigation retains form drafts and routing config while requesting a status refresh', () => {
+  const previousDocument = globalThis.document;
+  const buttons = ['b4', 'adguard', 'amnezia', 'overview'].map((view) => ({
+    dataset: { compatView: view }, addEventListener(event, callback) { if (event === 'click') this.click = callback; },
+  }));
+  globalThis.document = { querySelectorAll: (selector) => selector === '[data-compat-view]' ? buttons : [] };
+  try {
+    const state = { tab: 'compat', compatView: 'overview', config: { routing: { rules: [{ outboundTag: 'proxy' }] } },
+      b4CheckDomain: 'example.com', adguardDomain: 'example.org', amneziaConfigText: '[Interface]\nAddress = 10.0.0.1/32' };
+    const original = structuredClone(state);
+    const navigated = [];
+    bindNavigationControls({ state, render() {}, onTabChange: (tab) => navigated.push([tab, state.compatView]) });
+    for (const button of buttons) button.click();
+    assert.deepEqual(navigated, buttons.map((button) => ['compat', button.dataset.compatView]));
+    assert.deepEqual(state.config, original.config);
+    assert.equal(state.b4CheckDomain, original.b4CheckDomain);
+    assert.equal(state.adguardDomain, original.adguardDomain);
+    assert.equal(state.amneziaConfigText, original.amneziaConfigText);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});

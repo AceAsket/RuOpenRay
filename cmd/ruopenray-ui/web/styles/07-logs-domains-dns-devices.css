@@ -2617,15 +2617,21 @@
   border-top: 1px solid var(--line-soft);
 }
 
-.compat-adguard-actions {
+.compat-component-actions {
   width: 100%;
   flex-wrap: wrap;
   justify-content: flex-start;
 }
 
-.compat-adguard-actions .btn {
+.compat-component-actions .btn {
   max-width: 100%;
   white-space: normal;
+}
+
+.compat-tab-panel {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
 }
 
 .compat-flow-step-foot strong {

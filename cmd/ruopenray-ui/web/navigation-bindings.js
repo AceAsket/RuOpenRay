@@ -63,6 +63,17 @@ export function bindNavigationControls({ state, render, configureLogTimer, onTab
       render();
     });
   });
+  document.querySelectorAll('[data-compat-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.compatView = button.dataset.compatView;
+      state.message = '';
+      finishNavigation();
+      onTabChange?.(state.tab);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => document.querySelector('.compat-tabs')?.scrollIntoView({ block: 'start' }));
+      }
+    });
+  });
   document.querySelectorAll('[data-routing-view]').forEach((button) => {
     button.addEventListener('click', () => {
       state.routingView = button.dataset.routingView;

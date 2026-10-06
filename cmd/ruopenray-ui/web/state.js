@@ -16,6 +16,7 @@ export function createInitialState() {
   mobileNavOpen: false,
   status: null,
   compatStatus: null,
+  compatView: 'overview',
   serverMode: null,
   serverModeDraft: null,
   serverModePreflight: null,
