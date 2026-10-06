@@ -4,7 +4,7 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-Актуальная публичная версия: `v0.4.0`.
+Стабильная версия: `v0.4.0`. Предварительный релиз: [v0.5.1-rc1](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.1-rc1) — группы правил, проверка дублей и пересечений, интеграции AdGuard Home и B4.
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 
