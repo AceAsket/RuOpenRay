@@ -1,4 +1,5 @@
 import { noticeView } from './notice-view.js';
+import { adguardSection } from './adguard-view.js';
 
 export function createDnsView(deps) {
   const {
@@ -61,7 +62,8 @@ function dnsLeakChecklist(dns, stats) {
   const leakTargets = dnsLeakProtectionTargets();
   const hasDomainProtection = state.firewallKillSwitchEnabled && leakTargets.domainLike > 0;
   const lanUsesXrayDns = lanDns.mode === 'xray' || lanDns.plan?.mode === 'xray';
-  const dnsGuardReady = Boolean(state.firewallDnsIntercept || lanUsesXrayDns);
+  const adguardVpn = lanDns.adguardLanActive && lanDns.adguardHome?.dnsPath === 'doh-vpn' && lanDns.adguardHome?.running && lanDns.adguardHome?.relayReady;
+  const dnsGuardReady = Boolean(state.firewallDnsIntercept || lanUsesXrayDns || adguardVpn);
   const items = [
     {
       ok: hasDns,
@@ -133,6 +135,11 @@ function dnsLeakChecklist(dns, stats) {
   }
   if (items[4] && dnsInbound && dnsRouting && !dnsPortConflict) {
     items[4].detail = `Xray готов принимать DNS на ${xrayDnsTarget.replace('#', ':')}. Если хотите вести LAN через него, откройте вкладку LAN DNS и примените режим DNS через Xray.`;
+  }
+  if (adguardVpn) {
+    items[0] = { ok: true, title: 'DNS устройств через AdGuard', detail: 'AdGuard принимает DNS и передаёт все типы записей через DoH и VPN.' };
+    items[1] = { ok: true, title: 'DoH через VPN', detail: 'Сертификаты DoH проверяются AdGuard Home.' };
+    items[4] = { ok: true, title: 'DNS устройств настроен', detail: 'Сохранён путь dnsmasq → AdGuard → TLS-транспорт → VPN.' };
   }
   const diagnosticWarnings = Array.isArray(state.dnsDiagnostics?.warnings) ? state.dnsDiagnostics.warnings : [];
   const attentionItems = items.filter((item) => !item.ok);
@@ -627,7 +634,7 @@ function lanDnsSection() {
   const adguardBeforeActive = adguardUsesXray && !adguardAfterActive;
   const adguardDisabledActive = !adguardAfterActive && !adguardBeforeActive;
   const adguardSummary = adguardFound
-    ? adguardUsesXray
+    ? adguard.dnsPath === 'doh-vpn' ? 'DoH через VPN' : adguardUsesXray
       ? 'смотрит в Xray'
       : adguardRunning
         ? 'запущен'
@@ -749,12 +756,12 @@ function lanDnsSection() {
           <b>${escapeHtml(adguardSummary)}</b>
         </summary>
         <div class="lan-dns-details-body">
-          <div class="settings-warning">
+          ${adguard.dnsPath === 'doh-vpn' ? `<div class="settings-warning ok"><strong>DoH через VPN</strong><span>${escapeHtml(adguard.hint)}</span></div>` : `<div class="settings-warning">
             <strong>Как избежать DNS-петли</strong>
             <span>Если AdGuard находится на роутере, укажите в нём upstream ${escapeHtml(adguardLocalTarget)}. Для отдельного устройства используйте ${escapeHtml(adguardLanTarget)}.</span>
-          </div>
+          </div>`}
           ${adguardFound ? `<div class="settings-warning ${adguardUsesXray ? 'ok' : ''}"><strong>${adguardUsesXray ? 'AdGuard Home уже совместим' : 'AdGuard Home найден'}</strong><span>${escapeHtml(adguard.hint || `В AdGuard Home upstream DNS укажите ${adguardLocalTarget}.`)}</span></div>` : ''}
-          <div class="advanced-grid three adguard-compat-modes">
+          ${adguard.dnsPath === 'doh-vpn' ? '<p class="muted">Управление фильтрацией доступно на вкладке «Рекламорезка».</p>' : `<div class="advanced-grid three adguard-compat-modes">
             <article class="advanced-card ${adguardAfterActive ? 'active' : ''}">
               <strong>AdGuard после Xray</strong>
               <span>Xray видит домены первым, затем AdGuard фильтрует ответы.</span>
@@ -770,7 +777,7 @@ function lanDnsSection() {
               <span>Оставить DNS-серверы Xray без локальной фильтрации AdGuard.</span>
               <button class="btn secondary ${state.busyAction === 'disableAdguardCompat' ? 'is-busy' : ''}" data-action="disableAdguardCompat" ${state.busyAction === 'disableAdguardCompat' ? 'disabled' : ''}>${state.busyAction === 'disableAdguardCompat' ? 'Отключаю...' : 'Не использовать AdGuard'}</button>
             </article>
-          </div>
+          </div>`}
         </div>
       </details>
     </section>
@@ -783,6 +790,7 @@ function dnsPanel() {
   const protectedCount = stats.doh + stats.tcp;
   const hasDns = stats.servers > 0;
   const dnsMode = currentDnsMode();
+  const adguardVpn = state.lanDnsStatus?.adguardLanActive && state.lanDnsStatus?.adguardHome?.dnsPath === 'doh-vpn';
   const lanMode = lanDnsModeLabel(state.lanDnsStatus?.mode || state.lanDnsMode);
   const serverCountForm = stats.servers % 100 >= 11 && stats.servers % 100 <= 14
     ? 'серверов'
@@ -796,6 +804,7 @@ function dnsPanel() {
     ['policies', 'Для доменов'],
     ['hosts', 'Локальные имена'],
     ['lan', 'DNS устройств'],
+    ['adguard', 'Рекламорезка'],
     ['guard', 'Проверка и защита'],
     ['advanced', 'Дополнительно']
   ];
@@ -805,6 +814,7 @@ function dnsPanel() {
     policies: () => dnsPoliciesSection(dns),
     hosts: () => dnsHostsSection(dns),
     lan: lanDnsSection,
+    adguard: () => adguardSection(state, escapeHtml),
     guard: () => dnsLeakChecklist(dns, stats),
     advanced: dnsAdvancedSection
   };
@@ -812,8 +822,8 @@ function dnsPanel() {
     <section class="route-hero dns-hero">
       <div class="dns-hero-copy">
         <span class="dns-hero-kicker">Состояние DNS</span>
-        <h2>${hasDns ? (protectedCount ? 'Защищённый DNS настроен' : 'DNS настроен без шифрования') : 'DNS ещё не настроен'}</h2>
-        <p>${hasDns
+        <h2>${adguardVpn ? 'DNS устройств через AdGuard и VPN' : hasDns ? (protectedCount ? 'Защищённый DNS настроен' : 'DNS настроен без шифрования') : 'DNS ещё не настроен'}</h2>
+        <p>${adguardVpn ? 'AdGuard фильтрует рекламу, DoH передаёт DNS через VPN. Имена VPN-серверов используют отдельный защищённый bootstrap.' : hasDns
           ? `Xray использует ${stats.servers} ${serverCountForm}. ${protectedCount ? `${protectedCount} из них работают через DoH или TCP.` : 'Добавьте DoH, чтобы DNS-запросы не уходили открытым UDP/53.'}`
           : 'Выберите готовый защищённый DNS или добавьте свой сервер. Изменения сначала сохраняются в черновике Xray.'}</p>
       </div>

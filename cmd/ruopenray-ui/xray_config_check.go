@@ -130,9 +130,9 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	}
 	if hasDNSInbound && runtime.GOOS != "windows" {
 		host, port, _ := xrayDNSInboundEndpoint(cfg)
-		owner := udpPortOwner(host, port)
+		owner := dnsInboundPortOwner(host, port)
 		if owner != "" && !strings.Contains(owner, "/xray") {
-			warnings = append(warnings, fmt.Sprintf("DNS-вход ruopenray_dns_in не сможет стартовать: UDP %s:%d уже занят процессом %s. Подготовьте DNS-вход заново, RuOpenRay выберет свободный порт.", host, port, owner))
+			warnings = append(warnings, fmt.Sprintf("DNS-вход ruopenray_dns_in не сможет стартовать: порт %s:%d уже занят процессом %s. Подготовьте DNS-вход заново, RuOpenRay выберет свободный порт.", host, port, owner))
 		}
 	}
 	geoipPath := filepath.Join(s.cfg.GeoDir, "geoip.dat")

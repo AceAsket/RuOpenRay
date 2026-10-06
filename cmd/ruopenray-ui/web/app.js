@@ -19,6 +19,7 @@ import { bindDiagnosticsControls } from './diagnostics-bindings.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
 import { createDnsActions } from './dns-actions.js';
+import { createAdguardActions } from './adguard-actions.js';
 import { bindDnsControls } from './dns-bindings.js';
 import { createDnsModel } from './dns-model.js';
 import { createDnsView } from './dns-view.js';
@@ -1181,6 +1182,8 @@ const {
   applyDnsBootstrapHosts,
   previewLanDnsUpstream
 } = dnsActions;
+
+const adguardActions = createAdguardActions({ state, request, render, syncLanDnsStatus });
 
 const setupView = createSetupView({
   state,
@@ -2541,6 +2544,7 @@ function bind() {
       clearDnsPolicy,
       previewLanDnsUpstream,
       applyLanDnsUpstream,
+      ...adguardActions,
       dnsWizardSecure: () => applyDnsGuardPreset('secure'),
       dnsWizardRu: () => applyDnsGuardPreset('ru'),
       dnsWizardStrict: () => applyDnsGuardPreset('strict'),
@@ -2612,6 +2616,7 @@ function bind() {
     removeDeviceRule,
   });
   bindDnsControls({
+    adguardRefresh: adguardActions.adguardRefresh,
     state,
     render,
     removeDnsServer,

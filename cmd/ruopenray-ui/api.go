@@ -407,6 +407,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, dhcpLeaseReport(s.cfg.DataDir))
 	case path == "/dns/check" && r.Method == http.MethodPost:
 		s.checkDNS(w, r)
+	case path == "/dns/adguard" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.adGuardIntegrationStatus())
+	case path == "/dns/adguard" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			respond(w, nil, err)
+			return
+		}
+		result, err := s.adGuardAction(payload)
+		respond(w, result, err)
 	case path == "/dns/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.dnsDiagnostics())
 	case path == "/dns/lan-upstream" && r.Method == http.MethodGet:

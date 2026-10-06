@@ -2,6 +2,13 @@ package main
 
 import "testing"
 
+func TestDNSPortDetectsTLSRelayEvenWhenUDPIsOwnedByXray(t *testing.T) {
+	text := "udp 0 0 127.0.0.1:10535 0.0.0.0:* 123/xray\ntcp 0 0 127.0.0.1:10535 0.0.0.0:* LISTEN 124/doh-transport"
+	if owner := dnsPortOwnerFromText(text); owner != "124/doh-transport" {
+		t.Fatalf("TCP conflict missed: %s", owner)
+	}
+}
+
 func TestParseAdGuardHomeConfig(t *testing.T) {
 	body := `
 bind_host: 0.0.0.0

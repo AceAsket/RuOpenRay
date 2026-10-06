@@ -1,6 +1,7 @@
 export function bindDnsControls({
   state,
   render,
+  adguardRefresh,
   removeDnsServer,
   moveDnsServer,
   prioritizeDohDnsServers,
@@ -9,6 +10,16 @@ export function bindDnsControls({
   editDnsPolicy,
   setDnsModeDraft,
 }) {
+  document.querySelectorAll('[data-dns-view="adguard"]').forEach((button) => {
+    button.addEventListener('click', () => adguardRefresh?.().catch((error) => { state.message = error.message; render(); }));
+  });
+  for (const [id, key] of [['adguardUrl', 'adguardUrl'], ['adguardUsername', 'adguardUsername'], ['adguardPassword', 'adguardPassword'], ['adguardBootstrap', 'adguardBootstrap'], ['adguardDomain', 'adguardDomain']]) {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => {
+      state[key] = event.target.value;
+      if (key === 'adguardDomain') state.adguardCheckResult = null;
+    });
+  }
+  document.querySelector('#adguardSyncEnabled')?.addEventListener('change', (event) => { state.adguardSyncEnabled = event.target.checked; });
   document.querySelectorAll('[data-dns-delete]').forEach((button) => {
     button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
   });

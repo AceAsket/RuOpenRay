@@ -23,6 +23,16 @@ func (s *serverState) readSubscriptionStore() rsubscription.Store {
 }
 
 func (s *serverState) writeSubscriptionStore(store rsubscription.Store) error {
+	var outbounds []any
+	for _, pool := range store.Pools {
+		for _, outbound := range pool.Candidates {
+			outbounds = append(outbounds, outbound)
+		}
+	}
+	return s.withAdGuardBootstrap(map[string]any{"outbounds": outbounds}, func() error { return s.writeSubscriptionStoreRaw(store) })
+}
+
+func (s *serverState) writeSubscriptionStoreRaw(store rsubscription.Store) error {
 	if err := os.MkdirAll(s.cfg.DataDir, 0700); err != nil {
 		return err
 	}
@@ -148,7 +158,7 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		restart = s.restartSubscriptionWithRollback(backup)
 	}
 	if restart["ok"] != true {
-		if err := s.writeSubscriptionStore(previousStore); err != nil {
+		if err := s.writeSubscriptionStoreRaw(previousStore); err != nil {
 			restart["storeRollbackError"] = err.Error()
 		}
 	}
@@ -528,7 +538,7 @@ func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Req
 		apply := s.applySubscriptionActiveOutbounds(store, []int{poolIndex}, boolPayload(payload, "restart", true))
 		result["activeApply"] = apply
 		if apply["ok"] == false {
-			if err := s.writeSubscriptionStore(previousStore); err != nil {
+			if err := s.writeSubscriptionStoreRaw(previousStore); err != nil {
 				result["storeRollbackError"] = err.Error()
 			}
 			result["ok"] = false
@@ -568,7 +578,7 @@ func (s *serverState) refreshAllSubscriptions(applyActive bool, restart bool) ma
 		apply := s.applySubscriptionActiveOutbounds(store, updatedIndexes, restart)
 		result["activeApply"] = apply
 		if apply["ok"] == false {
-			if err := s.writeSubscriptionStore(previousStore); err != nil {
+			if err := s.writeSubscriptionStoreRaw(previousStore); err != nil {
 				result["storeRollbackError"] = err.Error()
 			}
 			result["ok"] = false

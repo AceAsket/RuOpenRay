@@ -46,6 +46,7 @@ type serverState struct {
 	logCacheText     string
 	logCacheAt       time.Time
 	fallbackMu       sync.Mutex
+	adguardMu        sync.Mutex
 	fallbackProgress map[string]any
 }
 

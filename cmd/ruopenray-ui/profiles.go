@@ -189,7 +189,7 @@ func (s *serverState) saveProfileConfig(name string, cfg map[string]any) (string
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	if err := s.withAdGuardBootstrap(cfg, func() error { return writeFileAtomic(path, body, 0o600) }); err != nil {
 		return "", err
 	}
 	return strings.TrimSuffix(filepath.Base(path), ".json"), nil
@@ -264,9 +264,34 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	err = os.WriteFile(s.cfg.ActiveConfig, body, 0o600)
+	var cfg map[string]any
+	err = json.Unmarshal(body, &cfg)
 	if err == nil {
-		err = s.writeActiveProfileName(fmt.Sprint(payload["name"]))
+		err = s.validateAdGuardTransportCandidate(cfg)
+	}
+	if err == nil {
+		err = s.withAdGuardBootstrap(cfg, func() error {
+			previous, readErr := os.ReadFile(s.cfg.ActiveConfig)
+			if readErr != nil && !os.IsNotExist(readErr) {
+				return readErr
+			}
+			if err := writeFileAtomic(s.cfg.ActiveConfig, body, 0o600); err != nil {
+				return err
+			}
+			if err := s.writeActiveProfileName(fmt.Sprint(payload["name"])); err != nil {
+				var restoreErr error
+				if os.IsNotExist(readErr) {
+					restoreErr = os.Remove(s.cfg.ActiveConfig)
+				} else {
+					restoreErr = writeFileAtomic(s.cfg.ActiveConfig, previous, 0o600)
+				}
+				if restoreErr != nil {
+					return fmt.Errorf("%w; откат конфигурации: %v", err, restoreErr)
+				}
+				return err
+			}
+			return nil
+		})
 	}
 	respond(w, map[string]any{"ok": true, "active": s.normalizeProfileID(fmt.Sprint(payload["name"]))}, err)
 }
@@ -285,13 +310,12 @@ func (s *serverState) importLink(w http.ResponseWriter, r *http.Request) {
 	outbounds := removeOutboundByTag(asArray(cfg["outbounds"]), fmt.Sprint(outbound["tag"]))
 	cfg["outbounds"] = append([]any{outbound}, outbounds...)
 	name := profileNameFallback(fmt.Sprint(payload["profileName"]), fmt.Sprint(outbound["tag"]), "server")
-	body, _ := json.MarshalIndent(cfg, "", "  ")
-	path := s.profilePath(name)
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	savedName, err := s.saveProfileConfig(name, cfg)
+	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "outbound": outbound, "profile": strings.TrimSuffix(filepath.Base(path), ".json")})
+	writeJSON(w, 200, map[string]any{"ok": true, "outbound": outbound, "profile": savedName})
 }
 
 func subscriptionLinks(rawURL string) ([]string, error) {
@@ -378,13 +402,12 @@ func (s *serverState) importSubscription(w http.ResponseWriter, r *http.Request)
 	}
 	cfg["outbounds"] = outbounds
 	name := profileNameFallback(fmt.Sprint(payload["profileName"]), fmt.Sprint(imported[0]["tag"]), profileNameFromURL(fmt.Sprint(payload["url"])), "subscription")
-	body, _ := json.MarshalIndent(cfg, "", "  ")
-	path := s.profilePath(name)
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	savedName, err := s.saveProfileConfig(name, cfg)
+	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "profile": strings.TrimSuffix(filepath.Base(path), ".json"), "imported": imported, "report": report})
+	writeJSON(w, 200, map[string]any{"ok": true, "profile": savedName, "imported": imported, "report": report})
 }
 
 func asArray(value any) []any {

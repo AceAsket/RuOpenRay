@@ -32,6 +32,8 @@ func (s *serverState) restoreSubscriptionConfig(backup string) error {
 	if err != nil {
 		return err
 	}
+	// Bootstrap for the previous config is retained before every candidate write.
+	// Restoring that known config must remain possible if AdGuard's API is down.
 	return writeFileAtomic(s.cfg.ActiveConfig, body, 0600)
 }
 

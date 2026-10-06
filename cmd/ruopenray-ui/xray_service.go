@@ -42,7 +42,10 @@ func (s *serverState) writeActiveConfigRaw(cfg map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(s.cfg.ActiveConfig, body, 0o600)
+	if err := s.validateAdGuardTransportCandidate(cfg); err != nil {
+		return err
+	}
+	return s.withAdGuardBootstrap(cfg, func() error { return writeFileAtomic(s.cfg.ActiveConfig, body, 0o600) })
 }
 
 func (s *serverState) xrayEnv() []string {
@@ -78,6 +81,9 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	var xrayEnable map[string]any
 	var dnsPortGuard map[string]any
 	if action == "start" || action == "restart" {
+		if err := s.withAdGuardBootstrap(nil, func() error { return nil }); err != nil {
+			return map[string]any{"ok": false, "stderr": err.Error(), "message": err.Error()}
+		}
 		logMaintenance = s.maintainLogFiles(true)
 		if s.cfg.ServiceName == "xray" {
 			dnsPortGuard = s.guardXrayDNSPortBeforeStart()
@@ -210,10 +216,17 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		profileName, err := s.syncCurrentProfile(cfg)
 		if err != nil {
-			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
+			restoreErr := s.restoreSubscriptionConfig(backup)
+			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "rollbackError": fmt.Sprint(restoreErr), "test": test, "analysis": analysis})
 			return
 		}
-		restart := s.serviceAction("restart")
+		restart := s.restartSubscriptionWithRollback(backup)
+		if restart["ok"] != true {
+			// Restore the matching saved profile even when the DNS API is down.
+			if body, err := os.ReadFile(backup); err == nil {
+				_ = writeFileAtomic(s.profilePath(profileName), body, 0600)
+			}
+		}
 		_ = s.clearConfigDraft()
 		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName})
 		return
@@ -301,10 +314,13 @@ func (s *serverState) restoreBackup(rawPath string) map[string]any {
 	if test["ok"] != true {
 		return map[string]any{"ok": false, "test": test, "analysis": analysis, "stderr": "backup не прошел xray -test"}
 	}
-	before, _ := s.backupActive("config-before-restore")
+	before, err := s.backupActive("config-before-restore")
+	if err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
 	if err := s.writeActiveConfig(cfg); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "backup": before}
 	}
-	restart := s.serviceAction("restart")
+	restart := s.restartSubscriptionWithRollback(before)
 	return map[string]any{"ok": restart["ok"], "path": cleanBackupPath, "backup": before, "test": test, "analysis": analysis, "restart": restart}
 }

@@ -9,6 +9,18 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;');
 
+test('Managed TLS transport is shown without plain DNS advice', () => {
+  const status = { adguardLanActive: true, available: true, mode: 'upstream', servers: ['127.0.0.1#10536'], noresolv: true,
+    adguardHome: { available: true, running: true, usesXray: true, dnsPath: 'doh-vpn', relayReady: true, hint: 'DoH через VPN' } };
+  const html = renderDns({ dnsView: 'lan', lanDnsStatus: status });
+  assert.match(html, /DNS устройств через AdGuard и VPN/);
+  assert.doesNotMatch(html, /в нём upstream 127.0.0.1:10535/);
+  assert.doesNotMatch(html, /data-action="prepareAdguardBeforeXray"/);
+  const guard = renderDns({ dnsView: 'guard', lanDnsStatus: status });
+  assert.match(guard, /DNS устройств настроен/);
+  assert.doesNotMatch(guard, /data-action="prepareDnsInbound"/);
+});
+
 function renderDns(overrides = {}) {
   const state = {
     dnsView: 'servers',
