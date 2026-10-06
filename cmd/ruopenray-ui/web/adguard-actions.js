@@ -7,7 +7,7 @@ export function createAdguardActions({ state, request, render, syncLanDnsStatus 
     const result = await request('/api/dns/adguard', { method: 'POST', body: JSON.stringify(payload) });
     if (!result.ok) throw new Error(result.error || 'Не удалось обновить AdGuard Home');
     if (payload.action === 'check') state.adguardCheckResult = result;
-    if (payload.action === 'exception') state.adguardCheckResult = null;
+    else state.adguardCheckResult = null;
     await adguardRefresh();
     const lan = await request('/api/dns/lan-upstream');
     syncLanDnsStatus(lan);

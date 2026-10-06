@@ -22,9 +22,22 @@ test('Unconfigured or unavailable AdGuard disables filtering writes', () => {
   }
 });
 
+test('Domain check explains blocking and exceptions without trusting API text as HTML', () => {
+  const render = (reason, rules = []) => adguardSection({ adguardCheckResult: { domain: 'example.com', result: { reason, rules } } }, escapeHtml);
+  assert.match(render('FilteredBlackList'), /Заблокирован фильтром/);
+  assert.match(render('NotFilteredWhiteList'), /Разрешён исключением/);
+  assert.match(render('NotFilteredError'), /Ошибка проверки фильтра/);
+  const paused = adguardSection({ adguardStatus: { configured: true, protectionEnabled: false }, adguardCheckResult: { domain: 'example.com', result: { reason: 'FilteredBlackList' } } }, escapeHtml);
+  assert.match(paused, /Защита AdGuard сейчас выключена; блокировки не применяются/);
+  const unknown = render('<script>unexpected</script>', [{ text: '<img src=x>' }]);
+  assert.match(unknown, /Неизвестный результат AdGuard/);
+  assert.doesNotMatch(unknown, /<script>|<img/);
+  assert.doesNotMatch(unknown, /Разрешён исключением/);
+});
+
 test('Connecting AdGuard clears the secret and refreshes actual status', async () => {
   const calls = [];
-  const state = { adguardPassword: 'private', adguardUrl: 'http://127.0.0.1:3001', adguardUsername: 'admin', adguardSyncEnabled: true };
+  const state = { adguardPassword: 'private', adguardUrl: 'http://127.0.0.1:3001', adguardUsername: 'admin', adguardSyncEnabled: true, adguardCheckResult: { domain: 'old.example.com', result: { reason: 'FilteredBlackList' } } };
   const actions = createAdguardActions({ state, render() {}, syncLanDnsStatus() {}, request: async (path, opts) => {
     calls.push({ path, payload: opts?.body ? JSON.parse(opts.body) : null });
     return { ok: true, configured: true };
@@ -33,6 +46,7 @@ test('Connecting AdGuard clears the secret and refreshes actual status', async (
   assert.equal(calls[0].payload.password, 'private');
   assert.equal(calls[0].payload.enabled, true);
   assert.equal(state.adguardPassword, '');
+  assert.equal(state.adguardCheckResult, null);
   assert.deepEqual(calls.map((call) => call.path), ['/api/dns/adguard', '/api/dns/adguard', '/api/dns/lan-upstream']);
 });
 

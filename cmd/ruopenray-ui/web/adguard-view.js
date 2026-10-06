@@ -1,3 +1,21 @@
+function filteringReason(reason) {
+  const labels = {
+    NotFilteredNotFound: 'Фильтр не нашёл блокирующего правила',
+    NotFilteredWhiteList: 'Разрешён исключением',
+    NotFilteredError: 'Ошибка проверки фильтра',
+    FilteredBlackList: 'Заблокирован фильтром',
+    FilteredSafeBrowsing: 'Заблокирован защитой от опасных сайтов',
+    FilteredParental: 'Заблокирован родительским контролем',
+    FilteredInvalid: 'Заблокирован: некорректный домен',
+    FilteredSafeSearch: 'Изменён безопасным поиском',
+    FilteredBlockedService: 'Заблокирован настройкой сервиса',
+    Rewrite: 'Используется подмена DNS',
+    RewriteEtcHosts: 'Используется локальная запись hosts',
+    RewriteRule: 'Используется правило подмены DNS',
+  };
+  return Object.hasOwn(labels, reason) ? labels[reason] : (reason ? `Неизвестный результат AdGuard: ${reason}` : 'Нет результата проверки');
+}
+
 export function adguardSection(state, escapeHtml) {
   const status = state.adguardStatus || {};
   const busy = String(state.busyAction || '').startsWith('adguard');
@@ -23,7 +41,7 @@ export function adguardSection(state, escapeHtml) {
       <button class="btn primary" data-action="adguardExceptionAdd" ${disabled ? 'disabled' : ''}>Разрешить домен</button>
       <button class="btn secondary" data-action="adguardExceptionRemove" ${disabled ? 'disabled' : ''}>Удалить исключение</button>
     </div>
-    ${state.adguardCheckResult ? `<p class="settings-warning"><strong>${escapeHtml(state.adguardCheckResult.domain)}</strong><span>${escapeHtml(state.adguardCheckResult.result?.reason || 'Нет результата')}${state.adguardCheckResult.result?.rules?.length ? ` · ${escapeHtml(state.adguardCheckResult.result.rules.map((rule) => rule.text).join(', '))}` : ''}</span></p>` : ''}
+    ${state.adguardCheckResult ? `<p class="settings-warning"><strong>${escapeHtml(state.adguardCheckResult.domain)}</strong><span>${escapeHtml(filteringReason(state.adguardCheckResult.result?.reason))}${state.adguardCheckResult.result?.rules?.length ? ` · ${escapeHtml(state.adguardCheckResult.result.rules.map((rule) => rule.text).join(', '))}` : ''}</span>${status.configured && !status.protectionEnabled ? '<span>Защита AdGuard сейчас выключена; блокировки не применяются.</span>' : ''}</p>` : ''}
     <details class="lan-dns-details" ${status.configured ? '' : 'open'}><summary><span><strong>Подключение и запуск VPN</strong><em>${status.enabled ? 'Bootstrap синхронизируется автоматически' : 'Автоматическая синхронизация отключена'}</em></span></summary>
       <div class="lan-dns-details-body">
         <p>Имена VPN-серверов из активной конфигурации и сохранённых профилей разрешаются через отдельный DoH даже при остановленном VPN. Это позволяет восстановить соединение после перезагрузки.</p>
