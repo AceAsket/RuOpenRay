@@ -1476,19 +1476,36 @@ body[data-theme="light"] .compat-hero {
     linear-gradient(145deg, #ffffff, #edf7f4);
 }
 
+body[data-theme="light"] .compat-hero.warn {
+  border-color: rgba(184, 121, 20, 0.34);
+  background:
+    linear-gradient(135deg, rgba(240, 182, 66, 0.19), transparent 42%),
+    linear-gradient(145deg, #ffffff, #fff9e9);
+}
+
+body[data-theme="light"] .compat-hero.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background:
+    linear-gradient(135deg, rgba(195, 61, 74, 0.14), transparent 42%),
+    linear-gradient(145deg, #ffffff, #fff0f2);
+}
+
 body[data-theme="light"] .compat-flow-step.ok,
-body[data-theme="light"] .compat-safety.ok {
+body[data-theme="light"] .compat-safety.ok,
+body[data-theme="light"] .compat-next-step {
   border-color: rgba(20, 156, 75, 0.28);
   background: #f0fff3;
 }
 
 body[data-theme="light"] .compat-flow-step.warn,
-body[data-theme="light"] .compat-safety.warn {
+body[data-theme="light"] .compat-safety.warn,
+body[data-theme="light"] .compat-next-step.warn {
   border-color: rgba(184, 121, 20, 0.34);
   background: #fff9e9;
 }
 
-body[data-theme="light"] .compat-safety.danger {
+body[data-theme="light"] .compat-safety.danger,
+body[data-theme="light"] .compat-next-step.danger {
   border-color: rgba(195, 61, 74, 0.38);
   background: #fff0f2;
 }

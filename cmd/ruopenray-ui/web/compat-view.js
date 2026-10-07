@@ -72,19 +72,19 @@ export function createCompatView({ state, escapeHtml }) {
     const portOccupied = Boolean(item.ports?.occupied && !item.ports?.ui);
     const mark = item.api?.config?.queue?.mark;
     const title = queueActive ? 'обрабатывает трафик' : item.running ? 'запущен без активного перехвата' : found ? 'установлен, сейчас выключен' : 'не найден';
-    return `<section class="panel compat-service-panel">
-      <div class="panel-title">
-        <div>
-          <h2>B4</h2>
-          <span>DPI-обход для выбранного direct-трафика. Не должен забирать интерфейсы и метки Xray или AWG.</span>
-        </div>
-        <span class="status-chip ${queueActive ? 'warn' : item.running ? 'ok' : ''}">${escapeHtml(queueActive ? 'перехват активен' : item.running ? 'запущен' : found ? 'выключен' : 'не найден')}</span>
-      </div>
-      <div class="compat-service-summary">
-        <div>
-          <span class="eyebrow">Текущее состояние</span>
-          <strong>${escapeHtml(title)}</strong>
-          <p>${escapeHtml(item.summary || 'RuOpenRay проверяет процесс, API и собственные правила NFQUEUE B4.')}</p>
+    return `<details class="panel compat-secondary-details compat-b4-details" data-details-key="compat-b4-service">
+      <summary>
+        <span><strong>Технические сведения B4</strong><em>${escapeHtml(item.summary || title)}</em></span>
+        <b>${escapeHtml(queueActive ? 'перехват активен' : item.running ? 'запущен' : found ? 'выключен' : 'не найден')}</b>
+      </summary>
+      <div class="compat-secondary-body">
+        <div class="compat-card-head">
+          <div>
+            <span class="eyebrow">Состояние B4</span>
+            <h2>${escapeHtml(title)}</h2>
+            <p>DPI-обход должен получать только выбранный direct-трафик и не использовать интерфейсы или метки Xray и AmneziaWG.</p>
+          </div>
+          <span class="status-chip ${queueActive ? 'warn' : item.running ? 'ok' : ''}">${escapeHtml(queueActive ? 'перехват активен' : item.running ? 'запущен' : found ? 'выключен' : 'не найден')}</span>
         </div>
         <div class="compat-metrics compact">
           <article><span>API</span><strong>${escapeHtml(apiReady ? (item.api?.version || 'отвечает') : 'не отвечает')}</strong></article>
@@ -92,27 +92,19 @@ export function createCompatView({ state, escapeHtml }) {
           <article><span>Перехват</span><strong>${escapeHtml(queueActive ? 'активен' : 'не найден')}</strong></article>
           <article><span>Packet mark</span><strong>${escapeHtml(mark !== undefined && mark !== null && mark !== 0 ? String(mark) : 'не определен')}</strong></article>
         </div>
-      </div>
-      ${portOccupied ? `<div class="settings-warning compact"><strong>Порт 7000 занят</strong><span>На этом порту отвечает другой процесс, поэтому ссылка на B4 скрыта.</span></div>` : ''}
-      <div class="split-actions compat-primary-actions">
-        ${found ? (item.running ? b4Button('stop', 'Остановить B4', 'warning') : b4Button('start', 'Запустить B4', 'warning')) : ''}
-        ${found ? (enabled ? b4Button('disable', 'Убрать автозапуск') : b4Button('enable', 'Включить автозапуск')) : ''}
-        ${item.running ? b4Button('restart', 'Перезапустить') : ''}
-        ${externalLink(compat.links?.b4, 'Открыть B4')}
-      </div>
-      ${found ? `<details class="compat-service-details" data-details-key="compat-b4-service">
-        <summary><span><strong>Служебные сведения</strong><em>Конфигурация и очистка оставшихся таблиц</em></span><b>Подробнее</b></summary>
-        <div class="compat-service-details-body">
-          <div class="settings-info-grid">
-            <article><span>Конфигурация</span><strong>${escapeHtml(configPaths.join(', ') || 'не найдена')}</strong></article>
-            <article><span>Автозапуск</span><strong>${escapeHtml(enabled ? 'включен' : 'выключен')}</strong></article>
-          </div>
-          <div class="split-actions">
-            ${b4Button('clear', 'Остановить и очистить таблицы', 'danger')}
-          </div>
+        ${portOccupied ? `<div class="settings-warning compact"><strong>Порт 7000 занят</strong><span>На этом порту отвечает другой процесс, поэтому ссылка на B4 скрыта.</span></div>` : ''}
+        ${found ? `<div class="settings-info-grid">
+          <article><span>Конфигурация</span><strong>${escapeHtml(configPaths.join(', ') || 'не найдена')}</strong></article>
+          <article><span>Автозапуск</span><strong>${escapeHtml(enabled ? 'включен' : 'выключен')}</strong></article>
+        </div>` : ''}
+        <div class="split-actions compat-primary-actions">
+          ${found ? (enabled ? b4Button('disable', 'Убрать автозапуск') : b4Button('enable', 'Включить автозапуск')) : ''}
+          ${item.running ? b4Button('restart', 'Перезапустить') : ''}
+          ${externalLink(compat.links?.b4, 'Открыть B4')}
+          ${found ? b4Button('clear', 'Остановить и очистить таблицы', 'danger') : ''}
         </div>
-      </details>` : ''}
-    </section>`;
+      </div>
+    </details>`;
   }
 
   function compatPanel() {
@@ -133,8 +125,10 @@ export function createCompatView({ state, escapeHtml }) {
     const awgRunning = Boolean(awg.running || awg.runtime?.connected || awg.runtime?.interfaceRunning);
     const awgReady = Boolean(awg.runtime?.backendReady || awg.available);
     const awgProfiles = Array.isArray(awg.clientConfig?.profiles?.items) ? awg.clientConfig.profiles.items.length : 0;
+    const awgConfigured = awgProfiles > 0;
     const awgMode = awg.clientConfig?.profiles?.mode || 'standby';
     const b4Active = Boolean(b4.active || b4.api?.queueActive || b4.nft?.hasQueue || b4.iptables?.hasNFQUEUE);
+    const b4Running = Boolean(b4.running || b4.service?.running);
     const b4Installed = Boolean(b4.available || b4.config?.found || b4.service?.exists);
     const markConflict = Boolean(b4.routing?.markConflict);
     const queueAll = b4.api?.config?.queueScope === 'all';
@@ -144,12 +138,83 @@ export function createCompatView({ state, escapeHtml }) {
     else if (b4Active && xrayTransparent) issues.push({ tone: 'warn', text: 'Xray и B4 одновременно перехватывают трафик. Оставьте Xray владельцем LAN-маршрутизации, а B4 ограничьте direct-трафиком.' });
     const safetyTone = issues.some((item) => item.tone === 'danger') ? 'danger' : issues.length ? 'warn' : 'ok';
     const safetyTitle = safetyTone === 'danger' ? 'Есть конфликт перед параллельным запуском' : safetyTone === 'warn' ? 'Нужно проверить границы перехвата' : 'Явных конфликтов не найдено';
+    const awgStatus = awgRunning ? 'подключен' : !awgConfigured ? 'нет профиля' : awgReady ? 'готов к запуску' : 'не готов';
+    const awgTone = awgRunning ? 'ok' : !awgConfigured || !awgReady ? 'warn' : '';
+    const heroTitle = safetyTone === 'danger'
+      ? 'Совместный запуск заблокирован'
+      : safetyTone === 'warn'
+        ? 'Нужно развести перехват'
+        : !xrayRunning
+          ? 'Сначала запустите Xray'
+          : !awgConfigured
+            ? 'Настройте дополнительный выход'
+            : !awgRunning
+              ? 'Почти готово к совместной работе'
+              : !b4Active
+                ? 'Осталось настроить B4'
+                : 'Компоненты работают совместно';
+    let nextStep = {
+      tone: 'ok',
+      label: 'Схема готова',
+      title: 'Компоненты работают без явного конфликта',
+      detail: 'Xray выбирает маршруты, AmneziaWG предоставляет отдельный выход, а B4 обрабатывает ограниченный direct-трафик.',
+      action: commandButton('refreshCompatibility', 'Повторить проверку')
+    };
+    if (!xrayRunning) {
+      nextStep = {
+        tone: 'warn',
+        label: 'Следующий шаг',
+        title: 'Запустите Xray',
+        detail: 'Без Xray нет владельца LAN-маршрутизации и правил proxy, direct и block.',
+        action: '<button class="btn warning" data-tab-jump="dashboard">Открыть панель</button>'
+      };
+    } else if (issues.length) {
+      nextStep = {
+        tone: safetyTone,
+        label: 'Сначала исправьте',
+        title: safetyTitle,
+        detail: issues[0].text,
+        action: b4Active ? b4Button('stop', 'Остановить B4', 'warning') : commandButton('refreshCompatibility', 'Повторить проверку')
+      };
+    } else if (!awgConfigured) {
+      nextStep = {
+        tone: 'warn',
+        label: 'Следующий шаг',
+        title: 'Добавьте профиль AmneziaWG',
+        detail: 'Импортируйте client.conf и выберите, какие сценарии должны использовать отдельный VPN-выход.',
+        action: '<button class="btn warning" data-tab-jump="amnezia">Настроить AmneziaWG</button>'
+      };
+    } else if (!awgRunning) {
+      nextStep = {
+        tone: 'warn',
+        label: 'Следующий шаг',
+        title: 'Проверьте и запустите AmneziaWG',
+        detail: 'RuOpenRay сначала проверит профиль и способ запуска, затем поднимет отдельный туннель.',
+        action: '<button class="btn warning" data-tab-jump="amnezia">Открыть AmneziaWG</button>'
+      };
+    } else if (!b4Installed) {
+      nextStep = {
+        tone: '',
+        label: 'Необязательный компонент',
+        title: 'B4 не установлен',
+        detail: 'Xray и AmneziaWG уже могут работать вместе. Для DPI-обхода direct-трафика установите B4 отдельно.',
+        action: commandButton('refreshCompatibility', 'Проверить снова')
+      };
+    } else if (!b4Active) {
+      nextStep = {
+        tone: '',
+        label: 'Последний шаг',
+        title: 'Ограничьте B4 direct-трафиком и запустите',
+        detail: 'После запуска RuOpenRay повторно проверит NFQUEUE, интерфейсы и packet mark.',
+        action: b4Button('start', 'Запустить B4', 'warning')
+      };
+    }
 
     return `<div class="compat-page">
-      <section class="compat-hero">
+      <section class="compat-hero ${safetyTone === 'danger' ? 'danger' : safetyTone === 'warn' ? 'warn' : ''}">
         <div>
-          <span class="eyebrow">Совместная работа</span>
-          <h2>Xray + AmneziaWG + B4</h2>
+          <span class="eyebrow">Xray + AmneziaWG + B4</span>
+          <h2>${escapeHtml(heroTitle)}</h2>
           <p>Все три компонента могут работать одновременно, если Xray выбирает маршрут, AWG служит отдельным выходом, а B4 обрабатывает только явно ограниченный direct-трафик.</p>
         </div>
         ${commandButton('refreshCompatibility', 'Обновить проверку')}
@@ -157,7 +222,7 @@ export function createCompatView({ state, escapeHtml }) {
 
       <section class="panel compat-scheme-panel">
         <div class="panel-title">
-          <div><h2>Рекомендуемая схема</h2><span>Каждый компонент отвечает только за свой слой.</span></div>
+          <div><h2>Состояние компонентов</h2><span>У каждого компонента одна роль и собственная зона ответственности.</span></div>
         </div>
         <div class="compat-flow">
           ${integrationStep({
@@ -168,21 +233,27 @@ export function createCompatView({ state, escapeHtml }) {
           })}
           ${integrationStep({
             number: '2', title: 'AmneziaWG', role: 'Дополнительный выход',
-            status: awgRunning ? 'подключен' : awgReady ? 'готов' : 'не готов', tone: awgRunning ? 'ok' : awgReady ? '' : 'warn',
+            status: awgStatus, tone: awgTone,
             detail: 'Используется как out-amnezia или отдельная policy-маршрутизация, не переключая весь роутер.',
             meta: `${awgProfiles} профилей · ${awgMode}`, action: '<button class="btn secondary compact" data-tab-jump="amnezia">Настроить AWG</button>'
           })}
           ${integrationStep({
             number: '3', title: 'B4', role: 'DPI-обход direct',
-            status: b4Active ? 'перехватывает' : b4Installed ? 'выключен' : 'не найден', tone: b4Active ? 'warn' : b4Installed ? '' : '',
+            status: b4Active ? 'перехватывает' : b4Running ? 'запущен' : b4Installed ? 'выключен' : 'не найден', tone: b4Active ? (issues.length ? 'warn' : 'ok') : b4Running ? 'warn' : '',
             detail: 'Работает только с выбранным direct-трафиком и не забирает метки или интерфейсы Xray/AWG.',
-            meta: b4Active ? 'NFQUEUE активен' : b4Installed ? 'перехват не найден' : 'не установлен'
+            meta: b4Active ? 'NFQUEUE активен' : b4Running ? 'перехват не подтвержден' : b4Installed ? 'перехват не найден' : 'не установлен',
+            action: b4Installed ? b4Button('status', 'Проверить B4') : ''
           })}
         </div>
-        <div class="compat-safety ${safetyTone}">
-          <div><strong>${escapeHtml(safetyTitle)}</strong><span>${issues.length ? 'Проверьте пункты ниже перед изменением firewall.' : 'Xray, AWG и B4 сейчас не используют один и тот же подтвержденный перехват или fwmark.'}</span></div>
-          ${issues.length ? `<ul>${issues.map((item) => `<li>${escapeHtml(item.text)}</li>`).join('')}</ul>` : ''}
+        <div class="compat-next-step ${nextStep.tone}">
+          <div>
+            <span class="eyebrow">${escapeHtml(nextStep.label)}</span>
+            <strong>${escapeHtml(nextStep.title)}</strong>
+            <p>${escapeHtml(nextStep.detail)}</p>
+          </div>
+          <div class="compat-next-step-action">${nextStep.action}</div>
         </div>
+        ${issues.length > 1 ? `<div class="compat-safety ${safetyTone}"><ul>${issues.slice(1).map((item) => `<li>${escapeHtml(item.text)}</li>`).join('')}</ul></div>` : ''}
       </section>
 
       ${b4Section(compat)}
