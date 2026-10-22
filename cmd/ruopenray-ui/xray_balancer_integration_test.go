@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,8 +28,7 @@ func TestXrayBalancerRecovery(t *testing.T) {
 			strategy := strings.TrimSuffix(scenario, "-burst")
 			burst := strings.HasSuffix(scenario, "-burst")
 			var primaryDown, backupDown atomic.Bool
-			var primaryProbes, backupProbes atomic.Int32
-			proxy := func(name string, down *atomic.Bool, probes *atomic.Int32) *httptest.Server {
+			proxy := func(name string, down *atomic.Bool) *httptest.Server {
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					conn, rw, err := w.(http.Hijacker).Hijack()
 					if err != nil {
@@ -53,7 +53,6 @@ func TestXrayBalancerRecovery(t *testing.T) {
 						}
 						_, _ = rw.WriteString("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
 						_ = rw.Flush()
-						probes.Add(1)
 						return
 					}
 					_, _ = fmt.Fprintf(rw, "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s", len(name), name)
@@ -62,13 +61,17 @@ func TestXrayBalancerRecovery(t *testing.T) {
 				t.Cleanup(server.Close)
 				return server
 			}
-			primary, backup, leak := proxy("primary", &primaryDown, &primaryProbes), proxy("backup", &backupDown, &backupProbes), proxy("LEAK", &atomic.Bool{}, &atomic.Int32{})
+			primary, backup, leak := proxy("primary", &primaryDown), proxy("backup", &backupDown), proxy("LEAK", &atomic.Bool{})
 			outbound := func(tag string, server *httptest.Server) map[string]any {
 				u, _ := url.Parse(server.URL)
 				port, _ := strconv.Atoi(u.Port())
 				return map[string]any{"tag": tag, "protocol": "http", "settings": map[string]any{"servers": []any{map[string]any{"address": u.Hostname(), "port": port}}}}
 			}
 			port, err := freeLocalPort()
+			if err != nil {
+				t.Fatal(err)
+			}
+			metricsPort, err := freeLocalPort()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,6 +85,8 @@ func TestXrayBalancerRecovery(t *testing.T) {
 				balancer["strategy"] = map[string]any{"type": strategy, "settings": map[string]any{"expected": 2}}
 			}
 			cfg := map[string]any{
+				"stats":       map[string]any{},
+				"metrics":     map[string]any{"tag": "metrics", "listen": fmt.Sprintf("127.0.0.1:%d", metricsPort)},
 				"log":         map[string]any{"loglevel": "warning"},
 				"inbounds":    []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "http"}},
 				"outbounds":   []any{outbound("default-leak", leak), outbound("primary", primary), outbound("backup", backup), map[string]any{"tag": "block", "protocol": "blackhole"}},
@@ -99,6 +104,30 @@ func TestXrayBalancerRecovery(t *testing.T) {
 			transport := &http.Transport{Proxy: http.ProxyURL(proxyURL), DisableKeepAlives: true}
 			defer transport.CloseIdleConnections()
 			client := &http.Client{Transport: transport, Timeout: time.Second}
+			metricsTransport := &http.Transport{Proxy: nil}
+			defer metricsTransport.CloseIdleConnections()
+			metricsClient := &http.Client{Transport: metricsTransport, Timeout: time.Second}
+			waitHealth := func(primaryAlive, backupAlive bool) {
+				t.Helper()
+				deadline := time.Now().Add(35 * time.Second)
+				for time.Now().Before(deadline) {
+					resp, err := metricsClient.Get(fmt.Sprintf("http://127.0.0.1:%d/debug/vars", metricsPort))
+					if err == nil {
+						var report struct {
+							Observatory map[string]struct{ Alive bool }
+						}
+						err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&report)
+						_ = resp.Body.Close()
+						primary, pKnown := report.Observatory["primary"]
+						backup, bKnown := report.Observatory["backup"]
+						if err == nil && pKnown && bKnown && primary.Alive == primaryAlive && backup.Alive == backupAlive {
+							return
+						}
+					}
+					time.Sleep(50 * time.Millisecond)
+				}
+				t.Fatalf("observer did not report primary=%v backup=%v", primaryAlive, backupAlive)
+			}
 			request := func() string {
 				resp, err := client.Get("http://traffic.example.test/traffic")
 				if err != nil {
@@ -131,17 +160,10 @@ func TestXrayBalancerRecovery(t *testing.T) {
 				}
 				t.Fatalf("did not converge to %q", want)
 			}
+			waitHealth(true, true)
 			if strategy == "failover" || strategy == "leastPing" {
 				wait("primary")
 			} else {
-				deadline := time.Now().Add(35 * time.Second)
-				for primaryProbes.Load() == 0 || backupProbes.Load() == 0 {
-					if time.Now().After(deadline) {
-						t.Fatal("observer did not probe both members")
-					}
-					time.Sleep(50 * time.Millisecond)
-				}
-				time.Sleep(100 * time.Millisecond)
 				seen := map[string]bool{}
 				for i := 0; i < 100; i++ {
 					seen[request()] = true
@@ -151,6 +173,7 @@ func TestXrayBalancerRecovery(t *testing.T) {
 				}
 			}
 			primaryDown.Store(true)
+			waitHealth(false, true)
 			wait("backup")
 			for i := 0; i < 12; i++ {
 				if got := request(); got != "backup" {
@@ -158,12 +181,14 @@ func TestXrayBalancerRecovery(t *testing.T) {
 				}
 			}
 			backupDown.Store(true)
+			waitHealth(false, false)
 			wait("")
 			primaryDown.Store(false)
+			waitHealth(true, false)
 			wait("primary")
 			if strategy == "failover" {
 				backupDown.Store(false)
-				time.Sleep(1200 * time.Millisecond)
+				waitHealth(true, true)
 				wait("primary") // automatic failback even when both are healthy
 			}
 		})

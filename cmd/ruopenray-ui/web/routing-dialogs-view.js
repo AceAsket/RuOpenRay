@@ -246,7 +246,6 @@ function routeBalancerDialog() {
   const targetOptions = (selected) => targets.map((target) => `<option value="${escapeHtml(target.tag)}" ${selected === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}</option>`).join('');
   const selectedSelectors = new Set(splitRouteValues(state.routeBalancerSelectors));
   const selectorOrder = splitRouteValues(state.routeBalancerSelectors);
-  const isRoundRobin = state.routeBalancerStrategy === 'roundRobin';
   const knownTargetTags = new Set(targets.map((target) => target.tag));
   const legacySelectors = [...selectedSelectors].filter((selector) => !knownTargetTags.has(selector));
   const orderedTargets = [...targets].sort((a, b) => {
@@ -311,7 +310,6 @@ function routeBalancerDialog() {
               <div class="balancer-target-list">
                 ${orderedTargets.length ? orderedTargets.map((target) => {
                   const selected = selectedSelectors.has(target.tag);
-                  const orderIndex = selectorOrder.indexOf(target.tag);
                   return `
                   <div class="balancer-target ${selected ? 'active' : ''}">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(target.tag)}" ${selectedSelectors.has(target.tag) ? 'checked' : ''} />
@@ -320,16 +318,9 @@ function routeBalancerDialog() {
                       <strong>${escapeHtml(target.title)}</strong>
                       <em>${escapeHtml(target.detail)}</em>
                     </span>
-                    ${isRoundRobin && selected ? `
-                      <span class="balancer-order-controls" aria-label="Порядок для round-robin">
-                        <button type="button" data-balancer-selector-move="${escapeHtml(target.tag)}" data-direction="-1" ${orderIndex <= 0 ? 'disabled' : ''}>↑</button>
-                        <button type="button" data-balancer-selector-move="${escapeHtml(target.tag)}" data-direction="1" ${orderIndex < 0 || orderIndex >= selectorOrder.length - 1 ? 'disabled' : ''}>↓</button>
-                      </span>
-                    ` : ''}
                   </div>
                 `; }).join('') : '<p class="muted">Сначала добавьте хотя бы один сервер или подписку.</p>'}
                 ${legacySelectors.map((selector) => {
-                  const orderIndex = selectorOrder.indexOf(selector);
                   return `
                   <div class="balancer-target active legacy">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(selector)}" checked />
@@ -338,16 +329,11 @@ function routeBalancerDialog() {
                       <strong>${escapeHtml(selector)}</strong>
                       <em>Сохраненный selector из текущей конфигурации.</em>
                     </span>
-                    ${isRoundRobin ? `
-                      <span class="balancer-order-controls" aria-label="Порядок для round-robin">
-                        <button type="button" data-balancer-selector-move="${escapeHtml(selector)}" data-direction="-1" ${orderIndex <= 0 ? 'disabled' : ''}>↑</button>
-                        <button type="button" data-balancer-selector-move="${escapeHtml(selector)}" data-direction="1" ${orderIndex < 0 || orderIndex >= selectorOrder.length - 1 ? 'disabled' : ''}>↓</button>
-                      </span>
-                    ` : ''}
                   </div>
                 `; }).join('')}
               </div>
             </div>`}
+            ${!failover && state.routeBalancerStrategy === 'roundRobin' ? '<p class="inline-help">Xray чередует доступных участников в порядке сортировки их тегов. Порядок выбора флажков его не меняет.</p>' : ''}
             ${!failover && ['random', 'roundRobin'].includes(state.routeBalancerStrategy) ? `<label class="balancer-health-toggle"><input id="routeBalancerHealthCheck" type="checkbox" ${monitored ? 'checked' : ''} /> Исключать недоступные серверы</label>` : ''}
             ${!failover && state.routeBalancerStrategy === 'leastLoad' ? `<div class="form-row">
               <label for="routeBalancerExpected">Сколько лучших серверов использовать</label>
