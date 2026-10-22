@@ -3,6 +3,8 @@ import { routingListTargetPicker } from './routing-dsl.js';
 import { routeExplanationView } from './routing-insights.js';
 import { routePresetIconView } from './route-visuals.js';
 import { routingAuditView } from './routing-conflicts.js';
+import { isFailoverBalancer } from './balancer-policy.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createRoutingView(deps) {
   const {
@@ -364,7 +366,7 @@ function routingBalancersPanel() {
     ${observatoryPanel()}
     <section class="panel routing-balancers-panel">
       <div class="panel-title">
-        <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для выбора по задержке нужно наблюдение Xray, для выбора по нагрузке — burst-наблюдение.</span></div>
+        <div><h2>Группы серверов</h2><span>Основной и резервный VPN с автоматическим возвратом или балансировка: случайно, по очереди, по задержке и стабильности. Настройки действуют для правил, направленных в группу.</span></div>
         <button class="btn warning" data-action="openRouteBalancerDialog">Добавить</button>
       </div>
       ${balancerHistorySettingsView()}
@@ -383,7 +385,7 @@ function routingBalancersPanel() {
                 <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
               </div>
               <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-              <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · резерв: ${balancer.fallbackTag}` : ''}</span>
+              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map(proxyDisplayName).join(', ') : 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag))}` : ''}</span>
               ${balancerMembersView(matched)}
               ${balancerHistoryView(matched)}
             </div>

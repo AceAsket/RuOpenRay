@@ -1,3 +1,5 @@
+import { balancerMonitorForm, balancerNeedsMonitor, buildBalancerDraft, isFailoverBalancer } from './balancer-policy.js';
+
 export function createRouteBalancerActions({
   state,
   render,
@@ -6,9 +8,7 @@ export function createRouteBalancerActions({
   splitRouteValues,
   setRouteBalancersDraft,
   syncConfig,
-  strategyObserverType,
-  applyObserverForStrategy,
-  observerLabel
+  balancerTargetOptions = () => []
 }) {
   function resetRouteBalancerForm() {
     state.routeBalancerEditingIndex = -1;
@@ -16,6 +16,11 @@ export function createRouteBalancerActions({
     state.routeBalancerStrategy = 'random';
     state.routeBalancerSelectors = '';
     state.routeBalancerFallback = '';
+    state.routeBalancerMode = 'failover';
+    state.routeBalancerPrimary = '';
+    state.routeBalancerHealthCheck = true;
+    state.routeBalancerExpected = '1';
+    Object.assign(state, balancerMonitorForm(state.config));
   }
 
   function openRouteBalancerDialog(index = -1) {
@@ -26,6 +31,11 @@ export function createRouteBalancerActions({
       state.routeBalancerStrategy = balancer.strategy?.type || 'random';
       state.routeBalancerSelectors = Array.isArray(balancer.selector) ? balancer.selector.join('\n') : '';
       state.routeBalancerFallback = balancer.fallbackTag || '';
+      state.routeBalancerMode = isFailoverBalancer(balancer, state.config) ? 'failover' : 'balance';
+      state.routeBalancerPrimary = balancer.selector?.[0] || '';
+      state.routeBalancerHealthCheck = balancerNeedsMonitor(balancer);
+      state.routeBalancerExpected = String(balancer.strategy?.settings?.expected ?? 1);
+      Object.assign(state, balancerMonitorForm(state.config));
     } else {
       resetRouteBalancerForm();
     }
@@ -58,42 +68,19 @@ export function createRouteBalancerActions({
   }
 
   function saveRouteBalancer() {
-    const tag = state.routeBalancerTag.trim();
-    const selectors = splitRouteValues(state.routeBalancerSelectors);
-    if (!tag) {
-      state.message = 'Укажите имя балансировщика';
+    const tag = String(state.routeBalancerTag || '').trim();
+    try {
+      syncConfig(buildBalancerDraft(state.config, state, balancerTargetOptions()));
+    } catch (error) {
+      state.message = error.message;
       render();
       return;
     }
-    if (!selectors.length) {
-      state.message = 'Выберите хотя бы один сервер или подписку для балансировщика';
-      render();
-      return;
-    }
-    const editing = state.routeBalancerEditingIndex;
-    const exists = routeBalancers().some((item, index) => item?.tag === tag && index !== editing);
-    if (exists) {
-      state.message = `Балансировщик ${tag} уже есть`;
-      render();
-      return;
-    }
-    const balancer = {
-      tag,
-      selector: selectors,
-      strategy: { type: state.routeBalancerStrategy || 'random' }
-    };
-    if (state.routeBalancerFallback.trim()) balancer.fallbackTag = state.routeBalancerFallback.trim();
-    const balancers = [...routeBalancers()];
-    if (editing >= 0 && balancers[editing]) balancers[editing] = balancer;
-    else balancers.unshift(balancer);
-    setRouteBalancersDraft(balancers);
-    const observerType = strategyObserverType(balancer.strategy.type);
-    if (observerType) syncConfig(applyObserverForStrategy(state.config, balancer.strategy.type, selectors));
     state.routeBalancer = tag;
     state.routeTargetType = 'balancer';
     state.routeBalancerDialog = false;
     resetRouteBalancerForm();
-    state.message = `Группа серверов ${tag} сохранена в черновик${observerType ? `, ${observerLabel(observerType)} включен для Xray` : ''}`;
+    state.message = `Группа серверов ${tag} сохранена в черновик. Выберите её в нужных правилах, проверьте конфигурацию и примените изменения.`;
     render();
   }
 

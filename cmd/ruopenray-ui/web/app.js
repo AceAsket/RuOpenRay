@@ -508,9 +508,7 @@ const routeBalancerActions = createRouteBalancerActions({
   splitRouteValues,
   setRouteBalancersDraft,
   syncConfig,
-  strategyObserverType,
-  applyObserverForStrategy,
-  observerLabel
+  balancerTargetOptions
 });
 const {
   resetRouteBalancerForm,

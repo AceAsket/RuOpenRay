@@ -3007,6 +3007,32 @@
   max-width: 960px;
 }
 
+.balancer-monitor-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.balancer-monitor-settings {
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  grid-column: 1 / -1;
+}
+
+.balancer-monitor-settings summary { cursor: pointer; font-weight: 700; }
+
+.balancer-layout.is-empty { grid-template-columns: minmax(0, 1fr); }
+
+.balancer-health-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.balancer-health-toggle input { width: auto; }
+
 .route-form-dialog {
   margin-top: 16px;
 }

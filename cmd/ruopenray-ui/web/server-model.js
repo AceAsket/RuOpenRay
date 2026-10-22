@@ -1,5 +1,7 @@
 import { countryFlagMarkup, serverLocation } from './server-location.js';
 import { isServiceOutbound } from './outbound-tags.js';
+import { proxyOptionLabel } from './proxy-label.js';
+import { balancerNeedsMonitor, monitorTypeForConfig } from './balancer-policy.js';
 
 export function createServerModel({
   state,
@@ -186,7 +188,7 @@ export function createServerModel({
       targets.push({
         tag,
         kind: pool ? 'subscription' : 'server',
-        title: tag,
+        title: proxyOptionLabel(outbound),
         detail: pool
           ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${pool.activeCandidate.tag}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
           : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
@@ -199,7 +201,7 @@ export function createServerModel({
       targets.push({
         tag,
         kind: 'subscription',
-        title: tag,
+        title: proxyOptionLabel({ tag }),
         detail: `${pool.count || 0} кандидатов · stable outbound подписки`
       });
     });
@@ -267,12 +269,12 @@ export function createServerModel({
   }
 
   function balancerObserverSummary(balancer = {}) {
-    const strategy = balancer?.strategy?.type || 'random';
-    const type = strategyObserverType(strategy);
-    if (!type) return { label: 'может работать без наблюдения', tone: 'ok' };
+    const type = monitorTypeForConfig(state.config);
+    if (!balancerNeedsMonitor(balancer)) return { label: 'без исключения недоступных', tone: 'warn' };
     const required = Array.isArray(balancer.selector) ? balancer.selector.filter(Boolean) : [];
     const configured = type === 'burstObservatory' ? burstObservatorySelectors() : observatorySelectors();
-    const covered = required.length && required.every((selector) => configured.includes(selector));
+    const matched = balancerSelectorMatches(required.join('\n'));
+    const covered = matched.length && matched.every((tag) => configured.some((selector) => tag.startsWith(selector)));
     return {
       label: covered ? `${observerLabel(type)} · может работать` : `${observerLabel(type)} · нужно включить`,
       tone: covered ? 'ok' : 'warn'
@@ -286,7 +288,7 @@ export function createServerModel({
         const outbound = proxyOutbounds().find((item) => item?.tag === tag);
         const check = checkForTag(tag);
         return `<span class="${check?.ok ? 'ok' : check ? 'warn' : ''}" title="${escapeHtml(outboundAddress(outbound))}">
-          ${escapeHtml(tag)}
+          ${escapeHtml(proxyOptionLabel(outbound || { tag }))}
         </span>`;
       }).join('')}
       ${tags.length > 6 ? `<span>+${tags.length - 6}</span>` : ''}

@@ -1445,12 +1445,14 @@ routeDialogState.routeValue = 'domain:one.example, domain:two.example, domain:th
 routeDialogState.routeRuleTestResult = null;
 const routeDialogMultiValueHtml = routeDialogView.routeRuleDialog();
 const routeBalancerState = {
-  config: { routing: { balancers: [] } },
+  config: { routing: { balancers: [] }, outbounds: [{ tag: 'proxy-one', protocol: 'vless' }, { tag: 'proxy-two', protocol: 'vless' }] },
   routeBalancerEditingIndex: -1,
   routeBalancerTag: 'auto',
   routeBalancerStrategy: 'leastPing',
   routeBalancerSelectors: 'proxy-one\nproxy-two',
   routeBalancerFallback: 'proxy-one',
+  routeBalancerProbeUrl: 'https://www.gstatic.com/generate_204',
+  routeBalancerProbeInterval: '10s',
   routeBalancer: '',
   routeTargetType: 'outbound',
 };
@@ -2102,7 +2104,7 @@ const checks = [
   ['routing rule target list test action', routeRuleTargetListTestWorks],
   ['routing rule target test button', routeDialogSingleHtml.includes('data-action="testRouteRuleTarget"') && routeDialogSingleHtml.includes('route-rule-test-result')],
   ['routing dialog multi value textarea', routeDialogMultiValueHtml.includes('route-value-editor') && routeDialogMultiValueHtml.includes('3 знач.') && routeDialogMultiValueHtml.includes('data-route-value-multiline="0"')],
-  ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.enabled && routeBalancerState.routeTargetType === 'balancer'],
+  ['route balancer actions', routeBalancerState.config.routing.balancers[0]?.tag === 'auto' && routeBalancerState.config.observatory?.subjectSelector.includes('proxy-two') && routeBalancerState.routeTargetType === 'balancer'],
   ['dns model normalization', dnsModel.dnsStats().servers === 2 && dnsModel.normalizeDnsAddressInput('192.168.1.1').check === '192.168.1.1:53'],
   ['dns actions draft', dnsActionState.config.dns.servers.some((server) => server?.address === '192.168.1.1') && dnsActionState.config.dns.hosts['router.lan'] === '192.168.1.1' && dnsAuthServerMasked && dnsCustomBootstrapAdded && dnsBrokenBootstrapBlocked],
   ['dns actions order', String(dnsActionState.config.dns.servers[0]).startsWith('https://') && dnsActionState.config.dns.servers.findIndex((server) => server?.address === '192.168.1.1') > 0],

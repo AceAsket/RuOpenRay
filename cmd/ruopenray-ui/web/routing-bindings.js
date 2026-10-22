@@ -809,6 +809,20 @@ export function bindRoutingControls({
     state.routeBalancerStrategy = event.target.value;
     render();
   });
+  ['routeBalancerMode', 'routeBalancerPrimary', 'routeBalancerMonitorType'].forEach((id) => {
+    document.querySelector(`#${id}`)?.addEventListener('change', (event) => {
+      state[id] = event.target.value;
+      render();
+    });
+  });
+  ['routeBalancerProbeUrl', 'routeBalancerProbeInterval', 'routeBalancerProbeTimeout', 'routeBalancerProbeSampling', 'routeBalancerExpected'].forEach((id) => {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => { state[id] = event.target.value; });
+  });
+  document.querySelector('#routeBalancerHealthCheck')?.addEventListener('change', (event) => {
+    state.routeBalancerHealthCheck = event.target.checked;
+    if (!event.target.checked) state.routeBalancerFallback = '';
+    render();
+  });
   document.querySelectorAll('[data-balancer-selector]').forEach((input) => {
     input.addEventListener('change', (event) => {
       setRouteBalancerSelector(input.dataset.balancerSelector, event.target.checked);

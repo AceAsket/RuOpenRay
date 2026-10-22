@@ -1,3 +1,5 @@
+import { proxyDisplayName } from './proxy-label.js';
+
 export function createDiagnosticsObservatoryView(deps) {
   const {
     accessLogRows,
@@ -59,8 +61,9 @@ function observatoryPanel() {
   const required = observatoryRequiredBalancers();
   const missing = required.filter((balancer) => {
     const balancerSelectors = Array.isArray(balancer.selector) ? balancer.selector : [];
-    const requiredSelectors = strategyObserverType(balancer?.strategy?.type) === 'burstObservatory' ? burstSelectors : selectors;
-    return !balancerSelectors.some((selector) => requiredSelectors.includes(selector));
+    const requiredSelectors = strategyObserverType(balancer?.strategy?.type, balancer) === 'burstObservatory' ? burstSelectors : selectors;
+    const members = proxyOutbounds().filter((outbound) => outboundMatchesSelectors(outbound, balancerSelectors));
+    return !members.length || !members.every((outbound) => outboundMatchesSelectors(outbound, requiredSelectors));
   });
   const checkTags = matched.length ? matched.map((outbound) => outbound.tag).filter(Boolean) : proxyOutbounds().map((outbound) => outbound?.tag).filter(Boolean);
   return `
@@ -81,7 +84,7 @@ function observatoryPanel() {
           <label>Интервал автопроверки</label>
           <input id="observatoryInterval" value="${escapeHtml(probeInterval)}" placeholder="10s, 30s, 1m" />
         </div>
-        <p class="inline-help">Стратегия “меньший ping” требует проверки задержки Xray. Стратегия “меньше нагрузка” требует проверки нагрузки Xray. “Случайно” и “по очереди” работают без автопроверки.</p>
+        <p class="inline-help">Резервирование и исключение недоступных участников требуют автопроверки Xray. Параметры общие для всех групп; настроить их можно при создании или редактировании группы серверов.</p>
       </div>
       <div class="manual-check-settings">
         <strong>Ручная проверка RuOpenRay</strong>
@@ -102,7 +105,7 @@ function observatoryPanel() {
             <input id="serverCheckAttempts" type="number" min="1" max="5" step="1" value="${escapeHtml(state.serverCheckAttempts)}" />
           </div>
         </div>
-        <span>Ручная проверка нужна для выбора прокси сейчас. Автопроверка Xray нужна, когда группа сама выбирает сервер по задержке или нагрузке.</span>
+        <span>Ручная проверка показывает результат в панели. Автопроверка Xray управляет резервированием и исключением недоступных участников.</span>
       </div>
       <div class="observatory-grid">
         <article>
@@ -110,7 +113,7 @@ function observatoryPanel() {
           <strong>${observedMatched.length ? `${observedMatched.length} серверов` : 'не включен'}</strong>
         </article>
         <article>
-          <span>Проверка нагрузки</span>
+          <span>Проверка стабильности сериями</span>
           <strong>${burstMatched.length ? `${burstMatched.length} серверов` : 'не включен'}</strong>
         </article>
         <article>
@@ -118,7 +121,7 @@ function observatoryPanel() {
           <strong>${escapeHtml(obs.probeURL || 'не применен')}</strong>
         </article>
         <article>
-          <span>URL проверки нагрузки</span>
+          <span>URL проверки сериями</span>
           <strong>${escapeHtml(burstPing.destination || 'не применен')}</strong>
         </article>
         <article>
@@ -131,13 +134,13 @@ function observatoryPanel() {
         </article>
       </div>
       <div class="observatory-tags">
-        ${allSelectors.length ? allSelectors.map((selector) => `<span>${escapeHtml(selector)}</span>`).join('') : '<span class="muted">серверы для автопроверки Xray пока не выбраны</span>'}
+        ${allSelectors.length ? allSelectors.map((selector) => `<span>${escapeHtml(proxyDisplayName(selector))}</span>`).join('') : '<span class="muted">серверы для автопроверки Xray пока не выбраны</span>'}
       </div>
       ${matched.length ? `<div class="observatory-targets">
         ${matched.map((outbound) => {
           const check = checkForTag(outbound.tag);
           return `<article>
-            <strong>${escapeHtml(outbound.tag)}</strong>
+            <strong>${escapeHtml(proxyDisplayName(outbound.tag))}</strong>
             <span>${escapeHtml(outboundAddress(outbound))}</span>
             <b class="check-badge ${check?.ok ? 'ok' : check ? 'bad' : ''}">${escapeHtml(checkLabel(check))}</b>
           </article>`;

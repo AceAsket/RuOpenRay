@@ -1,6 +1,44 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestAnalyzeBalancerMonitoring(t *testing.T) {
+	for _, scenario := range []struct {
+		name, strategy, monitor, fallback string
+		selectors                         []any
+		warning, failure                  bool
+	}{
+		{"prefix-coverage", "leastPing", "observatory", "block", []any{"vpn-"}, false, false},
+		{"partial-coverage", "leastPing", "observatory", "block", []any{"vpn-a"}, true, false},
+		{"round-robin-monitor-required", "roundRobin", "", "block", nil, true, false},
+		{"random-monitor-required", "random", "", "block", nil, true, false},
+		{"leastload-regular", "leastLoad", "observatory", "block", []any{"vpn-"}, false, false},
+		{"leastping-burst", "leastPing", "burstObservatory", "block", []any{"vpn-"}, false, false},
+		{"missing-fallback", "leastPing", "observatory", "missing", []any{"vpn-"}, false, true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			cfg := map[string]any{
+				"outbounds": []any{map[string]any{"tag": "vpn-a", "protocol": "vless"}, map[string]any{"tag": "vpn-b", "protocol": "vless"}, map[string]any{"tag": "block", "protocol": "blackhole"}},
+				"routing":   map[string]any{"balancers": []any{map[string]any{"tag": "vpn", "selector": []any{"vpn-"}, "strategy": map[string]any{"type": scenario.strategy}, "fallbackTag": scenario.fallback}}},
+			}
+			if scenario.monitor != "" {
+				cfg[scenario.monitor] = map[string]any{"subjectSelector": scenario.selectors}
+			}
+			state := &serverState{cfg: appConfig{GeoDir: t.TempDir()}}
+			result := state.analyzeConfig(cfg)
+			warnings := strings.Join(stringSlice(result["warnings"]), "\n")
+			if strings.Contains(warnings, "требует наблюдения") != scenario.warning {
+				t.Fatalf("warnings: %s", warnings)
+			}
+			if (len(stringSlice(result["errors"])) > 0) != scenario.failure {
+				t.Fatalf("errors: %v", result["errors"])
+			}
+		})
+	}
+}
 
 func TestIsCatchAllRoutingRule(t *testing.T) {
 	tests := []struct {
