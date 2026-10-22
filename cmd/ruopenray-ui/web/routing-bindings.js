@@ -838,6 +838,7 @@ export function bindRoutingControls({
   });
   document.querySelector('#routeBalancerFallback')?.addEventListener('change', (event) => {
     state.routeBalancerFallback = event.target.value;
+    render();
   });
   document.querySelectorAll('[data-route-target-type]').forEach((button) => {
     button.addEventListener('click', () => {

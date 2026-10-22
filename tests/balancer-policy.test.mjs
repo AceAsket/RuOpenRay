@@ -122,6 +122,15 @@ test('dialog exposes primary, backup and common probe settings, or four balancin
   assert.match(html, /Основной VPN-сервер/); assert.match(html, /Резервный VPN-сервер/);
   assert.match(html, /Автоматический возврат/); assert.match(html, /routeBalancerProbeInterval/);
   assert.doesNotMatch(html, /id="routeBalancerStrategy"/);
+  assert.match(html, /class="flag-svg"[^>]*aria-label="FI"/);
+  assert.match(html, /class="flag-svg"[^>]*aria-label="DE"/);
+  assert.match(html, /value="\?\?\?\?fin-vpn" selected/);
+  state.serverMeta = { 'de-vpn': { country: 'NL' } };
+  html = view.routeBalancerDialog();
+  assert.match(html, /class="flag-svg"[^>]*aria-label="NL"/);
+  assert.doesNotMatch(html, /class="flag-svg"[^>]*aria-label="DE"/);
+  state.routeBalancerPrimary = ''; state.routeBalancerFallback = '';
+  assert.doesNotMatch(view.routeBalancerDialog(), /class="flag-svg"/);
   state.routeBalancerMode = 'balance'; state.routeBalancerStrategy = 'roundRobin';
   html = view.routeBalancerDialog();
   for (const strategy of ['random', 'roundRobin', 'leastPing', 'leastLoad']) assert.match(html, new RegExp(`value="${strategy}"`));

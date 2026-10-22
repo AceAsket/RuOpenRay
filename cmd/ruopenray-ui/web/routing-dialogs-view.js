@@ -2,6 +2,7 @@ import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
 import { routingDestinationPicker, routingListTargetPicker } from './routing-dsl.js';
 import { isFailoverBalancer } from './balancer-policy.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { countryFlagMarkup, serverLocation } from './server-location.js';
 
 export function createRoutingDialogsView({
   state,
@@ -244,6 +245,12 @@ function routeBalancerDialog() {
   const monitored = failover || ['leastPing', 'leastLoad'].includes(state.routeBalancerStrategy) || state.routeBalancerHealthCheck !== false;
   const burst = state.routeBalancerMonitorType === 'burstObservatory';
   const targetOptions = (selected) => targets.map((target) => `<option value="${escapeHtml(target.tag)}" ${selected === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}</option>`).join('');
+  const withTargetFlag = (tag, select) => {
+    const outbound = state.config?.outbounds?.find((item) => item.tag === tag) ||
+      state.subscriptionPools?.find((pool) => pool.tag === tag)?.activeCandidate || { tag };
+    const location = tag ? serverLocation(outbound, state.serverMeta?.[tag] || {}) : {};
+    return `<span class="diagnostic-proxy-select ${location.code ? 'has-flag' : ''}">${location.code ? countryFlagMarkup(location.code) : ''}${select}</span>`;
+  };
   const selectedSelectors = new Set(splitRouteValues(state.routeBalancerSelectors));
   const selectorOrder = splitRouteValues(state.routeBalancerSelectors);
   const knownTargetTags = new Set(targets.map((target) => target.tag));
@@ -298,7 +305,7 @@ function routeBalancerDialog() {
             </div>
             ${failover ? `<div class="form-row">
               <label for="routeBalancerPrimary">Основной VPN-сервер</label>
-              <select id="routeBalancerPrimary"><option value="">Выберите основной сервер</option>${targetOptions(state.routeBalancerPrimary)}</select>
+              ${withTargetFlag(state.routeBalancerPrimary, `<select id="routeBalancerPrimary"><option value="">Выберите основной сервер</option>${targetOptions(state.routeBalancerPrimary)}</select>`)}
             </div>` : `<div class="form-row">
               <label for="routeBalancerStrategy">Стратегия балансировки</label>
               <select id="routeBalancerStrategy">
@@ -342,10 +349,10 @@ function routeBalancerDialog() {
             </div>` : ''}
             <div class="form-row">
               <label for="routeBalancerFallback">${failover ? 'Резервный VPN-сервер' : 'Если все участники недоступны'}</label>
-              <select id="routeBalancerFallback" ${!monitored ? 'disabled' : ''}>
+              ${withTargetFlag(state.routeBalancerFallback, `<select id="routeBalancerFallback" ${!monitored ? 'disabled' : ''}>
                 <option value="">${failover ? 'Выберите резервный сервер' : monitored ? 'Блокировать соединение' : 'Без проверки доступности'}</option>
                 ${fallbackTargets.map((target) => `<option value="${escapeHtml(target.tag)}" ${state.routeBalancerFallback === target.tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(target.title))}${target.kind === 'subscription' ? ' · подписка' : ''}</option>`).join('')}
-              </select>
+              </select>`)}
             </div>
             ${monitored ? `<details class="balancer-monitor-settings" data-details-key="balancer-monitor-settings">
               <summary>Автопроверка Xray · ${escapeHtml(state.routeBalancerProbeInterval || '10s')} · ${burst ? 'сериями' : 'регулярно'}</summary>

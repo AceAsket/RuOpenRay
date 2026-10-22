@@ -188,7 +188,7 @@ export function createServerModel({
       targets.push({
         tag,
         kind: pool ? 'subscription' : 'server',
-        title: proxyOptionLabel(outbound),
+        title: proxyOptionLabel(outbound, state.serverMeta?.[tag] || {}),
         detail: pool
           ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${pool.activeCandidate.tag}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
           : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
@@ -201,7 +201,7 @@ export function createServerModel({
       targets.push({
         tag,
         kind: 'subscription',
-        title: proxyOptionLabel({ tag }),
+        title: proxyOptionLabel({ tag }, state.serverMeta?.[tag] || {}),
         detail: `${pool.count || 0} кандидатов · stable outbound подписки`
       });
     });
