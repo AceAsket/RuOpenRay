@@ -136,6 +136,20 @@ export function createProfileActions({
   }
 
   return {
+    createFullBackup: async () => {
+      state.fullBackupResult = null;
+      const result = await request('/api/backup/full', { method: 'POST', body: '{}' });
+      if (!result.ok) throw new Error(result.error || 'Не удалось создать архив');
+      state.fullBackupPath = result.path;
+      state.fullBackupResult = await request('/api/backup/full/check', { method: 'POST', body: JSON.stringify({ path: result.path }) });
+      state.message = state.fullBackupResult.ok ? `Полная копия создана и проверена: ${result.path}` : 'Копия создана, но проверка не пройдена';
+      render();
+    },
+    checkFullBackup: async () => {
+      state.fullBackupResult = await request('/api/backup/full/check', { method: 'POST', body: JSON.stringify({ path: state.fullBackupPath }) });
+      state.message = state.fullBackupResult.ok ? 'Архив прошёл проверку целостности и конфигурации Xray' : (state.fullBackupResult.error || 'Проверка архива не пройдена');
+      render();
+    },
     activateProfile,
     openProfileEditor,
     closeProfileEditor,

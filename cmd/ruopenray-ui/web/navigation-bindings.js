@@ -86,6 +86,7 @@ export function bindNavigationControls({ state, render, configureLogTimer, onTab
       state.dnsView = button.dataset.dnsView;
       state.message = '';
       render();
+      onTabChange?.('dns');
     });
   });
   document.querySelectorAll('[data-servers-view]').forEach((button) => {

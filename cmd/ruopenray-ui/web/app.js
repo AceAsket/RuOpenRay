@@ -2502,6 +2502,7 @@ function bind() {
       refreshLogs: () => refreshLogs(true, true),
       runConnectivityDiagnostics,
       runDpiDiagnostics,
+      runTLSStability: diagnosticsActions.runTLSStability,
       refreshDomainMonitor: () => refreshDomainMonitor(true, { force: true }),
       startDomainMonitor: () => controlDomainMonitor('start'),
       stopDomainMonitor: () => controlDomainMonitor('stop'),
@@ -2593,6 +2594,8 @@ function bind() {
       createProfileFromCurrent,
       saveProfile,
       backup,
+      createFullBackup: profileActions.createFullBackup,
+      checkFullBackup: profileActions.checkFullBackup,
       restoreLatestBackup,
     },
   });
@@ -2634,7 +2637,6 @@ function bind() {
     removeDeviceRule,
   });
   bindDnsControls({
-    adguardRefresh: adguardActions.adguardRefresh,
     state,
     render,
     removeDnsServer,

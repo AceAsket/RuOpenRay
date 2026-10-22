@@ -346,6 +346,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/diagnostics/domain-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.domainProxyProbe(payload))
+	case path == "/diagnostics/tls-stability" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.tlsStabilityProbe(r.Context(), payload))
 	case path == "/diagnostics/dpi-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.dpiProbe(payload))
@@ -466,6 +469,14 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/backup/full" && r.Method == http.MethodPost:
 		backup, err := s.backupBundle()
 		respond(w, map[string]any{"ok": true, "path": backup}, err)
+	case path == "/backup/full/check" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.fullBackupAction(payload, false))
+	case path == "/backup/full/download" && r.Method == http.MethodGet:
+		s.downloadFullBackup(w, r)
+	case path == "/backup/full/restore" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.fullBackupAction(payload, true))
 	case path == "/backup/latest" && r.Method == http.MethodGet:
 		backup, err := s.latestBackup()
 		respond(w, map[string]any{"ok": true, "backup": backup}, err)

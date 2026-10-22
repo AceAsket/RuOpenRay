@@ -19,8 +19,36 @@ export function createAdguardActions({ state, request, render, syncLanDnsStatus,
     state.message = message;
     render();
   }
+  async function filterAction(payload, message) {
+    state.adguardFilterError = '';
+    try {
+      const result = await request('/api/dns/adguard', { method: 'POST', body: JSON.stringify(payload) });
+      if (!result.ok) throw new Error(result.error || 'Операция со списком не выполнена');
+      if (payload.action === 'filter-add') {
+        state.adguardFilterName = '';
+        state.adguardFilterUrl = '';
+      }
+      state.message = message;
+    } catch (error) {
+      state.adguardFilterError = error.message;
+      throw error;
+    } finally {
+      await adguardRefresh();
+    }
+  }
   return {
     adguardRefresh,
+    adguardFiltersRefresh: () => filterAction({ action: 'filter-refresh' }, 'Списки фильтрации обновлены'),
+    adguardFilterAdd: () => filterAction({ action: 'filter-add', name: state.adguardFilterName, url: state.adguardFilterUrl }, 'Список добавлен и включён'),
+    adguardFilterToggle: (button) => filterAction({ action: 'filter-set', url: button.dataset.filterUrl, enabled: button.dataset.filterEnabled === 'true' }, 'Состояние списка изменено'),
+    adguardFilterRemove: (button) => filterAction({ action: 'filter-remove', url: button.dataset.filterUrl }, 'Список удалён'),
+    adguardFilterPreset: (button) => {
+      const preset = state.adguardStatus?.filterCatalog?.[Number(button.dataset.filterIndex)];
+      if (!preset) return;
+      state.adguardFilterName = preset.name;
+      state.adguardFilterUrl = preset.url;
+      render();
+    },
     adguardUpstreamReset: async () => {
       await adguardRefresh();
       state.adguardUpstreamDraft = null;

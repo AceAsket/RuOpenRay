@@ -169,6 +169,42 @@ curl -s http://192.168.1.1:9090/api/outbounds/check \
   -d '{"tags":["proxy"],"url":"https://www.gstatic.com/generate_204"}'
 ```
 
+## Диагностика TLS и обслуживание
+
+`POST /api/diagnostics/tls-stability` принимает HTTPS `target`, существующий
+proxy-`tag`, `attempts` (по умолчанию 5), `timeoutMs` (4000) и
+`compareFragment` (true). Проверяются отдельные новые соединения TLS 1.2/1.3:
+прямое с роутера, выбранный выход и копия выхода без фрагментации, если она
+обнаружена. Активный Xray и его настройки не меняются. Допускаются 1–10
+запросов, таймаут 1–8 с и бюджет двух версий TLS до 40 с на вариант; общий
+предел — 50 с. Одновременно выполняется одна такая проверка.
+
+`ok:true` означает выполненный запуск диагностики, а не исправность всех
+маршрутов. Смотрите `healthy`, `complete`, а в `results` — `variant`, `tls`,
+`passed`, `total`, `requested`, `complete` и `samples`. В каждой попытке есть
+проверенный HTTP status, число прочитанных байтов, `bodyComplete`, время и
+категория ошибки (`dns`, `certificate`, `tls`, `timeout`, `transfer`, `http`,
+`connection`). Чтение ограничено 1 МиБ; ответ большей длины отмечается как
+частичный. HTTP 200 с оборванным телом считается ошибкой. Прямой запрос VM
+может дополнительно перехватываться внешним шлюзом; это не независимый WAN-тест.
+
+Для AdGuard `GET /api/dns/adguard` дополнен полями `filterLists`,
+`filterIntervalHours`, `filtersError` и `filterCatalog`. Через
+`POST /api/dns/adguard` доступны действия:
+
+| action | Дополнительные поля | Действие |
+| --- | --- | --- |
+| `filter-add` | `name`, `url` | Добавить и включить HTTPS blocklist |
+| `filter-set` | `url`, `enabled` | Переключить существующий blocklist |
+| `filter-remove` | `url` | Удалить выбранный blocklist |
+| `filter-refresh` | — | Обновить все blocklists |
+
+Исключения, allowlists и DNS при этих действиях сохраняются. Запись не
+повторяется автоматически после таймаута; сначала заново прочитайте статус.
+
+Полная резервная копия, проверка манифеста, скачивание и восстановление через
+`/api/backup/full*` описаны в [backup-restore.md](backup-restore.md).
+
 ## Интеграция с B4
 
 RuOpenRay сам показывает базовые сведения о B4 в `/api/status` и `/api/diagnostics`. Для read-only интеграций обычно достаточно:

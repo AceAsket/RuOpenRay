@@ -455,6 +455,15 @@ function settingsPanel() {
     </section>
   `;
   const storageSection = `
+    <section class="panel settings-section"><div class="panel-title"><div><h2>Полная резервная копия</h2><span>Xray, профили, группы, LAN DNS и локальные настройки AdGuard.</span></div></div>
+      <p class="muted">Архив содержит секреты подключений. SHA-256 каждого файла проверяется перед восстановлением. Журналы и временные проверки в архив не входят.</p>
+      <div class="split-actions"><button class="btn primary" data-action="createFullBackup" ${state.busyAction ? 'disabled' : ''}>Создать полную копию</button>
+        <button class="btn secondary" data-action="checkFullBackup" ${state.busyAction || !state.fullBackupPath ? 'disabled' : ''}>Проверить архив</button>
+        ${state.fullBackupPath ? `<a class="btn secondary" href="/api/backup/full/download?path=${encodeURIComponent(state.fullBackupPath)}" download>Скачать ZIP</a>` : ''}</div>
+      <label class="field"><span>ZIP на роутере</span><input id="fullBackupPath" value="${escapeHtml(state.fullBackupPath || '')}" placeholder="${escapeHtml(storageItem('backups').path || '/etc/ruopenray-ui/backups')}/ruopenray-full-….zip"></label>
+      ${state.fullBackupResult ? `<p class="settings-warning ${state.fullBackupResult.ok ? 'ok' : ''}">${escapeHtml(state.fullBackupResult.ok ? `Архив проверен: ${state.fullBackupResult.files?.length || 0} файлов · ${state.fullBackupResult.version || ''}` : state.fullBackupResult.error || 'Архив не прошёл проверку')}</p>` : ''}
+      <p class="muted">Полное восстановление выполняется при остановленных Xray и AdGuard через API восстановления. Оно возвращает конфигурацию сети; после восстановления нужен запуск служб и, для UCI, перезагрузка в окно обслуживания.</p>
+    </section>
     <section class="panel settings-section">
       <div class="panel-title">
         <div><h2>Память роутера</h2><span>Сводка по overlay и быстрые безопасные действия для маленького NAND.</span></div>

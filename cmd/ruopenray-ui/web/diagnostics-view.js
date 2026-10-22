@@ -1,6 +1,7 @@
 import { createDiagnosticsDomainView } from './diagnostics-domain-view.js';
 import { createDiagnosticsObservatoryView } from './diagnostics-observatory-view.js';
 import { createDiagnosticsTrafficView } from './diagnostics-traffic-view.js';
+import { tlsStabilityView } from './tls-stability-view.js';
 
 export function createDiagnosticsView(deps) {
   const {
@@ -32,6 +33,7 @@ export function createDiagnosticsView(deps) {
       live: diagnosticsLiveView,
       chain: diagnosticsChainView,
       dpi: diagnosticsDpiView,
+      tls: () => tlsStabilityView(state, deps.escapeHtml, deps.proxyOutbounds(), deps.activeProxyTag()),
       traffic: diagnosticsTrafficView,
       sni: sniPanel,
       domains: diagnosticsDomainMonitorView
@@ -58,6 +60,7 @@ export function createDiagnosticsView(deps) {
           ${[
             ['chain', 'Проверка'],
             ['dpi', 'DPI'],
+            ['tls', 'TLS'],
             ['traffic', 'Трафик'],
             ['domains', 'Домены'],
             ['sni', 'SNI'],

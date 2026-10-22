@@ -3,7 +3,6 @@ import { adguardUpstreamText, dohUrlKey } from './adguard-upstreams-view.js';
 export function bindDnsControls({
   state,
   render,
-  adguardRefresh,
   removeDnsServer,
   moveDnsServer,
   prioritizeDohDnsServers,
@@ -12,9 +11,6 @@ export function bindDnsControls({
   editDnsPolicy,
   setDnsModeDraft,
 }) {
-  document.querySelectorAll('[data-dns-view="adguard"]').forEach((button) => {
-    button.addEventListener('click', () => adguardRefresh?.().catch((error) => { state.message = error.message; render(); }));
-  });
   for (const [id, key] of [['adguardUrl', 'adguardUrl'], ['adguardUsername', 'adguardUsername'], ['adguardPassword', 'adguardPassword'], ['adguardBootstrap', 'adguardBootstrap'], ['adguardDomain', 'adguardDomain']]) {
     document.querySelector(`#${id}`)?.addEventListener('input', (event) => {
       state[key] = event.target.value;
@@ -22,6 +18,9 @@ export function bindDnsControls({
     });
   }
   document.querySelector('#adguardSyncEnabled')?.addEventListener('change', (event) => { state.adguardSyncEnabled = event.target.checked; });
+  for (const [id, key] of [['adguardFilterName', 'adguardFilterName'], ['adguardFilterUrl', 'adguardFilterUrl']]) {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => { state[key] = event.target.value; });
+  }
   const editUpstreams = (value) => {
     if (state.adguardUpstreamDraft == null) state.adguardUpstreamBase = state.adguardStatus?.upstreamSnapshot?.slice();
     state.adguardUpstreamDraft = value;

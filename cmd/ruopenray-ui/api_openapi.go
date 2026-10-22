@@ -188,6 +188,7 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/diagnostics/package", "Diagnostics", "Download diagnostic package", "Returns a zip archive with sanitized config, status and command outputs.", "", "Binary"},
 		{"post", "/diagnostics/http-probe", "Diagnostics", "Run router HTTP probe", "", "GenericObject", "Object"},
 		{"post", "/diagnostics/domain-probe", "Diagnostics", "Run domain proxy probe", "", "GenericObject", "Object"},
+		{"post", "/diagnostics/tls-stability", "Diagnostics", "Compare repeated TLS 1.2/1.3 HTTPS requests", "Uses isolated SOCKS Xray processes and verifies certificates and up to 1 MiB of each response body. Compares direct, selected proxy and an optional fragment-free copy. Does not alter active configuration. target, tag, attempts (1-10), timeoutMs (1000-8000), compareFragment; per-route budget <=40s.", "GenericObject", "Object"},
 		{"post", "/diagnostics/dpi-probe", "Diagnostics", "Run DPI/connectivity probe", "", "GenericObject", "Object"},
 		{"get", "/domain-monitor", "Diagnostics", "Get live domain monitor", "Query parameter: limit.", "", "Object"},
 		{"post", "/domain-monitor", "Diagnostics", "Control live domain monitor", "Starts, stops or clears the monitor.", "GenericObject", "Object"},
@@ -235,6 +236,9 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/backup/full", "Backups", "Create full backup bundle", "", "", "Object"},
 		{"get", "/backup/latest", "Backups", "Get latest backup", "", "", "Object"},
 		{"post", "/backup/restore", "Backups", "Restore backup", "", "GenericObject", "Object"},
+		{"post", "/backup/full/check", "Backups", "Verify a full backup", "Checks manifest, SHA-256, allowed paths and Xray configuration. path must be a ZIP inside the configured backup directory; does not restore files.", "GenericObject", "Object"},
+		{"get", "/backup/full/download", "Backups", "Download a private full backup", "Authenticated attachment download. Query path must refer to a regular ZIP inside the configured backup directory. The archive contains secrets.", "", "Zip"},
+		{"post", "/backup/full/restore", "Backups", "Restore a verified full backup offline", "Requires offline:true and stopped Xray/AdGuard processes. Creates a rollback archive before restoring files. Does not start services or reload network; restart services and apply UCI during a maintenance window.", "GenericObject", "Object"},
 	}
 }
 
@@ -271,6 +275,9 @@ func addOpenAPIEndpoint(paths map[string]any, endpoint apiEndpoint) {
 			"required": true,
 			"content":  openAPIRequestContent(endpoint.request),
 		}
+	}
+	if endpoint.path == "/backup/full/download" {
+		operation["parameters"] = []map[string]any{{"name": "path", "in": "query", "required": true, "schema": map[string]string{"type": "string"}}}
 	}
 	item[endpoint.method] = operation
 }
@@ -325,6 +332,8 @@ func openAPIRequestContent(schemaName string) map[string]any {
 
 func openAPIResponseContent(schemaName string) map[string]any {
 	switch schemaName {
+	case "Zip":
+		return map[string]any{"application/zip": map[string]any{"schema": map[string]string{"type": "string", "format": "binary"}}}
 	case "Binary":
 		return map[string]any{"application/octet-stream": map[string]any{"schema": map[string]string{"type": "string", "format": "binary"}}}
 	case "Text":

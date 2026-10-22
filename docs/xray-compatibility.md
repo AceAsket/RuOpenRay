@@ -1,6 +1,6 @@
 # Проверка Xray перед обновлением
 
-Матрица проекта фиксирует Xray 26.3.27 и 26.9.9. SHA-256 Linux/amd64 архивов закреплены в `.github/workflows/build.yml`. Для локальной проверки задайте `RUOPENRAY_TEST_XRAY` абсолютным путём к официальному бинарнику и выполните:
+Матрица проекта фиксирует Xray 26.3.27, 26.9.9 и 26.10.21. SHA-256 Linux/amd64 архивов закреплены в `.github/workflows/build.yml`. На 22 октября 2026 версия 26.10.21 является официальным prerelease; добавление в матрицу не обновляет установленное ядро автоматически. Для локальной проверки задайте `RUOPENRAY_TEST_XRAY` абсолютным путём к официальному бинарнику и выполните:
 
 ```sh
 go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility' -v -count=1 -timeout=180s
@@ -35,6 +35,7 @@ DNS проверяется изолированно через статичес�
 ## Первичные источники
 
 - [Xray 26.9.9](https://github.com/XTLS/Xray-core/releases/tag/v26.9.9)
+- [Xray 26.10.21](https://github.com/XTLS/Xray-core/releases/tag/v26.10.21)
 - [Выбор ограничений Freedom по входящему протоколу](https://github.com/XTLS/Xray-core/blob/v26.9.9/proxy/freedom/freedom.go)
 - [Миграция domainStrategy](https://github.com/XTLS/Xray-core/blob/v26.9.9/infra/conf/xray.go)
 - [Удалённый TLS allowInsecure](https://github.com/XTLS/Xray-core/blob/v26.9.9/infra/conf/transport_security.go)

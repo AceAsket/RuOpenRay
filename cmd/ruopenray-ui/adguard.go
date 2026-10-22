@@ -84,6 +84,10 @@ func adGuardDoHURLKey(value string) string {
 }
 
 func adGuardCall(cfg adGuardSettings, path string, payload any, result any) error {
+	return adGuardCallTimeout(cfg, path, payload, result, 8*time.Second)
+}
+
+func adGuardCallTimeout(cfg adGuardSettings, path string, payload any, result any, timeout time.Duration) error {
 	if err := validateAdGuardURL(cfg.URL); err != nil {
 		return err
 	}
@@ -105,7 +109,7 @@ func adGuardCall(cfg adGuardSettings, path string, payload any, result any) erro
 	req.Header.Set("Content-Type", "application/json")
 	transport := &http.Transport{Proxy: nil}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Timeout: 8 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return errors.New("AdGuard Home не отвечает на локальный API; проверьте сервис и адрес")
@@ -455,6 +459,8 @@ func (s *serverState) adGuardIntegrationStatus() map[string]any {
 	}
 	if err := adGuardCall(cfg, "filtering/status", nil, &filtering); err == nil {
 		result["filteringEnabled"] = filtering["enabled"]
+		result["filterLists"] = adGuardFilterLists(filtering)
+		result["filterIntervalHours"] = filtering["interval"]
 		count := 0
 		for _, filter := range anySlice(filtering["filters"]) {
 			if mapValue(filter)["enabled"] == true {
@@ -462,7 +468,10 @@ func (s *serverState) adGuardIntegrationStatus() map[string]any {
 			}
 		}
 		result["filters"] = count
+	} else {
+		result["filtersError"] = err.Error()
 	}
+	result["filterCatalog"] = adGuardFilterCatalog()
 	return result
 }
 
@@ -558,6 +567,9 @@ func (s *serverState) adGuardAction(payload map[string]any) (map[string]any, err
 	}
 	if cfg.URL == "" {
 		return nil, errors.New("Сначала подключите локальный API AdGuard Home")
+	}
+	if strings.HasPrefix(action, "filter-") {
+		return adGuardFilterAction(cfg, payload)
 	}
 	switch action {
 	case "upstream-save":

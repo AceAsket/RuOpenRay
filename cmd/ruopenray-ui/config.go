@@ -47,6 +47,9 @@ type serverState struct {
 	logCacheAt       time.Time
 	fallbackMu       sync.Mutex
 	adguardMu        sync.Mutex
+	backupMu         sync.Mutex
+	tlsProbeMu       sync.Mutex
+	backupPaths      map[string]string
 	b4Mu             sync.Mutex
 	b4ControlMu      sync.Mutex
 	b4Token          string

@@ -1,4 +1,5 @@
 import { adguardUpstreamsSection } from './adguard-upstreams-view.js';
+import { adguardFiltersSection } from './adguard-filters-view.js';
 
 function filteringReason(reason) {
   const labels = {
@@ -72,6 +73,7 @@ export function adguardSection(state, escapeHtml, pageUrl = globalThis.location?
     <p class="muted">Активных списков: ${Number(status.filters) || 0}. Версия: ${escapeHtml(status.version || '—')}.</p>
     <button class="btn ${status.protectionEnabled ? 'secondary' : 'primary'}" data-action="adguardProtection" ${disabled ? 'disabled' : ''}>${status.protectionEnabled ? 'Выключить фильтрацию' : 'Включить фильтрацию'}</button>` : '<p class="muted">Подключите установленный на роутере AdGuard Home. Это не меняет DNS устройств и не устанавливает новый сервис.</p>'}
     ${dnsClientJournal(state)}
+    ${adguardFiltersSection(state, escapeHtml)}
     ${adguardUpstreamsSection(state, escapeHtml)}
     <div class="panel-title"><div><h3>Проверить домен и добавить исключение</h3><span>Исключение действует на домен и его поддомены.</span></div></div>
     <label class="field"><span>Домен</span><input id="adguardDomain" value="${escapeHtml(state.adguardDomain || '')}" placeholder="example.com" autocomplete="off"></label>

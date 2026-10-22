@@ -148,6 +148,24 @@ export function createDiagnosticsActions({
   }
 
   return {
+    runTLSStability: async () => {
+      state.tlsStabilityRunning = true;
+      state.tlsStabilityResult = null;
+      render();
+      try {
+        const result = await request('/api/diagnostics/tls-stability', { method: 'POST', body: JSON.stringify({
+          target: state.tlsStabilityTarget || 'https://github.com/', tag: state.tlsStabilityTag || activeProxyTag(),
+          attempts: Number(state.tlsStabilityAttempts) || 5, timeoutMs: 4000, compareFragment: true,
+        }) });
+        state.tlsStabilityResult = result;
+        state.message = result.ok ? 'Серия TLS-проверок завершена' : (result.error || 'Проверка не выполнена');
+      } catch (error) {
+        state.tlsStabilityResult = { ok: false, error: error.message };
+      } finally {
+        state.tlsStabilityRunning = false;
+        render();
+      }
+    },
     nftBytes,
     totalXrayStatsBytes,
     triggerBrowserTraffic,

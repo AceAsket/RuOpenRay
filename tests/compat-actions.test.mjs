@@ -49,7 +49,8 @@ test('Integration navigation refreshes on entry and jumps directly to AdGuard se
   const button = (dataset) => ({ dataset, addEventListener(_, callback) { this.click = callback; } });
   const integrations = button({ tab: 'compat' });
   const adguard = button({ tabJump: 'dns', dnsViewJump: 'adguard' });
-  globalThis.document = { querySelectorAll: (selector) => selector === '[data-tab]' ? [integrations] : selector === '[data-tab-jump]' ? [adguard] : [] };
+  const dnsAdguard = button({ dnsView: 'adguard' });
+  globalThis.document = { querySelectorAll: (selector) => selector === '[data-tab]' ? [integrations] : selector === '[data-tab-jump]' ? [adguard] : selector === '[data-dns-view]' ? [dnsAdguard] : [] };
   try {
     const state = { tab: 'dashboard', dnsView: 'servers', mobileNavOpen: true, config: { routing: { rules: [{}] } } };
     const config = JSON.stringify(state.config);
@@ -58,7 +59,8 @@ test('Integration navigation refreshes on entry and jumps directly to AdGuard se
     integrations.click();
     assert.equal(state.tab, 'compat');
     adguard.click();
-    assert.deepEqual(navigated, [['compat', 'servers'], ['dns', 'adguard']]);
+    dnsAdguard.click();
+    assert.deepEqual(navigated, [['compat', 'servers'], ['dns', 'adguard'], ['dns', 'adguard']]);
     assert.equal(state.mobileNavOpen, false);
     assert.equal(JSON.stringify(state.config), config);
   } finally {

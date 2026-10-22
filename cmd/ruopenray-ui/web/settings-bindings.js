@@ -5,6 +5,11 @@ export function bindSettingsControls({
   installPasswordStorageKey,
   githubInstallCommand,
 }) {
+  document.querySelector('#fullBackupPath')?.addEventListener('input', (event) => {
+    state.fullBackupPath = event.target.value;
+    state.fullBackupResult = null;
+  });
+  document.querySelector('#fullBackupPath')?.addEventListener('change', () => render());
   document.querySelectorAll('[data-logging-level]').forEach((button) => {
     button.addEventListener('click', () => {
       state.loggingLevel = button.dataset.loggingLevel;
