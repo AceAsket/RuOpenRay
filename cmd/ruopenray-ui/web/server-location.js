@@ -267,7 +267,7 @@ const commonIsoTokens = new Set([
 const locationAliasRules = [
   ['DE', /germany|deutsch|german|frankfurt|nuremberg|nuernberg|falkenstein|fsn|hetzner/i],
   ['NL', /netherlands|holland|amsterdam|rotterdam|evoxt/i],
-  ['FI', /finland|finnish|helsinki|hel1/i],
+  ['FI', /(?:^|[^a-z0-9])fin(?:[^a-z0-9]|$)|finland|finnish|helsinki|hel1/i],
   ['SE', /sweden|stockholm/i],
   ['PL', /poland|warsaw|wroclaw/i],
   ['FR', /france|paris|roubaix|graveline|ovh-fr/i],

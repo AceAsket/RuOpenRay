@@ -5,8 +5,32 @@ import { adguardFiltersSection } from '../cmd/ruopenray-ui/web/adguard-filters-v
 import { createDiagnosticsActions } from '../cmd/ruopenray-ui/web/diagnostics-actions.js';
 import { createAdguardActions } from '../cmd/ruopenray-ui/web/adguard-actions.js';
 import { bindDiagnosticsControls } from '../cmd/ruopenray-ui/web/diagnostics-bindings.js';
+import { proxyDisplayName, proxyOptionLabel } from '../cmd/ruopenray-ui/web/proxy-label.js';
 
 const escapeHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+test('Diagnostic labels replace damaged flag prefixes without changing outbound identifiers', () => {
+  const outbound = { tag: '????fin_play2go', protocol: 'vless' };
+  const html = tlsStabilityView({}, escapeHtml, [outbound], outbound.tag);
+  assert.match(html, /value="\?\?\?\?fin_play2go" selected>FI · fin_play2go<\/option>/);
+  assert.match(html, /class="flag-svg"[^>]*aria-label="FI"/);
+  assert.equal(outbound.tag, '????fin_play2go');
+  assert.equal(proxyDisplayName('🇳🇱 Amsterdam'), 'Amsterdam');
+  assert.equal(proxyDisplayName('�� vpn'), 'vpn');
+  assert.equal(proxyDisplayName('VPN? backup??'), 'VPN? backup??');
+  assert.equal(proxyDisplayName('?custom'), '?custom');
+  assert.equal(proxyOptionLabel({ tag: '????final-server' }), 'final-server');
+  assert.equal(proxyOptionLabel(outbound, { country: 'NL' }), 'NL · fin_play2go');
+});
+
+test('Diagnostic labels escape imported names and retain distinct exact option values', () => {
+  const options = [{ tag: '????de_<img onerror="x">' }, { tag: '🇩🇪 de_<img onerror="x">' }];
+  const html = tlsStabilityView({}, escapeHtml, options, options[0].tag);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(html, /value="\?\?\?\?de_&lt;img/);
+  assert.match(html, /value="🇩🇪 de_&lt;img/);
+  assert.equal(options[0].tag, '????de_<img onerror="x">');
+});
 
 test('TLS report distinguishes partial series and escapes error details', () => {
   const html = tlsStabilityView({ tlsStabilityResult: { complete: false, healthy: false, host: '<img>', results: [{ variant: 'proxy', tls: 'TLS 1.3', passed: 2, total: 3, complete: false, samples: [{ ok: false, error: '<script>broken</script>' }] }] } }, escapeHtml, [{ tag: 'vpn' }], 'vpn');

@@ -1,3 +1,5 @@
+import { proxyOptionLabel } from './proxy-label.js';
+
 export function createDiagnosticsTrafficView(deps) {
   const {
     accessLogRows,
@@ -201,7 +203,8 @@ function dpiProxyOptions() {
     const tag = String(outbound?.tag || '');
     if (!tag) return;
     const address = outboundAddress(outbound);
-    const label = address && address !== tag ? `${tag} · ${address}` : tag;
+    const name = proxyOptionLabel(outbound, state.serverMeta?.[tag] || {});
+    const label = address && address !== tag ? `${name} · ${address}` : name;
     options.push(`<option value="${escapeHtml(tag)}" ${selected === tag ? 'selected' : ''}>${escapeHtml(label)}</option>`);
   });
   return options.join('');

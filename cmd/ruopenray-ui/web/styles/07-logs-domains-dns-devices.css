@@ -1850,6 +1850,10 @@
 .tls-stability-panel .field, .adguard-filter-lists .field { display: grid; gap: 8px; min-width: 0; }
 .tls-stability-panel .data-table { min-width: 540px; }
 .tls-stability-panel > .btn { justify-self: start; }
+.diagnostic-proxy-select { display: block; position: relative; min-width: 0; }
+.diagnostic-proxy-select select { width: 100%; }
+.diagnostic-proxy-select.has-flag select { padding-left: 46px; }
+.diagnostic-proxy-select > .flag-icon { position: absolute; top: 50%; left: 12px; width: 24px; height: 18px; transform: translateY(-50%); pointer-events: none; }
 #adguardUpstreams { min-height: 104px; }
 .adguard-upstream-table { width: 100%; }
 .adguard-upstream-table th, .adguard-upstream-table td { padding: 10px; text-align: left; vertical-align: top; }
