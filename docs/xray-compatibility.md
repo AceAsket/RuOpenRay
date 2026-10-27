@@ -1,12 +1,16 @@
 # Проверка Xray перед обновлением
 
-Матрица проекта фиксирует Xray 26.3.27, 26.9.9 и 26.10.21. SHA-256 Linux/amd64 архивов закреплены в `.github/workflows/build.yml`. На 22 октября 2026 версия 26.10.21 является официальным prerelease; добавление в матрицу не обновляет установленное ядро автоматически. Для локальной проверки задайте `RUOPENRAY_TEST_XRAY` абсолютным путём к официальному бинарнику и выполните:
+Матрица проекта фиксирует Xray 26.3.27, 26.9.9 и 26.10.21. SHA-256 Linux/amd64 архивов закреплены в `.github/workflows/build.yml`. По состоянию на 28 октября 2026 GitHub помечает 26.10.21 обычным релизом; добавление в матрицу не обновляет установленное ядро автоматически. Для локальной проверки задайте `RUOPENRAY_TEST_XRAY` абсолютным путём к официальному бинарнику и выполните:
 
 ```sh
-go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility' -v -count=1 -timeout=180s
+go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility|TestXrayBalancerRecovery|TestXraySniffing' -v -count=1 -timeout=180s
 ```
 
-Проверяются реальные VLESS gRPC TLS, Trojan TCP TLS, VLESS WS TLS и VLESS XHTTP TLS; неверные учётные данные и сертификаты отклоняются. Все серверы, сертификаты, назначения и порты временные, трафик остаётся на loopback. HTTP-запрос идёт через туннель: HTTP-сайт на порту VLESS/Trojan не нужен.
+Проверяются реальные VLESS gRPC TLS, Trojan TCP TLS, VLESS WS TLS, VLESS XHTTP TLS и VLESS TCP TLS; неверные учётные данные и сертификаты отклоняются. Все серверы, сертификаты, назначения и порты временные, трафик остаётся на loopback. HTTP-запрос идёт через туннель: HTTP-сайт на порту VLESS/Trojan не нужен.
+
+Отдельные тесты проверяют восстановление резервного выхода и балансировщиков, [пустые исключения сниффера](xray-sniffing-exclusions.md), HTTP Host и TLS SNI. `TestXraySniffingDestinations` различает выбор доменного правила и адрес фактического соединения: при `routeOnly: false` сниффер подменяет назначение именем и Freedom с `UseIP` разрешает его через DNS Xray; при `routeOnly: true` домен используется для маршрута, но сохраняется исходный IP. Тест использует два локальных сервера и статический `dns.hosts`, проверяя ответ нужного сервера. Эта настройка автоматически не меняется: переключение способно повлиять на CDN, split DNS и FakeDNS.
+
+Результаты проверки после обновления: [аудит 28 октября 2026](xray-audit-2026-10-28.md).
 
 ## LAN и DNS
 
