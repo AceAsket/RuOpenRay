@@ -49,7 +49,7 @@ jobs:
       - name: Real tunnels and compatibility
         env:
           RUOPENRAY_TEST_XRAY: ${{ runner.temp }}/xray/xray
-        run: go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility|TestXrayBalancerRecovery' -v -count=1 -timeout=180s
+        run: go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility|TestXrayBalancerRecovery|TestXraySniffingExclusions' -v -count=1 -timeout=180s
   go:
     needs: [test, xray]
     runs-on: ubuntu-latest
