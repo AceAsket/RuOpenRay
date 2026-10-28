@@ -3,11 +3,11 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=ruopenray-ui
 PKG_VERSION:=0.5.1_rc4
 APP_VERSION:=0.5.1-rc4
-PKG_RELEASE:=1
+PKG_RELEASE:=3
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/AceAsket/RuOpenRay.git
-PKG_SOURCE_VERSION:=2096ed391a9b6cbd26a7a2f4617c341fb4387e95
+PKG_SOURCE_VERSION:=b08a8b7b0ed6421be1072cb10360b16cc50aedc1
 PKG_MIRROR_HASH:=skip
 
 PKG_BUILD_DEPENDS:=golang/host
@@ -65,6 +65,7 @@ define Package/ruopenray-ui/postinst
 [ -n "$$IPKG_INSTROOT" ] && exit 0
 mkdir -p /etc/ruopenray-ui/profiles /etc/ruopenray-ui/backups
 /usr/libexec/ruopenray-firstboot || exit 1
+/usr/bin/ruopenray-ui --self-check >/dev/null || exit 1
 [ -x /etc/init.d/ruopenray-ui ] && /etc/init.d/ruopenray-ui enable >/dev/null 2>&1 || true
 /etc/init.d/ruopenray-ui restart || exit 1
 [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
