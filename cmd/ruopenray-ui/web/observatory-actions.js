@@ -1,3 +1,5 @@
+import { balancerMonitorForm, balancerNeedsMonitor, configureBalancerMonitor, monitorTypeForConfig } from './balancer-policy.js';
+
 export function createObservatoryActions({
   state,
   syncConfig,
@@ -11,13 +13,14 @@ export function createObservatoryActions({
     const current = next.observatory && typeof next.observatory === 'object' ? next.observatory : {};
     const existing = Array.isArray(current.subjectSelector) ? current.subjectSelector : [];
     const subjectSelector = [...new Set([...existing, ...selectors.filter(Boolean)])];
-    const probeURL = String(state.serverCheckUrl || current.probeURL || 'https://www.gstatic.com/generate_204').trim() || 'https://www.gstatic.com/generate_204';
+    const probeURL = String(current.probeURL || state.serverCheckUrl || 'https://www.gstatic.com/generate_204').trim() || 'https://www.gstatic.com/generate_204';
     const probeInterval = normalizeObservatoryInterval(state.observatoryInterval || current.probeInterval || '10s');
     next.observatory = {
       ...current,
       subjectSelector,
       probeURL,
-      probeInterval
+      probeInterval,
+      enableConcurrency: true
     };
     return next;
   }
@@ -52,9 +55,11 @@ export function createObservatoryActions({
     return /^(?:\d+(?:ns|us|ms|s|m|h))+$/.test(text) ? text : '10s';
   }
 
-  function strategyObserverType(strategy) {
-    if (strategy === 'leastPing') return 'observatory';
-    if (strategy === 'leastLoad') return 'burstObservatory';
+  function strategyObserverType(strategy, balancer = {}) {
+    if (balancerNeedsMonitor({ ...balancer, strategy: { type: strategy } })) {
+      return state.config?.observatory || state.config?.burstObservatory ? monitorTypeForConfig(state.config) :
+        strategy === 'leastLoad' ? 'burstObservatory' : 'observatory';
+    }
     return '';
   }
 
@@ -80,7 +85,7 @@ export function createObservatoryActions({
 
   function outboundMatchesSelectors(outbound, selectors = observatorySelectors()) {
     const tag = String(outbound?.tag || '');
-    return selectors.some((selector) => tag.includes(String(selector || '').trim()));
+    return selectors.some((selector) => String(selector || '').trim() && tag.startsWith(String(selector).trim()));
   }
 
   function observatoryMatchedOutbounds() {
@@ -90,7 +95,7 @@ export function createObservatoryActions({
   }
 
   function observatoryRequiredBalancers() {
-    return routeBalancers().filter((balancer) => strategyNeedsObservatory(balancer?.strategy?.type));
+    return routeBalancers().filter(balancerNeedsMonitor);
   }
 
   function applyObserverForStrategy(config, strategy, selectors) {
@@ -100,7 +105,7 @@ export function createObservatoryActions({
   }
 
   function observerLabel(type) {
-    if (type === 'burstObservatory') return 'проверка нагрузки';
+    if (type === 'burstObservatory') return 'проверка стабильности';
     if (type === 'observatory') return 'проверка задержки';
     return 'не требуется';
   }
@@ -110,7 +115,7 @@ export function createObservatoryActions({
       random: 'случайно',
       roundRobin: 'по очереди',
       leastPing: 'меньший ping',
-      leastLoad: 'меньшая нагрузка'
+      leastLoad: 'стабильные серверы'
     }[strategy] || strategy || 'случайно';
   }
 
@@ -122,26 +127,14 @@ export function createObservatoryActions({
       return;
     }
     const required = observatoryRequiredBalancers();
-    const leastPingSelectors = [];
-    const leastLoadSelectors = [];
-    required.forEach((balancer) => {
-      const selectors = Array.isArray(balancer.selector) ? balancer.selector.filter(Boolean) : [];
-      if (strategyObserverType(balancer?.strategy?.type) === 'burstObservatory') leastLoadSelectors.push(...selectors);
-      if (strategyObserverType(balancer?.strategy?.type) === 'observatory') leastPingSelectors.push(...selectors);
-    });
-    let nextConfig = state.config;
-    if (leastPingSelectors.length || (!leastLoadSelectors.length && !required.length)) {
-      nextConfig = mergeObservatoryIntoConfig(nextConfig, leastPingSelectors.length ? leastPingSelectors : tags);
-    }
-    if (leastLoadSelectors.length) {
-      nextConfig = mergeBurstObservatoryIntoConfig(nextConfig, leastLoadSelectors);
-    }
-    syncConfig(nextConfig);
-    const parts = [
-      leastPingSelectors.length || (!leastLoadSelectors.length && !required.length) ? 'проверка задержки' : '',
-      leastLoadSelectors.length ? 'проверка нагрузки' : ''
-    ].filter(Boolean).join(' и ');
-    state.message = `${parts || 'Автопроверка'} включена для прокси-серверов. Проверьте конфигурацию и примените.`;
+    const selectors = required.length ? required.flatMap((balancer) => [...(balancer.selector || []), ...(tags.includes(balancer.fallbackTag) ? [balancer.fallbackTag] : [])].filter(Boolean)) : tags;
+    const form = balancerMonitorForm(state.config);
+    form.routeBalancerProbeUrl = state.serverCheckUrl || form.routeBalancerProbeUrl;
+    form.routeBalancerProbeInterval = normalizeObservatoryInterval(state.observatoryInterval || form.routeBalancerProbeInterval);
+    try {
+      syncConfig(configureBalancerMonitor(state.config, selectors, form));
+      state.message = 'Автопроверка включена для прокси-серверов. Проверьте конфигурацию и примените.';
+    } catch (error) { state.message = error.message; }
     render();
   }
 

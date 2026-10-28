@@ -1,6 +1,7 @@
 import { countryFlagMarkup, flagForCountry, serverDisplayName, serverLocation } from './server-location.js';
 import { isFragmentOutboundTag } from './outbound-tags.js';
 import { displayRouteDomainValues } from './routing-values.js';
+import { isDefaultRoute } from './routing-order.js';
 
 const privateBypassValues = new Set([
   'geoip:private',
@@ -154,8 +155,17 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeTargetFlagMarkup(encodedTarget) {
     const [type, ...parts] = String(encodedTarget || '').split(':');
-    if (type !== 'outbound') return '';
     const tag = parts.join(':');
+    const icons = {
+      proxy: '<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/>',
+      direct: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"/>',
+      block: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>',
+      balancer: '<path d="M12 3v6M5 15v-3h14v3"/><rect x="2" y="15" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/>',
+    };
+    const iconTag = tag === 'direct-b4' ? 'direct' : tag;
+    const icon = type === 'balancer' ? icons.balancer : type === 'outbound' && Object.hasOwn(icons, iconTag) ? icons[iconTag] : '';
+    if (icon) return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>`;
+    if (type !== 'outbound') return '';
     if (!isProxyTargetTag(tag)) return '';
     const location = serverLocation(routeTargetOutbound(tag), state.serverMeta?.[tag] || {});
     return countryFlagMarkup(location.code);
@@ -184,22 +194,6 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       .filter(Boolean);
   }
 
-  function isDefaultRoute(rule) {
-    if (!rule) return false;
-    const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
-    const network = String(rule.network || '').replace(/\s+/g, '').toLowerCase();
-    const isAllNetwork = !rule.network || network === 'tcp,udp' || network === 'udp,tcp';
-    const hasConditions = Boolean(
-      (Array.isArray(rule.domain) && rule.domain.length) ||
-      (Array.isArray(rule.ip) && rule.ip.length) ||
-      (Array.isArray(rule.source) && rule.source.length) ||
-      (Array.isArray(rule.inboundTag) && rule.inboundTag.length) ||
-      !isAllNetwork ||
-      (rule.port && String(rule.port) !== '0-65535')
-    );
-    return hasTarget && !hasConditions;
-  }
-  
   function routeTarget(rule) {
     if (isDefaultRoute(rule)) return { kind: 'default', values: ['все, что не совпало выше'] };
     if (Array.isArray(rule.domain) && rule.domain.length) return { kind: 'domain', values: rule.domain };
@@ -211,6 +205,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function routeRuleKey(rule) {
+    if (rule?.ruleTag && (rule.ruleTag.startsWith('ruopenray-rule:') || state.routeNames?.[`@group:${rule.ruleTag}`])) return `@rule:${rule.ruleTag}`;
     const target = routeTarget(rule || {});
     return JSON.stringify({
       type: rule?.type || 'field',
@@ -356,7 +351,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const name = state.routeNames[oldKey];
     if (!name) return;
     state.routeNames[routeRuleKey(toRule)] = name;
-    delete state.routeNames[oldKey];
+    if (oldKey !== routeRuleKey(toRule)) delete state.routeNames[oldKey];
     saveRouteNames();
   }
   
@@ -412,7 +407,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);
     const proxyTags = new Set(['proxy', ...proxyOutbounds().map((item) => item?.tag).filter(Boolean), ...subscriptionTags]);
     if (proxyTags.has(outbound)) return 'proxy';
-    if (outbound === 'direct') return 'direct';
+    if (outbound === 'direct' || outbound === 'direct-b4') return 'direct';
     if (outbound === 'block') return 'block';
     return 'other';
   }

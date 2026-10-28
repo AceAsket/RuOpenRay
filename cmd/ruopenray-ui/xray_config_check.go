@@ -19,6 +19,7 @@ func (s *serverState) validateConfig(cfg map[string]any) map[string]any {
 		}
 	}
 	normalizeCatchAllRoutingRules(cfg)
+	normalizeSniffingDomainExclusions(cfg)
 	ensureFragmentOutboundsInConfig(cfg)
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: JSON корректен; бинарник xray на Windows не проверялся"}
@@ -130,9 +131,9 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 	}
 	if hasDNSInbound && runtime.GOOS != "windows" {
 		host, port, _ := xrayDNSInboundEndpoint(cfg)
-		owner := udpPortOwner(host, port)
+		owner := dnsInboundPortOwner(host, port)
 		if owner != "" && !strings.Contains(owner, "/xray") {
-			warnings = append(warnings, fmt.Sprintf("DNS-вход ruopenray_dns_in не сможет стартовать: UDP %s:%d уже занят процессом %s. Подготовьте DNS-вход заново, RuOpenRay выберет свободный порт.", host, port, owner))
+			warnings = append(warnings, fmt.Sprintf("DNS-вход ruopenray_dns_in не сможет стартовать: порт %s:%d уже занят процессом %s. Подготовьте DNS-вход заново, RuOpenRay выберет свободный порт.", host, port, owner))
 		}
 	}
 	geoipPath := filepath.Join(s.cfg.GeoDir, "geoip.dat")
@@ -156,6 +157,9 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			burstObservatorySelectors[selector] = true
 		}
 	}
+	if observatory != nil && burstObservatory != nil {
+		warnings = append(warnings, "Одновременно заданы observatory и burstObservatory. Xray использует один источник наблюдения; выберите общий способ проверки в настройках группы серверов.")
+	}
 	hasTransparentCatchAll := false
 	for index, item := range rawBalancers {
 		if balancer, ok := item.(map[string]any); ok {
@@ -167,22 +171,45 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			if strategyMap, ok := balancer["strategy"].(map[string]any); ok {
 				strategy = strings.TrimSpace(fmt.Sprint(strategyMap["type"]))
 			}
-			if strategy == "leastPing" || strategy == "leastLoad" {
-				requiredSelectors := observatorySelectors
-				requiredName := "настройки наблюдения Xray"
-				if strategy == "leastLoad" {
-					requiredSelectors = burstObservatorySelectors
-					requiredName = "настройки burst-наблюдения Xray"
+			fallback := strings.TrimSpace(fmt.Sprint(balancer["fallbackTag"]))
+			if fallback == "<nil>" {
+				fallback = ""
+			}
+			if fallback != "" {
+				if _, exists := outbounds[fallback]; !exists {
+					errors = append(errors, fmt.Sprintf("Балансировщик %d: резервный выход %q не найден", index+1, fallback))
 				}
-				hasSelector := false
-				for _, selector := range asArray(balancer["selector"]) {
-					if requiredSelectors[strings.TrimSpace(fmt.Sprint(selector))] {
-						hasSelector = true
-						break
+			}
+			if strategy == "leastPing" || strategy == "leastLoad" || fallback != "" {
+				requiredSelectors := observatorySelectors
+				if observatory == nil {
+					requiredSelectors = burstObservatorySelectors
+				}
+				matched, covered := 0, 0
+				for outboundTag := range outbounds {
+					selected := false
+					for _, raw := range asArray(balancer["selector"]) {
+						prefix, ok := raw.(string)
+						if ok && prefix != "" && strings.HasPrefix(outboundTag, prefix) {
+							selected = true
+						}
+					}
+					if !selected {
+						continue
+					}
+					matched++
+					for prefix := range requiredSelectors {
+						if strings.HasPrefix(outboundTag, prefix) {
+							covered++
+							break
+						}
 					}
 				}
-				if !hasSelector {
-					warnings = append(warnings, fmt.Sprintf("Балансировщик %d: выбранный режим %s требует %s", index+1, strategy, requiredName))
+				if matched == 0 || covered != matched {
+					warnings = append(warnings, fmt.Sprintf("Балансировщик %d: режим %s требует наблюдения Xray для всех участников; проверяются %d из %d", index+1, strategy, covered, matched))
+				}
+				if fallback == "" {
+					warnings = append(warnings, fmt.Sprintf("Балансировщик %d: резервный выход не задан; при отказе всех участников Xray может выбрать выход по умолчанию", index+1))
 				}
 			}
 		}

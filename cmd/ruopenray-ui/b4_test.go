@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,11 +23,35 @@ func TestB4Warnings(t *testing.T) {
 	status := map[string]any{
 		"nft":      map[string]any{"hasQueue": true, "hasDNSRedirect": true},
 		"iptables": map[string]any{"hasNFQUEUE": false},
-		"routing":  map[string]any{"ipRule": true},
+		"routing":  map[string]any{"explicitB4": true},
 	}
 	warnings := b4Warnings(status)
 	if len(warnings) != 3 {
 		t.Fatalf("warnings = %#v, want 3 items", warnings)
+	}
+}
+
+func TestB4StatusDoesNotClaimGenericRouterPolicyRoutes(t *testing.T) {
+	active := b4StatusActive(
+		map[string]any{"hasB4": false, "hasQueue": false},
+		map[string]any{"hasB4": false, "hasNFQUEUE": false},
+		map[string]any{"explicitB4": false, "policyRule": true, "policyRoute": true},
+		map[string]any{"queueActive": false, "setsEnabled": false},
+	)
+	if active {
+		t.Fatal("generic policy routes from the router must not be attributed to B4")
+	}
+}
+
+func TestB4StatusRecognizesExplicitInterception(t *testing.T) {
+	for name, active := range map[string]bool{
+		"b4 queue":    b4StatusActive(map[string]any{"hasB4": true, "hasQueue": true}, nil, nil, nil),
+		"named route": b4StatusActive(nil, nil, map[string]any{"explicitB4": true}, nil),
+		"api queue":   b4StatusActive(nil, nil, nil, map[string]any{"queueActive": true}),
+	} {
+		if !active {
+			t.Fatalf("%s must be recognized as active B4 interception", name)
+		}
 	}
 }
 
@@ -45,7 +70,7 @@ func TestB4RouteOutputActiveIgnoresMissingTableErrors(t *testing.T) {
 func TestB4ProcessLinesIgnoresDiagnosticShell(t *testing.T) {
 	output := `29251 root 1348 S ash -c echo status; /etc/init.d/b4 status 2>&1 || true
 29299 root 1348 S grep b4
-29300 root 1348 S ash -c /usr/bin/ruopenray-ui diagnostics | jq '{podkop:.podkop, b4:.b4}'
+29300 root 1348 S ash -c /usr/bin/ruopenray-ui diagnostics | jq '{b4:.b4}'
 29310 root 2048 S /usr/bin/b4 --config /etc/b4/config.json`
 	lines := b4ProcessLines(output)
 	if len(lines) != 1 {
@@ -65,6 +90,10 @@ func TestB4APIStatusSummarizesReadOnlyEndpoints(t *testing.T) {
 			_, _ = w.Write([]byte(`{"success":true,"data":{"b4":{"running":true,"pid":123,"version":"1.64.0","config_path":"/etc/b4/config.json","service_manager":"procd"}}}`))
 		case "/api/config":
 			_, _ = w.Write([]byte(`{"success":true,"version":"1.64.0","available_ifaces":["br-lan"],"queue":{"interfaces":["br-lan"],"ipv4":true,"ipv6":false,"mark":4,"start_num":400,"threads":2},"sets":[{"id":"discord","name":"Discord","enabled":true},{"id":"off","name":"Disabled","enabled":false}]}`))
+		case "/api/metrics":
+			_, _ = w.Write([]byte(`{"engine":{"state":"running","mode":"nfqueue","threads":2,"firewall":"nftables"}}`))
+		case "/api/sets":
+			_, _ = w.Write([]byte(`[{"id":"discord","name":"Discord","revision":"r1","enabled":true}]`))
 		case "/api/metrics/summary":
 			_, _ = w.Write([]byte(`{"success":true,"data":{"total_packets":42,"active_connections":3}}`))
 		default:
@@ -141,5 +170,16 @@ func TestB4APIStatusDoesNotTreatDefaultIPv4AsActiveQueue(t *testing.T) {
 	}
 	if boolMap(status, "queueActive") {
 		t.Fatalf("api status = %#v, default ipv4 without firewall backend must not be queueActive", status)
+	}
+	config := status["config"].(map[string]any)
+	if config["queueScope"] != "all" || config["queueConfigured"] != true {
+		t.Fatalf("empty interfaces must be reported as all-interface scope: %#v", config)
+	}
+}
+
+func TestB4ParsePolicyRulesFindsCurrentNumericTablesAndMarkConflict(t *testing.T) {
+	rules := b4ParsePolicyRules(fmt.Sprintf("10123: from all fwmark %s/%s lookup 123\n10124: from all fwmark 0x234 lookup 124\n", amneziaFwMark, amneziaFwMark))
+	if len(rules) != 2 || rules[0].Table != 123 || rules[0].Mark != amneziaFwMark || rules[1].Table != 124 {
+		t.Fatalf("unexpected parsed B4 rules: %#v", rules)
 	}
 }

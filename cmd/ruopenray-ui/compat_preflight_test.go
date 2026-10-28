@@ -2,11 +2,18 @@ package main
 
 import "testing"
 
+func TestFirewallCompatibilityPreflightAllowsOwnedDirectB4Queue(t *testing.T) {
+	status := map[string]any{"active": true, "managedDirectOnly": true, "nft": map[string]any{"hasQueue": true}, "service": map[string]any{"enabled": true}}
+	result := firewallCompatibilityPreflightFromStatuses(map[string]any{"dnsIntercept": true}, nil, status)
+	if !boolMap(result, "ok") || boolMap(result, "requiresConfirmation") {
+		t.Fatal("Isolated direct-b4 queue must not conflict with LAN or DNS interception", result)
+	}
+}
+
 func TestFirewallCompatibilityPreflightClean(t *testing.T) {
 	got := firewallCompatibilityPreflightFromStatuses(
 		map[string]any{"dnsIntercept": true},
 		map[string]any{"routerMode": "tproxy"},
-		map[string]any{"active": false},
 		map[string]any{"active": false},
 	)
 	if got["ok"] != true || got["requiresConfirmation"] == true {
@@ -14,31 +21,10 @@ func TestFirewallCompatibilityPreflightClean(t *testing.T) {
 	}
 }
 
-func TestFirewallCompatibilityPreflightPodkopActive(t *testing.T) {
-	got := firewallCompatibilityPreflightFromStatuses(
-		map[string]any{"dnsIntercept": true},
-		map[string]any{"routerMode": "tproxy"},
-		map[string]any{
-			"active":  true,
-			"dnsmasq": map[string]any{"usesPodkopDNS": true},
-			"routing": map[string]any{"ipRule": true},
-		},
-		nil,
-	)
-	if got["requiresConfirmation"] != true {
-		t.Fatalf("podkop preflight = %#v, want confirmation", got)
-	}
-	issues, _ := got["issues"].([]map[string]any)
-	if len(issues) < 2 {
-		t.Fatalf("issues = %#v, want podkop and dns warnings", got["issues"])
-	}
-}
-
 func TestFirewallCompatibilityPreflightB4NFQUEUE(t *testing.T) {
 	got := firewallCompatibilityPreflightFromStatuses(
 		map[string]any{"dnsIntercept": false},
 		map[string]any{"routerMode": "redirect"},
-		nil,
 		map[string]any{
 			"active":   false,
 			"nft":      map[string]any{"hasQueue": true},
@@ -54,7 +40,6 @@ func TestFirewallCompatibilityPreflightB4Enabled(t *testing.T) {
 	got := firewallCompatibilityPreflightFromStatuses(
 		map[string]any{"dnsIntercept": false},
 		map[string]any{"routerMode": "tproxy"},
-		nil,
 		map[string]any{
 			"active":  false,
 			"service": map[string]any{"enabled": true},
@@ -63,5 +48,33 @@ func TestFirewallCompatibilityPreflightB4Enabled(t *testing.T) {
 	)
 	if got["requiresConfirmation"] != true {
 		t.Fatalf("b4 enabled preflight = %#v, want confirmation", got)
+	}
+}
+
+func TestFirewallCompatibilityPreflightSafeExternalB4Autostart(t *testing.T) {
+	status := map[string]any{"active": false, "externalConfigSafe": true, "service": map[string]any{"enabled": true}}
+	if result := firewallCompatibilityPreflightFromStatuses(nil, nil, status); !boolMap(result, "ok") {
+		t.Fatal("Verified external B4 autostart must not imply LAN interception", result)
+	}
+	status["nft"] = map[string]any{"hasQueue": true}
+	if result := firewallCompatibilityPreflightFromStatuses(nil, nil, status); boolMap(result, "ok") {
+		t.Fatal("External B4 config must not hide unrelated NFQUEUE", result)
+	}
+}
+
+func TestFirewallCompatibilityPreflightMarksAllInterfaceB4AsDanger(t *testing.T) {
+	got := firewallCompatibilityPreflightFromStatuses(
+		map[string]any{"dnsIntercept": false},
+		map[string]any{"routerMode": "tproxy"},
+		map[string]any{
+			"active":  true,
+			"nft":     map[string]any{"hasQueue": true},
+			"routing": map[string]any{"markConflict": false},
+			"api":     map[string]any{"config": map[string]any{"queueScope": "all"}},
+		},
+	)
+	issues := got["issues"].([]map[string]any)
+	if len(issues) != 1 || issues[0]["severity"] != "danger" {
+		t.Fatalf("all-interface B4 must be dangerous for transparent interception: %#v", got)
 	}
 }

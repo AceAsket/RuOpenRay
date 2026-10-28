@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net"
 	"runtime"
 	"strings"
 	"time"
@@ -9,30 +11,36 @@ import (
 
 func (s *serverState) compatibilityStatus() map[string]any {
 	lan := s.lanDNSUpstreamStatus(nil)
-	routerLan := strings.TrimSpace(fmt.Sprint(lan["routerLan"]))
+	routerLan := strings.TrimSpace(detectRouterLANAddress())
 	if routerLan == "" || routerLan == "<nil>" {
-		routerLan = routerLANAddress()
+		routerLan = strings.TrimSpace(fmt.Sprint(lan["routerLan"]))
+	}
+	if routerLan == "" || routerLan == "<nil>" {
+		routerLan = "192.168.1.1"
 	}
 	adguard, _ := lan["adguardHome"].(map[string]any)
-	podkop := s.cachedPodkopStatus()
-	b4 := s.cachedB4Status()
+	// This endpoint is an explicit integration refresh; use live API/engine data.
+	b4 := s.b4Status()
 	amnezia := s.cachedAmneziaStatus()
+	b4Link := ""
+	if api, ok := b4["api"].(map[string]any); ok && boolMap(api, "available") {
+		b4Link = fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort)
+	} else if ports, ok := b4["ports"].(map[string]any); ok && boolMap(ports, "ui") {
+		b4Link = fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort)
+	}
 	return map[string]any{
 		"ok":        true,
 		"routerLan": routerLan,
 		"detected": map[string]any{
 			"adguardHome": compatAvailable(adguard),
-			"podkop":      compatAvailable(podkop),
 			"b4":          compatAvailable(b4),
 			"amnezia":     compatAvailable(amnezia),
 		},
 		"links": map[string]any{
 			"adguardHome": adGuardHomeWebURL(routerLan, adguard),
-			"podkop":      fmt.Sprintf("http://%s/cgi-bin/luci/admin/services/podkop", routerLan),
-			"b4":          fmt.Sprintf("http://%s:%d/", routerLan, b4UIPort),
+			"b4":          b4Link,
 		},
 		"adguardHome": adguard,
-		"podkop":      podkop,
 		"b4":          b4,
 		"amnezia":     amnezia,
 	}
@@ -51,17 +59,82 @@ func adGuardHomeWebURL(routerLan string, adguard map[string]any) string {
 }
 
 func routerLANAddress() string {
-	if runtime.GOOS == "windows" || !commandExists("uci") {
-		return "192.168.1.1"
+	return firstNonEmpty(detectRouterLANAddress(), "192.168.1.1")
+}
+
+func detectRouterLANAddress() string {
+	if runtime.GOOS == "windows" {
+		return ""
 	}
-	lanIP := firstLine(fmt.Sprint(runTimeout(2*time.Second, "uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")
-	if lanIP == "" || lanIP == "<nil>" {
-		return "192.168.1.1"
+	// Prefer the live interface state over UCI. On DHCP LAN interfaces UCI may
+	// contain no address or a stale factory default while ubus/ip expose the
+	// address that clients can actually reach.
+	if commandExists("ubus") {
+		status := fmt.Sprint(runTimeout(2*time.Second, "ubus", "call", "network.interface.lan", "status")["stdout"])
+		if ip := routerIPv4FromUbus(status); ip != "" {
+			return ip
+		}
 	}
-	if strings.Contains(lanIP, "/") {
-		lanIP = strings.SplitN(lanIP, "/", 2)[0]
+	if commandExists("ip") {
+		addr := fmt.Sprint(runTimeout(2*time.Second, "ip", "-4", "-o", "addr", "show", "dev", "br-lan")["stdout"])
+		if ip := routerIPv4FromIPOutput(addr); ip != "" {
+			return ip
+		}
+		routes := fmt.Sprint(runTimeout(2*time.Second, "ip", "-4", "route", "show", "default")["stdout"])
+		if ip := routerIPv4FromIPOutput(routes); ip != "" {
+			return ip
+		}
 	}
-	return lanIP
+	if commandExists("uci") {
+		if ip := normalizeRouterIPv4(firstLine(fmt.Sprint(runTimeout(2*time.Second, "uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func routerIPv4FromUbus(raw string) string {
+	var status struct {
+		IPv4Address []struct {
+			Address string `json:"address"`
+		} `json:"ipv4-address"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &status) != nil {
+		return ""
+	}
+	for _, item := range status.IPv4Address {
+		if ip := normalizeRouterIPv4(item.Address); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func routerIPv4FromIPOutput(raw string) string {
+	fields := strings.Fields(raw)
+	for i, field := range fields {
+		if (field == "inet" || field == "src") && i+1 < len(fields) {
+			if ip := normalizeRouterIPv4(fields[i+1]); ip != "" {
+				return ip
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeRouterIPv4(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "<nil>" {
+		return ""
+	}
+	if strings.Contains(value, "/") {
+		value = strings.SplitN(value, "/", 2)[0]
+	}
+	ip := net.ParseIP(value)
+	if ip == nil || ip.To4() == nil || ip.IsUnspecified() || ip.IsLoopback() {
+		return ""
+	}
+	return ip.String()
 }
 
 func intFromAny(value any) int {
@@ -82,6 +155,8 @@ func intFromAny(value any) int {
 }
 
 func (s *serverState) controlB4(payload map[string]any) map[string]any {
+	s.b4ControlMu.Lock()
+	defer s.b4ControlMu.Unlock()
 	action := strings.TrimSpace(fmt.Sprint(payload["action"]))
 	if action == "" || action == "<nil>" {
 		action = "status"
@@ -100,13 +175,17 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		return result
 	}
 	steps := []map[string]any{}
+	if action == "start" || action == "restart" || action == "enable" {
+		if issues := s.b4ServiceStartIssues(); len(issues) > 0 {
+			return map[string]any{"ok": false, "action": action, "message": "Запуск B4 заблокирован: " + strings.Join(issues, " "), "issues": issues}
+		}
+	}
 	switch action {
 	case "status":
 	case "start":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "start"))
 	case "stop":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "stop"))
-		steps = append(steps, b4ClearTablesStep())
 	case "restart":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "restart"))
 	case "enable":
@@ -115,7 +194,17 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		steps = append(steps, runTimeout(5*time.Second, b4ServicePath, "disable"))
 	case "clear":
 		steps = append(steps, runTimeout(8*time.Second, b4ServicePath, "stop"))
-		steps = append(steps, b4ClearTablesStep())
+		if steps[0]["ok"] == true {
+			s.b4Mu.Lock()
+			cfg, err := s.loadB4Settings()
+			if err != nil {
+				steps = append(steps, b4Error("Настройки очереди B4 не прочитаны"))
+			} else {
+				steps = append(steps, s.b4DisableDirectLocked(cfg))
+			}
+			s.b4Mu.Unlock()
+			steps = append(steps, b4ClearTablesStep())
+		}
 	default:
 		result["ok"] = false
 		result["message"] = "Неподдерживаемое действие B4."
@@ -132,6 +221,9 @@ func (s *serverState) controlB4(payload map[string]any) map[string]any {
 		result["stdout"] = concatCommandOutput(steps...)
 	}
 	s.clearB4Cache()
+	if result["ok"] == true && (action == "start" || action == "restart") {
+		go func() { time.Sleep(time.Second); s.restoreB4Direct() }()
+	}
 	time.Sleep(350 * time.Millisecond)
 	result["status"] = s.b4Status()
 	return result
@@ -147,6 +239,9 @@ func b4ClearTablesStep() map[string]any {
 	}
 	if fileExists("/usr/bin/b4") {
 		return runTimeout(8*time.Second, "/usr/bin/b4", "--clear-tables", "--config", config)
+	}
+	if fileExists("/opt/bin/b4") {
+		return runTimeout(8*time.Second, "/opt/bin/b4", "--clear-tables", "--config", config)
 	}
 	return map[string]any{"ok": true, "skipped": true, "message": "b4 binary не найден, очистка таблиц пропущена"}
 }

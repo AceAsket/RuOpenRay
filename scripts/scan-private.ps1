@@ -11,7 +11,8 @@ $checks = @(
     Name = 'proxy share link'
     Pattern = '(?i)\b(?:vless|vmess|trojan|ss)://(?<value>[^\s"''<>]+)'
     ValueGroup = 'value'
-    Allow = '(?i)^\.\.\.$|@(?:[a-z0-9-]+\.)*example(?:\.(?:com|net|org))?(?::\d+)?(?:[/?#]|$)|@localhost(?::\d+)?(?:[/?#]|$)|@127\.0\.0\.1(?::\d+)?(?:[/?#]|$)'
+    # Reserved example names and documentation-only IP ranges are test fixtures.
+    Allow = '(?i)^\.\.\.$|@(?:[a-z0-9-]+\.)*example(?:\.(?:com|net|org|test))?(?::\d+)?(?:[/?#]|$)|@localhost(?::\d+)?(?:[/?#]|$)|@127\.0\.0\.1(?::\d+)?(?:[/?#]|$)|@(?:192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}(?::\d+)?(?:[/?#]|$)|@\[2001:db8:[a-f0-9:]*\](?::\d+)?(?:[/?#]|$)'
   },
   [pscustomobject]@{
     Name = 'AmneziaWG private key'

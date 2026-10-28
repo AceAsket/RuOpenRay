@@ -52,7 +52,16 @@ export function routeRuleConditionSignature(rule) {
 }
 
 export function routeRuleConditionKey(rule) {
-  return JSON.stringify(routeRuleConditionSignature(rule));
+  const normalize = (value) => {
+    if (Array.isArray(value)) return value.map(normalize).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalize(value[key])]));
+    return value;
+  };
+  const ignored = new Set(['type', 'ruleTag', 'outboundTag', 'balancerTag']);
+  const conditions = Object.fromEntries(Object.entries(rule || {}).filter(([key, value]) => !ignored.has(key) && value !== '' && value != null && (!Array.isArray(value) || value.length)));
+  // The type affects matching too; absent and field are equivalent.
+  conditions.type = rule?.type || 'field';
+  return JSON.stringify(normalize(conditions));
 }
 
 export function routePresetRuleMatches(rule, presetRule) {

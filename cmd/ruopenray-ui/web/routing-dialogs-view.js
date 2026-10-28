@@ -1,4 +1,8 @@
 import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
+import { routingDestinationPicker, routingListTargetPicker } from './routing-dsl.js';
+import { isFailoverBalancer } from './balancer-policy.js';
+import { proxyDisplayName } from './proxy-label.js';
+import { countryFlagMarkup, serverLocation } from './server-location.js';
 
 export function createRoutingDialogsView({
   state,
@@ -136,10 +140,11 @@ function routeRuleDialog() {
             <label>Название списка</label>
             <input id="routeDslName" value="${escapeHtml(state.routeDslName)}" placeholder="Например: Discord, YouTube, Игровые сервисы" />
           </div>
+          ${routingListTargetPicker(state, routeTargetOptions(), escapeHtml)}
           <div class="form-row wide">
-            <label>Правила списком</label>
-            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="default: direct&#10;discord.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
-            <small>Поддерживается короткий домен без префикса, <code>domain:...</code>, <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code>, <code>network(udp)</code> и назначение через <code>-> proxy/direct/block</code>.</small>
+            <label for="routeDsl">Домены, IP-адреса и правила</label>
+            <textarea id="routeDsl" class="dsl-editor route-dialog-dsl" spellcheck="false" placeholder="discord.com&#10;youtube.com&#10;104.16.0.1&#10;104.16.0.0/12&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routeDsl)}</textarea>
+            <small>По одному значению на строку: домены, IPv4/IPv6, подсети, <code>geosite:...</code>, <code>geoip:...</code>. Также можно вставить условия <code>domain(...)</code>, <code>ip(...)</code>, <code>source(...)</code> или готовые правила с <code>-></code>.</small>
           </div>
           ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
         </div>
@@ -236,9 +241,18 @@ function routeBalancerDialog() {
   if (!state.routeBalancerDialog) return '';
   const balancers = routeBalancers();
   const targets = balancerTargetOptions();
+  const failover = state.routeBalancerMode === 'failover';
+  const monitored = failover || ['leastPing', 'leastLoad'].includes(state.routeBalancerStrategy) || state.routeBalancerHealthCheck !== false;
+  const burst = state.routeBalancerMonitorType === 'burstObservatory';
+  const targetOptions = (selected) => targets.map((target) => `<option value="${escapeHtml(target.tag)}" ${selected === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}</option>`).join('');
+  const withTargetFlag = (tag, select) => {
+    const outbound = state.config?.outbounds?.find((item) => item.tag === tag) ||
+      state.subscriptionPools?.find((pool) => pool.tag === tag)?.activeCandidate || { tag };
+    const location = tag ? serverLocation(outbound, state.serverMeta?.[tag] || {}) : {};
+    return `<span class="diagnostic-proxy-select ${location.code ? 'has-flag' : ''}">${location.code ? countryFlagMarkup(location.code) : ''}${select}</span>`;
+  };
   const selectedSelectors = new Set(splitRouteValues(state.routeBalancerSelectors));
   const selectorOrder = splitRouteValues(state.routeBalancerSelectors);
-  const isRoundRobin = state.routeBalancerStrategy === 'roundRobin';
   const knownTargetTags = new Set(targets.map((target) => target.tag));
   const legacySelectors = [...selectedSelectors].filter((selector) => !knownTargetTags.has(selector));
   const orderedTargets = [...targets].sort((a, b) => {
@@ -258,12 +272,12 @@ function routeBalancerDialog() {
     ['random', 'Случайно'],
     ['roundRobin', 'По очереди'],
     ['leastPing', 'Меньший ping'],
-    ['leastLoad', 'Меньше нагрузка']
+    ['leastLoad', 'Стабильные серверы (leastLoad)']
   ];
   const advancedObserver = strategyObserverType(state.routeBalancerStrategy);
   const advancedStrategy = Boolean(advancedObserver);
   const advancedHelp = advancedObserver === 'burstObservatory'
-    ? 'Для этой стратегии Xray включает burst-наблюдение: проверяет серверы сериями и выбирает менее нагруженный доступный участник. Это расширенная настройка.'
+    ? 'Xray выбирает лучшие серверы по задержке, а при проверке сериями — по разбросу задержки. Это не измерение загрузки CPU или пропускной способности VPN.'
     : 'Для этой стратегии Xray включает наблюдение за серверами: проверяет их HTTP-запросом и выбирает участника с меньшей задержкой. Ручная проверка RuOpenRay только показывает результат в интерфейсе.';
   return `
     <div class="modal-backdrop" data-action="closeRouteBalancerDialog">
@@ -271,19 +285,29 @@ function routeBalancerDialog() {
         <div class="modal-head">
           <div>
             <h2 id="routeBalancerTitle">Группа серверов</h2>
-            <span>Создайте одну цель из нескольких серверов и выбирайте ее в правилах маршрутизации вместо конкретного сервера.</span>
+            <span>Настройте резервирование или распределение новых соединений. Затем выберите группу в правилах маршрутизации.</span>
           </div>
           <button class="icon-btn" type="button" data-action="closeRouteBalancerDialog" aria-label="Закрыть">×</button>
         </div>
 
-        <div class="balancer-layout">
+        <div class="balancer-layout ${balancers.length ? '' : 'is-empty'}">
           <section class="balancer-form">
             <div class="form-row">
-              <label>Имя группы</label>
+              <label for="routeBalancerTag">Имя группы</label>
               <input id="routeBalancerTag" value="${escapeHtml(state.routeBalancerTag)}" placeholder="auto-proxy" />
             </div>
             <div class="form-row">
-              <label>Стратегия</label>
+              <label for="routeBalancerMode">Режим работы</label>
+              <select id="routeBalancerMode">
+                <option value="failover" ${failover ? 'selected' : ''}>Основной → резервный VPN</option>
+                <option value="balance" ${!failover ? 'selected' : ''}>Балансировка соединений</option>
+              </select>
+            </div>
+            ${failover ? `<div class="form-row">
+              <label for="routeBalancerPrimary">Основной VPN-сервер</label>
+              ${withTargetFlag(state.routeBalancerPrimary, `<select id="routeBalancerPrimary"><option value="">Выберите основной сервер</option>${targetOptions(state.routeBalancerPrimary)}</select>`)}
+            </div>` : `<div class="form-row">
+              <label for="routeBalancerStrategy">Стратегия балансировки</label>
               <select id="routeBalancerStrategy">
                 ${strategies.map(([value, label]) => `<option value="${value}" ${state.routeBalancerStrategy === value ? 'selected' : ''}>${label}</option>`).join('')}
               </select>
@@ -293,7 +317,6 @@ function routeBalancerDialog() {
               <div class="balancer-target-list">
                 ${orderedTargets.length ? orderedTargets.map((target) => {
                   const selected = selectedSelectors.has(target.tag);
-                  const orderIndex = selectorOrder.indexOf(target.tag);
                   return `
                   <div class="balancer-target ${selected ? 'active' : ''}">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(target.tag)}" ${selectedSelectors.has(target.tag) ? 'checked' : ''} />
@@ -302,16 +325,9 @@ function routeBalancerDialog() {
                       <strong>${escapeHtml(target.title)}</strong>
                       <em>${escapeHtml(target.detail)}</em>
                     </span>
-                    ${isRoundRobin && selected ? `
-                      <span class="balancer-order-controls" aria-label="Порядок для round-robin">
-                        <button type="button" data-balancer-selector-move="${escapeHtml(target.tag)}" data-direction="-1" ${orderIndex <= 0 ? 'disabled' : ''}>↑</button>
-                        <button type="button" data-balancer-selector-move="${escapeHtml(target.tag)}" data-direction="1" ${orderIndex < 0 || orderIndex >= selectorOrder.length - 1 ? 'disabled' : ''}>↓</button>
-                      </span>
-                    ` : ''}
                   </div>
                 `; }).join('') : '<p class="muted">Сначала добавьте хотя бы один сервер или подписку.</p>'}
                 ${legacySelectors.map((selector) => {
-                  const orderIndex = selectorOrder.indexOf(selector);
                   return `
                   <div class="balancer-target active legacy">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(selector)}" checked />
@@ -320,31 +336,55 @@ function routeBalancerDialog() {
                       <strong>${escapeHtml(selector)}</strong>
                       <em>Сохраненный selector из текущей конфигурации.</em>
                     </span>
-                    ${isRoundRobin ? `
-                      <span class="balancer-order-controls" aria-label="Порядок для round-robin">
-                        <button type="button" data-balancer-selector-move="${escapeHtml(selector)}" data-direction="-1" ${orderIndex <= 0 ? 'disabled' : ''}>↑</button>
-                        <button type="button" data-balancer-selector-move="${escapeHtml(selector)}" data-direction="1" ${orderIndex < 0 || orderIndex >= selectorOrder.length - 1 ? 'disabled' : ''}>↓</button>
-                      </span>
-                    ` : ''}
                   </div>
                 `; }).join('')}
               </div>
-            </div>
+            </div>`}
+            ${!failover && state.routeBalancerStrategy === 'roundRobin' ? '<p class="inline-help">Xray чередует доступных участников в порядке сортировки их тегов. Порядок выбора флажков его не меняет.</p>' : ''}
+            ${!failover && ['random', 'roundRobin'].includes(state.routeBalancerStrategy) ? `<label class="balancer-health-toggle"><input id="routeBalancerHealthCheck" type="checkbox" ${monitored ? 'checked' : ''} /> Исключать недоступные серверы</label>` : ''}
+            ${!failover && state.routeBalancerStrategy === 'leastLoad' ? `<div class="form-row">
+              <label for="routeBalancerExpected">Сколько лучших серверов использовать</label>
+              <input id="routeBalancerExpected" type="number" min="0" max="100" value="${escapeHtml(state.routeBalancerExpected || '1')}" />
+              <span class="inline-help">Соединения случайно распределяются между лучшими доступными участниками. Дополнительные веса и пороги из JSON сохраняются.</span>
+            </div>` : ''}
             <div class="form-row">
-              <label>Fallback</label>
-              <select id="routeBalancerFallback">
-                <option value="">Без резервного сервера</option>
-                ${fallbackTargets.map((target) => `<option value="${escapeHtml(target.tag)}" ${state.routeBalancerFallback === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}${target.kind === 'subscription' ? ' · подписка' : ''}</option>`).join('')}
-              </select>
+              <label for="routeBalancerFallback">${failover ? 'Резервный VPN-сервер' : 'Если все участники недоступны'}</label>
+              ${withTargetFlag(state.routeBalancerFallback, `<select id="routeBalancerFallback" ${!monitored ? 'disabled' : ''}>
+                <option value="">${failover ? 'Выберите резервный сервер' : monitored ? 'Блокировать соединение' : 'Без проверки доступности'}</option>
+                ${fallbackTargets.map((target) => `<option value="${escapeHtml(target.tag)}" ${state.routeBalancerFallback === target.tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(target.title))}${target.kind === 'subscription' ? ' · подписка' : ''}</option>`).join('')}
+              </select>`)}
             </div>
-            <div class="balancer-preview ${matches.length ? '' : 'empty'}">
+            ${monitored ? `<details class="balancer-monitor-settings" data-details-key="balancer-monitor-settings">
+              <summary>Автопроверка Xray · ${escapeHtml(state.routeBalancerProbeInterval || '10s')} · ${burst ? 'сериями' : 'регулярно'}</summary>
+              <div class="balancer-monitor-fields">
+              <p class="inline-help">Эти параметры используются всеми группами профиля. Проверка идёт через каждый VPN. Ручные тесты в панели не управляют переключением.</p>
+              <div class="form-row"><label for="routeBalancerMonitorType">Способ проверки</label>
+                <select id="routeBalancerMonitorType">
+                  <option value="observatory" ${!burst ? 'selected' : ''}>Регулярно — быстрое переключение</option>
+                  <option value="burstObservatory" ${burst ? 'selected' : ''}>Сериями — оценка стабильности</option>
+                </select>
+              </div>
+              <div class="form-row"><label for="routeBalancerProbeUrl">URL автопроверки</label>
+                <input id="routeBalancerProbeUrl" type="url" value="${escapeHtml(state.routeBalancerProbeUrl)}" />
+              </div>
+              <div class="form-row"><label for="routeBalancerProbeInterval">Интервал проверки</label>
+                <input id="routeBalancerProbeInterval" value="${escapeHtml(state.routeBalancerProbeInterval)}" placeholder="10s" />
+              </div>
+              ${burst ? `<div class="form-row"><label for="routeBalancerProbeTimeout">Таймаут пробы</label><input id="routeBalancerProbeTimeout" value="${escapeHtml(state.routeBalancerProbeTimeout)}" /></div>
+                <div class="form-row"><label for="routeBalancerProbeSampling">Проб в серии</label><input id="routeBalancerProbeSampling" type="number" min="1" max="20" value="${escapeHtml(state.routeBalancerProbeSampling)}" /></div>
+                <p class="inline-help">URL должен возвращать HTTP 204. Обнаружение отказа занимает примерно 1–2 серии (интервал × число проб); восстановление — до одной серии.</p>` : `<p class="inline-help">После неудачной проверки Xray исключает сервер, после успешной возвращает его. Таймаут пробы — 5 с; обнаружение отказа занимает интервал плюс время проверки. Проверки идут параллельно.</p>`}
+              <p class="inline-help">Недоступность самого проверочного сайта тоже влияет на выбор сервера. Это не гарантия доступности всех сайтов.</p>
+              </div>
+            </details>` : '<p class="inline-help">Без автопроверки Xray продолжит выбирать недоступные серверы.</p>'}
+            ${failover ? `<div class="balancer-preview"><strong>Автоматический возврат на основной VPN</strong><span>Резерв используется после обнаружения отказа основного. Когда основной снова проходит проверку, новые соединения возвращаются на него. Если не работает и резерв, соединение завершится ошибкой. Уже открытые соединения не переносятся.</span></div>` : `<div class="balancer-preview ${matches.length ? '' : 'empty'}">
               <strong>${matches.length ? `Подходит серверов: ${matches.length}` : 'Пока нет совпадений'}</strong>
-              <span>${matches.length ? matches.join(', ') : 'Выберите серверы или подписки, которые уже есть в профиле.'}</span>
-            </div>
-            ${advancedStrategy ? `<p class="settings-warning compact"><strong>${escapeHtml(observerLabel(advancedObserver))}</strong><span>${escapeHtml(advancedHelp)}</span></p>` : ''}
+              <span>${matches.length ? escapeHtml(matches.map(proxyDisplayName).join(', ')) : 'Выберите серверы или подписки, которые уже есть в профиле.'}</span>
+            </div>`}
+            ${!failover && advancedStrategy ? `<p class="settings-warning compact"><strong>${escapeHtml(observerLabel(advancedObserver))}</strong><span>${escapeHtml(advancedHelp)}</span></p>` : ''}
+            <p class="inline-help">Балансировка распределяет соединения, а не суммирует скорость каналов для одной загрузки. Выходной IP может меняться между соединениями.</p>
           </section>
 
-          <section class="balancer-list">
+          ${balancers.length ? `<section class="balancer-list">
             ${balancers.length ? balancers.map((balancer, index) => {
               const selectors = Array.isArray(balancer.selector) ? balancer.selector.join(', ') : '';
               const strategy = balancer.strategy?.type || 'random';
@@ -352,13 +392,13 @@ function routeBalancerDialog() {
               return `<article class="balancer-row">
                 <div>
                   <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-                  <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}</span>
+                  <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? balancer.selector.map(proxyDisplayName).join(', ') : 'не задан')} · правил: ${used}</span>
                 </div>
                 <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
                 <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
               </article>`;
             }).join('') : `<p class="muted">Групп пока нет. Создайте группу и затем выберите ее в правиле маршрутизации.</p>`}
-          </section>
+          </section>` : ''}
         </div>
 
         ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
@@ -530,8 +570,10 @@ function routePresetDialog() {
             </div>
             <label>
               <span>Правила</span>
-              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="example.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;ip(.../24) -> proxy&#10;network(udp) &amp;&amp; ip(.../16) -> proxy&#10;source(192.168.1.50) -> direct">${escapeHtml(state.routePresetEditDsl)}</textarea>
+              <textarea id="routePresetEditDsl" class="dsl-editor preset-editor-dsl" spellcheck="false" placeholder="example.com&#10;youtube.com&#10;192.0.2.0/24&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routePresetEditDsl)}</textarea>
+              <small>Домены, IP и подсети — по одному на строку. Назначение выбирается ниже; → в каждой строке не требуется. Сложные правила можно сохранить JSON-массивом.</small>
             </label>
+            ${routingDestinationPicker(state.routePresetEditTarget || 'outbound:proxy', [{ value: 'outbound:proxy', label: 'Через активный proxy' }, ...routeTargetOptions().filter((item) => item.value !== 'outbound:proxy')], escapeHtml, 'data-route-preset-target', 'Назначение подборки')}
             ${showCheckResult ? routePresetCheckResultView(editorPreview) : '<div class="preset-editor-hint">Проверка покажет, сколько правил распознано, куда они направлены и какие строки требуют внимания.</div>'}
           </div>
           <div class="modal-actions">

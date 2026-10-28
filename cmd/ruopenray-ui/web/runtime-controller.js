@@ -67,6 +67,10 @@ export function createRuntimeController({
       method: 'POST',
       body: JSON.stringify({ action, ...extra })
     });
+    if (!result.ok) {
+      await refreshDomainMonitor(true, { force: true });
+      throw new Error(result.stderr || 'Не удалось изменить состояние монитора');
+    }
     state.message = result.stdout || result.stderr || 'SNI-монитор обновлен';
     await refreshDomainMonitor(true, { force: true });
   }
@@ -257,7 +261,7 @@ export function createRuntimeController({
         routeNames,
         routePresets,
         serverMeta
-      } = await loadAppSnapshot({ request, text: api.text, logsUrl });
+      } = await loadAppSnapshot({ request, text: api.text, logsUrl, appChannel: state.appChannel });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
       const activeConfig = hasConfigSurface(config) ? config : state.config;

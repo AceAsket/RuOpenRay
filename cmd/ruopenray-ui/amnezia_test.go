@@ -568,3 +568,36 @@ func TestAmneziaEndpointParts(t *testing.T) {
 		})
 	}
 }
+
+func TestAmneziaPolicyFirewallRequiresActiveAndPersistent(t *testing.T) {
+	cases := []struct {
+		name   string
+		status map[string]any
+		want   bool
+	}{
+		{name: "ready", status: map[string]any{"active": true, "persistent": true}, want: true},
+		{name: "runtime only", status: map[string]any{"active": true, "persistent": false}, want: false},
+		{name: "persistent only", status: map[string]any{"active": false, "persistent": true}, want: false},
+		{name: "disabled", status: map[string]any{}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := amneziaPolicyFirewallReady(tc.status); got != tc.want {
+				t.Fatalf("got %v want %v for %#v", got, tc.want, tc.status)
+			}
+		})
+	}
+}
+
+func TestNormalizeAmneziaSHA256(t *testing.T) {
+	valid := strings.Repeat("A1", 32)
+	got, ok := normalizeAmneziaSHA256("  " + valid + "  ")
+	if !ok || got != strings.ToLower(valid) {
+		t.Fatalf("valid checksum was not normalized: %q %v", got, ok)
+	}
+	for _, value := range []string{"", "abcd", strings.Repeat("z", 64), strings.Repeat("a", 63)} {
+		if got, ok := normalizeAmneziaSHA256(value); ok || got != "" {
+			t.Fatalf("invalid checksum accepted: %q -> %q", value, got)
+		}
+	}
+}

@@ -40,8 +40,8 @@ func appReleaseAPI(version string) string {
 	return "https://api.github.com/repos/" + appRepoFullName + "/releases/tags/" + url.PathEscape(version)
 }
 
-func appLatestRelease() (map[string]any, error) {
-	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+appRepoFullName+"/releases?per_page=1", nil)
+func appLatestRelease(channels ...string) (map[string]any, error) {
+	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+appRepoFullName+"/releases?per_page=100", nil)
 	req.Header.Set("accept", "application/vnd.github+json")
 	req.Header.Set("user-agent", "RuOpenRay UI")
 	resp, err := (&http.Client{Timeout: 12 * time.Second}).Do(req)
@@ -60,16 +60,19 @@ func appLatestRelease() (map[string]any, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, err
 	}
-	if len(raw) == 0 {
+	selected := selectAppRelease(raw, appUpdateChannel(channels))
+	if selected == nil {
 		assetName := ruOpenRayAssetName()
 		return map[string]any{"tag": "", "name": "релизов пока нет", "asset": assetName, "assetUrl": "", "assetSize": 0, "current": appVersion, "update": false}, nil
 	}
-	return parseAppRelease(raw[0]), nil
+	result := parseAppRelease(selected)
+	result["channel"] = appUpdateChannel(channels)
+	return result, nil
 }
 
-func appRelease(version string) (map[string]any, error) {
+func appRelease(version string, channels ...string) (map[string]any, error) {
 	if version == "" || version == "latest" || version == "<nil>" {
-		return appLatestRelease()
+		return appLatestRelease(channels...)
 	}
 	req, _ := http.NewRequest(http.MethodGet, appReleaseAPI(version), nil)
 	req.Header.Set("accept", "application/vnd.github+json")
@@ -122,6 +125,7 @@ func parseAppRelease(raw map[string]any) map[string]any {
 		break
 	}
 	tag := strings.TrimSpace(fmt.Sprint(raw["tag_name"]))
+	update, reason := appUpdateDecision(appVersion, tag)
 	return map[string]any{
 		"tag":         tag,
 		"name":        firstNonEmpty(fmt.Sprint(raw["name"]), tag),
@@ -132,7 +136,8 @@ func parseAppRelease(raw map[string]any) map[string]any {
 		"assetUrl":    assetURL,
 		"assetSize":   assetSize,
 		"current":     appVersion,
-		"update":      tag != "" && tag != appVersion,
+		"update":      update,
+		"reason":      reason,
 	}
 }
 
@@ -175,10 +180,14 @@ func replaceExecutableAcrossFilesystems(src string, dst string) error {
 	return nil
 }
 
-func (s *serverState) updateApp(version string, keepBackup bool) map[string]any {
-	release, err := appRelease(version)
+func (s *serverState) updateApp(version string, keepBackup bool, channels ...string) map[string]any {
+	release, err := appRelease(version, channels...)
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "version": appVersion, "arch": systemArchitecture("github-release")}
+	}
+	candidate, valid := parseReleaseVersion(fmt.Sprint(release["tag"]))
+	if release["update"] != true || !valid || (appUpdateChannel(channels) == "stable" && (release["prerelease"] == true || len(candidate.pre) > 0)) {
+		return map[string]any{"ok": false, "stderr": "Обновление отменено: версия не новее текущей либо не принадлежит выбранному каналу", "release": release}
 	}
 	assetURL := strings.TrimSpace(fmt.Sprint(release["assetUrl"]))
 	if assetURL == "" {

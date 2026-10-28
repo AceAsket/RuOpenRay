@@ -150,7 +150,8 @@ globalThis.fetch = async (path) => {
   if (url.startsWith('/api/logs')) return textResponse('');
   if (url === '/api/status') {
     return jsonResponse({
-      service: { running: true, uptime: 120 },
+      service: { running: true, managed: true, uptime: 120 },
+      core: { available: true, version: 'Xray 26.3.27 (test build)' },
       serverChecks: { results: {} },
       system: {},
       xrayStats: { enabled: false, outbounds: [] }
@@ -182,8 +183,14 @@ globalThis.sessionStorage.clear();
 storage.setItem('openray_token', 'token');
 app.innerHTML = '';
 await import(`../cmd/ruopenray-ui/web/app.js?boot-auth=${Date.now()}`);
+await new Promise((resolve) => setTimeout(resolve, 50));
 if (!app.innerHTML.includes('shell')) {
   throw new Error('app.js did not render authenticated shell with remembered token');
 }
-
+if (!app.innerHTML.includes('xray-version-pill')) {
+  throw new Error('top bar did not render the Xray version control');
+}
+if (!app.innerHTML.includes('profile-pill-icon')) {
+  throw new Error('profile switcher did not render the profile icon');
+}
 console.log('Frontend app boot passed');

@@ -1,11 +1,8 @@
 package main
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,71 +12,6 @@ import (
 )
 
 const geoCronMarker = "# RuOpenRay geo update"
-
-func (s *serverState) backupBundle() (string, error) {
-	if err := os.MkdirAll(s.cfg.BackupDir, 0o755); err != nil {
-		return "", err
-	}
-	target := filepath.Join(s.cfg.BackupDir, "ruopenray-full-"+time.Now().Format("20060102-150405")+".zip")
-	absTarget, _ := filepath.Abs(target)
-	absBackupDir, _ := filepath.Abs(s.cfg.BackupDir)
-	file, err := os.Create(target)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	zw := zip.NewWriter(file)
-	defer zw.Close()
-	addFile := func(name, filePath string) error {
-		info, err := os.Stat(filePath)
-		if err != nil || info.IsDir() {
-			return nil
-		}
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = filepath.ToSlash(name)
-		header.Method = zip.Deflate
-		writer, err := zw.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-		src, err := os.Open(filePath)
-		if err != nil {
-			return err
-		}
-		defer src.Close()
-		_, err = io.Copy(writer, src)
-		return err
-	}
-	_ = addFile("xray/config.json", s.cfg.ActiveConfig)
-	_ = addFile("uci/ruopenray-ui", "/etc/config/ruopenray-ui")
-	_ = addFile("service/ruopenray-ui.init", "/etc/init.d/ruopenray-ui")
-	if info, err := os.Stat(s.cfg.DataDir); err == nil && info.IsDir() {
-		err = filepath.WalkDir(s.cfg.DataDir, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			absPath, _ := filepath.Abs(path)
-			if entry.IsDir() {
-				if absPath == absBackupDir {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if absPath == absTarget {
-				return nil
-			}
-			rel, _ := filepath.Rel(s.cfg.DataDir, path)
-			return addFile(filepath.Join("data", rel), path)
-		})
-		if err != nil {
-			return "", err
-		}
-	}
-	return target, nil
-}
 
 func (s *serverState) runCLI(args []string) int {
 	if len(args) == 0 {

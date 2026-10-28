@@ -2,10 +2,10 @@
 
 export const nav = [
   ['dashboard', 'Панель'],
-  ['setup', 'Мастер'],
-  ['servers', 'Серверы'],
+  ['setup', 'Быстрый запуск'],
+  ['servers', 'Подключения'],
   ['serverMode', 'Серверный режим'],
-  ['routing', 'Маршрутизация'],
+  ['routing', 'Сценарии и правила'],
   ['dns', 'DNS'],
   ['diagnostics', 'Диагностика'],
   ['profiles', 'Профили'],
@@ -50,6 +50,7 @@ export const managedRouteTags = {
 
 managedRouteTags['out-amnezia'] = 'AmneziaWG через Xray';
 managedRouteTags['ruopenray-amnezia-direct'] = 'AWG - AmneziaWG';
+managedRouteTags['direct-b4'] = 'Напрямую через B4';
 
 export const routePlaceholders = {
   domain: 'domain:youtube.com, geosite:youtube',

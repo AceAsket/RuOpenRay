@@ -30,6 +30,7 @@ func (s *serverState) readConfigDraft() map[string]any {
 		return map[string]any{"ok": false, "exists": false, "error": err.Error()}
 	}
 	normalizeCatchAllRoutingRules(cfg)
+	normalizeSniffingDomainExclusions(cfg)
 	return map[string]any{
 		"ok":        true,
 		"exists":    true,
@@ -45,6 +46,7 @@ func (s *serverState) saveConfigDraft(payload map[string]any) map[string]any {
 		return map[string]any{"ok": false, "error": "config draft is missing"}
 	}
 	normalizeCatchAllRoutingRules(cfg)
+	normalizeSniffingDomainExclusions(cfg)
 	body, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}

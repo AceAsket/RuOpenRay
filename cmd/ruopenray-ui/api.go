@@ -172,6 +172,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/server-mode/apply" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.serverModeApply(payload))
+	case path == "/server-mode/awg/status" && r.Method == http.MethodGet:
+		mode, _ := s.loadServerModeConfig()
+		writeJSON(w, 200, s.serverModeAWGRuntimeStatus(mode))
+	case path == "/server-mode/awg/keypair" && r.Method == http.MethodPost:
+		writeJSON(w, 200, serverModeAWGKeyPair())
+	case path == "/server-mode/awg/apply" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.serverModeAWGRuntimeApply(payload))
+	case path == "/server-mode/awg/disable" && r.Method == http.MethodPost:
+		writeJSON(w, 200, s.serverModeAWGRuntimeDisable())
 	case path == "/server-mode/security" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.serverModeSecurity(nil))
 	case path == "/server-mode/security" && r.Method == http.MethodPost:
@@ -197,6 +207,27 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/compat/b4" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.controlB4(payload))
+	case path == "/compat/b4/connect" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4Connect(payload))
+	case path == "/compat/b4/api" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4APIAction(payload))
+	case path == "/compat/b4/direct" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			writeJSON(w, 400, b4Error("Некорректный JSON запроса B4"))
+			return
+		}
+		writeJSON(w, 200, s.b4DirectControl(boolPayload(payload, "enabled", false)))
 	case path == "/amnezia/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.amneziaStatus())
 	case path == "/amnezia/config" && r.Method == http.MethodGet:
@@ -300,11 +331,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateCore(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
 	case path == "/app/releases" && r.Method == http.MethodGet:
-		release, err := appLatestRelease()
+		release, err := appLatestRelease(r.URL.Query().Get("channel"))
 		respond(w, map[string]any{"ok": true, "version": appVersion, "asset": ruOpenRayAssetName(), "arch": systemArchitecture("github-release"), "release": release}, err)
 	case path == "/app/update" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
-		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false)))
+		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false), fmt.Sprint(payload["channel"])))
 	case path == "/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.diagnostics())
 	case path == "/diagnostics/package" && r.Method == http.MethodGet:
@@ -315,6 +346,9 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/diagnostics/domain-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.domainProxyProbe(payload))
+	case path == "/diagnostics/tls-stability" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.tlsStabilityProbe(r.Context(), payload))
 	case path == "/diagnostics/dpi-probe" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.dpiProbe(payload))
@@ -397,6 +431,16 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, dhcpLeaseReport(s.cfg.DataDir))
 	case path == "/dns/check" && r.Method == http.MethodPost:
 		s.checkDNS(w, r)
+	case path == "/dns/adguard" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.adGuardIntegrationStatus())
+	case path == "/dns/adguard" && r.Method == http.MethodPost:
+		payload, err := readJSON(w, r)
+		if err != nil {
+			respond(w, nil, err)
+			return
+		}
+		result, err := s.adGuardAction(payload)
+		respond(w, result, err)
 	case path == "/dns/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.dnsDiagnostics())
 	case path == "/dns/lan-upstream" && r.Method == http.MethodGet:
@@ -425,6 +469,14 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/backup/full" && r.Method == http.MethodPost:
 		backup, err := s.backupBundle()
 		respond(w, map[string]any{"ok": true, "path": backup}, err)
+	case path == "/backup/full/check" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.fullBackupAction(payload, false))
+	case path == "/backup/full/download" && r.Method == http.MethodGet:
+		s.downloadFullBackup(w, r)
+	case path == "/backup/full/restore" && r.Method == http.MethodPost:
+		payload, _ := readJSON(w, r)
+		writeJSON(w, 200, s.fullBackupAction(payload, true))
 	case path == "/backup/latest" && r.Method == http.MethodGet:
 		backup, err := s.latestBackup()
 		respond(w, map[string]any{"ok": true, "backup": backup}, err)

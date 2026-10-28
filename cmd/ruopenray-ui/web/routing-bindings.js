@@ -1,3 +1,7 @@
+import { analyzeRuleImport } from './routing-insights.js';
+import { isDefaultRoute } from './routing-order.js';
+import { bindRoutingAudit } from './routing-conflicts.js';
+
 export function bindRoutingControls({
   state,
   render,
@@ -18,6 +22,7 @@ export function bindRoutingControls({
   reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
   toggleRouteRuleSelection,
+  setRouteDefaultLast,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup,
   openRoutingRuleGroupEditor,
@@ -33,6 +38,7 @@ export function bindRoutingControls({
   reorderRoutingRule,
   reorderRoutingRuleRange,
   routeRules,
+  isRuOpenRayManagedRoute = () => false,
   describeRouteRule,
   routeTargetFlagMarkup,
   routeTargetStatus,
@@ -58,6 +64,7 @@ export function bindRoutingControls({
   moveRouteBalancerSelector,
   balancerOptions,
 }) {
+  bindRoutingAudit({ state, render, routeRules, isRuOpenRayManagedRoute, openRoutingRuleEditor, disableRoutingRule });
   document.querySelectorAll('[data-preset]').forEach((button) => {
     button.addEventListener('click', () => addRoutingPreset(button.dataset.preset));
   });
@@ -69,10 +76,8 @@ export function bindRoutingControls({
       else selected.delete(key);
       state.selectedRoutePresets = [...selected];
       checkbox.closest('.preset-check')?.classList.toggle('active', checkbox.checked);
-      const applyButton = document.querySelector('[data-action="applyRoutePresets"], [data-action="applySetupRoutePresets"]');
+      const applyButton = document.querySelector('[data-action="applyRoutePresets"]');
       if (applyButton) applyButton.disabled = state.selectedRoutePresets.length === 0;
-      const selectedCount = document.querySelector('[data-setup-scenario-selected]');
-      if (selectedCount) selectedCount.textContent = String(state.selectedRoutePresets.length);
     });
   });
   document.querySelectorAll('[data-route-preset-edit]').forEach((button) => {
@@ -98,6 +103,40 @@ export function bindRoutingControls({
   document.querySelectorAll('[data-route-preset-source-enabled]').forEach((checkbox) => {
     checkbox.addEventListener('change', (event) => toggleRoutePresetSource(checkbox.dataset.routePresetSourceEnabled, event.target.checked));
   });
+  const applyRoutePresetCatalogFilter = () => {
+    const query = String(state.routePresetSearch || '').trim().toLocaleLowerCase('ru-RU');
+    const filter = state.routePresetFilter || 'all';
+    let visible = 0;
+    document.querySelectorAll('[data-scenario-card]').forEach((card) => {
+      const matchesQuery = !query || String(card.dataset.scenarioSearch || '').toLocaleLowerCase('ru-RU').includes(query);
+      const matchesFilter = filter === 'all'
+        || (filter === 'custom' && card.dataset.scenarioKind === 'custom')
+        || (filter === 'installed' && card.dataset.scenarioInstalled === '1');
+      card.hidden = !(matchesQuery && matchesFilter);
+      if (!card.hidden) visible += 1;
+    });
+    document.querySelectorAll('[data-scenario-section]').forEach((section) => {
+      section.hidden = !section.querySelector('[data-scenario-card]:not([hidden])');
+    });
+    const result = document.querySelector('[data-scenario-result-count]');
+    if (result) result.textContent = `Показано ${visible}`;
+    const empty = document.querySelector('[data-scenario-empty]');
+    if (empty) empty.hidden = visible > 0;
+    document.querySelectorAll('[data-route-preset-filter]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.routePresetFilter === filter);
+    });
+  };
+  document.querySelector('#routePresetSearch')?.addEventListener('input', (event) => {
+    state.routePresetSearch = event.target.value;
+    applyRoutePresetCatalogFilter();
+  });
+  document.querySelectorAll('[data-route-preset-filter]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.routePresetFilter = button.dataset.routePresetFilter || 'all';
+      applyRoutePresetCatalogFilter();
+    });
+  });
+  applyRoutePresetCatalogFilter();
   document.querySelectorAll('[data-route-delete]').forEach((button) => {
     button.addEventListener('click', () => removeRoutingRule(Number(button.dataset.routeDelete)));
   });
@@ -435,6 +474,8 @@ export function bindRoutingControls({
     triggerCaret.textContent = '▾';
     trigger.append(triggerFlag, triggerStatus, triggerText, triggerCaret);
     trigger.disabled = select.disabled;
+    const accessibleLabel = select.getAttribute('aria-label');
+    if (accessibleLabel) trigger.setAttribute('aria-label', `${accessibleLabel}: ${selectedText}`);
     menu.textContent = '';
     [...select.options].forEach((option) => {
       const optionEncoded = routeTargetEncodedValue(select, option.value);
@@ -768,6 +809,20 @@ export function bindRoutingControls({
     state.routeBalancerStrategy = event.target.value;
     render();
   });
+  ['routeBalancerMode', 'routeBalancerPrimary', 'routeBalancerMonitorType'].forEach((id) => {
+    document.querySelector(`#${id}`)?.addEventListener('change', (event) => {
+      state[id] = event.target.value;
+      render();
+    });
+  });
+  ['routeBalancerProbeUrl', 'routeBalancerProbeInterval', 'routeBalancerProbeTimeout', 'routeBalancerProbeSampling', 'routeBalancerExpected'].forEach((id) => {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => { state[id] = event.target.value; });
+  });
+  document.querySelector('#routeBalancerHealthCheck')?.addEventListener('change', (event) => {
+    state.routeBalancerHealthCheck = event.target.checked;
+    if (!event.target.checked) state.routeBalancerFallback = '';
+    render();
+  });
   document.querySelectorAll('[data-balancer-selector]').forEach((input) => {
     input.addEventListener('change', (event) => {
       setRouteBalancerSelector(input.dataset.balancerSelector, event.target.checked);
@@ -783,6 +838,7 @@ export function bindRoutingControls({
   });
   document.querySelector('#routeBalancerFallback')?.addEventListener('change', (event) => {
     state.routeBalancerFallback = event.target.value;
+    render();
   });
   document.querySelectorAll('[data-route-target-type]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -801,6 +857,9 @@ export function bindRoutingControls({
   });
   document.querySelector('#routeSearch')?.addEventListener('input', (event) => {
     state.routeSearch = event.target.value;
+  });
+  document.querySelector('[data-route-default-last]')?.addEventListener('change', (event) => {
+    setRouteDefaultLast(event.target.checked);
   });
   document.querySelector('#routeSearch')?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') render();
@@ -822,11 +881,41 @@ export function bindRoutingControls({
   });
   document.querySelectorAll('#routeDslName').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDslName = event.target.value;
+    state.routeDslPreview = null;
+    document.querySelectorAll('.dsl-preview').forEach((view) => view.remove());
+  }));
+  document.querySelectorAll('[data-route-visual-picker]').forEach((select) => {
+    decorateRouteTargetSelect(select, select.value);
+  });
+  document.querySelectorAll('[data-route-dsl-target]').forEach((select) => select.addEventListener('change', (event) => {
+    state.routeDslTarget = event.target.value;
+    state.routeDslPreview = null;
+    state.message = '';
+    render();
   }));
   document.querySelectorAll('#routeDsl').forEach((input) => input.addEventListener('input', (event) => {
     state.routeDsl = event.target.value;
     state.routeDslPreview = null;
+    document.querySelectorAll('.dsl-preview').forEach((view) => view.remove());
   }));
+  document.querySelectorAll('[data-route-dsl-exclude]').forEach((input) => input.addEventListener('change', (event) => {
+    const excluded = new Set(state.routeDslExcluded || []);
+    const index = Number(input.dataset.routeDslExclude);
+    if (event.target.checked) excluded.add(index); else excluded.delete(index);
+    state.routeDslExcluded = [...excluded];
+    if (state.routeDslPreview) {
+      state.routeDslPreview.excluded = state.routeDslExcluded;
+      state.routeDslPreview.analysis = analyzeRuleImport(state.routeDslPreview.mode === 'replace' ? [] : state.config?.routing?.rules || [], state.routeDslPreview.rules, state.routeDslExcluded,
+        { isPinnedLast: (rule) => state.routeDefaultLast !== false && isDefaultRoute(rule) && !isRuOpenRayManagedRoute(rule) });
+    }
+    render();
+  }));
+  document.querySelector('[data-route-explain]')?.addEventListener('click', () => {
+    state.routeExplainInput = document.querySelector('#routeExplainInput')?.value || '';
+    state.routeExplainContext = Object.fromEntries([...document.querySelectorAll('[data-route-explain-context]')].map((input) => [input.dataset.routeExplainContext, input.value.trim()]));
+    state.openDetails = { ...state.openDetails, 'routing:explain': true };
+    render();
+  });
   document.querySelector('#routePresetEditTitle')?.addEventListener('input', (event) => {
     state.routePresetEditTitle = event.target.value;
   });
@@ -842,6 +931,12 @@ export function bindRoutingControls({
     state.routePresetEditPreview = null;
     state.routePresetEditChecked = false;
   });
+  document.querySelectorAll('[data-route-preset-target]').forEach((select) => select.addEventListener('change', (event) => {
+    state.routePresetEditTarget = event.target.value;
+    state.routePresetEditPreview = null;
+    state.routePresetEditChecked = false;
+    render();
+  }));
   document.querySelector('#routeGroupTitleInput')?.addEventListener('input', (event) => {
     state.routeGroupTitle = event.target.value;
   });

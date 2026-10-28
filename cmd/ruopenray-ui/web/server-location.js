@@ -267,7 +267,7 @@ const commonIsoTokens = new Set([
 const locationAliasRules = [
   ['DE', /germany|deutsch|german|frankfurt|nuremberg|nuernberg|falkenstein|fsn|hetzner/i],
   ['NL', /netherlands|holland|amsterdam|rotterdam|evoxt/i],
-  ['FI', /finland|finnish|helsinki|(?:^|[^a-z])fin(?:[^a-z]|$)|hel1/i],
+  ['FI', /(?:^|[^a-z0-9])fin(?:[^a-z0-9]|$)|finland|finnish|helsinki|hel1/i],
   ['SE', /sweden|stockholm/i],
   ['PL', /poland|warsaw|wroclaw/i],
   ['FR', /france|paris|roubaix|graveline|ovh-fr/i],
@@ -563,9 +563,7 @@ export function serverDisplayName(outbound = {}, meta = {}) {
   if (!tag) return host || 'Сервер';
 
   const location = serverLocation(outbound, meta);
-  return [location.code ? location.label : '', host]
-    .filter(Boolean)
-    .join(' · ') || 'Сервер';
+  return [location.code ? location.label : '', host].filter(Boolean).join(' · ') || 'Сервер';
 }
 
 export function inferredCountryForOutbound(outbound = {}, meta = {}, minConfidence = 0.75) {

@@ -1,3 +1,5 @@
+import { adguardUpstreamText, dohUrlKey } from './adguard-upstreams-view.js';
+
 export function bindDnsControls({
   state,
   render,
@@ -9,6 +11,32 @@ export function bindDnsControls({
   editDnsPolicy,
   setDnsModeDraft,
 }) {
+  for (const [id, key] of [['adguardUrl', 'adguardUrl'], ['adguardUsername', 'adguardUsername'], ['adguardPassword', 'adguardPassword'], ['adguardBootstrap', 'adguardBootstrap'], ['adguardDomain', 'adguardDomain']]) {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => {
+      state[key] = event.target.value;
+      if (key === 'adguardDomain') state.adguardCheckResult = null;
+    });
+  }
+  document.querySelector('#adguardSyncEnabled')?.addEventListener('change', (event) => { state.adguardSyncEnabled = event.target.checked; });
+  for (const [id, key] of [['adguardFilterName', 'adguardFilterName'], ['adguardFilterUrl', 'adguardFilterUrl']]) {
+    document.querySelector(`#${id}`)?.addEventListener('input', (event) => { state[key] = event.target.value; });
+  }
+  const editUpstreams = (value) => {
+    if (state.adguardUpstreamDraft == null) state.adguardUpstreamBase = state.adguardStatus?.upstreamSnapshot?.slice();
+    state.adguardUpstreamDraft = value;
+    state.adguardUpstreamResult = null;
+  };
+  document.querySelector('#adguardUpstreams')?.addEventListener('input', (event) => { editUpstreams(event.target.value); });
+  document.querySelectorAll('[data-adguard-upstream-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const value = button.dataset.adguardUpstreamPreset;
+      const lines = adguardUpstreamText(state).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (!lines.some((line) => dohUrlKey(line) === dohUrlKey(value))) {
+        editUpstreams([...lines, value].join('\n'));
+        render();
+      }
+    });
+  });
   document.querySelectorAll('[data-dns-delete]').forEach((button) => {
     button.addEventListener('click', () => removeDnsServer(Number(button.dataset.dnsDelete)));
   });
@@ -31,8 +59,12 @@ export function bindDnsControls({
     button.addEventListener('click', () => {
       state.dnsAddress = button.dataset.dnsPreset;
       state.dnsBootstrapResult = null;
+      state.dnsCustomAddOpen = true;
       render();
     });
+  });
+  document.querySelector('[data-dns-custom-add]')?.addEventListener('toggle', (event) => {
+    state.dnsCustomAddOpen = event.target.open;
   });
   document.querySelectorAll('[data-lan-dns-mode]').forEach((button) => {
     button.addEventListener('click', () => {

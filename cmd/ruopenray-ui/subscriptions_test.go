@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	rsubscription "github.com/AceAsket/RuOpenRay/internal/subscription"
@@ -61,9 +63,20 @@ func TestPreserveSubscriptionActiveMarksRemovedServerMissing(t *testing.T) {
 	}
 }
 
+func fakeSubscriptionConfigValidation(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "xray"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+}
+
 func TestApplySubscriptionActiveOutboundsUpdatesPoolOutbound(t *testing.T) {
+	fakeSubscriptionConfigValidation(t)
 	dir := t.TempDir()
-	state := &serverState{cfg: appConfig{DataDir: dir, ActiveConfig: filepath.Join(dir, "config.json")}}
+	state := &serverState{cfg: appConfig{DataDir: dir, ActiveConfig: filepath.Join(dir, "config.json"), BackupDir: filepath.Join(dir, "backups")}}
 	if err := state.writeActiveConfigRaw(map[string]any{
 		"outbounds": []any{
 			subscriptionTestOutbound("sub", "old.example", 443),
@@ -105,8 +118,9 @@ func TestApplySubscriptionActiveOutboundsUpdatesPoolOutbound(t *testing.T) {
 }
 
 func TestApplySubscriptionActiveOutboundsKeepsDialerProxy(t *testing.T) {
+	fakeSubscriptionConfigValidation(t)
 	dir := t.TempDir()
-	state := &serverState{cfg: appConfig{DataDir: dir, ActiveConfig: filepath.Join(dir, "config.json")}}
+	state := &serverState{cfg: appConfig{DataDir: dir, ActiveConfig: filepath.Join(dir, "config.json"), BackupDir: filepath.Join(dir, "backups")}}
 	fragmentTag := "ruopenray-fragment-test"
 	current := subscriptionTestOutbound("sub", "old.example", 443)
 	current["streamSettings"] = map[string]any{"sockopt": map[string]any{"dialerProxy": fragmentTag}}

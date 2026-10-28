@@ -1,4 +1,4 @@
-export function bindNavigationControls({ state, render, configureLogTimer }) {
+export function bindNavigationControls({ state, render, configureLogTimer, onTabChange }) {
   function finishNavigation() {
     render();
     if (typeof configureLogTimer === 'function') configureLogTimer();
@@ -21,6 +21,7 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       state.tab = button.dataset.tab;
       state.mobileNavOpen = false;
       finishNavigation();
+      onTabChange?.(state.tab);
     });
   });
   document.querySelectorAll('[data-tab-jump]').forEach((button) => {
@@ -28,9 +29,11 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       state.tab = button.dataset.tabJump;
       if (button.dataset.routingViewJump) state.routingView = button.dataset.routingViewJump;
       if (button.dataset.diagnosticsJump) state.diagnosticsView = button.dataset.diagnosticsJump;
+      if (button.dataset.dnsViewJump) state.dnsView = button.dataset.dnsViewJump;
       state.mobileNavOpen = false;
       closeDialogsForNavigation();
       finishNavigation();
+      onTabChange?.(state.tab);
     });
   });
   document.querySelectorAll('[data-diagnostics-view]').forEach((button) => {
@@ -60,6 +63,17 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       render();
     });
   });
+  document.querySelectorAll('[data-compat-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.compatView = button.dataset.compatView;
+      state.message = '';
+      finishNavigation();
+      onTabChange?.(state.tab);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => document.querySelector('.compat-tabs')?.scrollIntoView({ block: 'start' }));
+      }
+    });
+  });
   document.querySelectorAll('[data-routing-view]').forEach((button) => {
     button.addEventListener('click', () => {
       state.routingView = button.dataset.routingView;
@@ -72,6 +86,7 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       state.dnsView = button.dataset.dnsView;
       state.message = '';
       render();
+      onTabChange?.('dns');
     });
   });
   document.querySelectorAll('[data-servers-view]').forEach((button) => {
@@ -90,32 +105,18 @@ export function bindNavigationControls({ state, render, configureLogTimer }) {
       render();
     });
   });
-  document.querySelectorAll('[data-setup-step]').forEach((button) => {
+  document.querySelectorAll('[data-setup-fallback]').forEach((button) => {
     button.addEventListener('click', () => {
-      state.setupStep = button.dataset.setupStep || state.setupStep || 'connection';
+      state.setupFallbackMode = button.dataset.setupFallback === 'proxy' ? 'proxy' : 'direct';
+      state.setupStepNotice = null;
       render();
     });
   });
-  document.querySelector('[data-settings-view-select]')?.addEventListener('change', (event) => {
-    const nextView = event.target.value;
-    if (!nextView) return;
-    state.settingsView = nextView;
-    state.message = '';
-    render();
-  });
-  const setupScenarioSearch = document.querySelector('#setupScenarioSearch');
-  setupScenarioSearch?.addEventListener('input', (event) => {
-    const query = String(event.target.value || '').trim().toLowerCase();
-    state.setupScenarioSearch = event.target.value || '';
-    document.querySelectorAll('[data-setup-scenario-row]').forEach((row) => {
-      row.hidden = Boolean(query && !String(row.dataset.scenarioSearch || '').includes(query));
+  document.querySelectorAll('[data-setup-step]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.setupStep = button.dataset.setupStep || state.setupStep || 'environment';
+      render();
     });
-  });
-  document.querySelector('#setupScenarioTarget')?.addEventListener('change', (event) => {
-    state.setupScenarioTarget = event.target.value || '';
-    const detail = event.target.selectedOptions?.[0]?.dataset?.detail || '';
-    const detailNode = document.querySelector('[data-setup-scenario-target-detail]');
-    if (detailNode) detailNode.textContent = detail;
   });
 }
 

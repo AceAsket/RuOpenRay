@@ -1,15 +1,23 @@
 import { noticeView } from './notice-view.js';
+import { routingListTargetPicker } from './routing-dsl.js';
+import { routeExplanationView } from './routing-insights.js';
 import { routePresetIconView } from './route-visuals.js';
+import { routingAuditView } from './routing-conflicts.js';
+import { isFailoverBalancer } from './balancer-policy.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createRoutingView(deps) {
   const {
     state,
     escapeHtml,
     operationProgressView,
+    stat,
     routeRules,
+    routeStats,
     routeTargetOptions,
     visibleRoutingRuleItems,
     managedRoutingRuleItems,
+    routeSectionDefinitions,
     orderedRouteList,
     describeRouteRule,
     routeRuleName,
@@ -88,37 +96,50 @@ function amneziaPolicyRulesPanel() {
 
 function routingRulesPanel() {
   const rules = routeRules();
+  const stats = routeStats();
   const options = routeTargetOptions();
   const visibleRules = visibleRoutingRuleItems(80);
   const managedRules = managedRoutingRuleItems();
   const userRulesCount = rules.length - managedRules.length;
   const amneziaPolicyCount = amneziaPolicyRuleItems().length;
   const selectedRuleCount = (state.selectedRouteRuleIndexes || []).length;
-  const hasSearch = Boolean(String(state.routeSearch || '').trim());
 
   return `
     <section class="panel routing-simple-panel">
       <div class="panel-title">
         <div><h2>Правила маршрутизации</h2><span>${userRulesCount} пользовательских · ${managedRules.length} служебных скрыто. Xray читает правила сверху вниз.</span></div>
         <div class="split-actions">
-          <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
+          <button class="btn secondary ${state.routeAuditRunning ? 'is-busy' : ''}" data-route-audit ${state.routeAuditRunning ? 'disabled' : ''}>${state.routeAuditRunning ? 'Проверяю пересечения...' : 'Найти дубли и пересечения'}</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
       </div>
       ${operationProgressView()}
+      ${routingAuditView(state, escapeHtml, { describeRouteRule, routeRuleName })}
       ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AWG policy routing</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся мимо Xray.</span></div>` : ''}
+      <div class="routing-summary">
+        ${routeSectionDefinitions(stats).map((item) => `<article class="routing-summary-card routing-summary-${item.id}">
+          <span>${escapeHtml(item.title)}</span>
+          <strong>${item.count}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+        </article>`).join('')}
+      </div>
       <div class="route-tools">
+        <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
         <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
-        ${selectedRuleCount ? `<div class="route-selection-actions">
-          <button class="btn secondary" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу (${selectedRuleCount})</button>
-          <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить выбранные</button>
-          <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить выбранные</button>
-          <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
-        </div>` : ''}
-        ${hasSearch && visibleRules.length ? '<button class="btn secondary" data-action="disableVisibleRoutes">Отключить найденные</button>' : ''}
-        <span class="muted">${visibleRules.length} из ${userRulesCount}</span>
+        ${state.routeSearch.trim() ? `<button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>` : ''}
+        <span class="muted route-visible-count">Показано ${visibleRules.length} из ${userRulesCount}</span>
       </div>
+      <label class="route-default-last-option"><input type="checkbox" data-route-default-last ${state.routeDefaultLast !== false ? 'checked' : ''} />
+        <span>Остальной трафик всегда внизу<small>При изменении черновика общие правила остаются после сайтов, адресов и устройств. Отключите для ручного порядка.</small></span>
+      </label>
+      ${selectedRuleCount ? `<div class="route-selection-tools" role="region" aria-label="Действия с выбранными правилами">
+        <strong aria-live="polite">Выбрано: ${selectedRuleCount}</strong>
+        <button class="btn" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу</button>
+        <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить</button>
+        <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить</button>
+        <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
+      </div>` : ''}
       ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       <div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
@@ -144,6 +165,7 @@ function routingRulesPanel() {
       </div>` : ''}
     </section>
 
+    ${routeExplanationView(state, escapeHtml)}
     <details class="panel route-advanced">
       <summary>
         <span>Дополнительно</span>
@@ -151,7 +173,7 @@ function routingRulesPanel() {
       </summary>
       <div class="dsl-compact">
         <div class="panel-title">
-          <div><h2>Импорт правил списком</h2><span><code>discord.com -> proxy</code> или <code>domain:discord.com -> proxy</code>, слово proxy сейчас ведет на <code>${escapeHtml(resolveRoutingAlias('proxy'))}</code>.</span></div>
+          <div><h2>Импорт правил списком</h2><span>Вставьте домены, IP-адреса и подсети по одному на строку и выберите назначение. Готовые правила с <code>-></code> также поддерживаются.</span></div>
           <div class="split-actions">
             <button class="btn secondary" data-action="previewRouteDsl">Предпросмотр</button>
             <button class="btn secondary" data-action="analyzeConfig">Проверить</button>
@@ -163,7 +185,8 @@ function routingRulesPanel() {
           <label>Название списка</label>
           <input id="routeDslName" value="${escapeHtml(state.routeDslName)}" placeholder="Например: Discord, YouTube, Игровые сервисы" />
         </div>
-        <textarea id="routeDsl" class="dsl-editor" spellcheck="false" placeholder="default: direct&#10;discord.com -> proxy&#10;domain:push-apple.com.akadns.net -> direct&#10;network(udp) &amp;&amp; ip(104.16.0.0/12) -> proxy&#10;source(192.168.50.157) -> direct">${escapeHtml(state.routeDsl)}</textarea>
+        ${routingListTargetPicker(state, routeTargetOptions(), escapeHtml)}
+        <textarea id="routeDsl" class="dsl-editor" aria-label="Домены, IP-адреса и правила" spellcheck="false" placeholder="discord.com&#10;youtube.com&#10;104.16.0.1&#10;104.16.0.0/12&#10;2001:db8::/32&#10;geosite:youtube">${escapeHtml(state.routeDsl)}</textarea>
         ${state.routeDslPreview ? dslPreviewView(state.routeDslPreview) : ''}
         ${configAnalysisView()}
       </div>
@@ -180,6 +203,8 @@ function routingScenariosPanel() {
   };
   const presetSource = (preset, fallback = 'builtin') => preset?.source || fallback;
   const sourceCheck = state.routePresetSourceCheck;
+  const scenarioSearchText = (key, preset) => [key, preset?.title, preset?.detail, presetSource(preset)].filter(Boolean).join(' ');
+  const scenarioCount = presetEntries.length + customEntries.length;
   return `
     <section class="panel routing-scenarios-panel">
       <div class="panel-title">
@@ -189,17 +214,30 @@ function routingScenariosPanel() {
           <button class="btn secondary" data-action="newRoutePreset">Добавить подборку</button>
         </div>
       </div>
-      <details class="scenario-source-box" ${state.routePresetSources.length || state.routePresetSourceCheck ? 'open' : ''}>
+      <div class="scenario-catalog-toolbar">
+        <input id="routePresetSearch" type="search" value="${escapeHtml(state.routePresetSearch)}" placeholder="Найти сценарий: YouTube, Discord, игры..." />
+        <div class="segmented scenario-filter" aria-label="Фильтр сценариев">
+          <button type="button" class="${state.routePresetFilter === 'all' ? 'active' : ''}" data-route-preset-filter="all">Все</button>
+          <button type="button" class="${state.routePresetFilter === 'custom' ? 'active' : ''}" data-route-preset-filter="custom">Мои</button>
+          <button type="button" class="${state.routePresetFilter === 'installed' ? 'active' : ''}" data-route-preset-filter="installed">Добавлены</button>
+        </div>
+        <span class="scenario-result-count" data-scenario-result-count>Показано ${scenarioCount}</span>
+      </div>
+      <details class="scenario-source-box" ${state.routePresetSourceCheck ? 'open' : ''}>
         <summary>
           <strong>Источники сценариев</strong>
           <span>${state.routePresetSources.length} git/raw · сценарии не вшиваются в бинарник</span>
         </summary>
         <div class="scenario-source-form">
-          <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
-          <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
-          <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять ежедневно</label>
-          <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
-          <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
+          <div class="scenario-source-fields">
+            <input id="routePresetSourceUrl" value="${escapeHtml(state.routePresetSourceUrl)}" placeholder="https://github.com/user/repo/blob/main/ruopenray-scenarios.json или raw URL" />
+            <input id="routePresetSourceName" value="${escapeHtml(state.routePresetSourceName)}" placeholder="Название источника" />
+          </div>
+          <div class="scenario-source-actions">
+            <label class="check-row compact"><input id="routePresetSourceAutoUpdate" type="checkbox" ${state.routePresetSourceAutoUpdate ? 'checked' : ''} /> Автообновлять ежедневно</label>
+            <button class="btn secondary ${state.busyAction === 'checkRoutePresetSource' ? 'is-busy' : ''}" data-action="checkRoutePresetSource" ${state.busyAction === 'checkRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'checkRoutePresetSource' ? 'Проверяю...' : 'Проверить'}</button>
+            <button class="btn warning ${state.busyAction === 'saveRoutePresetSource' ? 'is-busy' : ''}" data-action="saveRoutePresetSource" ${state.busyAction === 'saveRoutePresetSource' ? 'disabled' : ''}>${state.busyAction === 'saveRoutePresetSource' ? 'Сохраняю...' : 'Сохранить'}</button>
+          </div>
         </div>
         ${sourceCheck ? `<div class="scenario-source-check ${sourceCheck.ok ? 'ok' : 'bad'}">
           <strong>${escapeHtml(sourceCheck.ok ? `${sourceCheck.name || 'Источник'} · ${sourceCheck.version || 'без версии'}` : 'Источник не прошел проверку')}</strong>
@@ -220,13 +258,13 @@ function routingScenariosPanel() {
           }).join('')}
         </div>` : ''}
       </details>
-      ${customEntries.length ? `
+      ${customEntries.length ? `<div class="scenario-catalog-section" data-scenario-section>
         <div class="scenario-section-title">Мои подборки</div>
         <div class="scenario-grid">
           ${customEntries.map(([key, preset]) => {
             const install = routePresetInstallSummary(key);
             const label = routePresetInstallLabel(key);
-            return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+            return `<article class="scenario-card custom ${install.installed ? 'installed' : install.partial ? 'partial' : ''}" data-scenario-card data-scenario-kind="custom" data-scenario-installed="${install.installed ? '1' : '0'}" data-scenario-search="${escapeHtml(scenarioSearchText(key, preset))}">
             ${routePresetIconView(escapeHtml, key, preset)}
             <div>
               <strong>${escapeHtml(preset.title)}</strong>
@@ -241,13 +279,14 @@ function routingScenariosPanel() {
           </article>`;
           }).join('')}
         </div>
-      ` : ''}
-      <div class="scenario-section-title">Подборки</div>
-      <div class="scenario-grid">
+      </div>` : ''}
+      <div class="scenario-catalog-section" data-scenario-section>
+        <div class="scenario-section-title">Подборки</div>
+        <div class="scenario-grid">
         ${presetEntries.map(([key, preset]) => {
           const install = routePresetInstallSummary(key);
           const label = routePresetInstallLabel(key);
-          return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}">
+          return `<article class="scenario-card ${install.installed ? 'installed' : install.partial ? 'partial' : ''}" data-scenario-card data-scenario-kind="builtin" data-scenario-installed="${install.installed ? '1' : '0'}" data-scenario-search="${escapeHtml(scenarioSearchText(key, preset))}">
           ${routePresetIconView(escapeHtml, key, preset)}
           <div>
             <strong>${escapeHtml(preset.title)}</strong>
@@ -258,7 +297,9 @@ function routingScenariosPanel() {
           <button class="btn secondary" data-route-preset-edit="${escapeHtml(key)}">Править</button>
         </article>`;
         }).join('')}
+        </div>
       </div>
+      <div class="scenario-empty-state empty-state" data-scenario-empty hidden>По этому запросу сценариев не найдено.</div>
     </section>
   `;
 }
@@ -325,7 +366,7 @@ function routingBalancersPanel() {
     ${observatoryPanel()}
     <section class="panel routing-balancers-panel">
       <div class="panel-title">
-        <div><h2>Группы серверов</h2><span>Правило может вести не в один сервер, а в группу: случайно, по очереди, по меньшему ping или по меньшей нагрузке. Для выбора по задержке нужно наблюдение Xray, для выбора по нагрузке — burst-наблюдение.</span></div>
+        <div><h2>Группы серверов</h2><span>Основной и резервный VPN с автоматическим возвратом или балансировка: случайно, по очереди, по задержке и стабильности. Настройки действуют для правил, направленных в группу.</span></div>
         <button class="btn warning" data-action="openRouteBalancerDialog">Добавить</button>
       </div>
       ${balancerHistorySettingsView()}
@@ -344,7 +385,7 @@ function routingBalancersPanel() {
                 <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
               </div>
               <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-              <span>${escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors || 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · резерв: ${balancer.fallbackTag}` : ''}</span>
+              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map(proxyDisplayName).join(', ') : 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag))}` : ''}</span>
               ${balancerMembersView(matched)}
               ${balancerHistoryView(matched)}
             </div>
@@ -450,11 +491,9 @@ function interceptAdvancedAccordion() {
 }
 
 function routingPanel() {
-  const userRuleCount = Math.max(0, routeRules().length - managedRoutingRuleItems().length);
-  const scenarioCount = builtinRoutePresetEntries().length + customRoutePresetEntries().length;
   const routingTabs = [
-    ['rules', 'Правила', userRuleCount],
-    ['scenarios', 'Сценарии', scenarioCount],
+    ['rules', 'Правила'],
+    ['scenarios', 'Сценарии'],
     ['intercept', 'Перехват'],
     ['leaks', 'Защита от утечек'],
     ['geo', 'Geo'],
@@ -469,10 +508,17 @@ function routingPanel() {
     geo: geoPanel,
     'geo-editor': geoEditorPanel
   };
+  const setupContext = state.setupStep === 'scenarios' && ['rules', 'scenarios'].includes(view)
+    ? `<section class="setup-context-banner">
+        <div><strong>Выбор для быстрого запуска</strong><span>Добавьте нужные сценарии или правила, затем вернитесь в мастер.</span></div>
+        <button class="btn warning" type="button" data-tab-jump="setup">Вернуться в мастер</button>
+      </section>`
+    : '';
   return `
+    ${setupContext}
     <section class="routing-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю маршрутизации">
-        ${routingTabs.map(([value, label, count]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}"><span>${label}</span>${Number.isFinite(count) ? `<small class="tab-count">${count}</small>` : ''}</button>`).join('')}
+        ${routingTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-routing-view="${value}">${label}</button>`).join('')}
       </div>
     </section>
     ${views[view]()}

@@ -66,7 +66,7 @@ func (s *serverState) saveRouteNames(payload map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "names": s.routeNames()}
 	}
-	if err := os.WriteFile(s.routeNamesPath(), body, 0o600); err != nil {
+	if err := writeFileAtomic(s.routeNamesPath(), body, 0o600); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "names": s.routeNames()}
 	}
 	return map[string]any{"ok": true, "names": names}

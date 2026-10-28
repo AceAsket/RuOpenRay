@@ -1,9 +1,61 @@
+export function buildAWGClientConfig(server, peer, privateKey) {
+  const host = String(server?.publicHost || '').trim();
+  if (!host) throw new Error('Укажите публичный домен или WAN IP AWG-сервера.');
+  if (!server?.publicKey) throw new Error('Сначала создайте ключи AWG-сервера.');
+  if (!privateKey) throw new Error('Приватный ключ клиента не хранится на сервере. Нажмите «Создать ключ клиента» ещё раз.');
+  const address = String(peer?.allowedIps || '').split(',')[0].trim();
+  if (!address) throw new Error('Укажите адрес клиента в поле «Адреса клиента».');
+  const endpointHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  const lines = [
+    '[Interface]',
+    `PrivateKey = ${privateKey}`,
+    `Address = ${address}`,
+    `MTU = ${Number(server.mtu || 1420)}`
+  ];
+  if (String(peer.clientDns || '').trim()) lines.push(`DNS = ${String(peer.clientDns).trim()}`);
+  const advancedOrder = ['Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4', 'I1', 'I2', 'I3', 'I4', 'I5'];
+  advancedOrder.forEach((key) => {
+    const value = server.advanced?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') lines.push(`${key} = ${String(value).trim()}`);
+  });
+  lines.push('', '[Peer]', `PublicKey = ${String(server.publicKey).trim()}`);
+  if (String(peer.presharedKey || '').trim()) lines.push(`PresharedKey = ${String(peer.presharedKey).trim()}`);
+  lines.push(
+    `AllowedIPs = ${String(peer.clientAllowedIps || '0.0.0.0/0').trim()}`,
+    `Endpoint = ${endpointHost}:${Number(server.listenPort || 51820)}`,
+    `PersistentKeepalive = ${Number(peer.persistentKeepalive || 25)}`,
+    ''
+  );
+  return lines.join('\n');
+}
+
+export function applyServerModeAccessPreset(target, preset) {
+  if (!target || typeof target !== 'object') return target;
+  const mode = ['internet', 'limited', 'full'].includes(preset) ? preset : 'internet';
+  target.allowLan = mode === 'full';
+  if (mode === 'internet') {
+    target.lanAllowedIps = '';
+    target.lanAllowedPorts = '';
+    target.lanProtocol = 'any';
+    target.allowRouter = false;
+    target.allowDns = false;
+  }
+  if (mode === 'full') {
+    target.lanAllowedIps = '';
+    target.lanAllowedPorts = '';
+    target.lanProtocol = 'any';
+    target.allowRouter = false;
+  }
+  return target;
+}
+
 export function createServerModeActions({ state, request, render }) {
   function syncServerMode(result) {
     if (!result || typeof result !== 'object') return;
     state.serverMode = result;
     if (result.config) {
       state.serverModeDraft = JSON.parse(JSON.stringify(result.config));
+      state.serverModeAccessModes = {};
     }
     if (result.preflight) state.serverModePreflight = result.preflight;
   }
@@ -33,11 +85,16 @@ export function createServerModeActions({ state, request, render }) {
     if (typeof state.serverModeDraft.monitorClients !== 'boolean') state.serverModeDraft.monitorClients = true;
     state.serverModeDraft.xray = Array.isArray(state.serverModeDraft.xray) ? state.serverModeDraft.xray : [];
     state.serverModeDraft.awg = Array.isArray(state.serverModeDraft.awg) ? state.serverModeDraft.awg : [];
+    state.serverModeDraft.awg.forEach((server) => {
+      server.advanced = server.advanced && typeof server.advanced === 'object' ? server.advanced : {};
+      server.peers = Array.isArray(server.peers) ? server.peers : [];
+    });
     return state.serverModeDraft;
   }
 
   function resetServerModePreviews() {
     state.serverModePreview = null;
+    state.serverModePreflight = { dirty: true };
     state.serverModeFirewallPreview = null;
     state.serverModeClientExport = null;
   }
@@ -77,6 +134,7 @@ export function createServerModeActions({ state, request, render }) {
       sniffing: true,
       openFirewall: false
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -92,6 +150,7 @@ export function createServerModeActions({ state, request, render }) {
     });
     inbound.clients = Array.isArray(inbound.clients) ? inbound.clients : [];
     inbound.clients.push(result.client);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -107,14 +166,17 @@ export function createServerModeActions({ state, request, render }) {
       interface: 'awg-server0',
       listenPort: 51820,
       addressCidr: '10.70.0.1/24',
+      publicHost: '',
       privateKey: '',
       publicKey: '',
       mtu: 1420,
       egressTag: 'direct',
       allowLan: false,
       openFirewall: false,
-      peers: []
+      peers: [],
+      advanced: createDefaultAWGAdvanced()
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -131,9 +193,113 @@ export function createServerModeActions({ state, request, render }) {
       publicKey: '',
       allowedIps: `10.70.0.${server.peers.length + 2}/32`,
       presharedKey: '',
+      clientAllowedIps: '0.0.0.0/0',
+      clientDns: '1.1.1.1',
+      persistentKeepalive: 25,
+      allowLan: false,
+      allowRouter: false,
+      allowDns: false,
+      lanAllowedIps: '',
+      lanAllowedPorts: '',
+      lanProtocol: 'any',
       enabled: true
     });
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
+    render();
+  }
+
+  function createDefaultAWGAdvanced() {
+    const randomHeader = () => {
+      const values = new Uint32Array(1);
+      globalThis.crypto?.getRandomValues?.(values);
+      return 100000000 + (Number(values[0] || Date.now()) % 1900000000);
+    };
+    return {
+      Jc: 4,
+      Jmin: 40,
+      Jmax: 70,
+      S1: 1,
+      S2: 2,
+      H1: randomHeader(),
+      H2: randomHeader(),
+      H3: randomHeader(),
+      H4: randomHeader()
+    };
+  }
+
+  function awgClientKeyId(server, peer) {
+    return `${server?.id || 'server'}:${peer?.id || 'peer'}`;
+  }
+
+  async function generateServerModeAWGServerKey(button) {
+    const serverIndex = Number(button?.dataset?.serverModeAwg || 0);
+    const server = ensureDraft().awg[serverIndex];
+    if (!server) return;
+    const result = await request('/api/server-mode/awg/keypair', { method: 'POST' });
+    if (!result?.ok || !result.privateKey || !result.publicKey) throw new Error(result?.error || 'Не удалось создать ключи AWG-сервера');
+    server.privateKey = result.privateKey;
+    server.publicKey = result.publicKey;
+    state.message = 'Ключи AWG-сервера созданы';
+    resetServerModePreviews();
+    render();
+  }
+
+  async function generateServerModeAWGPeerKey(button) {
+    const serverIndex = Number(button?.dataset?.serverModeAwg || 0);
+    const peerIndex = Number(button?.dataset?.serverModePeer || 0);
+    const server = ensureDraft().awg[serverIndex];
+    const peer = server?.peers?.[peerIndex];
+    if (!server || !peer) return;
+    const result = await request('/api/server-mode/awg/keypair', { method: 'POST' });
+    if (!result?.ok || !result.privateKey || !result.publicKey) throw new Error(result?.error || 'Не удалось создать ключи AWG-клиента');
+    peer.publicKey = result.publicKey;
+    state.serverModeAWGClientKeys = {
+      ...(state.serverModeAWGClientKeys || {}),
+      [awgClientKeyId(server, peer)]: result.privateKey
+    };
+    state.serverModeAWGClientExport = null;
+    state.message = 'Ключ клиента создан. Скачайте client.conf до обновления страницы.';
+    resetServerModePreviews();
+    render();
+  }
+
+  function buildServerModeAWGClientConfig(server, peer, privateKey) {
+    return buildAWGClientConfig(server, peer, privateKey);
+  }
+
+  async function exportServerModeAWGPeer(button) {
+    const serverIndex = Number(button?.dataset?.serverModeAwg || 0);
+    const peerIndex = Number(button?.dataset?.serverModePeer || 0);
+    const server = ensureDraft().awg[serverIndex];
+    const peer = server?.peers?.[peerIndex];
+    if (!server || !peer) return;
+    const privateKey = state.serverModeAWGClientKeys?.[awgClientKeyId(server, peer)] || '';
+    const text = buildServerModeAWGClientConfig(server, peer, privateKey);
+    const safeName = String(peer.name || peer.id || 'awg-client').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'awg-client';
+    state.serverModeAWGClientExport = { text, filename: `${safeName}.conf`, serverName: server.name, peerName: peer.name };
+    try {
+      await navigator.clipboard.writeText(text);
+      state.message = 'client.conf скопирован. Приватный ключ не сохранён на сервере.';
+    } catch (_) {
+      state.message = 'client.conf готов. Приватный ключ не сохранён на сервере.';
+    }
+    render();
+  }
+
+  function downloadServerModeAWGClientExport() {
+    const payload = state.serverModeAWGClientExport;
+    if (!payload?.text) return;
+    const blob = new Blob([payload.text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = payload.filename || 'awg-client.conf';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    state.message = 'client.conf скачан';
     render();
   }
 
@@ -251,6 +417,31 @@ export function createServerModeActions({ state, request, render }) {
     render();
   }
 
+  async function applyServerModeAWGRuntime() {
+    const result = await request('/api/server-mode/awg/apply', {
+      method: 'POST',
+      body: JSON.stringify({ config: ensureDraft(), confirm: true })
+    });
+    if (state.serverMode && result.status) state.serverMode.awgRuntime = result.status;
+    if (result.plan) {
+      if (!state.serverMode) state.serverMode = {};
+      state.serverMode.awgPlan = result.plan;
+    }
+    state.message = result.ok
+      ? 'Серверные интерфейсы AmneziaWG запущены'
+      : (result.error || 'AmneziaWG runtime не запущен');
+    render();
+  }
+
+  async function disableServerModeAWGRuntime() {
+    const result = await request('/api/server-mode/awg/disable', { method: 'POST' });
+    if (state.serverMode && result.status) state.serverMode.awgRuntime = result.status;
+    state.message = result.ok
+      ? 'AmneziaWG runtime остановлен'
+      : (result.error || 'AmneziaWG runtime не остановлен');
+    render();
+  }
+
   async function applyServerMode() {
     const result = await request('/api/server-mode/apply', {
       method: 'POST',
@@ -269,6 +460,7 @@ export function createServerModeActions({ state, request, render }) {
     const index = Number(button?.dataset?.serverModeInbound || 0);
     const draft = ensureDraft();
     draft.xray.splice(index, 1);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -280,6 +472,7 @@ export function createServerModeActions({ state, request, render }) {
     const inbound = draft.xray[inboundIndex];
     if (!inbound || !Array.isArray(inbound.clients)) return;
     inbound.clients.splice(clientIndex, 1);
+    state.serverModeAccessModes = {};
     resetServerModePreviews();
     render();
   }
@@ -287,7 +480,13 @@ export function createServerModeActions({ state, request, render }) {
   function deleteServerModeAWGServer(button) {
     const index = Number(button?.dataset?.serverModeAwg || 0);
     const draft = ensureDraft();
+    const server = draft.awg[index];
+    if (server && state.serverModeAWGClientKeys) {
+      (server.peers || []).forEach((peer) => delete state.serverModeAWGClientKeys[awgClientKeyId(server, peer)]);
+    }
     draft.awg.splice(index, 1);
+    state.serverModeAccessModes = {};
+    state.serverModeAWGClientExport = null;
     resetServerModePreviews();
     render();
   }
@@ -298,7 +497,12 @@ export function createServerModeActions({ state, request, render }) {
     const draft = ensureDraft();
     const server = draft.awg[serverIndex];
     if (!server || !Array.isArray(server.peers)) return;
+    const peer = server.peers[peerIndex];
+    const keyId = awgClientKeyId(server, peer);
     server.peers.splice(peerIndex, 1);
+    state.serverModeAccessModes = {};
+    if (state.serverModeAWGClientKeys) delete state.serverModeAWGClientKeys[keyId];
+    state.serverModeAWGClientExport = null;
     resetServerModePreviews();
     render();
   }
@@ -323,6 +527,26 @@ export function createServerModeActions({ state, request, render }) {
     resetServerModePreviews();
   }
 
+  function setServerModeAccessMode(select) {
+    const draft = ensureDraft();
+    const base = String(select?.dataset?.serverModeAccessBase || '');
+    const path = base.split('.').filter(Boolean);
+    if (!path.length) return;
+    let target = draft;
+    for (const part of path) {
+      target = Array.isArray(target) ? target[Number(part)] : target?.[part];
+      if (!target) return;
+    }
+    const preset = String(select?.value || 'internet');
+    applyServerModeAccessPreset(target, preset);
+    state.serverModeAccessModes = {
+      ...(state.serverModeAccessModes || {}),
+      [base]: preset
+    };
+    resetServerModePreviews();
+    render();
+  }
+
   return {
     refreshServerMode,
     syncServerMode,
@@ -331,6 +555,10 @@ export function createServerModeActions({ state, request, render }) {
     addServerModeClient,
     addServerModeAWGServer,
     addServerModeAWGPeer,
+    generateServerModeAWGServerKey,
+    generateServerModeAWGPeerKey,
+    exportServerModeAWGPeer,
+    downloadServerModeAWGClientExport,
     generateServerModeRealityKey,
     exportServerModeClient,
     downloadServerModeClientExport,
@@ -339,11 +567,14 @@ export function createServerModeActions({ state, request, render }) {
     previewServerModeFirewall,
     applyServerModeFirewall,
     disableServerModeFirewall,
+    applyServerModeAWGRuntime,
+    disableServerModeAWGRuntime,
     applyServerMode,
     deleteServerModeInbound,
     deleteServerModeClient,
     deleteServerModeAWGServer,
     deleteServerModeAWGPeer,
-    updateServerModeField
+    updateServerModeField,
+    setServerModeAccessMode
   };
 }

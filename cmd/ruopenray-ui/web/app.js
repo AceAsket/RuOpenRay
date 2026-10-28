@@ -6,6 +6,7 @@ import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
 import { createCompatActions } from './compat-actions.js';
 import { createCompatView } from './compat-view.js';
+import { bindB4Controls } from './b4-bindings.js';
 import { createConfigActions } from './config-actions.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
@@ -19,6 +20,7 @@ import { bindDiagnosticsControls } from './diagnostics-bindings.js';
 import { createDiagnosticsModel } from './diagnostics-model.js';
 import { createDiagnosticsView } from './diagnostics-view.js';
 import { createDnsActions } from './dns-actions.js';
+import { createAdguardActions } from './adguard-actions.js';
 import { bindDnsControls } from './dns-bindings.js';
 import { createDnsModel } from './dns-model.js';
 import { createDnsView } from './dns-view.js';
@@ -46,6 +48,7 @@ import { createRoutingView } from './routing-view.js';
 import { createRoutingDialogsView } from './routing-dialogs-view.js';
 import { createRoutingDsl } from './routing-dsl.js';
 import { createRoutingModel } from './routing-model.js';
+import { orderRoutingRules } from './routing-order.js';
 import { bindServerCheckControls } from './server-check-bindings.js';
 import { createServerActions } from './server-actions.js';
 import { createServerModeActions } from './server-mode-actions.js';
@@ -54,7 +57,7 @@ import { createServerModel } from './server-model.js';
 import { createServersView } from './servers-view.js';
 import { createSettingsActions } from './settings-actions.js';
 import { createSetupActions } from './setup-actions.js';
-import { createSetupView } from './setup-view.js';
+import { createSetupView, setupWizardStepIds } from './setup-view.js';
 import { createUpdatesActions } from './updates-actions.js';
 import { createSetupModel } from './setup-model.js';
 import { createSniActions } from './sni-actions.js';
@@ -159,12 +162,14 @@ function cancelServerDraftSave() {
   state.serverDraftSaving = false;
 }
 
+let routeNamesSaveQueue = Promise.resolve();
 function saveRouteNamesToServer(names) {
   if (!state.token) return;
-  request('/api/routing/names', {
+  const body = JSON.stringify({ names: names || {} });
+  routeNamesSaveQueue = routeNamesSaveQueue.then(() => request('/api/routing/names', {
     method: 'POST',
-    body: JSON.stringify({ names: names || {} })
-  }).catch((error) => {
+    body
+  })).catch((error) => {
     state.message = error.message || 'Не удалось сохранить названия маршрутов на роутере';
     render();
   });
@@ -219,6 +224,10 @@ const {
 } = routingModel;
 
 function setRoutingDraft(rules) {
+  const ordered = orderRoutingRules(rules, state.routeDefaultLast !== false, isRuOpenRayManagedRoute);
+  if (ordered !== rules) state.selectedRouteRuleIndexes = [];
+  rules = ordered;
+  if (routingActions.migrateLegacyRouteGroups(rules)) saveRouteNames();
   const next = JSON.parse(JSON.stringify(state.config || {}));
   next.routing = next.routing && typeof next.routing === 'object' ? next.routing : {};
   next.routing.rules = rules;
@@ -499,9 +508,7 @@ const routeBalancerActions = createRouteBalancerActions({
   splitRouteValues,
   setRouteBalancersDraft,
   syncConfig,
-  strategyObserverType,
-  applyObserverForStrategy,
-  observerLabel
+  balancerTargetOptions
 });
 const {
   resetRouteBalancerForm,
@@ -520,6 +527,7 @@ function checkForTag(tag) {
 function checkLabel(result) {
   if (!result) return 'не проверен';
   if (result.skipped) return 'нет адреса для проверки';
+  if (!result.ok && result.errorCode) return ({ dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля', connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка запуска Xray', mixed: 'Несколько ошибок проверки', tunnel: 'Ошибка туннеля' })[result.errorCode] || 'Ошибка проверки';
   if (result.httpOk === false && result.endpointOk) {
     const error = String(result.error || '').toLowerCase();
     if (error.includes('timeout') || error.includes('deadline')) return 'порт открыт, HTTP таймаут';
@@ -670,11 +678,17 @@ const compatActions = createCompatActions({
   state,
   request,
   render,
-  refresh
+  refresh,
+  syncConfig,
+  refreshDomainMonitor
 });
 const {
   refreshCompatibility,
-  controlB4
+  controlB4,
+  b4Connect,
+  b4Api,
+  b4PrepareDirect,
+  b4Direct
 } = compatActions;
 
 const serverModeActions = createServerModeActions({
@@ -689,6 +703,10 @@ const {
   addServerModeClient,
   addServerModeAWGServer,
   addServerModeAWGPeer,
+  generateServerModeAWGServerKey,
+  generateServerModeAWGPeerKey,
+  exportServerModeAWGPeer,
+  downloadServerModeAWGClientExport,
   generateServerModeRealityKey,
   exportServerModeClient,
   downloadServerModeClientExport,
@@ -697,12 +715,15 @@ const {
   previewServerModeFirewall,
   applyServerModeFirewall,
   disableServerModeFirewall,
+  applyServerModeAWGRuntime,
+  disableServerModeAWGRuntime,
   applyServerMode,
   deleteServerModeInbound,
   deleteServerModeClient,
   deleteServerModeAWGServer,
   deleteServerModeAWGPeer,
-  updateServerModeField
+  updateServerModeField,
+  setServerModeAccessMode
 } = serverModeActions;
 
 const amneziaActions = createAmneziaActions({
@@ -730,6 +751,7 @@ const {
   deleteAmneziaPolicyRule,
   deleteAmneziaProfile,
   checkAmneziaPreflight,
+  checkAndStartAmnezia,
   prepareAmnezia,
   prepareAmneziaXrayOutboundDraft,
   prepareAmneziaUserspace,
@@ -761,6 +783,7 @@ const {
   ensureDnsBootstrapHosts,
   isSetupManagedRule,
   normalizeSetupRules,
+  setupFallbackModeFromConfig,
   prepareSetupDraft
 } = setupModel;
 
@@ -776,6 +799,7 @@ const setupActions = createSetupActions({
   captureSetupSnapshot,
   clearSetupSnapshot,
   lanDnsRestorePayload,
+  setupFallbackModeFromConfig,
   prepareSetupDraft,
   applyFirewallWithRetry,
   firewallReadyStatus
@@ -966,6 +990,18 @@ async function applyConfigAndFirewall() {
   }
 }
 
+async function discardPendingChanges() {
+  if (state.configApplying || state.firewallSaving || state.busyAction === 'apply') return;
+  cancelServerDraftSave();
+  state.serverDraftSaving = false;
+  state.serverDraftError = '';
+  await request('/api/config/draft', { method: 'DELETE' });
+  state.applySteps = [];
+  await refresh({ renderAfter: false });
+  state.message = 'Черновик удалён. Показана действующая конфигурация роутера.';
+  render();
+}
+
 
 
 
@@ -1049,6 +1085,7 @@ const {
   saveProfileEditor,
   deleteProfile,
   downloadProfile,
+  createProfileFromCurrent,
   saveProfile,
   backup
 } = profileActions;
@@ -1151,6 +1188,8 @@ const {
   previewLanDnsUpstream
 } = dnsActions;
 
+const adguardActions = createAdguardActions({ state, request, render, syncLanDnsStatus, refreshDomainMonitor });
+
 const setupView = createSetupView({
   state,
   shellQuote,
@@ -1160,16 +1199,6 @@ const setupView = createSetupView({
   loadSetupSnapshot,
   firewallReadyStatus,
   firewallPorts,
-  firewallDeviceChoices,
-  builtinRoutePresetEntries,
-  customRoutePresetEntries,
-  routePresetRules,
-  routePresetTitle,
-  routePresetDetail,
-  routePresetConditionCount,
-  routePresetInstallSummary,
-  routeTargetOptions,
-  activeProxyTag,
 });
 const {
   normalizeCoreVersion,
@@ -1385,7 +1414,7 @@ const amneziaView = createAmneziaView({
   state,
   escapeHtml
 });
-const { amneziaPanel, amneziaImportDialog } = amneziaView;
+const { amneziaPanel } = amneziaView;
 
 const auxPanelsView = createAuxPanelsView({
   state,
@@ -1760,23 +1789,24 @@ function pendingChangesBanner() {
   const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
   const applySteps = Array.isArray(state.applySteps) && state.applySteps.length && applying ? state.applySteps : [];
   const risks = pendingApplyRisks(configDirty, firewallDirty);
-  const expanded = Boolean(state.pendingChangesExpanded || applying);
-  const changeCount = xrayReasons.length + firewallReasons.length;
-  const changedAreas = [configDirty ? 'Xray' : '', firewallDirty ? 'Firewall' : ''].filter(Boolean).join(' · ');
-  const riskTone = risks.some((item) => item.level === 'danger') ? 'danger' : 'warn';
+  const totalChanges = changeItems.length
+    + Math.max(0, xrayReasons.length - visibleXrayReasons.length)
+    + Math.max(0, firewallReasons.length - visibleFirewallReasons.length);
+  const summary = `${totalChanges} ${totalChanges === 1 ? 'изменение' : totalChanges < 5 ? 'изменения' : 'изменений'}${risks.length ? ` · рисков: ${risks.length}` : ''}`;
   return `
-    <section class="pending-changes ${expanded ? 'is-expanded' : 'is-compact'}" aria-labelledby="pendingChangesTitle">
-      <div class="pending-main">
-        <div class="pending-summary">
-          <div class="pending-summary-copy" aria-live="polite">
-            <strong id="pendingChangesTitle">Непримененные изменения</strong>
-            <span>${escapeHtml(changedAreas)} · Изменений: ${Math.max(1, changeCount)}</span>
-          </div>
-          ${risks.length ? `<span class="pending-risk-count ${riskTone}">Предупреждений: ${risks.length}</span>` : ''}
-          <button class="pending-toggle" type="button" data-action="togglePendingChanges" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="pendingChangesDetails" ${applying ? 'disabled' : ''}>${expanded ? 'Свернуть' : 'Подробнее'}</button>
+    <section class="pending-changes" role="status" aria-live="polite">
+      <div class="pending-summary">
+        <div>
+          <strong>Есть непримененные изменения</strong>
+          <span>${escapeHtml(summary)}</span>
         </div>
-        <div class="pending-details" id="pendingChangesDetails" ${expanded ? '' : 'hidden'}>
-          <span>Что будет изменено и где потребуется перезапуск.</span>
+        ${applySteps.length ? `<ol class="apply-step-list">
+          ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
+        </ol>` : ''}
+      </div>
+      <details class="pending-details">
+        <summary>Что изменится</summary>
+        <div class="pending-details-body">
           <ul class="pending-change-list">
             ${changeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
           </ul>
@@ -1785,20 +1815,18 @@ function pendingChangesBanner() {
           ${risks.length ? `<div class="pending-risk-list">
             ${risks.map((item) => `<article class="${escapeHtml(item.level)}"><i></i><span>${escapeHtml(item.text)}</span></article>`).join('')}
           </div>` : ''}
-          ${applySteps.length ? `<ol class="apply-step-list">
-            ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
-          </ol>` : ''}
         </div>
-      </div>
+      </details>
       <div class="pending-actions">
-        <button class="btn warning ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
+        <button class="btn secondary ${state.busyAction === 'discardPendingChanges' ? 'is-busy' : ''}" data-action="discardPendingChanges" ${applying || state.configTesting ? 'disabled' : ''}>Отменить</button>
+        <button class="btn ${risks.length ? 'warning' : ''} ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
     </section>
   `;
 }
 
 function setupStepOrder() {
-  return ['connection', 'traffic', 'verify'];
+  return [...setupWizardStepIds];
 }
 
 function setupStepGate(step) {
@@ -1807,24 +1835,32 @@ function setupStepGate(step) {
   const proxyCount = proxyOutbounds().length;
   const notice = (level, title, detail) => ({ ok: false, notice: { step, level, title, detail } });
   if (step === 'connection') {
-    if (!byKey.get('core')?.ok) return notice('bad', 'Xray не найден', 'Сначала установите xray-core и зависимости OpenWrt. Откройте установку Xray на этом шаге.');
-    if (proxyCount < 1) {
-      return notice('bad', 'Нет подключения Xray', 'Добавьте сервер или подписку прямо на этом шаге. AmneziaWG можно подключить дополнительно как отдельное назначение маршрутизации.');
+    if (!byKey.get('core')?.ok) return notice('bad', 'Сначала установите Xray', 'Нажмите «Установить Xray», дождитесь завершения и вернитесь в мастер.');
+    if (proxyCount < 1) return notice('bad', 'Добавьте подключение', 'Вставьте ссылку на сервер или адрес подписки. Мастер продолжит после появления хотя бы одного подключения.');
+    if (!byKey.get('geo')?.ok) {
+      return {
+        ok: true,
+        notice: {
+          step,
+          level: 'warn',
+          title: 'Каталог сайтов пока не загружен',
+          detail: 'Можно продолжить. Он понадобится только сценариям, использующим категории стран и сервисов.'
+        }
+      };
     }
   }
-  if (step === 'traffic') {
-    if (proxyCount < 1) return notice('bad', 'Нет назначения по умолчанию', 'Вернитесь к подключениям и добавьте хотя бы один сервер Xray.');
-    if (state.firewallDeviceMode === 'selected' && !(state.firewallSelectedDevices || []).length) {
-      return notice('bad', 'Не выбраны устройства', 'В режиме «Только выбранные» отметьте хотя бы одного DHCP-клиента или переключитесь на всю локальную сеть.');
+  if (step === 'scenarios') {
+    if (proxyCount < 1) return notice('bad', 'Нет подключения', 'Вернитесь назад и добавьте сервер или подписку.');
+    if (state.setupFallbackMode !== 'proxy' && readiness.proxyRuleCount < 1) {
+      return notice('bad', 'Выберите, что направлять', 'Добавьте готовый сценарий, своё правило или выберите режим «Весь интернет».');
     }
-    prepareSetupDraft({ message: false });
     return {
       ok: true,
       notice: {
         step,
         level: 'ok',
-        title: 'Базовая схема подготовлена',
-        detail: 'Локальная сеть останется доступной напрямую, выбранные правила сохранят приоритет, а остальной трафик пойдет через активное подключение.'
+        title: 'Всё готово к запуску',
+        detail: 'DNS, перехват локальной сети и защита firewall будут настроены автоматически.'
       }
     };
   }
@@ -1855,11 +1891,9 @@ function content() {
 function compatibilityDetected() {
   const compat = state.compatStatus || {};
   const adguard = compat.adguardHome || state.lanDnsStatus?.adguardHome || {};
-  const podkop = compat.podkop || state.status?.podkop || {};
   const b4 = compat.b4 || state.status?.b4 || {};
   return Boolean(
     adguard.available || adguard.configPath ||
-    podkop.available || podkop.active || podkop.running ||
     b4.available || b4.active || b4.running
   );
 }
@@ -1987,7 +2021,7 @@ function firewallPreflightDialog() {
           <button class="icon-btn" type="button" data-action="closeFirewallPreflight" aria-label="Закрыть">×</button>
         </div>
         <div class="firewall-preflight-body">
-          <p>RuOpenRay обнаружил Podkop/B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
+          <p>RuOpenRay обнаружил B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
           <div class="firewall-preflight-meta">
             <span>Режим: ${escapeHtml(preflight.routerMode || 'неизвестно')}</span>
             <span>DNS-перехват: ${preflight.dnsIntercept ? 'включен' : 'выключен'}</span>
@@ -2019,11 +2053,19 @@ function render() {
   const xrayOwner = state.status?.service?.external && state.status?.service?.owner
     ? ` через ${state.status.service.owner}`
     : '';
+  const coreVersionText = String(state.status?.core?.version || '').split('\n')[0];
+  const coreVersionMatch = coreVersionText.match(/Xray\s+([vV]?\d+(?:\.\d+){1,3}(?:[-+][^\s]+)?)/i);
+  const xrayVersionLabel = coreVersionMatch?.[1]?.replace(/^v/i, '') || '';
+  const xrayUpdate = statusLoaded ? coreUpdateInfo() : {};
+  const xrayUpdateTarget = xrayUpdate.target?.tag || '';
+  const xrayVersionTitle = xrayUpdate.hasUpdate
+    ? `Доступно обновление Xray: ${xrayUpdate.current || xrayVersionLabel || 'текущая версия'} → ${xrayUpdateTarget}`
+    : (state.status?.core?.available ? 'Версия и обновление Xray' : 'Установить Xray');
   const serviceBusy = ['start', 'stop', 'restart'].includes(state.busyAction);
   const xrayStatusText = statusLoaded
     ? running
-      ? `Xray работает${xrayOwner}${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
-      : 'Xray остановлен'
+      ? `Xray${xrayVersionLabel ? ` ${xrayVersionLabel}` : ''} · работает${xrayOwner}${xrayUptime > 0 ? ` · ${fmtUptime(xrayUptime)}` : ''}`
+      : `Xray${xrayVersionLabel ? ` ${xrayVersionLabel}` : ''} · остановлен`
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
   const hasApplySteps = Array.isArray(state.applySteps) && state.applySteps.length > 0 && state.busyAction === 'apply';
@@ -2034,30 +2076,30 @@ function render() {
   const showRuOpenRayStop = statusLoaded && (
     Boolean(state.firewallStatus?.active || state.firewallStatus?.persistent)
     || Boolean(running && serviceManaged)
-    || Boolean(state.status?.podkop?.active || state.status?.b4?.active)
+    || Boolean(state.status?.b4?.active)
   );
-  const serviceButtons = [
-    showRuOpenRayStop
-      ? `<button class="service-mode-stop ${ruOpenRayModeBusy ? 'is-busy' : ''}" data-action="stopRuOpenRayMode" title="Остановить режим RuOpenRay: снять перехват и остановить управляемый Xray" ${state.firewallSaving || ruOpenRayModeBusy ? 'disabled' : ''}>Остановить RuOpenRay</button>`
-      : null,
+  const serviceModeButton = showRuOpenRayStop
+    ? `<button class="service-mode-stop ${ruOpenRayModeBusy ? 'is-busy' : ''}" data-action="stopRuOpenRayMode" title="Остановить режим RuOpenRay: снять перехват и остановить управляемый Xray" ${state.firewallSaving || ruOpenRayModeBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2v10"></path><path d="M6.35 5.35a8 8 0 1 0 11.3 0"></path></svg><span>Остановить RuOpenRay</span></button>`
+    : '';
+  const xrayServiceButtons = [
     !statusLoaded
       ? null
       : running
         ? null
-        : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}>▶</button>`,
+        : `<button class="service-icon ${state.busyAction === 'start' ? 'is-busy' : ''}" data-action="start" title="Запустить Xray" aria-label="Запустить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path class="fill" d="m8 5 11 7-11 7z"></path></svg></button>`,
     statusLoaded && running && serviceManaged
-      ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}>↻</button>`
+      ? `<button class="service-icon ${state.busyAction === 'restart' ? 'is-busy' : ''}" data-action="restart" title="Перезапустить Xray" aria-label="Перезапустить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"></path><path d="M20 4v7h-7"></path></svg></button>`
       : null,
     statusLoaded && running && serviceManaged
-      ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}>■</button>`
+      ? `<button class="service-icon danger ${state.busyAction === 'stop' ? 'is-busy' : ''}" data-action="stop" title="Остановить Xray" aria-label="Остановить Xray" ${serviceBusy ? 'disabled' : ''}><svg aria-hidden="true" viewBox="0 0 24 24"><rect class="fill" x="7" y="7" width="10" height="10" rx="1"></rect></svg></button>`
       : null,
   ].filter(Boolean).join('');
+  const serviceButtons = `${serviceModeButton}${serviceModeButton && xrayServiceButtons ? '<span class="service-controls-divider" aria-hidden="true"></span>' : ''}${xrayServiceButtons ? `<span class="service-secondary-actions">${xrayServiceButtons}</span>` : ''}`;
   app.innerHTML = `
     ${routeRuleDialog()}
     ${routeBalancerDialog()}
     ${routeTargetReplaceDialog()}
     ${importDialog(state.importDialog)}
-    ${amneziaImportDialog(state.amneziaStatus?.clientConfig || state.status?.amnezia?.clientConfig || {})}
     ${firewallPreflightDialog()}
     <div class="shell">
       <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
@@ -2078,7 +2120,7 @@ function render() {
           </button>
         </div>
       </aside>
-      <main class="main">
+      <main class="main main-${escapeHtml(state.tab)}">
         ${state.busyAction && !hasLocalOperationProgress ? `
           <div class="global-action-progress" role="status" aria-live="polite">
             <span>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>
@@ -2091,13 +2133,11 @@ function render() {
             ${state.status ? '' : '<p>Загрузка статуса роутера</p>'}
           </div>
           <div class="top-actions">
-            ${state.tab === 'setup'
-              ? `<button class="btn secondary" data-tab-jump="dashboard" type="button">Закрыть мастер</button>`
-              : `${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
-                ${appVersionPill()}
-                <span class="pill" title="${xrayUptime > 0 ? `xray-core запущен ${fmtUptime(xrayUptime)}` : 'Аптайм xray-core пока не определен'}"><i class="dot ${running ? 'ok' : ''}"></i>${escapeHtml(xrayStatusText)}</span>
-                <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль">${escapeHtml(activeProfile)}</button>
-                <div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>`}
+            ${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
+            ${appVersionPill()}
+            <button class="pill xray-version-pill ${xrayUpdate.hasUpdate ? 'has-update' : ''}" type="button" data-action="${state.status?.core?.available ? 'openCoreDialog' : 'openInstallWizard'}" title="${escapeHtml(xrayVersionTitle)}" aria-label="${escapeHtml(xrayVersionTitle)}" ${statusLoaded ? '' : 'disabled'}><i class="dot ${xrayUpdate.hasUpdate ? 'warn' : running ? 'ok' : ''}"></i><span>${escapeHtml(xrayStatusText)}</span>${xrayUpdate.hasUpdate ? '<span class="xray-update-indicator" aria-hidden="true">↑</span>' : ''}</button>
+            <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль"><svg class="profile-pill-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.75 19c.75-3.25 3-5 6.25-5s5.5 1.75 6.25 5"></path></svg><span>${escapeHtml(activeProfile)}</span></button>
+            ${serviceButtons ? `<div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>` : ''}
           </div>
         </header>
         ${state.tab === 'setup' ? '' : pendingChangesBanner()}
@@ -2109,6 +2149,7 @@ function render() {
     ${selectedRouteGroupDialog()}
     ${routePresetDialog()}
   `;
+  enhanceFormAccessibility();
   bind();
   bindDetailsPersistence();
   decorateBusyActionButtons();
@@ -2154,6 +2195,7 @@ function busyButtonLabel(action, fallback = '') {
     refresh: 'Обновляю',
     test: 'Проверяю',
     apply: 'Применяю изменения',
+    discardPendingChanges: 'Отменяю изменения',
     applyFirewall: 'Применяю firewall',
     disableFirewall: 'Отключаю',
     refreshFirewallStatus: 'Обновляю',
@@ -2230,7 +2272,14 @@ async function loadCoreReleases({ force = false } = {}) {
 }
 
 function bind() {
-  bindNavigationControls({ state, render, configureLogTimer });
+  bindNavigationControls({ state, render, configureLogTimer, onTabChange: (tab) => {
+    const pending = tab === 'compat' ? Promise.all([
+      refreshCompatibility({ silent: true }),
+      ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
+    ])
+      : tab === 'dns' && state.dnsView === 'adguard' ? adguardActions.adguardRefresh() : null;
+    pending?.catch((error) => { state.message = error.message; render(); });
+  } });
   bindModalControls();
   bindActionControls({
     state,
@@ -2241,10 +2290,6 @@ function bind() {
       restart: () => service('restart'),
       toggleMobileNav: () => {
         state.mobileNavOpen = !state.mobileNavOpen;
-        render();
-      },
-      togglePendingChanges: () => {
-        state.pendingChangesExpanded = !state.pendingChangesExpanded;
         render();
       },
       logout,
@@ -2259,6 +2304,7 @@ function bind() {
       updateApp,
       test: testConfig,
       apply: applyConfigAndFirewall,
+      discardPendingChanges,
       applyFirewall,
       closeFirewallPreflight,
       confirmFirewallPreflight,
@@ -2270,6 +2316,10 @@ function bind() {
       addServerModeClient,
       addServerModeAWGServer,
       addServerModeAWGPeer,
+      generateServerModeAWGServerKey,
+      generateServerModeAWGPeerKey,
+      exportServerModeAWGPeer,
+      downloadServerModeAWGClientExport,
       generateServerModeRealityKey,
       exportServerModeClient,
       downloadServerModeClientExport,
@@ -2278,6 +2328,8 @@ function bind() {
       previewServerModeFirewall,
       applyServerModeFirewall,
       disableServerModeFirewall,
+      applyServerModeAWGRuntime,
+      disableServerModeAWGRuntime,
       applyServerMode,
       deleteServerModeInbound,
       deleteServerModeClient,
@@ -2297,11 +2349,16 @@ function bind() {
       prepareAmneziaXrayOutboundDraft,
       deleteAmneziaProfile,
       checkAmneziaPreflight,
+      checkAndStartAmnezia,
       prepareAmnezia,
       prepareAmneziaUserspace,
       startAmnezia,
       stopAmnezia,
       controlB4: (button) => controlB4(button.dataset.b4Action || 'status'),
+      b4Connect,
+      b4Api,
+      b4PrepareDirect,
+      b4Direct,
       refreshFirewallStatus,
       downloadFirewallRules,
       enableXrayStats: () => setXrayStats(true),
@@ -2368,9 +2425,6 @@ function bind() {
         render();
       },
       applyRoutePresets: applySelectedRoutingPresets,
-      applySetupRoutePresets: () => applySelectedRoutingPresets({
-        targetValue: state.setupScenarioTarget || `outbound:${activeProxyTag() || 'proxy'}`
-      }),
       openSelectedRouteGroupDialog,
       openRouteTargetReplaceDialog,
       closeRouteTargetReplaceDialog,
@@ -2388,10 +2442,6 @@ function bind() {
       applyRoutePresetEdit,
       openInstallWizard,
       openSetupWizard,
-      toggleSetupAdvanced: () => {
-        state.setupAdvancedOpen = !state.setupAdvancedOpen;
-        render();
-      },
       closeSetupWizard: () => {
         state.setupWizardOpen = false;
         render();
@@ -2412,7 +2462,7 @@ function bind() {
         }
         const steps = setupStepOrder();
         const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
-        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'verify';
+        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'launch';
         state.setupStep = nextStep;
         state.setupStepNotice = gate.notice ? { ...gate.notice, step: nextStep } : null;
         render();
@@ -2450,6 +2500,7 @@ function bind() {
       refreshLogs: () => refreshLogs(true, true),
       runConnectivityDiagnostics,
       runDpiDiagnostics,
+      runTLSStability: diagnosticsActions.runTLSStability,
       refreshDomainMonitor: () => refreshDomainMonitor(true, { force: true }),
       startDomainMonitor: () => controlDomainMonitor('start'),
       stopDomainMonitor: () => controlDomainMonitor('stop'),
@@ -2510,6 +2561,7 @@ function bind() {
       clearDnsPolicy,
       previewLanDnsUpstream,
       applyLanDnsUpstream,
+      ...adguardActions,
       dnsWizardSecure: () => applyDnsGuardPreset('secure'),
       dnsWizardRu: () => applyDnsGuardPreset('ru'),
       dnsWizardStrict: () => applyDnsGuardPreset('strict'),
@@ -2537,8 +2589,11 @@ function bind() {
       scanSni,
       closeProfileEdit: closeProfileEditor,
       saveProfileEditor,
+      createProfileFromCurrent,
       saveProfile,
       backup,
+      createFullBackup: profileActions.createFullBackup,
+      checkFullBackup: profileActions.checkFullBackup,
       restoreLatestBackup,
     },
   });
@@ -2612,6 +2667,8 @@ function bind() {
     reorderRoutingRuleInsideGroup,
     moveRoutingRuleRange,
     toggleRouteRuleSelection,
+    setRouteDefaultLast: routingActions.setRouteDefaultLast,
+    isRuOpenRayManagedRoute,
     groupRoutingRuleWithNext,
     renameRoutingRuleGroup,
     openRoutingRuleGroupEditor,
@@ -2667,6 +2724,7 @@ function bind() {
   bindProfileControls({ state, activateProfile, openProfileEditor, deleteProfile, downloadProfile });
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
+  bindB4Controls({ state });
   bindServerCheckControls({ state, render });
   document.querySelectorAll('[data-server-mode-field]').forEach((input) => {
     input.addEventListener('input', () => updateServerModeField(input));
@@ -2675,6 +2733,9 @@ function bind() {
       if (input.dataset.serverModeField === 'enabled') setServerModeEnabled(input.checked);
       else render();
     });
+  });
+  document.querySelectorAll('[data-server-mode-access-base]').forEach((select) => {
+    select.addEventListener('change', () => setServerModeAccessMode(select));
   });
   document.querySelectorAll('[data-amnezia-config]').forEach((textarea) => {
     textarea.addEventListener('input', () => {
@@ -2737,6 +2798,11 @@ function bind() {
       state.amneziaUserspaceUrl = input.value;
     });
   });
+  document.querySelectorAll('[data-amnezia-userspace-sha256]').forEach((input) => {
+    input.addEventListener('input', () => {
+      state.amneziaUserspaceSha256 = input.value;
+    });
+  });
 
 }
 
@@ -2746,6 +2812,20 @@ if (state.token) {
   configureStatusTimer();
   refresh({ background: true });
   refreshServerMode({ silent: true }).catch(() => {});
+}
+
+function enhanceFormAccessibility() {
+  document.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach((control) => {
+    if (control.hasAttribute('aria-label') || control.hasAttribute('aria-labelledby')) return;
+    if (control.closest('label')) return;
+    if (control.id && document.querySelector(`label[for="${CSS.escape(control.id)}"]`)) return;
+    const container = control.closest('.form-row, .settings-field, .server-mode-export-field, .route-field, .field');
+    const visibleLabel = container?.querySelector(':scope > label, :scope > span, :scope > strong');
+    const label = String(visibleLabel?.textContent || control.getAttribute('placeholder') || control.id || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (label) control.setAttribute('aria-label', label);
+  });
 }
 
 document.addEventListener('focusout', () => {

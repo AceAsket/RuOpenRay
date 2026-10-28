@@ -56,6 +56,7 @@ func openAPISpec() map[string]any {
 			{"name": "Profiles", "description": "Profile storage and activation"},
 			{"name": "Diagnostics", "description": "Probes, live domain monitor and downloadable diagnostic package"},
 			{"name": "AmneziaWG", "description": "AmneziaWG/WireGuard detection, managed interface control and split-routing integration"},
+			{"name": "Compatibility", "description": "Local B4 API, opt-in direct NFQUEUE and component compatibility"},
 			{"name": "Geo", "description": "GeoIP/geosite files and custom lists"},
 			{"name": "Backups", "description": "Configuration backups and restore"},
 		},
@@ -87,8 +88,11 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/status", "System", "Get router and Xray status", "Main dashboard snapshot: service state, resources, compatibility detectors, versions and warnings.", "", "Object"},
 		{"post", "/service", "System", "Control Xray service", "Start, stop or restart managed Xray service.", "GenericObject", "Object"},
 		{"post", "/compat/stop-ruopenray", "System", "Stop RuOpenRay mode", "Disables RuOpenRay interception and stops managed Xray without deleting third-party services.", "", "Object"},
-		{"get", "/compat/status", "Compatibility", "Get third-party compatibility status", "Reports detected AdGuard Home, Podkop and B4 services with safe web links.", "", "Object"},
+		{"get", "/compat/status", "Compatibility", "Get third-party compatibility status", "Reports detected AdGuard Home and B4 services with safe web links.", "", "Object"},
 		{"post", "/compat/b4", "Compatibility", "Control B4 service", "Starts, stops, restarts, enables, disables or clears B4 tables on the router.", "GenericObject", "Object"},
+		{"post", "/compat/b4/connect", "Compatibility", "Connect local B4 API", "Validates loopback URL and credentials before storing them privately. Password is never returned. Empty password preserves it only for the same URL and username; clearCredentials removes it.", "GenericObject", "Object"},
+		{"post", "/compat/b4/api", "Compatibility", "Manage B4 sets", "Actions: check-domain (domain), set-enabled (id, revision, enabled), add-domain (id, revision, domain). Edits preserve methods and require optimistic revision checking; active edits undergo compatibility preflight.", "GenericObject", "Object"},
+		{"post", "/compat/b4/direct", "Compatibility", "Control opt-in direct-b4 NFQUEUE", "enabled=true requires a live B4 NFQUEUE engine, external firewall mode and a prepared direct-b4 freedom outbound in active Xray configuration. Own table captures only marked TCP 80/443 and UDP 443 and their replies, with queue bypass. enabled=false removes only this table.", "GenericObject", "Object"},
 		{"get", "/amnezia/status", "AmneziaWG", "Get AmneziaWG status", "Detects awg/wg interfaces, service state, routes and the future RuOpenRay split-routing plan.", "", "Object"},
 		{"get", "/amnezia/config", "AmneziaWG", "Get saved AmneziaWG client config", "Returns the saved client config for editing.", "", "Object"},
 		{"post", "/amnezia/config", "AmneziaWG", "Save AmneziaWG client config", "Validates and stores an AmneziaWG client config without starting the tunnel.", "GenericObject", "Object"},
@@ -102,7 +106,7 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/amnezia/profile/delete", "AmneziaWG", "Delete AmneziaWG profile", "", "GenericObject", "Object"},
 		{"post", "/amnezia/preflight", "AmneziaWG", "Check AmneziaWG preflight", "Validates config, tools, kernel module and route safety without changing the system.", "GenericObject", "Object"},
 		{"post", "/amnezia/prepare", "AmneziaWG", "Prepare AmneziaWG plan", "Dry-run preparation for future AmneziaWG routing. Does not start tunnel or change firewall.", "GenericObject", "Object"},
-		{"post", "/amnezia/userspace/prepare", "AmneziaWG", "Prepare userspace AmneziaWG backend", "Downloads amneziawg-go from an explicit URL into RuOpenRay data dir or returns a dry-run plan. Does not start tunnel or change firewall.", "GenericObject", "Object"},
+		{"post", "/amnezia/userspace/prepare", "AmneziaWG", "Prepare userspace AmneziaWG backend", "Downloads amneziawg-go from an explicit HTTPS URL after mandatory SHA-256 verification, or returns a dry-run plan. Does not start tunnel or change firewall.", "GenericObject", "Object"},
 		{"post", "/amnezia/start", "AmneziaWG", "Start managed AmneziaWG interface", "Starts only RuOpenRay-managed AmneziaWG interface and route table. Does not change main default route.", "GenericObject", "Object"},
 		{"post", "/amnezia/stop", "AmneziaWG", "Stop managed AmneziaWG interface", "Stops only RuOpenRay-managed AmneziaWG interface, userspace pid and route table.", "GenericObject", "Object"},
 
@@ -122,6 +126,8 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/firewall/restore", "Firewall", "Restore firewall snapshot", "Restores firewall/DNS state captured earlier.", "GenericObject", "Object"},
 
 		{"get", "/dns/diagnostics", "DNS", "Get DNS diagnostics", "Reports dnsmasq, Xray DNS inbound/outbound, ports and AdGuard compatibility.", "", "Object"},
+		{"get", "/dns/adguard", "DNS", "Get AdGuard integration", "Returns protection, upstreams, response statistics in ms and managed VPN bootstrap domains. Credentials are never returned.", "", "Object"},
+		{"post", "/dns/adguard", "DNS", "Manage local AdGuard", "Configure loopback API, sync bootstrap, toggle protection or domain exceptions. upstream-check measures 1-8 public-IP HTTPS upstreams without applying them; upstream-save validates them in AdGuard and requires baseUpstreams matching upstreamSnapshot. Domain routes and other DNS settings are preserved.", "GenericObject", "Object"},
 		{"post", "/dns/check", "DNS", "Check DNS server", "Tests DNS resolution through a selected DNS server.", "GenericObject", "Object"},
 		{"get", "/dns/lan-upstream", "DNS", "Get LAN DNS mode", "Shows current dnsmasq upstream mode and Xray/AdGuard compatibility state.", "", "Object"},
 		{"post", "/dns/lan-upstream", "DNS", "Apply LAN DNS mode", "Applies LAN DNS mode: Xray, AdGuard after Xray, external DNS/Pi-hole or OpenWrt resolver.", "GenericObject", "Object"},
@@ -161,6 +167,10 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/server-mode/reality-key", "Server mode", "Generate Reality key pair", "Runs xray x25519 and returns private/public keys.", "", "Object"},
 		{"post", "/server-mode/preview", "Server mode", "Preview server-mode Xray patch", "Builds managed inbound/routing changes and validates the resulting Xray config without writing it.", "GenericObject", "Object"},
 		{"post", "/server-mode/apply", "Server mode", "Apply server-mode Xray patch", "Writes managed inbound/routing changes to active Xray config after preflight. Xray restart is skipped unless restart=true is passed.", "GenericObject", "Object"},
+		{"get", "/server-mode/awg/status", "Server mode", "Get AmneziaWG runtime status", "Checks the managed OpenWrt service and every configured AmneziaWG server interface.", "", "Object"},
+		{"post", "/server-mode/awg/keypair", "Server mode", "Generate AmneziaWG key pair", "Generates a clamped X25519 key pair for an AmneziaWG server or client. The pair is returned once and is not persisted by this endpoint.", "", "Object"},
+		{"post", "/server-mode/awg/apply", "Server mode", "Apply AmneziaWG runtime", "Writes private setconf files, installs the managed OpenWrt service, configures isolated UCI zones and starts enabled AmneziaWG server interfaces after confirmation.", "GenericObject", "Object"},
+		{"post", "/server-mode/awg/disable", "Server mode", "Disable AmneziaWG runtime", "Stops and disables the managed AmneziaWG service and removes its isolated UCI firewall zones.", "", "Object"},
 		{"get", "/server-mode/security", "Server mode", "Get server-mode client policy report", "Shows generated client access policy: egress, LAN, router, DNS and risk hints.", "", "Object"},
 		{"post", "/server-mode/security", "Server mode", "Preview server-mode client policy report", "Shows generated client access policy for an unsaved server-mode draft.", "GenericObject", "Object"},
 		{"get", "/server-mode/firewall/status", "Server mode", "Get server-mode WAN firewall status", "Lists RuOpenRay-managed UCI firewall rules for inbound Xray/AWG server ports.", "", "Object"},
@@ -174,10 +184,11 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/profiles/delete", "Profiles", "Delete profile", "", "GenericObject", "Object"},
 		{"post", "/profiles/activate", "Profiles", "Activate profile", "", "GenericObject", "Object"},
 
-		{"get", "/diagnostics", "Diagnostics", "Get diagnostics snapshot", "Router, Xray, DNS, Podkop, B4, firewall and service diagnostics.", "", "Object"},
+		{"get", "/diagnostics", "Diagnostics", "Get diagnostics snapshot", "Router, Xray, DNS, B4, firewall and service diagnostics.", "", "Object"},
 		{"get", "/diagnostics/package", "Diagnostics", "Download diagnostic package", "Returns a zip archive with sanitized config, status and command outputs.", "", "Binary"},
 		{"post", "/diagnostics/http-probe", "Diagnostics", "Run router HTTP probe", "", "GenericObject", "Object"},
 		{"post", "/diagnostics/domain-probe", "Diagnostics", "Run domain proxy probe", "", "GenericObject", "Object"},
+		{"post", "/diagnostics/tls-stability", "Diagnostics", "Compare repeated TLS 1.2/1.3 HTTPS requests", "Uses isolated SOCKS Xray processes and verifies certificates and up to 1 MiB of each response body. Compares direct, selected proxy and an optional fragment-free copy. Does not alter active configuration. target, tag, attempts (1-10), timeoutMs (1000-8000), compareFragment; per-route budget <=40s.", "GenericObject", "Object"},
 		{"post", "/diagnostics/dpi-probe", "Diagnostics", "Run DPI/connectivity probe", "", "GenericObject", "Object"},
 		{"get", "/domain-monitor", "Diagnostics", "Get live domain monitor", "Query parameter: limit.", "", "Object"},
 		{"post", "/domain-monitor", "Diagnostics", "Control live domain monitor", "Starts, stops or clears the monitor.", "GenericObject", "Object"},
@@ -225,6 +236,9 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/backup/full", "Backups", "Create full backup bundle", "", "", "Object"},
 		{"get", "/backup/latest", "Backups", "Get latest backup", "", "", "Object"},
 		{"post", "/backup/restore", "Backups", "Restore backup", "", "GenericObject", "Object"},
+		{"post", "/backup/full/check", "Backups", "Verify a full backup", "Checks manifest, SHA-256, allowed paths and Xray configuration. path must be a ZIP inside the configured backup directory; does not restore files.", "GenericObject", "Object"},
+		{"get", "/backup/full/download", "Backups", "Download a private full backup", "Authenticated attachment download. Query path must refer to a regular ZIP inside the configured backup directory. The archive contains secrets.", "", "Zip"},
+		{"post", "/backup/full/restore", "Backups", "Restore a verified full backup offline", "Requires offline:true and stopped Xray/AdGuard processes. Creates a rollback archive before restoring files. Does not start services or reload network; restart services and apply UCI during a maintenance window.", "GenericObject", "Object"},
 	}
 }
 
@@ -261,6 +275,9 @@ func addOpenAPIEndpoint(paths map[string]any, endpoint apiEndpoint) {
 			"required": true,
 			"content":  openAPIRequestContent(endpoint.request),
 		}
+	}
+	if endpoint.path == "/backup/full/download" {
+		operation["parameters"] = []map[string]any{{"name": "path", "in": "query", "required": true, "schema": map[string]string{"type": "string"}}}
 	}
 	item[endpoint.method] = operation
 }
@@ -315,6 +332,8 @@ func openAPIRequestContent(schemaName string) map[string]any {
 
 func openAPIResponseContent(schemaName string) map[string]any {
 	switch schemaName {
+	case "Zip":
+		return map[string]any{"application/zip": map[string]any{"schema": map[string]string{"type": "string", "format": "binary"}}}
 	case "Binary":
 		return map[string]any{"application/octet-stream": map[string]any{"schema": map[string]string{"type": "string", "format": "binary"}}}
 	case "Text":

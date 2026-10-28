@@ -40,27 +40,35 @@ function settingsPanel() {
   const cleanupDeltaText = cleanupFreeDelta < 0
     ? `-${byteSize(Math.abs(cleanupFreeDelta))}`
     : `+${byteSize(cleanupFreeDelta)}`;
-  const primarySettingsTabs = [
-    ['security', 'Панель'],
-    ['interface', 'Интерфейс'],
-    ['service', 'Сервис'],
-    ['updates', 'Обновление']
+  const settingsGroups = [
+    {
+      label: 'Основное',
+      tabs: [
+        ['overview', 'Обзор'],
+        ['interface', 'Внешний вид'],
+        ['security', 'Доступ'],
+        ['updates', 'Обновления']
+      ]
+    },
+    {
+      label: 'Дополнительно',
+      tabs: [
+        ['logging', 'Журнал Xray'],
+        ['local-proxy', 'Прокси для приложений'],
+        ['storage', 'Хранилище'],
+        ['service', 'Сервис']
+      ]
+    }
   ];
-  const advancedSettingsTabs = [
-    ['logging', 'Логирование Xray'],
-    ['local-proxy', 'Локальные прокси'],
-    ['storage', 'Память роутера']
-  ];
-  const settingsTabs = [...primarySettingsTabs, ...advancedSettingsTabs];
-  const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'security';
-  const advancedSelected = advancedSettingsTabs.some(([value]) => value === settingsView);
+  const settingsTabs = settingsGroups.flatMap((group) => group.tabs);
+  const settingsView = settingsTabs.some(([value]) => value === state.settingsView) ? state.settingsView : 'overview';
   const loggingApplyHint = state.loggingRestart
     ? 'Сохранение проверит конфигурацию Xray и перезапустит сервис, новые параметры начнут работать сразу.'
     : 'Сохранение изменит конфигурацию Xray и настройки ротации. Работающий Xray применит новые пути, уровень и DNS-лог после следующего перезапуска.';
   const loggingSections = `
     <section class="panel settings-section">
       <div class="panel-title">
-        <div><h2>Логирование Xray</h2><span>Access, error и DNS-логи пишутся самим Xray. Для постоянной работы лучше держать уровень warning или error.</span></div>
+        <div><h2>Журнал Xray</h2><span>Для постоянной работы обычно достаточно предупреждений или ошибок.</span></div>
       </div>
       <div class="settings-log-layout">
         <div class="settings-field wide">
@@ -68,7 +76,7 @@ function settingsPanel() {
           <div class="segmented settings-log-levels" aria-label="Уровень логирования">
             ${logLevels.map(([value, label]) => `<button type="button" class="${state.loggingLevel === value ? 'active' : ''}" data-logging-level="${value}">${label}</button>`).join('')}
           </div>
-          <small>Debug быстро раздувает файлы и может влиять на слабые роутеры.</small>
+          <small>Отладка создает много записей и нужна только на время поиска проблемы.</small>
         </div>
 
         <label class="settings-check ${state.loggingAccessLog ? 'active' : ''}">
@@ -83,52 +91,55 @@ function settingsPanel() {
         </label>
         <label class="settings-check ${state.loggingDnsLog ? 'active' : ''}">
           <input id="loggingDnsLog" type="checkbox" ${state.loggingDnsLog ? 'checked' : ''} />
-          <span><strong>DNS-логи Xray</strong><em>Подробные ответы встроенного DNS. При уровне info часть DNS-событий всё равно может попадать в error-log; для тихого режима выберите warning или error.</em></span>
-          <b>dnsLog</b>
+          <span><strong>DNS-логи Xray</strong><em>Доменные ответы встроенного DNS. Включайте для диагностики правил.</em></span>
+          <b>${state.loggingDnsLog ? 'включены' : 'выключены'}</b>
         </label>
-
-        <div class="settings-field">
-          <label>Файл access</label>
-          <input id="loggingAccessPath" value="${escapeHtml(state.loggingAccessPath)}" ${state.loggingAccessLog ? '' : 'disabled'} />
-        </div>
-        <div class="settings-field">
-          <label>Файл error</label>
-          <input id="loggingErrorPath" value="${escapeHtml(state.loggingErrorPath)}" ${state.loggingErrorLog ? '' : 'disabled'} />
-        </div>
-      </div>
-    </section>
-
-    <section class="panel settings-section">
-      <div class="panel-title">
-        <div><h2>Обслуживание логов</h2><span>Сейчас проверка размера каждые ${escapeHtml(maintenanceEvery)}: debug — 1 мин, info — 5 мин, остальные уровни — 15 мин.</span></div>
-      </div>
-      <div class="settings-maintenance">
-        <div class="settings-field">
-          <label>Максимальный размер файла, MB</label>
-          <input id="loggingMaxSizeMb" type="number" min="1" max="200" value="${escapeHtml(state.loggingMaxSizeMb)}" />
-        </div>
-        <div class="settings-field">
-          <label>Хранить копий после ротации</label>
-          <input id="loggingRotateCopies" type="number" min="0" max="5" value="${escapeHtml(state.loggingRotateCopies)}" />
-        </div>
-        <label class="settings-check compact ${state.loggingClearOnRestart ? 'active' : ''}">
-          <input id="loggingClearOnRestart" type="checkbox" ${state.loggingClearOnRestart ? 'checked' : ''} />
-          <span><strong>Очищать при перезапуске Xray</strong><em>Удобно для временной диагностики.</em></span>
-        </label>
-        <label class="settings-check compact ${state.loggingRestart ? 'active' : ''}">
-          <input id="loggingRestart" type="checkbox" ${state.loggingRestart ? 'checked' : ''} />
-          <span><strong>Применить сразу через перезапуск Xray</strong><em>Без перезапуска изменения сохраняются в конфигурации и ждут следующего старта Xray.</em></span>
-        </label>
-      </div>
-      <p class="settings-hint">${escapeHtml(loggingApplyHint)}</p>
-      <div class="settings-warning">
-        <strong>Flash-память</strong>
-        <span>Access-логи при активном трафике создают много записей. Для постоянного мониторинга лучше использовать временный каталог или внешний накопитель.</span>
       </div>
       <div class="toolbar">
-        <button class="btn warning ${state.loggingSaving ? 'is-busy' : ''}" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить логирование'}</button>
-        <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
+        <button class="btn warning ${state.loggingSaving ? 'is-busy' : ''}" data-action="saveLoggingSettings" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Сохраняю...' : 'Сохранить'}</button>
       </div>
+      <details class="settings-advanced-details" data-details-key="settings-logging-maintenance">
+        <summary>
+          <span><strong>Хранение и применение</strong><em>Пути файлов, ротация и очистка журнала</em></span>
+          <b>${escapeHtml(maintenanceEvery)}</b>
+        </summary>
+        <div class="settings-advanced-body">
+          <div class="settings-maintenance">
+            <div class="settings-field">
+              <label>Файл access</label>
+              <input id="loggingAccessPath" value="${escapeHtml(state.loggingAccessPath)}" ${state.loggingAccessLog ? '' : 'disabled'} />
+            </div>
+            <div class="settings-field">
+              <label>Файл error</label>
+              <input id="loggingErrorPath" value="${escapeHtml(state.loggingErrorPath)}" ${state.loggingErrorLog ? '' : 'disabled'} />
+            </div>
+            <div class="settings-field">
+              <label>Максимальный размер файла, MB</label>
+              <input id="loggingMaxSizeMb" type="number" min="1" max="200" value="${escapeHtml(state.loggingMaxSizeMb)}" />
+            </div>
+            <div class="settings-field">
+              <label>Хранить копий после ротации</label>
+              <input id="loggingRotateCopies" type="number" min="0" max="5" value="${escapeHtml(state.loggingRotateCopies)}" />
+            </div>
+            <label class="settings-check compact ${state.loggingClearOnRestart ? 'active' : ''}">
+              <input id="loggingClearOnRestart" type="checkbox" ${state.loggingClearOnRestart ? 'checked' : ''} />
+              <span><strong>Очищать при перезапуске Xray</strong><em>Удобно для временной диагностики.</em></span>
+            </label>
+            <label class="settings-check compact ${state.loggingRestart ? 'active' : ''}">
+              <input id="loggingRestart" type="checkbox" ${state.loggingRestart ? 'checked' : ''} />
+              <span><strong>Применить сразу</strong><em>RuOpenRay проверит конфигурацию и перезапустит Xray.</em></span>
+            </label>
+          </div>
+          <p class="settings-hint">${escapeHtml(loggingApplyHint)}</p>
+          <div class="settings-warning">
+            <strong>Flash-память</strong>
+            <span>Логи доступа при активном трафике быстро растут. Для постоянной записи лучше использовать временный каталог или внешний накопитель.</span>
+          </div>
+          <div class="toolbar">
+            <button class="btn secondary ${state.loggingSaving ? 'is-busy' : ''}" data-action="clearLoggingFiles" ${state.loggingSaving ? 'disabled' : ''}>${state.loggingSaving ? 'Очищаю...' : 'Очистить логи'}</button>
+          </div>
+        </div>
+      </details>
     </section>
   `;
   const localProxyDefaults = {
@@ -210,8 +221,8 @@ function settingsPanel() {
         ${proxyCard('http')}
       </div>
       <div class="settings-warning">
-        <strong>Как у v2rayA</strong>
-        <span>Xray сам не поднимает SOCKS5 автоматически: нужен входящий поток в конфигурации. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
+        <strong>Маршрутизация приложений</strong>
+        <span>Для SOCKS5 или HTTP нужен отдельный входящий поток Xray. В стандартном профиле RuOpenRay уже есть SOCKS5 на 127.0.0.1:10808; здесь можно включить HTTP, поменять адрес или открыть прокси для LAN.</span>
       </div>
       <div class="toolbar">
         <button class="btn warning ${state.busyAction === 'saveLocalProxyDraft' ? 'is-busy' : ''}" data-action="saveLocalProxyDraft" ${state.busyAction === 'saveLocalProxyDraft' ? 'disabled' : ''}>${state.busyAction === 'saveLocalProxyDraft' ? 'Обновляю...' : 'Обновить черновик Xray'}</button>
@@ -285,6 +296,13 @@ function settingsPanel() {
       <div class="panel-title">
         <div><h2>Обновление RuOpenRay UI</h2><span>Панель может обновить собственный бинарник из релизов GitHub с учетом архитектуры роутера.</span></div>
       </div>
+      <label>Канал обновлений
+        <select id="appChannel" ${state.appUpdating || state.appReleaseChecking ? 'disabled' : ''}>
+          <option value="stable" ${state.appChannel !== 'test' ? 'selected' : ''}>Stable — стабильные релизы</option>
+          <option value="test" ${state.appChannel === 'test' ? 'selected' : ''}>Test — включая предварительные релизы</option>
+        </select>
+      </label>
+      ${appRelease.reason ? `<p>${escapeHtml(appRelease.reason)}</p>` : ''}
       <div class="settings-info-grid">
         <article><span>Установлено</span><strong>${escapeHtml(appVersion)}</strong></article>
         <article><span>Последний релиз</span><strong>${escapeHtml(appTarget)}</strong></article>
@@ -299,12 +317,90 @@ function settingsPanel() {
       </div>
       <div class="toolbar">
         <button class="btn secondary ${state.appReleaseChecking ? 'is-busy' : ''}" data-action="checkAppUpdate" ${state.appReleaseChecking || state.appUpdating ? 'disabled' : ''}>${state.appReleaseChecking ? 'Проверяю...' : 'Проверить обновления'}</button>
-        <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Актуальная версия'}</button>
+        <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Нет обновления'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
         <strong>${state.appUpdate.ok ? 'Готово' : 'Ошибка'}</strong>
         <span>${escapeHtml(state.appUpdate.stdout || state.appUpdate.stderr || '')}</span>
       </div>` : ''}
+    </section>
+  `;
+  const enabledLogCount = [state.loggingAccessLog, state.loggingErrorLog, state.loggingDnsLog].filter(Boolean).length;
+  const loggingLevelLabel = logLevels.find(([value]) => value === state.loggingLevel)?.[1] || 'Предупреждения';
+  const enabledLocalProxyCount = ['socks', 'http'].map(localProxyInfo).filter((item) => item.enabled).length;
+  const overviewCard = ({ view, eyebrow, title, value, hint, tone = '' }) => `
+    <button type="button" class="settings-overview-card ${tone}" data-settings-view="${view}">
+      <span class="settings-overview-card-copy">
+        <em>${escapeHtml(eyebrow)}</em>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(hint)}</small>
+      </span>
+      <span class="settings-overview-card-state">
+        <b>${escapeHtml(value)}</b>
+        <i aria-hidden="true">→</i>
+      </span>
+    </button>
+  `;
+  const overviewSection = `
+    <section class="panel settings-section settings-overview-section">
+      <div class="panel-title">
+        <div><h2>Основные настройки</h2><span>То, что обычно меняют вручную. Текущие значения видны без перехода в раздел.</span></div>
+      </div>
+      <div class="settings-overview-grid">
+        ${overviewCard({
+          view: 'interface',
+          eyebrow: 'Интерфейс',
+          title: 'Внешний вид',
+          value: state.uiTheme === 'light' ? 'Светлая тема' : 'Темная тема',
+          hint: 'Выберите оформление панели для этого браузера.'
+        })}
+        ${overviewCard({
+          view: 'security',
+          eyebrow: 'Безопасность',
+          title: 'Доступ к панели',
+          value: 'Пароль установлен',
+          hint: 'Смените пароль и завершите прежние сессии.'
+        })}
+        ${overviewCard({
+          view: 'updates',
+          eyebrow: 'RuOpenRay UI',
+          title: 'Обновления',
+          value: appHasUpdate ? `${appVersion} → ${appTarget}` : appVersion,
+          hint: appHasUpdate ? 'Доступна новая версия панели.' : 'Проверьте наличие новой версии.',
+          tone: appHasUpdate ? 'attention' : ''
+        })}
+      </div>
+    </section>
+
+    <section class="panel settings-section settings-overview-section">
+      <div class="panel-title">
+        <div><h2>Xray и роутер</h2><span>Параметры обслуживания. Без необходимости их можно не менять.</span></div>
+      </div>
+      <div class="settings-overview-grid">
+        ${overviewCard({
+          view: 'logging',
+          eyebrow: 'Диагностика',
+          title: 'Журнал Xray',
+          value: `${loggingLevelLabel} · ${enabledLogCount}/3`,
+          hint: 'Уровень, виды журналов и ограничение размера.',
+          tone: state.loggingLevel === 'debug' ? 'attention' : ''
+        })}
+        ${overviewCard({
+          view: 'local-proxy',
+          eyebrow: 'Приложения',
+          title: 'Локальные прокси',
+          value: enabledLocalProxyCount ? `${enabledLocalProxyCount} включено` : 'Выключены',
+          hint: 'SOCKS5 и HTTP для приложений на роутере или в LAN.'
+        })}
+        ${overviewCard({
+          view: 'storage',
+          eyebrow: 'Роутер',
+          title: 'Хранилище',
+          value: storageFree ? `${byteSize(storageFree)} свободно` : 'Нет данных',
+          hint: storagePressure ? 'Мало места — требуется очистка.' : 'Резервные копии, логи, DAT-файлы и кэш.',
+          tone: storagePressure ? 'danger' : ''
+        })}
+      </div>
     </section>
   `;
   const serviceSection = `
@@ -359,6 +455,15 @@ function settingsPanel() {
     </section>
   `;
   const storageSection = `
+    <section class="panel settings-section"><div class="panel-title"><div><h2>Полная резервная копия</h2><span>Xray, профили, группы, LAN DNS и локальные настройки AdGuard.</span></div></div>
+      <p class="muted">Архив содержит секреты подключений. SHA-256 каждого файла проверяется перед восстановлением. Журналы и временные проверки в архив не входят.</p>
+      <div class="split-actions"><button class="btn primary" data-action="createFullBackup" ${state.busyAction ? 'disabled' : ''}>Создать полную копию</button>
+        <button class="btn secondary" data-action="checkFullBackup" ${state.busyAction || !state.fullBackupPath ? 'disabled' : ''}>Проверить архив</button>
+        ${state.fullBackupPath ? `<a class="btn secondary" href="/api/backup/full/download?path=${encodeURIComponent(state.fullBackupPath)}" download>Скачать ZIP</a>` : ''}</div>
+      <label class="field"><span>ZIP на роутере</span><input id="fullBackupPath" value="${escapeHtml(state.fullBackupPath || '')}" placeholder="${escapeHtml(storageItem('backups').path || '/etc/ruopenray-ui/backups')}/ruopenray-full-….zip"></label>
+      ${state.fullBackupResult ? `<p class="settings-warning ${state.fullBackupResult.ok ? 'ok' : ''}">${escapeHtml(state.fullBackupResult.ok ? `Архив проверен: ${state.fullBackupResult.files?.length || 0} файлов · ${state.fullBackupResult.version || ''}` : state.fullBackupResult.error || 'Архив не прошёл проверку')}</p>` : ''}
+      <p class="muted">Полное восстановление выполняется при остановленных Xray и AdGuard через API восстановления. Оно возвращает конфигурацию сети; после восстановления нужен запуск служб и, для UCI, перезагрузка в окно обслуживания.</p>
+    </section>
     <section class="panel settings-section">
       <div class="panel-title">
         <div><h2>Память роутера</h2><span>Сводка по overlay и быстрые безопасные действия для маленького NAND.</span></div>
@@ -374,24 +479,32 @@ function settingsPanel() {
         <strong>Мало свободного места</strong>
         <span>Сначала очистите резервные копии и кэш пакетов. Стандартные geoip.dat/geosite.dat удаляйте только если понимаете, какие правила их используют.</span>
       </div>` : ''}
-      <div class="settings-maintenance storage-maintenance-list">
-        ${storageRows.map(([key, label, path, hint]) => `
-          <article class="settings-storage-row">
-            <div>
-              <strong>${escapeHtml(label)}</strong>
-              <span>${escapeHtml(hint)}</span>
-              ${path ? `<small>${escapeHtml(path)}</small>` : ''}
-            </div>
-            <b>${escapeHtml(byteSize(storageSize(key)))}</b>
-          </article>
-        `).join('')}
-      </div>
-      <div class="settings-warning">
-        <strong>Неиспользуемые DAT</strong>
-        <span>${unusedDat.length
-          ? escapeHtml(`${unusedDat.length} дополнительных файлов не найдены в активных ext-правилах: ${unusedDat.slice(0, 4).map((item) => item.name).join(', ')}${unusedDat.length > 4 ? '...' : ''}`)
-          : 'Дополнительных DAT без ссылок в текущей конфигурации не найдено.'}</span>
-      </div>
+      <details class="settings-advanced-details" data-details-key="settings-storage-breakdown">
+        <summary>
+          <span><strong>Что занимает место</strong><em>Пути и размер резервных копий, DAT-файлов, логов и кэша</em></span>
+          <b>${escapeHtml(`${storageRows.length} категорий`)}</b>
+        </summary>
+        <div class="settings-advanced-body">
+          <div class="settings-maintenance storage-maintenance-list">
+            ${storageRows.map(([key, label, path, hint]) => `
+              <article class="settings-storage-row">
+                <div>
+                  <strong>${escapeHtml(label)}</strong>
+                  <span>${escapeHtml(hint)}</span>
+                  ${path ? `<small>${escapeHtml(path)}</small>` : ''}
+                </div>
+                <b>${escapeHtml(byteSize(storageSize(key)))}</b>
+              </article>
+            `).join('')}
+          </div>
+          <div class="settings-warning">
+            <strong>Неиспользуемые DAT</strong>
+            <span>${unusedDat.length
+              ? escapeHtml(`${unusedDat.length} дополнительных файлов не найдены в активных ext-правилах: ${unusedDat.slice(0, 4).map((item) => item.name).join(', ')}${unusedDat.length > 4 ? '...' : ''}`)
+              : 'Дополнительных DAT без ссылок в текущей конфигурации не найдено.'}</span>
+          </div>
+        </div>
+      </details>
       <div class="toolbar">
         <button class="btn warning ${state.storageCleaning === 'backups' ? 'is-busy' : ''}" data-action="cleanupStorageBackups" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'backups' ? 'Очищаю...' : 'Очистить резервные копии'}</button>
         <button class="btn secondary ${state.storageCleaning === 'package-cache' ? 'is-busy' : ''}" data-action="cleanupPackageCache" ${state.storageCleaning ? 'disabled' : ''}>${state.storageCleaning === 'package-cache' ? 'Очищаю...' : 'Очистить кэш пакетов'}</button>
@@ -407,7 +520,9 @@ function settingsPanel() {
       </div>` : ''}
     </section>
   `;
-  const visibleSection = settingsView === 'security'
+  const visibleSection = settingsView === 'overview'
+    ? overviewSection
+    : settingsView === 'security'
     ? securitySection
     : settingsView === 'interface'
       ? interfaceSection
@@ -421,14 +536,26 @@ function settingsPanel() {
       ? localProxySection
       : loggingSections;
   return `
-    <div class="settings-nav-shell">
-      <div class="settings-subnav" role="tablist" aria-label="Основные настройки">
-        ${primarySettingsTabs.map(([value, label]) => `<button type="button" class="${settingsView === value ? 'active' : ''}" data-settings-view="${value}">${label}</button>`).join('')}
+    <section class="settings-hero">
+      <div>
+        <h2>RuOpenRay на этом роутере</h2>
+        <p>Основные параметры панели, Xray и локальных приложений.</p>
       </div>
-      <select class="input settings-advanced-select ${advancedSelected ? 'active' : ''}" data-settings-view-select aria-label="Дополнительные настройки">
-        <option value="" ${advancedSelected ? '' : 'selected'} disabled>Дополнительно</option>
-        ${advancedSettingsTabs.map(([value, label]) => `<option value="${value}" ${settingsView === value ? 'selected' : ''}>${label}</option>`).join('')}
-      </select>
+      <div class="settings-hero-status">
+        <strong>${escapeHtml(state.status?.service?.running ? 'Xray работает' : state.status?.core?.available ? 'Xray остановлен' : 'Xray не найден')}</strong>
+        <span>${escapeHtml(state.status?.core?.version || '')}</span>
+      </div>
+    </section>
+
+    <div class="settings-subnav-groups" role="tablist" aria-label="Разделы настроек">
+      ${settingsGroups.map((group) => `
+        <div class="settings-subnav-group" role="presentation">
+          <span>${escapeHtml(group.label)}</span>
+          <div class="settings-subnav" role="presentation">
+            ${group.tabs.map(([value, label]) => `<button type="button" role="tab" aria-selected="${settingsView === value ? 'true' : 'false'}" class="${settingsView === value ? 'active' : ''}" data-settings-view="${value}">${label}</button>`).join('')}
+          </div>
+        </div>
+      `).join('')}
     </div>
 
     ${visibleSection}

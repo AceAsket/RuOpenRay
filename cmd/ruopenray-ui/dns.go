@@ -23,10 +23,11 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		if found {
 			targetFound = true
 			xrayTarget = fmt.Sprintf("%s#%d", host, port)
-			targetOwner = udpPortOwner(host, port)
+			targetOwner = dnsInboundPortOwner(host, port)
 			targetConflict = targetOwner != "" && !strings.Contains(targetOwner, "/xray")
 		}
 	}
+	lanIP := routerLANAddress()
 	suggestedPort, conflictOwner := suggestedXrayDNSPort()
 	if targetConflict {
 		conflictOwner = targetOwner
@@ -38,7 +39,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 		"mode":                 "unknown",
 		"noresolv":             false,
 		"servers":              []string{},
-		"routerLan":            "192.168.1.1",
+		"routerLan":            lanIP,
 		"xrayTarget":           xrayTarget,
 		"suggestedXrayPort":    suggestedPort,
 		"suggestedXrayTarget":  fmt.Sprintf("127.0.0.1#%d", suggestedPort),
@@ -50,7 +51,7 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	if !available {
 		result["mode"] = "manual"
 		result["hint"] = "UCI недоступен, настройте dnsmasq вручную."
-		result["adguardHome"] = s.adGuardHomeStatus("192.168.1.1", xrayTarget)
+		result["adguardHome"] = s.adGuardHomeStatus(lanIP, xrayTarget)
 		if plan != nil {
 			result["plan"] = plan
 		}
@@ -58,13 +59,6 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	}
 	noresolv := strings.TrimSpace(fmt.Sprint(run("uci", "-q", "get", "dhcp.@dnsmasq[0].noresolv")["stdout"])) == "1"
 	servers := dnsmasqServerList()
-	lanIP := firstLine(fmt.Sprint(run("uci", "-q", "get", "network.lan.ipaddr")["stdout"]), "")
-	if lanIP == "" || lanIP == "<nil>" {
-		lanIP = "192.168.1.1"
-	}
-	if strings.Contains(lanIP, "/") {
-		lanIP = strings.SplitN(lanIP, "/", 2)[0]
-	}
 	mode := "system"
 	if noresolv && len(servers) == 1 && servers[0] == xrayTarget {
 		mode = "xray"
@@ -76,7 +70,17 @@ func (s *serverState) lanDNSUpstreamStatus(plan map[string]any) map[string]any {
 	result["servers"] = servers
 	result["routerLan"] = lanIP
 	result["readiness"] = s.lanDNSReadiness()
-	result["adguardHome"] = s.adGuardHomeStatus(lanIP, xrayTarget)
+	adguard := s.adGuardHomeStatus(lanIP, xrayTarget)
+	result["adguardHome"] = adguard
+	adguardHost := fmt.Sprint(adguard["bindHost"])
+	if adguardHost == "" || adguardHost == "0.0.0.0" || adguardHost == "::" {
+		adguardHost = "127.0.0.1"
+	}
+	adguardTarget := fmt.Sprintf("%s#%d", adguardHost, number(adguard["port"], 0))
+	result["adguardLanActive"] = noresolv && len(servers) == 1 && servers[0] == adguardTarget
+	if !targetFound && result["adguardLanActive"] == true && adguard["dnsPath"] == "doh-vpn" {
+		result["dnsPortConflict"] = false
+	}
 	if plan != nil {
 		result["plan"] = plan
 	}
@@ -113,12 +117,15 @@ func (s *serverState) dnsDiagnostics() map[string]any {
 	if fmt.Sprint(lan["mode"]) == "xray" && readiness["ready"] != true {
 		warnings = append(warnings, "dnsmasq направлен в Xray DNS, но Xray DNS еще не готов. LAN-клиенты могут остаться без DNS.")
 	}
-	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["running"] == true && adguard["usesXray"] != true {
+	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["running"] == true && adguard["usesXray"] != true && adguard["dnsPath"] != "doh-direct" && readiness["inbound"] == true {
 		target := strings.TrimSpace(fmt.Sprint(adguard["recommendedLocal"]))
 		if target == "" || target == "<nil>" {
 			target = "127.0.0.1:10535"
 		}
 		warnings = append(warnings, "AdGuard Home запущен, но его upstream не смотрит в Xray DNS. Если AdGuard Home главный DNS, укажите upstream "+target+".")
+	}
+	if adguard, ok := lan["adguardHome"].(map[string]any); ok && adguard["dnsPath"] == "doh-vpn" && adguard["relayReady"] != true {
+		warnings = append(warnings, "AdGuard Home настроен на DoH через VPN, но локальный TLS-транспорт не отвечает.")
 	}
 	if systemProbe["ok"] != true && anyDNSProbeOK(autoProbes) {
 		warnings = append(warnings, "Системный DNS роутера не ответил, но WAN DNS из OpenWrt работает. Это обычно значит, что локальный DNS смотрит в неработающий 127.0.0.1/::1.")
@@ -245,22 +252,23 @@ type adGuardHomeStatus struct {
 	Upstreams        []string `json:"upstreams,omitempty"`
 	UpstreamCount    int      `json:"upstreamCount"`
 	UsesXray         bool     `json:"usesXray"`
+	DNSPath          string   `json:"dnsPath"`
+	RelayReady       bool     `json:"relayReady"`
 	RecommendedLocal string   `json:"recommendedLocal"`
 	RecommendedLan   string   `json:"recommendedLan"`
 	Hint             string   `json:"hint,omitempty"`
 }
 
 func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string]any {
-	status := adGuardHomeStatus{
-		RecommendedLocal: "127.0.0.1:10535",
-		RecommendedLan:   firstNonEmpty(routerLan, "192.168.1.1") + ":10535",
-	}
+	status := adGuardHomeStatus{}
 	if runtime.GOOS == "windows" {
 		status.Hint = "AdGuard Home проверяется только на роутере."
 		return adGuardHomeStatusMap(status)
 	}
 	host, port := dnsTargetHostPort(xrayTarget, "127.0.0.1", defaultXrayDNSPort())
-	if port > 0 {
+	active, _ := s.readActiveConfig()
+	_, _, inboundFound := xrayDNSInboundEndpoint(active)
+	if port > 0 && inboundFound {
 		status.RecommendedLocal = net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
 		status.RecommendedLan = net.JoinHostPort(firstNonEmpty(routerLan, "192.168.1.1"), fmt.Sprint(port))
 	}
@@ -287,17 +295,36 @@ func (s *serverState) adGuardHomeStatus(routerLan, xrayTarget string) map[string
 			status.Port = cfg["port"].(int)
 			status.Upstreams = sanitizeAdGuardHomeUpstreams(stringSlice(cfg["upstreams"]))
 			status.UpstreamCount = len(stringSlice(cfg["upstreams"]))
-			status.UsesXray = adGuardHomeUsesXray(stringSlice(cfg["upstreams"]), host, port, routerLan)
+			status.UsesXray = inboundFound && adGuardHomeUsesXray(stringSlice(cfg["upstreams"]), host, port, routerLan)
+			if status.UsesXray {
+				status.DNSPath = "xray-dns"
+			}
+			if !status.UsesXray && cfg["upstreamFile"] != true && adGuardDirectDoH(stringSlice(cfg["upstreams"]), stringSlice(cfg["fallbacks"])) {
+				status.DNSPath = "doh-direct"
+				status.RecommendedLocal, status.RecommendedLan = "", ""
+			}
+			if adGuardRelayMatches(stringSlice(cfg["upstreams"]), readAdGuardRelay(), active) {
+				status.DNSPath = "doh-vpn"
+				status.UsesXray = true
+				status.RelayReady = adGuardRelayPortsReady(stringSlice(cfg["upstreams"]))
+				status.RecommendedLocal, status.RecommendedLan = "", ""
+			}
 			if status.Port > 0 {
 				status.Listen = net.JoinHostPort(firstNonEmpty(status.BindHost, "0.0.0.0"), fmt.Sprint(status.Port))
 			}
 		}
 	}
 	if status.Available && status.Hint == "" {
-		if status.UsesXray {
+		if status.DNSPath == "doh-vpn" {
+			status.Hint = "AdGuard Home фильтрует DNS и передаёт все типы записей через DoH в локальный SOCKS Xray. Направление выбирают правила Xray: для работы через VPN нужен маршрут в proxy. Имена VPN-серверов используют отдельный зашифрованный bootstrap. Порты TLS-транспорта не являются обычным DNS."
+		} else if status.DNSPath == "doh-direct" {
+			status.Hint = "AdGuard Home фильтрует DNS и отправляет запросы напрямую по HTTPS. DoH использует IP-адреса серверов, поэтому bootstrap и основной Xray не нужны. Доступ к DNS сохраняется при остановке VPN, пока доступен интернет и хотя бы один DoH-сервер."
+		} else if status.UsesXray {
 			status.Hint = "AdGuard Home уже отправляет upstream DNS в Xray."
-		} else {
+		} else if status.RecommendedLocal != "" {
 			status.Hint = "Если AdGuard Home главный DNS, в его upstream DNS укажите " + status.RecommendedLocal + " на этом роутере или " + status.RecommendedLan + " с другого устройства."
+		} else {
+			status.Hint = "AdGuard Home найден. DNS-вход Xray не настроен; проверьте фактический upstream AdGuard Home."
 		}
 	}
 	return adGuardHomeStatusMap(status)
@@ -315,6 +342,8 @@ func adGuardHomeStatusMap(status adGuardHomeStatus) map[string]any {
 		"upstreams":        status.Upstreams,
 		"upstreamCount":    status.UpstreamCount,
 		"usesXray":         status.UsesXray,
+		"dnsPath":          status.DNSPath,
+		"relayReady":       status.RelayReady,
 		"recommendedLocal": status.RecommendedLocal,
 		"recommendedLan":   status.RecommendedLan,
 		"hint":             status.Hint,
@@ -322,7 +351,7 @@ func adGuardHomeStatusMap(status adGuardHomeStatus) map[string]any {
 }
 
 func adGuardHomeServiceStatus() (string, bool) {
-	for _, service := range []string{"/etc/init.d/AdGuardHome", "/etc/init.d/adguardhome"} {
+	for _, service := range []string{"/etc/init.d/ruopenray-adguard", "/etc/init.d/AdGuardHome", "/etc/init.d/adguardhome"} {
 		if _, err := os.Stat(service); err != nil {
 			continue
 		}
@@ -366,6 +395,7 @@ func adGuardHomeConfigPathFromProcess(processText string) string {
 
 func adGuardHomeConfigPath() string {
 	candidates := []string{
+		"/etc/ruopenray-adguard/AdGuardHome.yaml",
 		"/etc/AdGuardHome.yaml",
 		"/etc/adguardhome.yaml",
 		"/etc/AdGuardHome/AdGuardHome.yaml",
@@ -388,10 +418,48 @@ func readAdGuardHomeConfig(path string) map[string]any {
 	}
 	bindHost, port, upstreams := parseAdGuardHomeConfig(string(body))
 	return map[string]any{
-		"bindHost":  bindHost,
-		"port":      port,
-		"upstreams": upstreams,
+		"bindHost":     bindHost,
+		"port":         port,
+		"upstreams":    upstreams,
+		"fallbacks":    adGuardHomeDNSList(string(body), "fallback_dns"),
+		"upstreamFile": len(adGuardHomeDNSList(string(body), "upstream_dns_file")) > 0,
 	}
+}
+
+func adGuardHomeDNSList(body, key string) []string {
+	inDNS, inList := false, false
+	listIndent := 0
+	values := []string{}
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		value := strings.TrimSpace(line)
+		if value == "" || strings.HasPrefix(value, "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			inDNS, inList = value == "dns:", false
+			continue
+		}
+		if !inDNS {
+			continue
+		}
+		if strings.HasPrefix(value, key+":") {
+			inList, listIndent = true, indent
+			rest := cleanYAMLScalar(strings.TrimPrefix(value, key+":"))
+			if rest != "" && rest != "[]" {
+				// Unknown inline YAML must not be mistaken for an empty fallback.
+				values = append(values, rest)
+			}
+			continue
+		}
+		if inList && strings.HasPrefix(value, "- ") && indent >= listIndent {
+			values = append(values, cleanYAMLScalar(strings.TrimPrefix(value, "- ")))
+		} else if indent <= listIndent {
+			inList = false
+		}
+	}
+	return values
 }
 
 func parseAdGuardHomeConfig(body string) (string, int, []string) {
@@ -701,7 +769,7 @@ func (s *serverState) lanDNSReadiness() map[string]any {
 		}
 	}
 	portReady := tcpPortOpen(targetTCP, 700*time.Millisecond)
-	udpOwner := udpPortOwner(targetHost, targetPort)
+	udpOwner := dnsInboundPortOwner(targetHost, targetPort)
 	return map[string]any{
 		"ready":       inboundReady && outboundReady && ruleReady && portReady,
 		"inbound":     inboundReady,
@@ -712,7 +780,7 @@ func (s *serverState) lanDNSReadiness() map[string]any {
 		"targetTCP":   targetTCP,
 		"targetUDP":   targetUDP,
 		"udpOwner":    udpOwner,
-		"udpConflict": udpOwner != "" && !strings.Contains(udpOwner, "/xray"),
+		"udpConflict": inboundReady && udpOwner != "" && !strings.Contains(udpOwner, "/xray"),
 	}
 }
 
@@ -763,7 +831,7 @@ func suggestedXrayDNSPort() (int, string) {
 		}
 		seen[port] = true
 		checked = append(checked, port)
-		owner := udpPortOwner("127.0.0.1", port)
+		owner := dnsInboundPortOwner("127.0.0.1", port)
 		if len(checked) == 1 && owner != "" && !strings.Contains(owner, "/xray") {
 			conflictOwner = owner
 		}
@@ -800,13 +868,13 @@ func (s *serverState) guardXrayDNSPortBeforeStart() map[string]any {
 	if !found {
 		return map[string]any{"ok": true, "skipped": true}
 	}
-	owner := udpPortOwner(host, port)
+	owner := dnsInboundPortOwner(host, port)
 	if owner == "" || strings.Contains(owner, "/xray") {
 		return map[string]any{"ok": true, "port": port, "owner": owner}
 	}
 	nextPort, _ := suggestedXrayDNSPort()
 	if nextPort == port || nextPort <= 0 || nextPort > 65535 {
-		message := fmt.Sprintf("DNS-вход Xray не сможет стартовать: UDP %s:%d занят процессом %s, свободный порт не найден.", host, port, owner)
+		message := fmt.Sprintf("DNS-вход Xray не сможет стартовать: порт %s:%d занят процессом %s, свободный порт не найден.", host, port, owner)
 		return map[string]any{"ok": false, "port": port, "owner": owner, "stderr": message, "message": message}
 	}
 	if !setXrayDNSInboundPort(cfg, nextPort) {
@@ -899,14 +967,16 @@ func tcpPortOpen(address string, timeout time.Duration) bool {
 	return true
 }
 
-func udpPortOwner(_ string, port int) string {
+func dnsInboundPortOwner(_ string, port int) string {
 	if runtime.GOOS == "windows" || port <= 0 || port > 65535 {
 		return ""
 	}
-	needle := fmt.Sprintf(":%d", port)
-	result := runTimeout(2*time.Second, "sh", "-c", fmt.Sprintf("(netstat -lnup 2>/dev/null || ss -lunp 2>/dev/null) | grep ':%d'", port))
-	text := strings.TrimSpace(fmt.Sprint(result["stdout"]))
-	if text == "" || !strings.Contains(text, needle) {
+	result := runTimeout(2*time.Second, "sh", "-c", fmt.Sprintf("(netstat -lntup 2>/dev/null || ss -lntup 2>/dev/null) | grep ':%d'", port))
+	return dnsPortOwnerFromText(strings.TrimSpace(fmt.Sprint(result["stdout"])))
+}
+
+func dnsPortOwnerFromText(text string) string {
+	if text == "" {
 		return ""
 	}
 	lines := strings.Split(text, "\n")

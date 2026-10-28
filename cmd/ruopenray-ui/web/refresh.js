@@ -20,7 +20,7 @@ async function optionalRequest(request, path, fallback, timeoutMs = 3500) {
   }
 }
 
-export async function loadAppSnapshot({ request, text, logsUrl }) {
+export async function loadAppSnapshot({ request, text, logsUrl, appChannel = 'stable' }) {
   const [
     status,
     profiles,
@@ -51,7 +51,7 @@ export async function loadAppSnapshot({ request, text, logsUrl }) {
     text(logsUrl()),
     request('/api/dhcp/leases').catch(() => ({ leases: [] })),
     optionalRequest(request, '/api/core/releases', { releases: [], asset: '', error: true }, 15000),
-    optionalRequest(request, '/api/app/releases', null),
+    optionalRequest(request, `/api/app/releases?channel=${appChannel}`, null),
     optionalRequest(request, '/api/geo/status', null),
     request('/api/domain-monitor?limit=1200').catch(() => null),
     request('/api/settings/logging').catch(() => null),

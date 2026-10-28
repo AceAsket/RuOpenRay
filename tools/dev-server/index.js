@@ -1,3 +1,4 @@
+import { parseShareLink, decodeSubscriptionEntries } from './share-link.js';
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile, copyFile, stat, statfs, unlink, truncate, rename } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -1522,86 +1523,6 @@ async function analyzeConfig(config = null) {
   return { ok: errors.length === 0, errors, warnings, info, counts };
 }
 
-function decodeBase64Url(value) {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
-  return Buffer.from(padded, 'base64').toString('utf8');
-}
-
-function parseShareLink(link) {
-  const trimmed = String(link || '').trim();
-  if (!trimmed) throw new Error('Пустая ссылка для импорта');
-  const url = new URL(trimmed);
-  if (url.protocol === 'vmess:') {
-    const raw = JSON.parse(decodeBase64Url(url.pathname));
-    return {
-      tag: raw.ps || raw.add || 'vmess-out',
-      protocol: 'vmess',
-      settings: {
-        vnext: [
-          {
-            address: raw.add,
-            port: Number(raw.port),
-            users: [{ id: raw.id, alterId: Number(raw.aid || 0), security: raw.scy || 'auto' }]
-          }
-        ]
-      },
-      streamSettings: { network: raw.net || 'tcp', security: raw.tls || 'none' }
-    };
-  }
-
-  const protocol = url.protocol.replace(':', '');
-  if (!['vless', 'trojan', 'ss'].includes(protocol)) {
-    throw new Error(`Неподдерживаемый протокол ссылки: ${protocol}`);
-  }
-
-  const tag = decodeURIComponent(url.hash.replace(/^#/, '')) || `${protocol}-out`;
-  const address = url.hostname;
-  const port = Number(url.port || 443);
-  const query = Object.fromEntries(url.searchParams.entries());
-  const network = query.type || 'tcp';
-  const security = query.security || (protocol === 'trojan' ? 'tls' : 'none');
-
-  if (protocol === 'trojan') {
-    return {
-      tag,
-      protocol,
-      settings: { servers: [{ address, port, password: decodeURIComponent(url.username) }] },
-      streamSettings: { network, security }
-    };
-  }
-
-  if (protocol === 'ss') {
-    return {
-      tag,
-      protocol: 'shadowsocks',
-      settings: {
-        servers: [{ address, port, method: query.method || '2022-blake3-aes-128-gcm', password: decodeURIComponent(url.username) }]
-      }
-    };
-  }
-
-  return {
-    tag,
-    protocol,
-    settings: {
-      vnext: [
-        {
-          address,
-          port,
-          users: [{ id: decodeURIComponent(url.username), encryption: query.encryption || 'none', flow: query.flow || undefined }]
-        }
-      ]
-    },
-    streamSettings: {
-      network,
-      security,
-      realitySettings: security === 'reality' ? { serverName: query.sni, publicKey: query.pbk, shortId: query.sid } : undefined,
-      tlsSettings: security === 'tls' ? { serverName: query.sni || address } : undefined,
-      wsSettings: network === 'ws' ? { path: query.path || '/', headers: query.host ? { Host: query.host } : undefined } : undefined
-    }
-  };
-}
-
 function outboundSummary(outbound) {
   const firstVnext = outbound?.settings?.vnext?.[0];
   const firstServer = outbound?.settings?.servers?.[0];
@@ -1758,18 +1679,20 @@ async function scanSni(payload = {}) {
   return { ok: true, target, targetIp, cidr, network, scanned: ips.length, results };
 }
 
-function decodeSubscription(body) {
-  const text = String(body || '').trim();
-  if (!text) return [];
-  const candidates = text.includes('://') ? [text] : [Buffer.from(text, 'base64').toString('utf8'), text];
-  for (const candidate of candidates) {
-    const links = candidate
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter((item) => /^(vless|vmess|trojan|ss):\/\//i.test(item));
-    if (links.length) return links;
-  }
-  return [];
+
+function subscriptionParseReport(links) {
+  const outbounds = [];
+  const report = { total: links.length, accepted: 0, skipped: 0, issues: [] };
+  links.forEach((link, index) => {
+    try { outbounds.push(parseShareLink(link)); report.accepted++; }
+    catch (error) {
+      report.skipped++;
+      // Never expose a URI included in a native URL/JSON parser exception.
+      const message = /allowInsecure|пока не поддерживается|должен быть/.test(error.message) ? error.message : 'Неподдерживаемая или некорректная ссылка';
+      report.issues.push({ entry: index + 1, message });
+    }
+  });
+  return { outbounds, report };
 }
 
 async function fetchSubscriptionLinks(rawUrl) {
@@ -1784,26 +1707,16 @@ async function fetchSubscriptionLinks(rawUrl) {
   }
   const response = await fetch(parsed.toString(), { headers, signal: AbortSignal.timeout(12000) });
   if (!response.ok) throw new Error(`Subscription HTTP ${response.status}`);
-  return decodeSubscription(await response.text());
+  return decodeSubscriptionEntries(await response.text());
 }
 
 async function importPreview(payload) {
   if (payload.url) {
     const links = await fetchSubscriptionLinks(payload.url);
-    const outbounds = [];
-    const items = [];
-    for (const link of links.slice(0, 50)) {
-      const outbound = parseShareLink(link);
-      outbounds.push(outbound);
-      items.push(outboundSummary(outbound));
-    }
-    return {
-      source: 'subscription',
-      links: links.length,
-      items,
-      outbounds
-    };
+    const { outbounds, report } = subscriptionParseReport(links);
+    return { source: 'subscription', links: links.length, items: outbounds.map(outboundSummary), outbounds, report };
   }
+
   const outbound = parseShareLink(payload.link);
   return { source: 'link', links: 1, items: [outboundSummary(outbound)], outbound };
 }
@@ -1825,20 +1738,16 @@ async function importSubscription({ url, profileName = '' }) {
   const config = await readActiveConfig();
   config.outbounds = Array.isArray(config.outbounds) ? config.outbounds : [];
   const imported = [];
-  for (const link of links) {
-    try {
-      const outbound = parseShareLink(link);
-      config.outbounds = config.outbounds.filter((item) => item.tag !== outbound.tag);
-      config.outbounds.unshift(JSON.parse(JSON.stringify(outbound)));
-      imported.push(outboundSummary(outbound));
-    } catch {
-      // Skip unsupported links and import the rest.
-    }
+  const { outbounds, report } = subscriptionParseReport(links);
+  for (const outbound of outbounds) {
+    config.outbounds = config.outbounds.filter((item) => item.tag !== outbound.tag);
+    config.outbounds.unshift(JSON.parse(JSON.stringify(outbound)));
+    imported.push(outboundSummary(outbound));
   }
   if (!imported.length) throw new Error('Подписка есть, но поддерживаемых ссылок в ней не найдено');
   const path = profilePath(profileNameFallback(profileName, imported[0]?.tag, profileNameFromUrl(url), 'subscription'));
   await writeFile(path, JSON.stringify(config, null, 2));
-  return { profile: basename(path).replace(/\.json$/, ''), imported };
+  return { profile: basename(path).replace(/\.json$/, ''), imported, report };
 }
 
 async function dhcpLeases() {

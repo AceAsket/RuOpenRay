@@ -101,6 +101,23 @@ export function createProfileActions({
     render();
   }
 
+  async function createProfileFromCurrent() {
+    const name = String(state.profileCreateName || '').trim();
+    if (!name) {
+      state.message = 'Введите имя нового профиля';
+      render();
+      return;
+    }
+    const result = await request('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    const savedName = result.profile || name;
+    state.profileCreateName = '';
+    state.message = `Текущая конфигурация сохранена как профиль ${savedName}`;
+    await refresh();
+  }
+
   async function saveProfile() {
     const name = prompt('Имя профиля', 'custom');
     if (!name) return;
@@ -119,12 +136,27 @@ export function createProfileActions({
   }
 
   return {
+    createFullBackup: async () => {
+      state.fullBackupResult = null;
+      const result = await request('/api/backup/full', { method: 'POST', body: '{}' });
+      if (!result.ok) throw new Error(result.error || 'Не удалось создать архив');
+      state.fullBackupPath = result.path;
+      state.fullBackupResult = await request('/api/backup/full/check', { method: 'POST', body: JSON.stringify({ path: result.path }) });
+      state.message = state.fullBackupResult.ok ? `Полная копия создана и проверена: ${result.path}` : 'Копия создана, но проверка не пройдена';
+      render();
+    },
+    checkFullBackup: async () => {
+      state.fullBackupResult = await request('/api/backup/full/check', { method: 'POST', body: JSON.stringify({ path: state.fullBackupPath }) });
+      state.message = state.fullBackupResult.ok ? 'Архив прошёл проверку целостности и конфигурации Xray' : (state.fullBackupResult.error || 'Проверка архива не пройдена');
+      render();
+    },
     activateProfile,
     openProfileEditor,
     closeProfileEditor,
     saveProfileEditor,
     deleteProfile,
     downloadProfile,
+    createProfileFromCurrent,
     saveProfile,
     backup
   };

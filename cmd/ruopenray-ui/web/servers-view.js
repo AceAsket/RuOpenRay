@@ -1,7 +1,7 @@
 import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
 import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
-import { countryFlagMarkup, countryNames, serverDisplayName, serverLocation } from './server-location.js';
+import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 
 export function createServersView(deps) {
@@ -24,6 +24,7 @@ export function createServersView(deps) {
     serverStats,
     serverTrafficView,
     state,
+    stat,
   } = deps;
 
 function serverActionButton({ label, icon, tone = 'secondary', attrs = '', busy = false, disabled = false }) {
@@ -50,17 +51,39 @@ function serverActionState(label) {
   </span>`;
 }
 
+function serverDisplayName(outbound) {
+  const tag = String(outbound?.tag || '').trim();
+  const configured = String(state.serverMeta?.[tag]?.label || '').trim();
+  if (configured) return configured;
+  const address = String(outboundAddress(outbound) || '').trim();
+  const host = address.replace(/^\[/, '').split(']')[0].split(':')[0];
+  const firstLabel = host.includes('.') ? host.split('.')[0] : '';
+  if (firstLabel && !/^\d+$/.test(firstLabel)) {
+    return firstLabel
+      .split(/[-_]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+  return tag || 'Сервер';
+}
+
 function subscriptionCandidateStatus(check, checking = false) {
   if (checking) return '<span class="server-chip warn subscription-check-status"><i></i>проверяю</span>';
   if (!check) return '<span class="server-chip warn subscription-check-status"><i></i>не проверен</span>';
   const latency = Number(check.latencyMs || check.httpLatencyMs || check.endpointLatencyMs || 0);
-  const method = check.method === 'endpoint' ? 'TCP' : 'HTTP';
+  const method = check.method === 'endpoint' ? 'Порт сервера' : 'Туннель';
   if (check.ok) {
-    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}`)}</span>`;
+    const fallback = (check.probeResults || []).some((probe) => !probe.ok) ? ' · резервный адрес доступен' : '';
+    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}${fallback}`)}</span>`;
+  }
+  if (check.errorCode) {
+    const label = ({ dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля', connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка Xray', mixed: 'Ошибки проверки', tunnel: 'Ошибка туннеля' })[check.errorCode] || 'Ошибка проверки';
+    return `<span class="server-chip bad subscription-check-status" title="${escapeHtml(check.error || label)}"><i></i>${escapeHtml(label)}</span>`;
   }
   if (check.httpOk === false && check.endpointOk) {
     const endpointLatency = Number(check.endpointLatencyMs || 0);
-    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · HTTP нет`)}</span>`;
+    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · туннель не подтверждён`)}</span>`;
   }
   if (check.endpointOk === false) {
     return '<span class="server-chip bad subscription-check-status"><i></i>порт закрыт</span>';
@@ -87,7 +110,7 @@ function subscriptionCandidateSearchText(candidate, index, location, address) {
 
 function serverCard(outbound, index, activeTag) {
   const tag = outbound?.tag || `outbound-${index + 1}`;
-  const displayName = serverDisplayName(outbound, state.serverMeta?.[tag] || {});
+  const displayName = serverDisplayName(outbound);
   const usage = outboundUsage(tag);
   const check = checkForTag(tag);
   const active = tag === activeTag;
@@ -276,13 +299,14 @@ function serverAvailabilityPanel() {
         <div class="form-row method-row">
           <label>Метод</label>
           <select id="serverCheckMode">
-            <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>HTTP через proxy</option>
-            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Порт сервера</option>
+            <option value="http" ${state.serverCheckMode === 'http' ? 'selected' : ''}>Трафик через Xray</option>
+            <option value="endpoint" ${state.serverCheckMode === 'endpoint' ? 'selected' : ''}>Только TCP-порт сервера</option>
           </select>
         </div>
         <div class="form-row check-url-row">
           <label>URL проверки</label>
           <input id="serverCheckUrl" value="${escapeHtml(state.serverCheckUrl)}" placeholder="https://www.gstatic.com/generate_204" />
+          <small>Тестовый сайт открывается через выбранное подключение Xray. HTTP-сайт на порту VLESS или Trojan не нужен. Проверка TCP-порта не проверяет пароль, TLS и передачу трафика.</small>
         </div>
         <div class="availability-note">
           <strong>Активный сервер: ${escapeHtml(activeTag || 'не выбран')}</strong>
@@ -441,28 +465,41 @@ function serversPanel() {
   const stats = serverStats();
   const activeTag = activeProxyTag();
   const proxyServers = proxyOutbounds();
-  const checked = proxyServers.filter((outbound) => Boolean(checkForTag(outbound?.tag || ''))).length;
   const alive = proxyServers.filter((outbound) => checkForTag(outbound?.tag || '')?.ok).length;
-  const availabilitySummary = checked ? `Доступны: ${alive} из ${checked} проверенных` : 'Проверки не запускались';
+  const activeServer = proxyServers.find((outbound) => outbound?.tag === activeTag);
+  const activeName = activeServer ? serverDisplayName(activeServer) : 'не выбран';
   const serverTabs = [
-    ['list', 'Прокси', stats.proxy],
+    ['list', 'Прокси'],
     ['balancers', 'Балансировка'],
-    ['subscriptions', 'Подписки', state.subscriptionPools.length],
-    ['system', 'Служебные', stats.system]
+    ['subscriptions', 'Подписки'],
+    ['system', 'Служебные']
   ];
   const requestedView = state.serversView === 'check' ? 'balancers' : state.serversView;
   const view = serverTabs.some(([value]) => value === requestedView) ? requestedView : 'list';
   return `
+    <section class="route-hero servers-hero">
+      <div>
+        <h2>Подключения</h2>
+        <p>Добавляйте отдельные серверы или подписки, проверяйте доступность и выбирайте основное подключение.</p>
+      </div>
+      <div class="servers-overview" aria-label="Сводка подключений">
+        <article><span>Подключения</span><strong>${proxyServers.length}</strong></article>
+        <article><span>Используются</span><strong>${stats.used}</strong></article>
+        <article class="${alive === proxyServers.length && proxyServers.length ? 'is-ok' : ''}"><span>Доступны</span><strong>${alive} из ${proxyServers.length}</strong></article>
+        <article class="servers-overview-active"><span>Основное</span><strong title="${escapeHtml(activeTag || '')}">${escapeHtml(activeName)}</strong></article>
+      </div>
+    </section>
+
     <section class="servers-nav-panel">
       <div class="routing-subnav" role="tablist" aria-label="Подменю серверов">
-        ${serverTabs.map(([value, label, count]) => `<button type="button" class="${view === value ? 'active' : ''}" data-servers-view="${value}"><span>${label}</span>${Number.isFinite(count) ? `<small class="tab-count">${count}</small>` : ''}</button>`).join('')}
+        ${serverTabs.map(([value, label]) => `<button type="button" class="${view === value ? 'active' : ''}" data-servers-view="${value}">${label}</button>`).join('')}
       </div>
     </section>
 
     ${view === 'list' ? `
     <section class="panel">
       <div class="panel-title">
-        <div><h2>Прокси</h2><span>Подключений: ${stats.proxy} · В правилах: ${stats.used} · ${availabilitySummary}</span></div>
+        <div><h2>Прокси</h2><span>Адреса, транспорт${state.status?.xrayStats?.enabled ? ', трафик по outbound' : ''}, ручная проверка и выбор активного proxy-направления.</span></div>
         <div class="split-actions">
           <button class="btn secondary" data-action="checkServers" data-busy="0" ${state.serverChecking ? 'disabled' : ''}>Проверить все</button>
           <button class="btn" data-import-dialog="choose">Добавить прокси</button>

@@ -20,6 +20,10 @@ import (
 )
 
 func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string, timeoutMs int, attempts int) (int64, bool, error) {
+	return s.httpOutboundProbeStatus(outbound, probeURL, timeoutMs, attempts, false)
+}
+
+func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
 	port, err := freeLocalPort()
 	if err != nil {
 		return 0, false, err
@@ -27,7 +31,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	config := map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"inbounds": []any{map[string]any{
-			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
+			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": false},
 		}},
 		"outbounds": ensureFragmentOutbounds([]any{outbound}),
 	}
@@ -57,7 +61,7 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
 	cmd.Env = s.xrayEnv()
-	var stderr bytes.Buffer
+	var stderr probeLogBuffer
 	cmd.Stdout = &stderr
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
@@ -77,7 +81,10 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 		return 0, false, err
 	}
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+	// Carry HTTP directly over the tunnel. Xray's plain HTTP inbound closes the
+	// origin connection after each response and can replace a short WebSocket
+	// response with a synthetic 503 when the remote stream closes.
+	proxyURL, _ := url.Parse(fmt.Sprintf("socks5://127.0.0.1:%d", port))
 	client := &http.Client{
 		Timeout: time.Duration(timeoutMs) * time.Millisecond,
 		Transport: &http.Transport{
@@ -87,8 +94,13 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 			},
 		},
 	}
+	defer client.CloseIdleConnections()
+	if strict {
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var best int64
 	var warmBest int64
+	measuredSuccess, warmSuccess := false, false
 	var lastErr error
 	for attempt := 0; attempt < totalSamples; attempt++ {
 		measured := attempt > 0
@@ -102,34 +114,36 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 		if err == nil {
 			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 			_ = resp.Body.Close()
-			if resp.StatusCode < 500 {
+			if (!strict && resp.StatusCode < 500) || (strict && resp.StatusCode >= 200 && resp.StatusCode < 300) {
 				if !measured {
-					if warmBest == 0 || latency < warmBest {
+					if !warmSuccess || latency < warmBest {
 						warmBest = latency
 					}
+					warmSuccess = true
 					lastErr = nil
 					continue
 				}
-				if best == 0 || latency < best {
+				if !measuredSuccess || latency < best {
 					best = latency
 				}
+				measuredSuccess = true
 				lastErr = nil
 				continue
 			}
-			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			lastErr = fmt.Errorf("HTTP status %d", resp.StatusCode)
 			continue
 		}
 		lastErr = err
 	}
-	if best > 0 {
+	if measuredSuccess {
 		return best, true, nil
 	}
-	if warmBest > 0 {
+	if warmSuccess {
 		return warmBest, true, nil
 	}
 	if lastErr != nil {
 		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return 0, false, fmt.Errorf("%w: %s", lastErr, lastLine(detail))
+			return 0, false, fmt.Errorf("%w: %s", lastErr, detail)
 		}
 	}
 	return 0, false, lastErr

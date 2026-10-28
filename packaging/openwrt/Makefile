@@ -40,6 +40,7 @@ define Package/ruopenray-ui/install
 	$(call GoPackage/Package/Install/Bin,$(1))
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/ruopenray-ui $(1)/etc/init.d/ruopenray-ui
+	$(INSTALL_BIN) ./files/etc/init.d/ruopenray-adguard $(1)/etc/init.d/ruopenray-adguard
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/ruopenray-ui $(1)/etc/config/ruopenray-ui
 	$(INSTALL_DIR) $(1)/etc/ruopenray-ui/profiles

@@ -5,7 +5,27 @@ on:
   pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Check private material
+        shell: pwsh
+        run: ./scripts/scan-private.ps1
+      - run: go test ./... -count=1 -timeout=120s
+      - run: npm run test:frontend
+  xray:
+    uses: ./.github/workflows/xray-compatibility.yml
   go:
+    needs: [test, xray]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,15 +48,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
-      - name: Test
-        run: go test ./...
-      - name: Frontend test
-        run: npm run test:frontend
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -48,7 +59,9 @@ jobs:
           suffix="${GOOS}-${GOARCH}"
           if [ -n "${GOARM}" ]; then suffix="${suffix}v${GOARM}"; fi
           if [ -n "${GOMIPS}" ]; then suffix="${suffix}-${GOMIPS}"; fi
-          go build -trimpath -ldflags="-s -w -X main.appVersion=dev" -o "dist/ruopenray-ui-${suffix}" ./cmd/ruopenray-ui
+          version="0.5.1-test.${GITHUB_RUN_NUMBER}+${GITHUB_SHA:0:7}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME}"; fi
+          go build -trimpath -ldflags="-s -w -X main.appVersion=${version}" -o "dist/ruopenray-ui-${suffix}" ./cmd/ruopenray-ui
       - uses: actions/upload-artifact@v4
         with:
           name: ruopenray-ui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}

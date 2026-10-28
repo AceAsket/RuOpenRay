@@ -14,8 +14,8 @@ export function createConfigStateHelpers(state, { onDraftChange } = {}) {
     config.outbounds.push({
       tag: 'out-amnezia',
       protocol: 'freedom',
-      settings: { domainStrategy: 'UseIP' },
-      streamSettings: { sockopt: { mark: 20992 } }
+      settings: {},
+      streamSettings: { sockopt: { mark: 20992, domainStrategy: 'UseIP' } }
     });
     return config;
   }

@@ -1,4 +1,4 @@
-import { serverLocation } from './server-location.js';
+import { proxyOptionLabel } from './proxy-label.js';
 
 export function createDiagnosticsDomainView(deps) {
   const {
@@ -355,9 +355,8 @@ function domainProbeTargetSelectHtml() {
       const address = outboundAddress(item);
       const check = checkForTag(tag);
       const status = check ? checkLabel(check) : 'не проверялся';
-      const location = serverLocation(item, state.serverMeta?.[tag] || {});
-      const flag = location.flag || '🌐';
-      const label = [flag, tag, status, address, statusIcon(check)].filter(Boolean).join(' · ');
+      const name = proxyOptionLabel(item, state.serverMeta?.[tag] || {});
+      const label = [name, status, address, statusIcon(check)].filter(Boolean).join(' · ');
       return `<option value="${escapeHtml(tag)}" ${tag === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
   return `<label class="domain-probe-target">

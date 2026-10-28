@@ -233,6 +233,12 @@ export function bindDiagnosticsControls(deps) {
   document.querySelector('#dpiTarget')?.addEventListener('input', (event) => {
     state.dpiTarget = event.target.value;
   });
+  for (const [id, key] of [['tlsStabilityTarget', 'tlsStabilityTarget'], ['tlsStabilityTag', 'tlsStabilityTag'], ['tlsStabilityAttempts', 'tlsStabilityAttempts']]) {
+    document.querySelector(`#${id}`)?.addEventListener(id === 'tlsStabilityTag' ? 'change' : 'input', (event) => {
+      state[key] = event.target.value;
+      if (id === 'tlsStabilityTag') render();
+    });
+  }
   document.querySelector('#dpiTarget')?.addEventListener('keydown', async (event) => {
     if (event.key === 'Enter' && typeof deps.runDpiDiagnostics === 'function') {
       state.dpiTarget = event.target.value;

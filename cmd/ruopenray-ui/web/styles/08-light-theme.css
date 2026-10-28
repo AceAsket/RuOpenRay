@@ -44,6 +44,8 @@ body[data-theme="light"] .traffic-overview-panel article,
 body[data-theme="light"] .login-card,
 body[data-theme="light"] .modal,
 body[data-theme="light"] .settings-card,
+body[data-theme="light"] .settings-overview-card,
+body[data-theme="light"] .settings-advanced-details,
 body[data-theme="light"] .settings-check,
 body[data-theme="light"] .settings-info-grid article,
 body[data-theme="light"] .settings-storage-row,
@@ -76,10 +78,50 @@ body[data-theme="light"] .lan-dns-readiness article,
 body[data-theme="light"] .device-rule-card,
 body[data-theme="light"] .domain-row,
 body[data-theme="light"] .log-panel,
-body[data-theme="light"] .dashboard-selected-server {
+body[data-theme="light"] .dashboard-technical-panel,
+body[data-theme="light"] .dashboard-traffic-grid article,
+body[data-theme="light"] .dashboard-selected-server,
+body[data-theme="light"] .servers-overview article,
+body[data-theme="light"] .scenario-catalog-toolbar,
+body[data-theme="light"] .route-selection-tools,
+body[data-theme="light"] .dns-overview article,
+body[data-theme="light"] .dns-provider-card,
+body[data-theme="light"] .dns-custom-add,
+body[data-theme="light"] .dns-guard-overview,
+body[data-theme="light"] .dns-guard-attention,
+body[data-theme="light"] .dns-guard-details,
+body[data-theme="light"] .diagnostics-overview,
+body[data-theme="light"] .diagnostics-server-health,
+body[data-theme="light"] .diagnostics-details,
+body[data-theme="light"] .diagnostics-chain-summary,
+body[data-theme="light"] .diagnostics-chain-attention,
+body[data-theme="light"] .profile-active-overview,
+body[data-theme="light"] .profile-config-card,
+body[data-theme="light"] .profile-more-menu,
+body[data-theme="light"] .profile-backup-details,
+body[data-theme="light"] .lan-dns-current,
+body[data-theme="light"] .lan-dns-action-bar,
+body[data-theme="light"] .lan-dns-details,
+body[data-theme="light"] .lan-dns-upstream-form {
   border-color: var(--line-soft);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--shadow);
+}
+
+body[data-theme="light"] .settings-overview-card:hover,
+body[data-theme="light"] .settings-overview-card:focus-visible {
+  border-color: rgba(10, 159, 139, 0.42);
+  background: rgba(235, 249, 245, 0.96);
+}
+
+body[data-theme="light"] .settings-overview-card.attention {
+  border-color: rgba(184, 121, 20, 0.38);
+  background: rgba(255, 248, 229, 0.92);
+}
+
+body[data-theme="light"] .settings-overview-card.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background: rgba(255, 239, 241, 0.92);
 }
 
 body[data-theme="light"] .dash-hero,
@@ -151,7 +193,10 @@ body[data-theme="light"] .core-stat.has-update,
 body[data-theme="light"] .core-update-banner.has-update,
 body[data-theme="light"] .traffic-overview-panel .traffic-overview-main,
 body[data-theme="light"] .dashboard-current-server,
-body[data-theme="light"] .lan-dns-readiness article.ok {
+body[data-theme="light"] .lan-dns-readiness article.ok,
+body[data-theme="light"] .dns-overview article.is-ok,
+body[data-theme="light"] .dns-provider-card.is-added,
+body[data-theme="light"] .lan-dns-current.ok {
   border-color: rgba(22, 139, 62, 0.26);
   background:
     linear-gradient(135deg, rgba(22, 139, 62, 0.09), rgba(255, 255, 255, 0.92)),
@@ -160,7 +205,9 @@ body[data-theme="light"] .lan-dns-readiness article.ok {
 
 body[data-theme="light"] .nand-plan,
 body[data-theme="light"] .nand-card,
-body[data-theme="light"] .lan-dns-readiness article.warn {
+body[data-theme="light"] .lan-dns-readiness article.warn,
+body[data-theme="light"] .dns-overview article.is-warn,
+body[data-theme="light"] .lan-dns-current.warn {
   border-color: rgba(184, 121, 20, 0.28);
   background: rgba(255, 250, 236, 0.92);
 }
@@ -340,33 +387,29 @@ body[data-theme="light"] .settings-warning {
   background: rgba(255, 247, 224, 0.82);
 }
 
-body[data-theme="light"] .amnezia-status-bar,
-body[data-theme="light"] .profile-actions-menu-body {
-  background: rgba(255, 255, 255, 0.92);
-}
-
-body[data-theme="light"] .profile-table tbody tr {
-  background: rgba(255, 255, 255, 0.78);
-}
-
 body[data-theme="light"] .pending-risk-list article span,
 body[data-theme="light"] .notice-details-body p,
 body[data-theme="light"] .app-version-pill.has-update {
   color: #6e4a08;
 }
 
-body[data-theme="light"] .pending-risk-count {
-  color: #7a5007;
-  background: rgba(188, 120, 7, 0.08);
+body[data-theme="light"] .servers-overview article.is-ok {
+  border-color: rgba(23, 139, 54, 0.28);
+  background: #eaf8ed;
 }
 
-body[data-theme="light"] .pending-risk-count.danger {
-  color: #9d2634;
-  background: rgba(199, 50, 69, 0.08);
+body[data-theme="light"] .xray-version-pill.has-update {
+  color: #6e4a08;
+  background: #fff4d6;
 }
 
-body[data-theme="light"] .pending-details {
-  border-top-color: rgba(110, 74, 8, 0.16);
+body[data-theme="light"] .service-mode-stop {
+  color: #6e4a08;
+  background: #fff4d6;
+}
+
+body[data-theme="light"] .service-icon {
+  background: #f7fbfa;
 }
 
 body[data-theme="light"] .pending-more {
@@ -624,6 +667,15 @@ body[data-theme="light"] .setup-readiness article,
 body[data-theme="light"] .setup-result-list article,
 body[data-theme="light"] .setup-choice-grid article,
 body[data-theme="light"] .setup-mode-grid article,
+body[data-theme="light"] .setup-config-card,
+body[data-theme="light"] .setup-callout,
+body[data-theme="light"] .setup-connection-card,
+body[data-theme="light"] .setup-rule-summary,
+body[data-theme="light"] .setup-auto-plan,
+body[data-theme="light"] .setup-action-card,
+body[data-theme="light"] .setup-fallback-choice button,
+body[data-theme="light"] .setup-launch-summary article,
+body[data-theme="light"] .setup-context-banner,
 body[data-theme="light"] .setup-flow-guide,
 body[data-theme="light"] .setup-flow-step,
 body[data-theme="light"] .setup-lan-dns,
@@ -758,7 +810,6 @@ body[data-theme="light"] .setup-result-list small,
 body[data-theme="light"] .setup-choice-grid span,
 body[data-theme="light"] .setup-choice-grid small,
 body[data-theme="light"] .setup-mode-grid span,
-body[data-theme="light"] .setup-review-list span,
 body[data-theme="light"] .setup-flow-guide p,
 body[data-theme="light"] .setup-flow-step small,
 body[data-theme="light"] .setup-lan-dns p,
@@ -790,8 +841,6 @@ body[data-theme="light"] .setup-readiness strong,
 body[data-theme="light"] .setup-result-list strong,
 body[data-theme="light"] .setup-choice-grid strong,
 body[data-theme="light"] .setup-mode-grid strong,
-body[data-theme="light"] .setup-review-list strong,
-body[data-theme="light"] .setup-advanced-options h4,
 body[data-theme="light"] .setup-flow-guide h3,
 body[data-theme="light"] .setup-flow-step strong,
 body[data-theme="light"] .setup-lan-dns h3,
@@ -868,7 +917,7 @@ body[data-theme="light"] .setup-stepper button.ok {
 }
 
 body[data-theme="light"] .setup-stepper span {
-  box-shadow: none;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.95);
 }
 
 body[data-theme="light"] .setup-stepper button.pending span {
@@ -878,7 +927,7 @@ body[data-theme="light"] .setup-stepper button.pending span {
 }
 
 body[data-theme="light"] .setup-step-summary {
-  background: transparent;
+  background: #f7fbfa;
   box-shadow: none;
 }
 
@@ -903,41 +952,29 @@ body[data-theme="light"] .setup-readiness article,
 body[data-theme="light"] .setup-result-list article,
 body[data-theme="light"] .setup-choice-grid article,
 body[data-theme="light"] .setup-mode-grid article,
-body[data-theme="light"] .setup-review-list article {
+body[data-theme="light"] .setup-config-card,
+body[data-theme="light"] .setup-callout,
+body[data-theme="light"] .setup-connection-card,
+body[data-theme="light"] .setup-rule-summary,
+body[data-theme="light"] .setup-auto-plan,
+body[data-theme="light"] .setup-action-card,
+body[data-theme="light"] .setup-fallback-choice button,
+body[data-theme="light"] .setup-launch-summary article {
   background: rgba(255, 255, 255, 0.86);
   box-shadow: none;
 }
 
-body[data-theme="light"] .setup-advanced-options {
-  border-color: var(--line);
-  background: #f7fbfa;
+body[data-theme="light"] .setup-context-banner {
+  border-color: rgba(10, 159, 139, 0.34);
+  background: rgba(10, 159, 139, 0.08);
 }
 
-body[data-theme="light"] .setup-apply-plan ol,
-body[data-theme="light"] .setup-review-list {
-  border-color: var(--line);
-  background: #ffffff;
-}
-
-body[data-theme="light"] .setup-apply-plan li {
-  border-color: var(--line);
-  background: #ffffff;
-}
-
-body[data-theme="light"] .setup-scenarios {
-  border-color: var(--line);
-  background: #f7fbfa;
-}
-
-body[data-theme="light"] .setup-scenario-row {
-  border-color: var(--line);
-  background: #ffffff;
-}
-
-body[data-theme="light"] .setup-scenario-row:hover,
-body[data-theme="light"] .setup-scenario-row.active {
-  border-color: rgba(10, 159, 139, 0.3);
-  background: #edf8f5;
+body[data-theme="light"] .setup-action-card:hover,
+body[data-theme="light"] .setup-action-card.primary,
+body[data-theme="light"] .setup-fallback-choice button.active,
+body[data-theme="light"] .setup-connection-card.ready {
+  border-color: rgba(10, 159, 139, 0.38);
+  background: rgba(10, 159, 139, 0.08);
 }
 
 body[data-theme="light"] .setup-mode-grid article.active {
@@ -1422,10 +1459,55 @@ body[data-theme="light"] .firewall-preflight-note {
   border-color: rgba(17, 160, 140, 0.28);
 }
 
-body[data-theme="light"] .compat-card {
+body[data-theme="light"] .compat-card,
+body[data-theme="light"] .compat-flow-step,
+body[data-theme="light"] .compat-service-summary > div:first-child,
+body[data-theme="light"] .compat-service-details,
+body[data-theme="light"] .compat-secondary-details {
   background: #ffffff;
   border-color: rgba(0, 150, 136, 0.22);
   box-shadow: 0 14px 32px rgba(15, 39, 35, 0.08);
+}
+
+body[data-theme="light"] .compat-hero {
+  border-color: rgba(17, 153, 134, 0.22);
+  background:
+    linear-gradient(135deg, rgba(10, 159, 139, 0.16), transparent 38%),
+    linear-gradient(145deg, #ffffff, #edf7f4);
+}
+
+body[data-theme="light"] .compat-hero.warn {
+  border-color: rgba(184, 121, 20, 0.34);
+  background:
+    linear-gradient(135deg, rgba(240, 182, 66, 0.19), transparent 42%),
+    linear-gradient(145deg, #ffffff, #fff9e9);
+}
+
+body[data-theme="light"] .compat-hero.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background:
+    linear-gradient(135deg, rgba(195, 61, 74, 0.14), transparent 42%),
+    linear-gradient(145deg, #ffffff, #fff0f2);
+}
+
+body[data-theme="light"] .compat-flow-step.ok,
+body[data-theme="light"] .compat-safety.ok,
+body[data-theme="light"] .compat-next-step {
+  border-color: rgba(20, 156, 75, 0.28);
+  background: #f0fff3;
+}
+
+body[data-theme="light"] .compat-flow-step.warn,
+body[data-theme="light"] .compat-safety.warn,
+body[data-theme="light"] .compat-next-step.warn {
+  border-color: rgba(184, 121, 20, 0.34);
+  background: #fff9e9;
+}
+
+body[data-theme="light"] .compat-safety.danger,
+body[data-theme="light"] .compat-next-step.danger {
+  border-color: rgba(195, 61, 74, 0.38);
+  background: #fff0f2;
 }
 
 body[data-theme="light"] .compat-metrics article {
@@ -1459,6 +1541,33 @@ body[data-theme="light"] .amnezia-structured-editor article {
 body[data-theme="light"] .amnezia-structured-editor article > div:first-child span,
 body[data-theme="light"] .amnezia-raw-head span {
   color: #46625f;
+}
+
+body[data-theme="light"] .amnezia-setup-progress article,
+body[data-theme="light"] .amnezia-next-step,
+body[data-theme="light"] .amnezia-usage-mode,
+body[data-theme="light"] .amnezia-warning-summary,
+body[data-theme="light"] .amnezia-advanced-panel,
+body[data-theme="light"] .amnezia-tech-section,
+body[data-theme="light"] .amnezia-diagnostics-grid article {
+  color: #092027;
+  background: #ffffff;
+  border-color: #d4ebe8;
+}
+
+body[data-theme="light"] .amnezia-setup-progress article.done,
+body[data-theme="light"] .amnezia-next-step.ok,
+body[data-theme="light"] .amnezia-diagnostics-grid article.ok {
+  background: #f0fff3;
+  border-color: rgba(20, 156, 75, 0.26);
+}
+
+body[data-theme="light"] .amnezia-setup-progress article.active,
+body[data-theme="light"] .amnezia-next-step.warn,
+body[data-theme="light"] .amnezia-warning-summary,
+body[data-theme="light"] .amnezia-diagnostics-grid article.warn {
+  background: #fff9e9;
+  border-color: rgba(184, 121, 20, 0.34);
 }
 
 body[data-theme="light"] .status-chip {

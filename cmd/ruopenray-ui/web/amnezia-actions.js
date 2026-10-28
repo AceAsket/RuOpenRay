@@ -108,7 +108,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     state.amneziaProfileName = activeProfile?.name || state.amneziaProfileName || 'AmneziaWG';
     state.amneziaConfigLoaded = true;
     state.amneziaImportDialog = false;
-    state.message = 'Конфиг AmneziaWG сохранен. Запуск станет доступен после установки совместимого kmod-amneziawg.';
+    state.message = 'Профиль AmneziaWG сохранен. Теперь можно проверить готовность и запустить туннель.';
     render();
   }
 
@@ -224,23 +224,38 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
   async function checkAmneziaPreflight() {
     const result = await request('/api/amnezia/preflight', {
       method: 'POST',
-      body: JSON.stringify({ config: state.amneziaConfigText || '' })
+      body: JSON.stringify({ id: state.amneziaProfileId || '', config: state.amneziaConfigText || '' })
     });
     if (!result?.ok) throw new Error(result?.error || 'Не удалось проверить AmneziaWG');
     state.amneziaPreflight = result.preflight || null;
-    state.message = result.preflight?.ok ? 'Preflight AmneziaWG пройден.' : 'Preflight AmneziaWG нашел блокеры.';
+    state.message = result.preflight?.ok ? 'AmneziaWG готов к запуску.' : 'Проверка нашла проблемы, которые мешают запуску.';
     render();
   }
 
   async function prepareAmnezia() {
     const result = await request('/api/amnezia/prepare', {
       method: 'POST',
-      body: JSON.stringify({ config: state.amneziaConfigText || '' })
+      body: JSON.stringify({ id: state.amneziaProfileId || '', config: state.amneziaConfigText || '' })
     });
     if (!result?.ok) throw new Error(result?.error || 'Не удалось подготовить AmneziaWG');
     state.amneziaPreflight = result.preflight || null;
     state.message = result.message || 'Подготовка AmneziaWG проверена.';
     render();
+  }
+
+  async function checkAndStartAmnezia() {
+    const result = await request('/api/amnezia/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ id: state.amneziaProfileId || '', config: state.amneziaConfigText || '' })
+    });
+    if (!result?.ok) throw new Error(result?.error || 'Не удалось проверить AmneziaWG');
+    state.amneziaPreflight = result.preflight || null;
+    if (!result.preflight?.ok) {
+      state.message = 'Запуск отменён: сначала исправьте отмеченные проблемы.';
+      render();
+      return;
+    }
+    await startAmnezia();
   }
 
   function activeAmneziaProfileSummary() {
@@ -254,12 +269,11 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     return {
       tag: 'out-amnezia',
       protocol: 'freedom',
-      settings: {
-        domainStrategy: 'UseIP'
-      },
+      settings: {},
       streamSettings: {
         sockopt: {
-          mark: 20992
+          mark: 20992,
+          domainStrategy: 'UseIP'
         }
       }
     };
@@ -297,7 +311,10 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
   async function prepareAmneziaUserspace() {
     const result = await request('/api/amnezia/userspace/prepare', {
       method: 'POST',
-      body: JSON.stringify({ url: state.amneziaUserspaceUrl || '' })
+      body: JSON.stringify({
+        url: state.amneziaUserspaceUrl || '',
+        sha256: state.amneziaUserspaceSha256 || ''
+      })
     });
     if (!result?.ok) throw new Error(result?.error || 'Не удалось подготовить userspace backend');
     if (result.status?.amnezia || result.status?.clientConfig || result.status?.userspace) {
@@ -353,6 +370,7 @@ export function createAmneziaActions({ state, request, render, syncConfig }) {
     deleteAmneziaPolicyRule,
     deleteAmneziaProfile,
     checkAmneziaPreflight,
+    checkAndStartAmnezia,
     prepareAmnezia,
     prepareAmneziaXrayOutboundDraft,
     prepareAmneziaUserspace,

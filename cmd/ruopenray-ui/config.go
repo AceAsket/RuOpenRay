@@ -38,8 +38,6 @@ type serverState struct {
 	serviceAt        time.Time
 	xrayStatsCache   map[string]any
 	xrayStatsAt      time.Time
-	podkopCache      map[string]any
-	podkopAt         time.Time
 	b4Cache          map[string]any
 	b4At             time.Time
 	amneziaCache     map[string]any
@@ -48,6 +46,15 @@ type serverState struct {
 	logCacheText     string
 	logCacheAt       time.Time
 	fallbackMu       sync.Mutex
+	adguardMu        sync.Mutex
+	backupMu         sync.Mutex
+	tlsProbeMu       sync.Mutex
+	backupPaths      map[string]string
+	b4Mu             sync.Mutex
+	b4ControlMu      sync.Mutex
+	b4Token          string
+	b4LoginAfter     time.Time
+	b4LoginKey       string
 	fallbackProgress map[string]any
 }
 

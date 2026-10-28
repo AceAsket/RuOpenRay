@@ -95,7 +95,7 @@ func sanitizeSubscriptionCandidateCheckResult(result map[string]any) map[string]
 	allowed := []string{
 		"index", "tag", "ok", "skipped", "error", "method", "url", "checkedAt",
 		"latencyMs", "httpLatencyMs", "endpointLatencyMs", "pingLatencyMs",
-		"httpOk", "endpointOk", "pingOk",
+		"httpOk", "endpointOk", "pingOk", "errorCode", "probeResults",
 		"protocol", "address", "port", "network", "security",
 	}
 	clean := map[string]any{}

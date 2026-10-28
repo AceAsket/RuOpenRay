@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,11 +24,16 @@ import (
 const (
 	amneziaRouteTable     = "5200"
 	amneziaRouteTableName = "ruopenray_awg"
-	amneziaFwMark         = "0x5200"
+	amneziaFwMark         = "0x52000000"
+	amneziaLegacyFwMark   = "0x5200"
 	amneziaInterfaceName  = "ruopenray-awg0"
 	amneziaUserspaceMax   = 32 * 1024 * 1024
 	amneziaUserspaceMin   = 128 * 1024
 )
+
+func amneziaPolicyRuleCleanupCommand() string {
+	return fmt.Sprintf("for mark in %s %s; do while ip rule del fwmark $mark table %s 2>/dev/null; do :; done; done", amneziaFwMark, amneziaLegacyFwMark, amneziaRouteTable)
+}
 
 func (s *serverState) cachedAmneziaStatus() map[string]any {
 	now := time.Now()
@@ -621,24 +628,36 @@ func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any 
 	if link["ok"] != true {
 		return map[string]any{"ok": false, "error": "Start AmneziaWG first: ruopenray-awg0 is not active.", "link": link, "policy": s.amneziaPolicyStatus(), "status": s.amneziaStatus()}
 	}
+	firewallStatus := s.firewallStatus()
+	if !amneziaPolicyFirewallReady(firewallStatus) {
+		return map[string]any{
+			"ok":       false,
+			"error":    "RuOpenRay firewall must be active and persistent before applying AmneziaWG policy targets.",
+			"firewall": firewallStatus,
+			"policy":   s.amneziaPolicyStatus(),
+			"status":   s.amneziaStatus(),
+		}
+	}
 	steps := []map[string]any{
 		runTimeout(4*time.Second, "ip", "route", "replace", "default", "dev", amneziaInterfaceName, "table", amneziaRouteTable),
-		runTimeout(4*time.Second, "sh", "-c", fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable)),
+		runTimeout(4*time.Second, "sh", "-c", amneziaPolicyRuleCleanupCommand()),
 		runTimeout(4*time.Second, "ip", "rule", "add", "fwmark", amneziaFwMark, "table", amneziaRouteTable, "pref", amneziaRouteTable),
 	}
-	firewallStatus := s.firewallStatus()
-	firewallResult := map[string]any{"ok": false, "skipped": true, "reason": "RuOpenRay firewall is not active or persistent."}
-	if firewallStatus["active"] == true || firewallStatus["persistent"] == true {
-		firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
-		firewallPayload["amneziaPolicyIps"] = targets
-		firewallPayload["amneziaPolicyDomains"] = domains
-		firewallPayload["amneziaPolicyMark"] = amneziaFwMark
-		firewallPayload[firewallCompatibilityConfirmKey] = true
-		firewallResult = s.applyFirewall(firewallPayload)
+	firewallPayload := amneziaFirewallPayloadFromStatus(firewallStatus)
+	firewallPayload["amneziaPolicyIps"] = targets
+	firewallPayload["amneziaPolicyDomains"] = domains
+	firewallPayload["amneziaPolicyMark"] = amneziaFwMark
+	firewallPayload[firewallCompatibilityConfirmKey] = true
+	firewallResult := s.applyFirewall(firewallPayload)
+	ok := amneziaStepsOK(steps) && firewallResult["ok"] == true
+	if !ok {
+		steps = append(steps,
+			runTimeout(4*time.Second, "sh", "-c", amneziaPolicyRuleCleanupCommand()),
+			runTimeout(4*time.Second, "ip", "route", "flush", "table", amneziaRouteTable),
+		)
 	}
 	s.clearAmneziaCache()
 	status := s.amneziaStatus()
-	ok := amneziaStepsOK(steps) && (firewallResult["skipped"] == true || firewallResult["ok"] == true)
 	return map[string]any{
 		"ok":       ok,
 		"targets":  targets,
@@ -650,6 +669,10 @@ func (s *serverState) applyAmneziaPolicy(payload map[string]any) map[string]any 
 		"stdout":   concatCommandOutput(steps...),
 		"message":  amneziaPolicyApplyMessage(ok, firewallResult),
 	}
+}
+
+func amneziaPolicyFirewallReady(status map[string]any) bool {
+	return status["active"] == true && status["persistent"] == true
 }
 
 func (s *serverState) rollbackAmneziaPolicy(payload map[string]any) map[string]any {
@@ -1141,6 +1164,7 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 	}
 	target := s.amneziaUserspaceInstallPath()
 	sourceURL := strings.TrimSpace(fmt.Sprint(payload["url"]))
+	expectedSHA256, checksumOK := normalizeAmneziaSHA256(fmt.Sprint(payload["sha256"]))
 	plan := []string{
 		"Создать каталог " + filepath.Dir(target) + ".",
 		"Скачать amneziawg-go по указанному URL.",
@@ -1158,8 +1182,11 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 			"message": "URL не указан: показан только план подготовки userspace backend.",
 		}
 	}
-	if !strings.HasPrefix(sourceURL, "https://") && !strings.HasPrefix(sourceURL, "http://") {
-		return map[string]any{"ok": false, "error": "Укажите http:// или https:// URL бинарника amneziawg-go."}
+	if !strings.HasPrefix(sourceURL, "https://") {
+		return map[string]any{"ok": false, "error": "Для бинарника amneziawg-go разрешен только HTTPS URL."}
+	}
+	if !checksumOK {
+		return map[string]any{"ok": false, "error": "Укажите ожидаемый SHA-256 бинарника (64 шестнадцатеричных символа)."}
 	}
 	downloadURL := s.mirrorURL(sourceURL)
 	resp, err := (&http.Client{Timeout: 90 * time.Second}).Get(downloadURL)
@@ -1179,6 +1206,18 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 	}
 	if len(body) < amneziaUserspaceMin {
 		return map[string]any{"ok": false, "error": "Файл слишком маленький, похоже на HTML/ошибку загрузки.", "url": downloadURL, "size": len(body)}
+	}
+	actualSum := sha256.Sum256(body)
+	actualSHA256 := hex.EncodeToString(actualSum[:])
+	if actualSHA256 != expectedSHA256 {
+		return map[string]any{
+			"ok":             false,
+			"error":          "SHA-256 загруженного amneziawg-go не совпадает с ожидаемым.",
+			"url":            downloadURL,
+			"expectedSHA256": expectedSHA256,
+			"actualSHA256":   actualSHA256,
+			"size":           len(body),
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
@@ -1203,10 +1242,22 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 		"ok":      true,
 		"target":  target,
 		"url":     downloadURL,
+		"sha256":  actualSHA256,
 		"size":    len(body),
 		"status":  s.amneziaStatus(),
 		"message": fmt.Sprintf("amneziawg-go сохранен: %s.", byteCount(int64(len(body)))),
 	}
+}
+
+func normalizeAmneziaSHA256(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != sha256.Size*2 {
+		return "", false
+	}
+	if _, err := hex.DecodeString(value); err != nil {
+		return "", false
+	}
+	return value, true
 }
 
 func (s *serverState) startAmnezia(payload map[string]any) map[string]any {
@@ -1269,7 +1320,7 @@ func (s *serverState) startAmnezia(payload map[string]any) map[string]any {
 	}
 	steps = append(steps, runTimeout(4*time.Second, "ip", "link", "set", "up", "dev", amneziaInterfaceName))
 	steps = append(steps, runTimeout(4*time.Second, "ip", "route", "replace", "default", "dev", amneziaInterfaceName, "table", amneziaRouteTable))
-	steps = append(steps, runTimeout(4*time.Second, "sh", "-c", fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable)))
+	steps = append(steps, runTimeout(4*time.Second, "sh", "-c", amneziaPolicyRuleCleanupCommand()))
 	steps = append(steps, runTimeout(4*time.Second, "ip", "rule", "add", "fwmark", amneziaFwMark, "table", amneziaRouteTable, "pref", amneziaRouteTable))
 	ok := true
 	for _, step := range steps {
@@ -1432,7 +1483,7 @@ func (s *serverState) stopAmneziaRuntimeStep() map[string]any {
 	script := strings.Join([]string{
 		fmt.Sprintf("pidfile=%s", amneziaShellQuote(s.amneziaRuntimePath("amneziawg-go.pid"))),
 		"if [ -s \"$pidfile\" ]; then kill \"$(cat \"$pidfile\")\" 2>/dev/null || true; rm -f \"$pidfile\"; fi",
-		fmt.Sprintf("ip rule del fwmark %s table %s 2>/dev/null || true", amneziaFwMark, amneziaRouteTable),
+		amneziaPolicyRuleCleanupCommand(),
 		fmt.Sprintf("ip route flush table %s 2>/dev/null || true", amneziaRouteTable),
 		fmt.Sprintf("ip link del dev %s 2>/dev/null || true", amneziaShellQuote(amneziaInterfaceName)),
 	}, "; ")
@@ -1530,7 +1581,7 @@ func (s *serverState) amneziaPreflightForConfig(raw string) map[string]any {
 			"Закрепить endpoint сервера через текущий WAN до включения policy routing.",
 			"Поднять awg-интерфейс через kernel, GL.iNet native или amneziawg-go.",
 			"Применить awg setconf, адрес интерфейса, MTU 1280 и TCPMSS clamp.",
-			"Подготовить отдельный route table 5200 и fwmark 0x5200.",
+			"Подготовить отдельный route table 5200 и fwmark 0x52000000 вне диапазона автоматических меток B4.",
 			"Помечать только выбранные правила RuOpenRay, не меняя default route всего роутера.",
 			"После health-check откатить интерфейс, маршруты и nft-метки, если туннель не отвечает.",
 		},
