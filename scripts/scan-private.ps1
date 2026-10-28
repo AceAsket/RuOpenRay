@@ -38,13 +38,13 @@ $files = @()
 $files += (& git ls-files)
 $files += (& git ls-files --others --exclude-standard)
 $files = $files |
-  Where-Object { $_ -and (Test-Path $_) -and -not (Get-Item $_).PSIsContainer } |
+  Where-Object { $_ -and (Test-Path -LiteralPath $_) -and -not (Get-Item -LiteralPath $_ -Force).PSIsContainer } |
   Where-Object { $_ -ne 'scripts/scan-private.ps1' } |
   Sort-Object -Unique
 
 $hits = @()
 foreach ($file in $files) {
-  $text = Get-Content -Raw -ErrorAction SilentlyContinue -Path $file
+  $text = Get-Content -Raw -LiteralPath $file -Force -ErrorAction SilentlyContinue
   if ($null -eq $text) { continue }
   foreach ($check in $checks) {
     foreach ($match in [regex]::Matches($text, $check.Pattern)) {
