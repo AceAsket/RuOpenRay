@@ -54,6 +54,19 @@ test('TLS action requests comparison without applying any configuration', async 
   assert.equal(state.tlsStabilityResult.healthy, false);
 });
 
+test('TLS report shows failure phases and milestone times without trusting imported values', () => {
+  const html = tlsStabilityView({ tlsStabilityResult: { results: [{ samples: [
+    { ok: false, phase: 'tls', latencyMs: 8000, timings: { connectDoneMs: 4, tlsStartMs: 5 } },
+    { ok: false, phase: '<img>', timings: { tlsDoneMs: '<script>' } },
+  ] }] } }, escapeHtml);
+  assert.match(html, /Ошибка · TLS · всего 8000 мс/);
+  assert.match(html, /TCP \/ прокси: 4 мс/);
+  assert.match(html, /&lt;img&gt;/);
+  assert.doesNotMatch(html, /<img>|<script>/);
+  assert.match(html, /вышестоящего роутера/);
+  assert.match(html, /не складываются/);
+});
+
 test('TLS inputs reach the request before blur or a background render', async () => {
   const originalDocument = globalThis.document;
   const listeners = new Map();

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"os/exec"
@@ -47,15 +48,50 @@ func tlsStabilityError(err error, phase string) (string, string) {
 func tlsStabilitySample(ctx context.Context, client *http.Client, target string) map[string]any {
 	started := time.Now()
 	result := map[string]any{"ok": false, "bodyComplete": false}
+	var traceMu sync.Mutex
+	phase := "request"
+	timings := map[string]int64{}
+	mark := func(key, nextPhase string) {
+		traceMu.Lock()
+		defer traceMu.Unlock()
+		timings[key] = time.Since(started).Milliseconds()
+		if nextPhase != "" {
+			phase = nextPhase
+		}
+	}
+	defer func() {
+		traceMu.Lock()
+		defer traceMu.Unlock()
+		result["phase"] = phase
+		// Trace callbacks can finish after cancellation. Return a snapshot so
+		// they cannot mutate a response while it is being encoded.
+		snapshot := map[string]int64{}
+		for key, value := range timings {
+			snapshot[key] = value
+		}
+		result["timings"] = snapshot
+		result["latencyMs"] = time.Since(started).Milliseconds()
+	}()
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		DNSStart:             func(httptrace.DNSStartInfo) { mark("dnsStartMs", "dns") },
+		DNSDone:              func(httptrace.DNSDoneInfo) { mark("dnsDoneMs", "") },
+		ConnectStart:         func(_, _ string) { mark("connectStartMs", "connect") },
+		ConnectDone:          func(_, _ string, _ error) { mark("connectDoneMs", "") },
+		TLSHandshakeStart:    func() { mark("tlsStartMs", "tls") },
+		TLSHandshakeDone:     func(tls.ConnectionState, error) { mark("tlsDoneMs", "") },
+		GotConn:              func(httptrace.GotConnInfo) { mark("connectionReadyMs", "headers") },
+		WroteRequest:         func(httptrace.WroteRequestInfo) { mark("requestSentMs", "") },
+		GotFirstResponseByte: func() { mark("firstByteMs", "") },
+	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
+		mark("invalidTargetMs", "target")
 		result["code"], result["error"] = "target", "Некорректный URL"
 		return result
 	}
 	req.Header.Set("User-Agent", "RuOpenRay TLS stability probe")
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := client.Do(req)
-	phase := "request"
 	if err == nil {
 		defer resp.Body.Close()
 		result["status"] = resp.StatusCode
@@ -63,7 +99,7 @@ func tlsStabilitySample(ctx context.Context, client *http.Client, target string)
 			result["negotiated"] = tlsVersionName(resp.TLS.Version)
 			result["certificateVerified"] = len(resp.TLS.VerifiedChains) > 0
 		}
-		phase = "body"
+		mark("bodyStartMs", "body")
 		n, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, (1<<20)+1))
 		result["bytes"], result["bodyComplete"] = n, readErr == nil && n <= 1<<20
 		err = readErr
@@ -76,9 +112,13 @@ func tlsStabilitySample(ctx context.Context, client *http.Client, target string)
 		}
 	}
 	if err != nil {
-		result["code"], result["error"] = tlsStabilityError(err, phase)
+		traceMu.Lock()
+		failedPhase := phase
+		traceMu.Unlock()
+		result["code"], result["error"] = tlsStabilityError(err, failedPhase)
+	} else if result["ok"] == true && result["bodyComplete"] == true {
+		mark("completeMs", "complete")
 	}
-	result["latencyMs"] = time.Since(started).Milliseconds()
 	return result
 }
 
