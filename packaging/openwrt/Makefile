@@ -3,11 +3,11 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=ruopenray-ui
 PKG_VERSION:=0.5.1_rc4
 APP_VERSION:=0.5.1-rc4
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/AceAsket/RuOpenRay.git
-PKG_SOURCE_VERSION:=b08a8b7b0ed6421be1072cb10360b16cc50aedc1
+PKG_SOURCE_VERSION:=9649ff0e576941a4a79d2b1cd7adcdae7b97a9e5
 PKG_MIRROR_HASH:=skip
 
 PKG_BUILD_DEPENDS:=golang/host
