@@ -28,10 +28,7 @@ mkdir -p package/ruopenray-ui
 cp "$repo_dir/packaging/openwrt/Makefile" package/ruopenray-ui/Makefile
 cp -a "$repo_dir/packaging/openwrt/files" package/ruopenray-ui/
 touch .config
-# This dedicated SDK builds the UI and its dependencies. Old all-kmods runs
-# leave individual selections enabled even after CONFIG_ALL_KMODS is cleared.
-# defconfig will reselect the kernel modules required by the package.
-sed -i '/^CONFIG_ALL=/d; /^CONFIG_ALL_KMODS=/d; /^CONFIG_ALL_NONSHARED=/d; /^CONFIG_PACKAGE_kmod-/d; /^CONFIG_PACKAGE_ruopenray-ui=/d' .config
+sed -i '/^CONFIG_ALL=/d; /^CONFIG_ALL_KMODS=/d; /^CONFIG_ALL_NONSHARED=/d; /^CONFIG_PACKAGE_ruopenray-ui=/d' .config
 cat >> .config <<'EOF'
 # CONFIG_ALL is not set
 # CONFIG_ALL_KMODS is not set
