@@ -5,6 +5,8 @@ import { routePresetIconView } from './route-visuals.js';
 import { routingAuditView } from './routing-conflicts.js';
 import { isFailoverBalancer } from './balancer-policy.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { routeDisplayLeaves, routeDisplayMatches, routeDisplayRestricted, routeKindFilters, routeOriginFilters, normalizeRouteDisplay } from './routing-display.js';
+import { routeGroupId } from './routing-group-identity.js';
 
 export function createRoutingView(deps) {
   const {
@@ -21,6 +23,7 @@ export function createRoutingView(deps) {
     orderedRouteList,
     describeRouteRule,
     routeRuleName,
+    routeCategoryForRule,
     resolveRoutingAlias,
     dslPreviewView,
     configAnalysisView,
@@ -98,7 +101,20 @@ function routingRulesPanel() {
   const rules = routeRules();
   const stats = routeStats();
   const options = routeTargetOptions();
-  const visibleRules = visibleRoutingRuleItems(80);
+  const visibleRules = visibleRoutingRuleItems(state.routeVisibleLimit || 80);
+  const matchedCount = routeDisplayLeaves(visibleRoutingRuleItems(Infinity)).length;
+  const visibleCount = routeDisplayLeaves(visibleRules).length;
+  const filters = normalizeRouteDisplay(state);
+  const restricted = routeDisplayRestricted(state);
+  const disabledItems = (state.disabledRouteRules || []).map((item) => {
+    const info = describeRouteRule(item.rule), group = routeGroupId(item.rule, state.routeNames);
+    return { ...item, disabled: true, info, name: item.name || routeRuleName(item.rule, info), category: routeCategoryForRule?.(item.rule),
+      origin: group ? (state.routeNames?.[`@group-source:${group}`] ? 'presetGroup' : 'customGroup') : 'single' };
+  }).filter((item) => routeDisplayMatches(item, state, { kind: item.origin }));
+  const select = (key, label, choices) => `<label class="route-display-control"><span>${label}</span><select aria-label="${label}" data-route-display="${key}">${choices.map(([value, text]) => `<option value="${escapeHtml(value)}" ${filters[key] === value ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></label>`;
+  const targetChoices = [['', 'Все назначения'], ['category:proxy', 'Через VPN / proxy'], ['category:direct', 'Напрямую'], ['category:block', 'Блокировка'], ['category:balancer', 'Балансировщики'],
+    ...options.map((option) => [option.value, option.label])];
+  if (filters.routeFilterTarget && !targetChoices.some(([value]) => value === filters.routeFilterTarget)) targetChoices.push([filters.routeFilterTarget, `Нет в профиле: ${filters.routeFilterTarget}`]);
   const managedRules = managedRoutingRuleItems();
   const userRulesCount = rules.length - managedRules.length;
   const amneziaPolicyCount = amneziaPolicyRuleItems().length;
@@ -126,10 +142,18 @@ function routingRulesPanel() {
       <div class="route-tools">
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
-        <input id="routeSearch" value="${escapeHtml(state.routeSearch)}" placeholder="Найти: youtube, 192.168, прокси, direct..." />
-        ${state.routeSearch.trim() ? `<button class="btn secondary" data-action="disableVisibleRoutes" ${visibleRules.length ? '' : 'disabled'}>Отключить найденные</button>` : ''}
-        <span class="muted route-visible-count">Показано ${visibleRules.length} из ${userRulesCount}</span>
+        <input id="routeSearch" type="search" aria-label="Поиск правил" value="${escapeHtml(state.routeSearch || '')}" placeholder="Домен, IP, название группы или сервер…" />
+        ${restricted && visibleCount ? `<button class="btn secondary" data-action="disableVisibleRoutes">Отключить показанные (${visibleCount})</button>` : ''}
       </div>
+      <div class="route-display-controls" role="group" aria-label="Фильтры и группировка правил">
+        ${select('routeFilterTarget', 'Назначение', targetChoices)}
+        ${select('routeFilterKind', 'Условие', [['', 'Все условия'], ...routeKindFilters])}
+        ${select('routeFilterOrigin', 'Группы', [['', 'Все правила'], ...routeOriginFilters])}
+        ${select('routeFilterStatus', 'Состояние', [['all', 'Все'], ['enabled', 'Включённые'], ['disabled', 'Отключённые']])}
+        ${select('routeGrouping', 'Отображение', [['order', 'По порядку Xray'], ['target', 'По назначению'], ['kind', 'По типу условия'], ['origin', 'По группам и подборкам']])}
+        <button type="button" class="btn secondary" data-route-display-reset ${restricted ? '' : 'disabled'}>Сбросить</button>
+      </div>
+      <p class="route-display-count muted" role="status">Включённые: показано ${visibleCount} из ${matchedCount} найденных · всего ${userRulesCount}. Отключённые: ${disabledItems.length} из ${state.disabledRouteRules.length}.</p>
       <label class="route-default-last-option"><input type="checkbox" data-route-default-last ${state.routeDefaultLast !== false ? 'checked' : ''} />
         <span>Остальной трафик всегда внизу<small>При изменении черновика общие правила остаются после сайтов, адресов и устройств. Отключите для ручного порядка.</small></span>
       </label>
@@ -141,18 +165,21 @@ function routingRulesPanel() {
         <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
       </div>` : ''}
       ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
-      <div class="route-table">
+      ${filters.routeFilterStatus !== 'disabled' ? `<div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
-      </div>
+      </div>` : ''}
+      ${visibleCount < matchedCount ? `<button type="button" class="btn secondary route-display-more" data-route-show-more>Показать ещё · осталось ${matchedCount - visibleCount}</button>` : ''}
+      ${filters.routeFilterStatus === 'disabled' && !state.disabledRouteRules.length ? '<p class="muted route-empty-state">Отключённых правил пока нет.</p>' : ''}
       ${amneziaPolicyRulesPanel()}
-      ${state.disabledRouteRules.length ? `<div class="disabled-routes">
+      ${filters.routeFilterStatus !== 'enabled' && state.disabledRouteRules.length ? `<div class="disabled-routes">
         <div class="disabled-routes-head">
           <strong>Отключенные правила</strong>
-          <span>${state.disabledRouteRules.length} сохранено вне активного Xray-конфига</span>
-          <button class="btn secondary" data-action="restoreAllDisabledRoutes">Вернуть все</button>
+          <span>${disabledItems.length} совпало · ${state.disabledRouteRules.length} сохранено вне активного Xray-конфига</span>
+          ${!restricted ? '<button class="btn secondary" data-action="restoreAllDisabledRoutes">Вернуть все</button>' : ''}
         </div>
-        ${state.disabledRouteRules.slice(0, 20).map((item) => {
-          const info = describeRouteRule(item.rule);
+        ${!disabledItems.length ? '<p class="muted">Отключённых правил по этим фильтрам нет.</p>' : ''}
+        ${disabledItems.map((item) => {
+          const info = item.info;
           return `<article class="disabled-route-row">
             <div>
               <strong>${escapeHtml(item.name || routeRuleName(item.rule, info))}</strong>

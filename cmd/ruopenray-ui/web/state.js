@@ -6,6 +6,7 @@ import {
   xrayStatsResetAtStorageKey
 } from './storage.js';
 import { loadRouteDefaultLast } from './routing-order.js';
+import { loadRouteDisplay } from './routing-display.js';
 
 export function createInitialState() {
   const auth = loadAuthToken();
@@ -272,6 +273,8 @@ export function createInitialState() {
   routingView: 'rules',
   dnsView: 'servers',
   routeSearch: '',
+  ...loadRouteDisplay(),
+  routeVisibleLimit: 80,
   routeAudit: null,
   routeAuditRunning: false,
   routeAuditFilter: 'all',

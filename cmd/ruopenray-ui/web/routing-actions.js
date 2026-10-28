@@ -3,6 +3,7 @@ import { routingListTargetOptions } from './routing-dsl.js';
 import { assignRouteGroup, migrateNamedRouteGroups, routeGroupId } from './routing-group-identity.js';
 import { analyzeRuleImport } from './routing-insights.js';
 import { isDefaultRoute, orderRoutingRules, saveRouteDefaultLast } from './routing-order.js';
+import { projectRoutingItems, routeDisplayLeaves, routeDisplayRestricted } from './routing-display.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -1284,31 +1285,18 @@ export function createRoutingActions({
 
   function routeRuleListItem(rule, index) {
     const info = describeRouteRule(rule);
-    return { kind: 'rule', rule, index, info, name: routeRuleName(rule, info), source: routeRuleSourceWithPresets(rule), presets: routeRulePresetMatches(rule) };
-  }
-
-  function routeItemMatchesSearch(item, search) {
-    if (!search) return true;
-    if (item.kind === 'presetGroup' || item.kind === 'customGroup') {
-      const childText = item.items
-        .map(({ info, name, source }) => `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`)
-        .join(' ');
-      return `${item.title} ${item.preset?.detail || routePresetDetail(item.key)} ${childText}`.toLowerCase().includes(search);
-    }
-    const { info, name, source } = item;
-    return `${name} ${source} ${info.kind} ${info.value} ${info.outbound} ${info.detail}`.toLowerCase().includes(search);
+    return { kind: 'rule', rule, index, info, name: routeRuleName(rule, info), source: routeRuleSourceWithPresets(rule), presets: routeRulePresetMatches(rule), category: routeCategoryForRule?.(rule) };
   }
 
   function visibleRoutingRuleItems(limit = 80) {
-    const search = state.routeSearch.trim().toLowerCase();
     const rules = routeRules();
     const items = [];
     for (let index = 0; index < rules.length;) {
       const legacy = legacyNamedPresetGroupAt(rules, index);
       if (legacy) {
-        const group = { kind: 'customGroup', key: `legacy:${legacy.key}:${index}`, preset: legacy.preset, title: legacy.title, index,
+        const group = { kind: 'customGroup', origin: 'presetGroup', key: `legacy:${legacy.key}:${index}`, preset: legacy.preset, title: legacy.title, index,
           items: rules.slice(index, legacy.end).map((rule, offset) => routeRuleListItem(rule, index + offset)) };
-        if (routeItemMatchesSearch(group, search)) items.push(group);
+        items.push(group);
         index = legacy.end;
         continue;
       }
@@ -1329,7 +1317,7 @@ export function createRoutingActions({
           index,
           items: sequence.rules.map((_, offset) => routeRuleListItem(rules[index + offset], index + offset))
         };
-        if (routeItemMatchesSearch(group, search)) items.push(group);
+        items.push(group);
         index += sequence.rules.length;
         continue;
       }
@@ -1354,22 +1342,23 @@ export function createRoutingActions({
           const sourcePreset = sourceKey ? routePresetData(sourceKey) : state.customRoutePresets?.[groupId];
           const group = {
             kind: 'customGroup',
+            origin: sourceKey ? 'presetGroup' : 'customGroup',
             key: `custom:${groupId || customName}`,
             preset: { ...sourcePreset, title: customName, detail: sourcePreset?.detail || 'Пользовательская группа правил' },
             title: customName,
             index,
             items: rules.slice(index, end).map((rule, offset) => routeRuleListItem(rule, index + offset))
           };
-          if (routeItemMatchesSearch(group, search)) items.push(group);
+          items.push(group);
           index = end;
           continue;
         }
       }
       const item = routeRuleListItem(rules[index], index);
-      if (routeItemMatchesSearch(item, search)) items.push(item);
+      items.push(item);
       index += 1;
     }
-    return items.slice(0, limit);
+    return projectRoutingItems(items, state, limit);
   }
 
   function managedRoutingRuleItems() {
@@ -1520,7 +1509,8 @@ export function createRoutingActions({
     const category = routeCategoryForRule(item.rule);
     const managed = isRuOpenRayManagedRoute(item.rule);
     const pinned = state.routeDefaultLast !== false && isDefaultRoute(item.rule) && !managed;
-    const dragLocked = managed || pinned;
+    const displayLocked = routeDisplayRestricted(state);
+    const dragLocked = managed || pinned || displayLocked;
     const targetLocked = managed || (nested && !nestedEditable);
     const editLocked = managed;
     const actionLocked = managed || (nested && !nestedEditable);
@@ -1532,8 +1522,8 @@ export function createRoutingActions({
     const moveDownAttrs = nested
       ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="1"`
       : `data-route-move="${index}" data-direction="1"`;
-    const moveUpDisabled = managed || pinned || (nested ? !canMoveNestedUp : index === 0);
-    const moveDownDisabled = managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
+    const moveUpDisabled = displayLocked || managed || pinned || (nested ? !canMoveNestedUp : index === 0);
+    const moveDownDisabled = displayLocked || managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
     const targetOptions = options.some((option) => option.value === selectedTarget)
       ? options
       : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${item.rule.balancerTag}` : readableRouteTag(item.rule.outboundTag || 'не задано') }, ...options];
@@ -1592,6 +1582,14 @@ export function createRoutingActions({
 
   function routePresetGroupRowHtml(item, options, rulesLength) {
     const customGroup = item.kind === 'customGroup';
+    if (item.partial) {
+      return `<details class="route-display-group route-filtered-group" open data-details-key="routing:filtered:${escapeHtml(item.key)}:${item.index}">
+        <summary><strong>${escapeHtml(item.title)}</strong><span>Совпало ${item.items.length} из ${item.totalItems} правил</span></summary>
+        <div class="route-preset-group-children">${item.items.map((child) => routeRowHtml({ ...child, nested: true, nestedEditable: customGroup,
+          groupStart: item.index, groupEnd: item.rangeEnd, displayOrderStart: child.index + 1 }, options, rulesLength)).join('')}</div>
+      </details>`;
+    }
+    const displayLocked = routeDisplayRestricted(state);
     const start = item.index + 1;
     const end = item.index + item.items.length;
     const displayStart = Number.isFinite(Number(item.displayOrderStart)) ? Number(item.displayOrderStart) : start;
@@ -1608,10 +1606,10 @@ export function createRoutingActions({
     const startIndex = item.index;
     const endIndex = item.index + item.items.length;
     const detailsKey = `routing:preset-group:${item.key}:${startIndex}:${endIndex}`;
-    return `<details class="route-preset-group-row" draggable="true" data-details-key="${escapeHtml(detailsKey)}" data-route-index="${item.index}" data-route-range-start="${item.index}" data-route-range-end="${item.index + item.items.length}" data-route-preset-group="${escapeHtml(item.key)}">
+    return `<details class="route-preset-group-row" draggable="${!displayLocked}" data-details-key="${escapeHtml(detailsKey)}" ${displayLocked ? '' : `data-route-index="${item.index}" data-route-range-start="${item.index}" data-route-range-end="${item.index + item.items.length}"`} data-route-preset-group="${escapeHtml(item.key)}">
       <summary>
         <div class="route-preset-group-order">
-          <button class="route-drag-handle" type="button" title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
+          <button class="route-drag-handle" type="button" ${displayLocked ? 'disabled' : ''} title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
           <span>${displayStart === displayEnd ? displayStart : `${displayStart}–${displayEnd}`}</span>
         </div>
         ${icon}
@@ -1623,8 +1621,8 @@ export function createRoutingActions({
           ${targetOptions.map((option) => `<option value="${escapeHtml(option.value)}" ${option.disabled ? 'disabled' : ''} ${selectedTarget === option.value ? 'selected' : ''}>${escapeHtml(compactRouteTargetLabel(option.label))}</option>`).join('')}
         </select>
         <div class="route-actions route-preset-group-actions">
-          <button class="icon-btn route-action-btn move-up" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="-1" ${startIndex === 0 ? 'disabled' : ''} title="Поднять подборку выше" aria-label="Поднять подборку выше">↑</button>
-          <button class="icon-btn route-action-btn move-down" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="1" ${endIndex >= rulesLength ? 'disabled' : ''} title="Опустить подборку ниже" aria-label="Опустить подборку ниже">↓</button>
+          <button class="icon-btn route-action-btn move-up" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="-1" ${displayLocked || startIndex === 0 ? 'disabled' : ''} title="Поднять подборку выше" aria-label="Поднять подборку выше">↑</button>
+          <button class="icon-btn route-action-btn move-down" type="button" data-route-group-move-start="${startIndex}" data-route-group-move-end="${endIndex}" data-direction="1" ${displayLocked || endIndex >= rulesLength ? 'disabled' : ''} title="Опустить подборку ниже" aria-label="Опустить подборку ниже">↓</button>
           ${customGroup
             ? `<button class="icon-btn route-action-btn edit" type="button" data-route-custom-group-edit-key="${escapeHtml(detailsKey)}" data-route-group-title="${escapeHtml(item.title)}" title="Раскрыть и править правила группы" aria-label="Править группу">✎</button>`
             : `<button class="icon-btn route-action-btn edit" type="button" data-route-preset-edit="${escapeHtml(item.key)}" title="Править подборку" aria-label="Править подборку">✎</button>`}
@@ -1639,32 +1637,29 @@ export function createRoutingActions({
   }
 
   function orderedRouteList(items, options, rulesLength, managedItems = managedRoutingRuleItems()) {
-    let displayOrder = 1;
     const numberedItems = items.map((item) => {
-      const span = (item.kind === 'presetGroup' || item.kind === 'customGroup')
-        ? Math.max(1, item.items?.length || 1)
-        : 1;
-      const numbered = { ...item, displayOrderStart: displayOrder, displayOrderEnd: displayOrder + span - 1 };
-      displayOrder += span;
-      return numbered;
+      return { ...item, displayOrderStart: item.index + 1, displayOrderEnd: item.index + (item.items?.length || 1) };
     });
+    const displayLocked = routeDisplayRestricted(state);
     const userList = items.length ? `<section class="route-ordered-list">
       <header class="route-order-head">
-        <strong>Порядок выполнения Xray</strong>
-        <span>Сверху вниз: правило №1 проверяется первым. Перетаскивание меняет реальный порядок в конфигурации.</span>
+        <strong>${state.routeGrouping && state.routeGrouping !== 'order' ? 'Группировка для просмотра' : 'Порядок выполнения Xray'}</strong>
+        <span>${displayLocked ? 'Фильтры и группировка не меняют маршруты. Для перестановки сбросьте фильтры и выберите порядок Xray.' : 'Перетаскивание меняет реальный порядок в конфигурации.'} Номер — позиция в конфигурации Xray, включая служебные правила.</span>
       </header>
       <div class="route-section-list">
-        ${numberedItems.map((item) => (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
+        ${numberedItems.map((item) => item.kind === 'displayGroup'
+          ? `<details class="route-display-group" open data-details-key="routing:display:${escapeHtml(state.routeGrouping)}:${escapeHtml(item.key)}"><summary><strong>${escapeHtml(item.title)}</strong><span>${ruleCountLabel(item.items.length)}</span></summary><div class="route-section-list">${item.items.map((child) => routeRowHtml({ ...child, displayOrderStart: child.index + 1 }, options, rulesLength)).join('')}</div></details>`
+          : (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
-    </section>` : `<p class="muted route-empty-state">${state.routeSearch.trim() ? 'Правил по этому поиску нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
+    </section>` : `<p class="muted route-empty-state">${displayLocked ? 'Включённых правил по этим фильтрам нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;
     return `${userList}${managedRoutesPanel(managedItems)}${routeValuesDrawer()}`;
   }
 
   function disableVisibleRoutingRules() {
-    const visible = visibleRoutingRuleItems(80);
+    const visible = visibleRoutingRuleItems(state.routeVisibleLimit || 80);
     if (!visible.length) return;
     const current = routeRules();
-    const visibleRules = visible.flatMap((item) => (item.kind === 'presetGroup' || item.kind === 'customGroup') ? item.items : [item]);
+    const visibleRules = routeDisplayLeaves(visible);
     const disabledIndexes = new Set(visibleRules.map((item) => item.index));
     const disabled = visibleRules.map(({ rule, name, index }) => ({
       id: `disabled-${Date.now()}-${index}`,

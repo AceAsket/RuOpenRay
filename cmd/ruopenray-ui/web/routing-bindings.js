@@ -1,6 +1,9 @@
 import { analyzeRuleImport } from './routing-insights.js';
 import { isDefaultRoute } from './routing-order.js';
 import { bindRoutingAudit } from './routing-conflicts.js';
+import { normalizeRouteDisplay, routeDisplayDefaults, saveRouteDisplay } from './routing-display.js';
+
+let routeSearchTimer;
 
 export function bindRoutingControls({
   state,
@@ -386,13 +389,15 @@ export function bindRoutingControls({
       const index = Number(button.dataset.routeFocus);
       const rule = routeRules()[index];
       const info = rule ? describeRouteRule(rule) : null;
+      Object.assign(state, routeDisplayDefaults, { routeVisibleLimit: 80, selectedRouteRuleIndexes: [] });
+      saveRouteDisplay(state);
       state.routeSearch = info?.value || '';
       state.tab = 'routing';
       render();
     });
   });
   const routeTargetOptionLabel = (option) => String(option?.textContent || '')
-    .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, '')
+    .replace(/[\u{1F1E6}-\u{1F1FF}]{2}\s*/gu, '')
     .replace(/^[A-Z]{2}\s+(?=\S)/, '')
     .trim();
 
@@ -855,14 +860,50 @@ export function bindRoutingControls({
       render();
     });
   });
+  const renderRouteSearch = () => {
+    const input = document.querySelector('#routeSearch');
+    const focused = input && document.activeElement === input;
+    const start = input?.selectionStart, end = input?.selectionEnd;
+    render();
+    if (focused) {
+      const next = document.querySelector('#routeSearch');
+      next?.focus({ preventScroll: true });
+      if (Number.isInteger(start) && Number.isInteger(end)) next?.setSelectionRange(start, end);
+    }
+  };
   document.querySelector('#routeSearch')?.addEventListener('input', (event) => {
     state.routeSearch = event.target.value;
+    state.routeVisibleLimit = 80;
+    state.selectedRouteRuleIndexes = [];
+    clearTimeout(routeSearchTimer);
+    routeSearchTimer = setTimeout(renderRouteSearch, 200);
+  });
+  document.querySelectorAll('[data-route-display]').forEach((select) => {
+    if (select.dataset.routeDisplay === 'routeFilterTarget') decorateRouteTargetSelect(select, select.value);
+    select.addEventListener('change', (event) => {
+      const key = select.dataset.routeDisplay;
+      if (!Object.hasOwn(routeDisplayDefaults, key)) return;
+      clearTimeout(routeSearchTimer);
+      Object.assign(state, normalizeRouteDisplay({ ...state, [key]: event.target.value }), { routeVisibleLimit: 80, selectedRouteRuleIndexes: [] });
+      saveRouteDisplay(state);
+      render();
+    });
+  });
+  document.querySelector('[data-route-display-reset]')?.addEventListener('click', () => {
+    clearTimeout(routeSearchTimer);
+    Object.assign(state, routeDisplayDefaults, { routeSearch: '', routeVisibleLimit: 80, selectedRouteRuleIndexes: [] });
+    saveRouteDisplay(state);
+    render();
+  });
+  document.querySelector('[data-route-show-more]')?.addEventListener('click', () => {
+    state.routeVisibleLimit = (state.routeVisibleLimit || 80) + 80;
+    render();
   });
   document.querySelector('[data-route-default-last]')?.addEventListener('change', (event) => {
     setRouteDefaultLast(event.target.checked);
   });
   document.querySelector('#routeSearch')?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') render();
+    if (event.key === 'Enter') { clearTimeout(routeSearchTimer); renderRouteSearch(); }
   });
   document.querySelector('#routeReplaceFrom')?.addEventListener('change', (event) => {
     state.routeReplaceFrom = event.target.value;

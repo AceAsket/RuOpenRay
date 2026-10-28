@@ -33,6 +33,33 @@
   margin-left: auto;
 }
 
+.route-display-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+.route-display-control { display: grid; gap: 6px; min-width: 0; }
+.route-display-control > span { color: var(--muted); font-size: 13px; }
+.route-display-control select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.route-display-control .route-target-menu { min-width: 100%; max-width: min(460px, calc(100vw - 32px)); }
+.route-display-count { margin: 0 0 14px; font-size: 13px; line-height: 1.6; }
+.route-display-more { margin-top: 12px; }
+.route-display-group { min-width: 0; border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden; }
+.route-display-group > summary { padding: 16px; cursor: pointer; background: rgba(49, 210, 189, 0.05); overflow-wrap: anywhere; }
+.route-display-group > summary strong { margin-right: 12px; }
+.route-display-group > summary span { color: var(--muted); font-size: 13px; }
+.route-display-group > .route-section-list,
+.route-display-group > .route-preset-group-children { padding: 10px; }
+@media (max-width: 1400px) {
+  .route-display-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 650px) {
+  .route-display-controls { grid-template-columns: minmax(0, 1fr); }
+  .route-tools input { min-width: 0; width: 100%; }
+}
+
 .route-selection-tools {
   position: fixed;
   z-index: 45;

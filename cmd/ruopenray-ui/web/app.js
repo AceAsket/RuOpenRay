@@ -1586,6 +1586,7 @@ const routingView = createRoutingView({
   orderedRouteList,
   describeRouteRule,
   routeRuleName,
+  routeCategoryForRule,
   resolveRoutingAlias,
   dslPreviewView,
   configAnalysisView,

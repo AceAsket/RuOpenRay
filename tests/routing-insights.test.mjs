@@ -71,7 +71,7 @@ test('input validation and rendered explanations escape imported values', () => 
 });
 test('same-name groups remain separate across serialization, edits and reordering', () => {
   const state = { routeNames: {}, config: config([]), routeSearch: '', customRoutePresets: {}, routePresetSources: [] };
-  const model = createRoutingModel({ state, managedRouteTags: {}, routePresets: {}, routeBundles: {}, routeKinds: {} });
+  const model = createRoutingModel({ state, managedRouteTags: {}, routePresets: {}, routeBundles: {}, routeKinds: {}, proxyOutbounds: () => [] });
   const a = [domain('domain:a.test'), domain('domain:b.test')];
   const b = [domain('domain:a.test'), domain('domain:b.test')];
   const first = assignRouteGroup(a, state.routeNames, model.routeRuleKey, 'Same');

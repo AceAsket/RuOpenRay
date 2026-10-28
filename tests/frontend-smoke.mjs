@@ -1268,7 +1268,7 @@ const routeVisibleNumberingHtml = routeGroupActions.orderedRouteList(
 );
 const routeVisibleNumbering = [...routeVisibleNumberingHtml.matchAll(/<\/button>\s*<span>([^<]+)<\/span>\s*<\/div>/g)]
   .map((match) => match[1]);
-const routeVisibleNumberingSkipsManaged = routeVisibleNumbering.slice(0, 4).join(',') === '1,2,3,4';
+const routeVisibleNumberingMatchesConfig = routeVisibleNumbering.slice(0, 4).join(',') === '1,3,6,7';
 routeGroupState.config.routing.rules = [
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:one.example'] },
   { type: 'field', outboundTag: 'vpn-a', domain: ['domain:two.example'] },
@@ -2088,7 +2088,7 @@ const checks = [
   ['routing saved scenario title restores icon after rule refresh', routeSavedScenarioIconRestored],
   ['routing preset group inner order controls', routePresetGroupInnerMoveWorks && routePresetGroupInnerDragWorks],
   ['routing values drawer opens on demand', routeValuesDrawerWorks],
-  ['routing visible order skips managed rules', routeVisibleNumberingSkipsManaged],
+  ['routing visible numbers keep actual positions including hidden managed rules', routeVisibleNumberingMatchesConfig],
   ['routing custom group from list', routeCustomGroupWorks],
   ['routing custom group editable after expand', routeCustomGroupEditableWorks],
   ['subscription refresh applies active proxy', subscriptionRefreshAppliesActive],

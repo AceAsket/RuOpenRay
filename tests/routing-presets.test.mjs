@@ -13,7 +13,7 @@ function fixture() {
     routePresetEditTitle: '', routePresetEditDetail: '', routePresetEditIcon: '', routePresetEditTarget: 'outbound:proxy',
     routePresetEditDsl: '', routePresetEditor: 'custom:new', routeDslName: '', routeDslTarget: '', disabledRouteRules: [], selectedRouteRuleIndexes: [] };
   const routePresets = { overlap: { title: 'Overlap', rule: { type: 'field', domain: ['domain:ghcr.io'], outboundTag: 'proxy' } } };
-  const model = createRoutingModel({ state, routePresets, routeBundles: {}, managedRouteTags: {}, routeKinds: {} });
+  const model = createRoutingModel({ state, routePresets, routeBundles: {}, managedRouteTags: {}, routeKinds: {}, proxyOutbounds: () => [] });
   const dsl = createRoutingDsl({ state, escapeHtml, resolveRoutingAlias: (value) => value });
   const actions = createRoutingActions({ state, ...model, ...dsl, escapeHtml, render() {}, request: async () => ({ ok: true }),
     routePresets, routeBundles: {}, hiddenBuiltinRoutePresetKeys: new Set(), activeProxyTag: () => 'server-de',
@@ -60,6 +60,11 @@ test('installed preset remains one group when conditions overlap another preset 
   assert.equal(group.length, 1);
   assert.equal(group[0].items.length, 13);
   assert.equal(group[0].title, 'unraid');
+  state.routeFilterOrigin = 'presetGroup';
+  assert.equal(actions.visibleRoutingRuleItems()[0].items.length, 13, 'installed catalog keeps its preset origin');
+  state.routeFilterOrigin = 'customGroup';
+  assert.equal(actions.visibleRoutingRuleItems().length, 0);
+  state.routeFilterOrigin = '';
   assert.equal(state.routeNames[`@group-source:${routeGroupId(state.config.routing.rules[0], state.routeNames)}`], 'custom:unraid');
   actions.updateRoutingTargetRange(0, 2, 'outbound:direct');
   assert.equal(actions.visibleRoutingRuleItems()[0].items.length, 13);
