@@ -189,6 +189,8 @@ func (s *serverState) installCoreRelease(version string, keepBackup bool) map[st
 	if err != nil {
 		return fail(err)
 	}
+	baseline := s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig))
+	var functional map[string]any
 	prepare := func() error {
 		if err := validateCoreUpdateSniffingConfig(config); err != nil {
 			return err
@@ -233,6 +235,10 @@ func (s *serverState) installCoreRelease(version string, keepBackup bool) map[st
 				}
 				last = now["pid"]
 				if stable >= 5 {
+					functional = compareRuntimeHealth(baseline, s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig)))
+					if functional["ok"] != true {
+						return fmt.Errorf("новое ядро не прошло функциональную проверку DNS/VPN")
+					}
 					return nil
 				}
 			} else {
@@ -250,7 +256,8 @@ func (s *serverState) installCoreRelease(version string, keepBackup bool) map[st
 	if err != nil {
 		result := fail(err)
 		result["backup"] = backup
+		result["health"] = functional
 		return result
 	}
-	return map[string]any{"ok": true, "stdout": fmt.Sprintf("Установлен %s из %s; SHA-256 и конфигурация проверены", version, assetName), "backup": backup, "backupEnabled": keepBackup}
+	return map[string]any{"ok": true, "stdout": fmt.Sprintf("Установлен %s из %s; SHA-256 и конфигурация проверены", version, assetName), "backup": backup, "backupEnabled": keepBackup, "health": functional}
 }

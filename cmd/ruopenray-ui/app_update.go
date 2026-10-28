@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -243,45 +244,23 @@ func (s *serverState) updateApp(version string, keepBackup bool, channels ...str
 		os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": "SHA-256 или размер бинарника не совпадает с официальным релизом"}
 	}
-	if err := os.MkdirAll(s.cfg.BackupDir, 0700); err != nil {
-		os.Remove(tmp)
+	defer os.Remove(tmp)
+	if err = os.Chmod(tmp, 0700); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error()}
 	}
-	backup := filepath.Join(s.cfg.BackupDir, fmt.Sprintf("ruopenray-ui-%d.rollback", time.Now().UnixNano()))
-	previous, err := os.ReadFile(exe)
-	if err == nil {
-		err = writeFileAtomic(backup, previous, 0600)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	check := exec.CommandContext(ctx, tmp, "--self-check")
+	if err = check.Run(); err != nil {
+		return map[string]any{"ok": false, "stderr": "Новый бинарник не прошёл автономную проверку запуска"}
 	}
+	restart, err := s.scheduleAppUpdate(tmp, exe, expectedSHA, keepBackup)
 	if err != nil {
-		os.Remove(tmp)
-		return map[string]any{"ok": false, "stderr": "Не удалось создать обязательную копию панели; обновление отменено"}
-	}
-	if err := replaceExecutableAcrossFilesystems(tmp, exe); err != nil {
-		_ = os.Remove(tmp)
-		return map[string]any{"ok": false, "stderr": err.Error(), "release": release, "target": exe}
-	}
-	restart := s.restartAppServiceLater()
-	if restart["ok"] != true {
-		rollbackErr := replaceExecutableAcrossFilesystems(backup, exe)
-		return map[string]any{"ok": false, "stderr": "Не удалось запланировать перезапуск панели", "rollbackError": fmt.Sprint(rollbackErr), "backup": backup}
+		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
 	}
 	return map[string]any{
 		"ok": true, "version": release["tag"], "previous": appVersion, "release": release,
-		"backup": backup, "backupEnabled": true, "keepBackup": keepBackup, "sha256": expectedSHA, "size": size, "target": exe, "restart": restart,
-		"stdout": fmt.Sprintf("RuOpenRay UI обновлен до %s. Сервис будет перезапущен.", release["tag"]),
+		"backup": restart["backup"], "backupEnabled": true, "keepBackup": keepBackup, "sha256": expectedSHA, "size": size, "target": exe, "restart": restart,
+		"state": "pending", "stdout": fmt.Sprintf("Установлен %s. Независимый watchdog перезапустит панель и проверит готовность; при отказе восстановит прежний бинарник.", release["tag"]),
 	}
-}
-
-func (s *serverState) restartAppServiceLater() map[string]any {
-	if runtime.GOOS == "windows" {
-		return map[string]any{"ok": true, "stdout": "dev-mode: перезапуск ruopenray-ui пропущен"}
-	}
-	if _, err := os.Stat("/etc/init.d/" + appServiceName); err != nil {
-		return map[string]any{"ok": true, "stdout": "init-скрипт ruopenray-ui не найден; перезапустите сервис вручную"}
-	}
-	cmd := exec.Command("sh", "-c", "sleep 1; /etc/init.d/ruopenray-ui restart >/tmp/ruopenray-ui-update.log 2>&1")
-	if err := cmd.Start(); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error()}
-	}
-	return map[string]any{"ok": true, "stdout": "запланирован перезапуск ruopenray-ui", "pid": cmd.Process.Pid}
 }

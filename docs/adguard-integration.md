@@ -146,3 +146,9 @@ DoH stamps используют bootstrap IP `127.0.0.1` и TLS provider name с
 6. Перезагрузить VM, проверить восстановление сервиса, фильтрации, bootstrap и VPN; выполнить откат к прежнему DNS и возврат к пилоту.
 
 Официальные интерфейсы: [API AdGuard Home 0.107.79](https://github.com/AdguardTeam/AdGuardHome/blob/v0.107.79/openapi/openapi.yaml), [настройки AdGuard Home](https://adguard-dns.io/kb/adguard-home/configuration/), [DoH stamps](https://dnscrypt.info/stamps-specifications/).
+
+При установке панели через SDK-пакет шаблон procd-сервиса находится в
+`/usr/share/ruopenray-ui/ruopenray-adguard.init`. Пакет панели не владеет
+действующим `/etc/init.d/ruopenray-adguard`, чтобы обновление или удаление UI
+не останавливало независимый DNS. Установку самого AdGuard, его конфигурации
+и включение службы выполняют отдельно; готовый init-скрипт также есть в исходниках.

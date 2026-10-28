@@ -47,23 +47,6 @@ func normalizeNftsetDomain(value string) (string, bool) {
 	return clean, true
 }
 
-func applyTProxyPolicyRouting(enabled bool) []map[string]any {
-	if !enabled {
-		return []map[string]any{
-			runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1/1", "table", "100"),
-			runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1", "table", "100"),
-			runTimeout(5*time.Second, "ip", "route", "flush", "table", "100"),
-		}
-	}
-	return []map[string]any{
-		runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1/1", "table", "100"),
-		runTimeout(5*time.Second, "ip", "rule", "del", "fwmark", "1", "table", "100"),
-		runTimeout(5*time.Second, "ip", "route", "flush", "table", "100"),
-		runTimeout(5*time.Second, "ip", "rule", "add", "fwmark", "1/1", "table", "100"),
-		runTimeout(5*time.Second, "ip", "route", "add", "local", "0.0.0.0/0", "dev", "lo", "table", "100"),
-	}
-}
-
 func sanitizeKillSwitchDomains(value any) []string {
 	seen := map[string]bool{}
 	out := []string{}
@@ -207,10 +190,16 @@ func applyKillSwitchDNSBlock(domains []string, enabled bool) []map[string]any {
 		steps = append(steps, runTimeout(5*time.Second, "uci", "add_list", "dhcp.@dnsmasq[0].address="+entry))
 	}
 	if len(nextDomains) > 0 {
-		_ = os.MkdirAll(filepath.Dir(ruOpenRayKillSwitchDNSPath), 0o755)
-		_ = os.WriteFile(ruOpenRayKillSwitchDNSPath, []byte(strings.Join(nextDomains, "\n")+"\n"), 0o644)
+		if err := os.MkdirAll(filepath.Dir(ruOpenRayKillSwitchDNSPath), 0o755); err != nil {
+			return append(steps, map[string]any{"ok": false, "stderr": err.Error()})
+		}
+		if err := writeFileAtomic(ruOpenRayKillSwitchDNSPath, []byte(strings.Join(nextDomains, "\n")+"\n"), 0o644); err != nil {
+			return append(steps, map[string]any{"ok": false, "stderr": err.Error()})
+		}
 	} else {
-		_ = os.Remove(ruOpenRayKillSwitchDNSPath)
+		if err := os.Remove(ruOpenRayKillSwitchDNSPath); err != nil && !os.IsNotExist(err) {
+			return append(steps, map[string]any{"ok": false, "stderr": err.Error()})
+		}
 	}
 	steps = append(steps, runTimeout(5*time.Second, "uci", "commit", "dhcp"))
 	if commandExists("/etc/init.d/dnsmasq") {
@@ -570,47 +559,9 @@ func (s *serverState) applyFirewall(payload map[string]any) map[string]any {
 			"status":            s.firewallStatus(),
 		}
 	}
-	routerMode := fmt.Sprint(meta["routerMode"])
-	steps := []map[string]any{}
-	if err := os.MkdirAll(filepath.Dir(ruOpenRayFirewallNftPath), 0o755); err != nil {
-		return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
-	}
-	if err := os.WriteFile(ruOpenRayFirewallNftPath, []byte(body), 0o644); err != nil {
-		return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
-	}
-	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
-	if routerMode == "tproxy" {
-		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallHotplugPath), 0o755)
-		hotplug := []byte(rfw.HotplugScript())
-		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, hotplug, 0o755); err != nil {
-			return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
-		}
-		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallEventPath), 0o755)
-		if err := os.WriteFile(ruOpenRayFirewallEventPath, hotplug, 0o755); err != nil {
-			return map[string]any{"ok": false, "error": err.Error(), "nft": body, "meta": meta}
-		}
-	} else {
-		_ = os.Remove(ruOpenRayFirewallHotplugPath)
-		_ = os.Remove(ruOpenRayFirewallEventPath)
-	}
-	if commandExists("/etc/init.d/firewall") {
-		steps = append(steps, runTimeout(20*time.Second, "/etc/init.d/firewall", "reload"))
-	}
-	steps = append(steps, runTimeout(5*time.Second, "nft", "delete", "table", "inet", "ruopenray"))
-	steps = append(steps, runTimeout(10*time.Second, "nft", "-f", ruOpenRayFirewallNftPath))
-	steps = append(steps, applyTProxyPolicyRouting(routerMode == "tproxy")...)
-	steps = append(steps, applyKillSwitchDomainProtection(
-		stringList(payload["killSwitchDomains"]),
-		boolPayload(payload, "killSwitch", false),
-		rfw.PayloadString(payload, "killSwitchDomainMode", "dns-block"),
-	)...)
-	steps = append(steps, applyRouteDomainNftsets(payload, fmt.Sprint(meta["bypassMode"]))...)
-	status := s.firewallStatus()
-	ok := rfw.AllStepsOK(steps) && status["active"] == true
-	if routerMode == "tproxy" {
-		ok = ok && status["ipRule"] == true && status["ipRoute"] == true
-	}
-	return map[string]any{"ok": ok, "nft": body, "meta": meta, "geoExpansion": payload["geoExpansion"], "preflight": preflight, "steps": steps, "status": status}
+	result := s.firewallCommit(body, rfw.HotplugScript(), meta)
+	result["nft"], result["meta"], result["preflight"], result["geoExpansion"] = body, meta, preflight, payload["geoExpansion"]
+	return result
 }
 
 func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string]any {
@@ -619,77 +570,24 @@ func (s *serverState) restoreFirewallSnapshot(payload map[string]any) map[string
 		rawSnapshot = nested
 	}
 	nftBody := cleanPayloadString(rawSnapshot, "nftBody")
-	hotplugBody := cleanPayloadString(rawSnapshot, "hotplugBody")
 	if strings.TrimSpace(nftBody) == "" {
 		return s.disableFirewall()
 	}
-	steps := []map[string]any{}
-	if err := os.MkdirAll(filepath.Dir(ruOpenRayFirewallNftPath), 0o755); err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
-	if err := os.WriteFile(ruOpenRayFirewallNftPath, []byte(nftBody), 0o644); err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
-	if strings.TrimSpace(hotplugBody) != "" {
-		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallHotplugPath), 0o755)
-		hotplug := []byte(hotplugBody)
-		if err := os.WriteFile(ruOpenRayFirewallHotplugPath, hotplug, 0o755); err != nil {
-			return map[string]any{"ok": false, "error": err.Error()}
-		}
-		_ = os.MkdirAll(filepath.Dir(ruOpenRayFirewallEventPath), 0o755)
-		if err := os.WriteFile(ruOpenRayFirewallEventPath, hotplug, 0o755); err != nil {
-			return map[string]any{"ok": false, "error": err.Error()}
-		}
-	} else {
-		_ = os.Remove(ruOpenRayFirewallHotplugPath)
-		_ = os.Remove(ruOpenRayFirewallEventPath)
-	}
-	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
-	if commandExists("/etc/init.d/firewall") {
-		steps = append(steps, runTimeout(20*time.Second, "/etc/init.d/firewall", "reload"))
-	}
-	if commandExists("nft") {
-		steps = append(steps, runTimeout(5*time.Second, "nft", "delete", "table", "inet", "ruopenray"))
-		steps = append(steps, runTimeout(10*time.Second, "nft", "-f", ruOpenRayFirewallNftPath))
-	}
-	routerMode := "redirect"
-	if strings.Contains(nftBody, " tproxy ") {
-		routerMode = "tproxy"
-	}
-	steps = append(steps, applyTProxyPolicyRouting(routerMode == "tproxy")...)
-	meta := parseFirewallStatusMeta(nftBody)
-	steps = append(steps, applyKillSwitchDomainProtection(
-		stringList(meta["killSwitchDomains"]),
-		meta["killSwitch"] == true,
-		fmt.Sprint(meta["killSwitchDomainMode"]),
-	)...)
-	steps = append(steps, applyRouteDomainNftsets(meta, fmt.Sprint(meta["bypassMode"]))...)
-	status := s.firewallStatus()
-	ok := rfw.AllStepsOK(steps) && status["active"] == true
-	if routerMode == "tproxy" {
-		ok = ok && status["ipRule"] == true && status["ipRoute"] == true
-	}
-	return map[string]any{"ok": ok, "steps": steps, "status": status}
+	// Imported hotplug scripts are never executed: regenerate the managed hook.
+	return s.firewallCommit(nftBody, rfw.HotplugScript(), parseFirewallStatusMeta(nftBody))
 }
 
 func (s *serverState) disableFirewall() map[string]any {
-	steps := []map[string]any{}
-	_ = os.Remove(ruOpenRayFirewallNftPath)
-	_ = os.Remove(ruOpenRayFirewallLegacyNftPath)
-	_ = os.Remove(ruOpenRayFirewallHotplugPath)
-	_ = os.Remove(ruOpenRayFirewallEventPath)
-	if commandExists("/etc/init.d/firewall") {
-		steps = append(steps, runTimeout(20*time.Second, "/etc/init.d/firewall", "reload"))
+	return s.firewallCommit("", "", map[string]any{})
+}
+
+func (s *serverState) reloadFirewall() map[string]any {
+	body, err := os.ReadFile(ruOpenRayFirewallNftPath)
+	if os.IsNotExist(err) {
+		return map[string]any{"ok": true, "skipped": true}
 	}
-	if commandExists("nft") {
-		steps = append(steps, runTimeout(5*time.Second, "nft", "delete", "table", "inet", "ruopenray"))
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	steps = append(steps, applyTProxyPolicyRouting(false)...)
-	steps = append(steps, applyKillSwitchNftsets(nil, false)...)
-	steps = append(steps, applyKillSwitchDNSBlock(nil, false)...)
-	steps = append(steps, applyRouteNftsets("bypass4", nil, false)...)
-	steps = append(steps, applyRouteNftsets("proxy4", nil, false)...)
-	steps = append(steps, applyRouteNftsets("amnezia4", nil, false)...)
-	status := s.firewallStatus()
-	return map[string]any{"ok": rfw.AllStepsOK(steps), "steps": steps, "status": status}
+	return s.firewallCommit(string(body), rfw.HotplugScript(), parseFirewallStatusMeta(string(body)))
 }

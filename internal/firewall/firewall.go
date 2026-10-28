@@ -419,32 +419,17 @@ func NativeNft(payload map[string]any) (string, map[string]any) {
 
 func HotplugScript() string {
 	return `#!/bin/sh
-[ "$ACTION" = "ifup" ] || [ "$ACTION" = "ifupdate" ] || [ "$ACTION" = "ifdown" ] || exit 0
-NFT_FILE="/etc/ruopenray-ui/firewall.nft"
-nft delete table inet ruopenray 2>/dev/null
-[ -s "$NFT_FILE" ] && nft -f "$NFT_FILE" 2>/dev/null
-ip rule del fwmark 1 table 100 2>/dev/null
-ip rule del fwmark 1/1 table 100 2>/dev/null
-ip route flush table 100 2>/dev/null
-ip rule add fwmark 1/1 table 100 2>/dev/null
-ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
-exit 0
+case "$ACTION" in ifup|ifupdate|ifdown|reload|"") ;; *) exit 0 ;; esac
+# The CLI shares the API/cron lock and performs nft --check + atomic replacement.
+/usr/bin/ruopenray-ui --firewall-reload || {
+    logger -t ruopenray "firewall reload failed; previous table retained or rollback reported"
+    exit 1
+}
 `
 }
 
 func StepOK(step map[string]any) bool {
-	stderr := strings.TrimSpace(fmt.Sprint(step["stderr"]))
-	stdout := strings.TrimSpace(fmt.Sprint(step["stdout"]))
-	message := strings.TrimSpace(fmt.Sprint(step["message"]))
-	combined := strings.ToLower(stderr + " " + stdout + " " + message)
-	missing := strings.Contains(combined, "no such file") || strings.Contains(combined, "not found") || strings.Contains(combined, "no such process")
-	if strings.Contains(combined, "error:") && !missing {
-		return false
-	}
-	if step["ok"] == true {
-		return true
-	}
-	return missing
+	return step["ok"] == true
 }
 
 func AllStepsOK(steps []map[string]any) bool {

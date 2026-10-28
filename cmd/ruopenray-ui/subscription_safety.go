@@ -91,7 +91,8 @@ func (s *serverState) restoreSubscriptionConfig(backup string) error {
 }
 
 func (s *serverState) restartSubscriptionWithRollback(backup string) map[string]any {
-	result := s.serviceAction("restart")
+	before := s.captureRuntimeHealth(s.runtimeHealthConfig(backup))
+	result := s.serviceActionWithHealth("restart", &before)
 	if result["ok"] == true {
 		return result
 	}
@@ -100,6 +101,6 @@ func (s *serverState) restartSubscriptionWithRollback(backup string) map[string]
 		result["rollback"] = map[string]any{"ok": false, "error": err.Error()}
 		return result
 	}
-	result["rollback"] = s.serviceAction("restart")
+	result["rollback"] = s.serviceActionWithHealth("restart", &before)
 	return result
 }

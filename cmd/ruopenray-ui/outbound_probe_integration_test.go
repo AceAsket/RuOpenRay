@@ -52,6 +52,11 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/truncated" {
+			w.Header().Set("Content-Length", "4096")
+			w.Write([]byte("incomplete"))
+			return
+		}
 		if r.URL.Path == "/failed" {
 			w.WriteHeader(http.StatusForbidden)
 			return
@@ -141,6 +146,9 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			}
 			if latency < 0 {
 				t.Fatalf("invalid latency: %d", latency)
+			}
+			if _, ok, err := s.httpOutboundProbeStatus(outbound, origin.URL+"/truncated", 1500, 1, true); ok || err == nil {
+				t.Fatal("truncated HTTP 200 was accepted as a healthy tunnel")
 			}
 			var rawProbeErrors []string
 			_, fallbackOK, probes, fallbackErr := runSubscriptionProbes([]string{origin.URL + "/failed", origin.URL}, func(target string) (int64, bool, error) {

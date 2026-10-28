@@ -566,10 +566,7 @@ func (s *serverState) serverModeApply(payload map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "preflight": preflight, "test": test}
 	}
-	if err := s.writeActiveConfig(patched); err != nil {
-		return map[string]any{"ok": false, "error": err.Error(), "backup": backup, "preflight": preflight, "test": test}
-	}
-	profileName, profileErr := s.syncCurrentProfile(patched)
+	profileName, restoreProfile, profileErr := s.writeCandidateProfile(patched, backup)
 	result := map[string]any{
 		"ok":        profileErr == nil,
 		"backup":    backup,
@@ -584,7 +581,10 @@ func (s *serverState) serverModeApply(payload map[string]any) map[string]any {
 		return result
 	}
 	if boolPayload(payload, "restart", false) {
-		restart := s.serviceAction("restart")
+		restart := s.restartSubscriptionWithRollback(backup)
+		if restart["ok"] != true && restoreProfile != nil {
+			restart["profileRollbackOK"] = restoreProfile() == nil
+		}
 		result["restart"] = restart
 		result["ok"] = restart["ok"] == true
 	}

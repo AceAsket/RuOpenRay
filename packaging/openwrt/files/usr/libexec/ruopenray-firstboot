@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+umask 077
+password="$(uci -q get ruopenray-ui.main.password || true)"
+data_dir="$(uci -q get ruopenray-ui.main.data_dir || true)"
+[ -n "$data_dir" ] || data_dir=/etc/ruopenray-ui
+case "$data_dir" in /*) ;; *) logger -t ruopenray 'data_dir must be absolute'; exit 1 ;; esac
+mkdir -p "$data_dir/profiles" "$data_dir/backups"
+chmod 600 /etc/config/ruopenray-ui
+[ -z "$password" ] || exit 0
+password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+[ "${#password}" -eq 48 ] || exit 1
+printf '%s\n' "$password" > "$data_dir/initial-password"
+chmod 600 "$data_dir/initial-password"
+uci set "ruopenray-ui.main.password=$password"
+uci commit ruopenray-ui
+logger -t ruopenray "Initial panel password saved locally in $data_dir/initial-password (root only)"

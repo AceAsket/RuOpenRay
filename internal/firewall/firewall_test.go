@@ -398,9 +398,9 @@ func TestNativeNftBypassesDnatReplyTraffic(t *testing.T) {
 	}
 }
 
-func TestStepOKAllowsMissingDeletes(t *testing.T) {
-	if !StepOK(map[string]any{"ok": false, "stderr": "No such file or directory"}) {
-		t.Fatal("StepOK should allow idempotent missing-file errors")
+func TestStepOKRejectsUnclassifiedMissingErrors(t *testing.T) {
+	if StepOK(map[string]any{"ok": false, "stderr": "No such file or directory"}) {
+		t.Fatal("StepOK must not turn a missing input or executable into success")
 	}
 	if StepOK(map[string]any{"ok": false, "stderr": "Error: syntax error"}) {
 		t.Fatal("StepOK should reject real nft syntax errors")

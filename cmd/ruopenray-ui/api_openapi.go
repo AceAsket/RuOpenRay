@@ -87,6 +87,7 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/logout", "Auth", "Revoke current session", "Revokes the bearer/cookie session and expires its cookie. Remembered session revocation persists across restarts.", "GenericObject", "OkResponse"},
 		{"get", "/auth/check", "Auth", "Check current session", "Returns ok=true when Authorization bearer token or session cookie is accepted.", "", "OkResponse"},
 		{"get", "/status", "System", "Get router and Xray status", "Main dashboard snapshot: service state, resources, compatibility detectors, versions and warnings.", "", "Object"},
+		{"get", "/app/update-status", "System", "Get self-update watchdog result", "Reports independent readiness verification or rollback. Requires authentication; contains no update probe token.", "", "Object"},
 		{"post", "/service", "System", "Control Xray service", "Start, stop or restart managed Xray service.", "GenericObject", "Object"},
 		{"post", "/compat/stop-ruopenray", "System", "Stop RuOpenRay mode", "Disables RuOpenRay interception and stops managed Xray without deleting third-party services.", "", "Object"},
 		{"get", "/compat/status", "Compatibility", "Get third-party compatibility status", "Reports detected AdGuard Home and B4 services with safe web links.", "", "Object"},

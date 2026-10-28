@@ -138,7 +138,7 @@ func loadAppConfig() appConfig {
 		GeoDir:       getenv([]string{"RUOPENRAY_GEO_DIR", "OPENRAY_GEO_DIR"}, fallback("geo_dir", "")),
 		Host:         getenv([]string{"RUOPENRAY_HOST", "OPENRAY_HOST"}, fallback("host", "127.0.0.1")),
 		Port:         getenv([]string{"RUOPENRAY_PORT", "OPENRAY_PORT"}, fallback("port", "9090")),
-		Password:     getenv([]string{"RUOPENRAY_PASSWORD", "RUOPENRAY_TOKEN", "OPENRAY_PASSWORD", "OPENRAY_TOKEN"}, fallback("password", "admin")),
+		Password:     getenv([]string{"RUOPENRAY_PASSWORD", "RUOPENRAY_TOKEN", "OPENRAY_PASSWORD", "OPENRAY_TOKEN"}, fallback("password", "")),
 		ActiveConfig: getenv([]string{"RUOPENRAY_ACTIVE_CONFIG", "OPENRAY_ACTIVE_CONFIG"}, fallback("active_config", "")),
 		ProfilesDir:  getenv([]string{"RUOPENRAY_PROFILES_DIR", "OPENRAY_PROFILES_DIR"}, ""),
 		BackupDir:    getenv([]string{"RUOPENRAY_BACKUP_DIR", "OPENRAY_BACKUP_DIR"}, fallback("backup_dir", "")),

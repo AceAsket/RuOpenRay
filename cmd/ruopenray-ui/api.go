@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +56,10 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	path := strings.TrimPrefix(r.URL.Path, "/api")
+	if path == "/app/update-ready" && r.Method == http.MethodGet {
+		s.appUpdateReady(w, r)
+		return
+	}
 	if path == "/version" && r.Method == http.MethodGet {
 		writeJSON(w, 200, apiVersionPayload())
 		return
@@ -414,6 +420,21 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case path == "/app/releases" && r.Method == http.MethodGet:
 		release, err := appLatestRelease(r.URL.Query().Get("channel"))
 		respond(w, map[string]any{"ok": true, "version": appVersion, "asset": ruOpenRayAssetName(), "arch": systemArchitecture("github-release"), "release": release}, err)
+	case path == "/app/update-status" && r.Method == http.MethodGet:
+		body, err := os.ReadFile(filepath.Join(s.cfg.DataDir, "app-update-result.json"))
+		var result map[string]any
+		if err == nil {
+			err = json.Unmarshal(body, &result)
+		}
+		if pending, e := readAppUpdatePlan(s.appUpdatePlanPath()); e == nil && result["expectedSHA"] != pending.ExpectedSHA {
+			writeJSON(w, 200, map[string]any{"ok": true, "state": "pending"})
+			return
+		}
+		if os.IsNotExist(err) {
+			writeJSON(w, 200, map[string]any{"ok": true, "state": "unknown"})
+		} else {
+			respond(w, result, err)
+		}
 	case path == "/app/update" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false), fmt.Sprint(payload["channel"])))

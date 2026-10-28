@@ -47,7 +47,7 @@ export function createUpdatesActions({
       });
       state.appUpdate = result;
       state.message = result.ok
-        ? `RuOpenRay UI обновлен до ${result.version || target}. Сервис перезапускается.`
+        ? result.stdout || `Установлен ${result.version || target}. Ожидается проверка новой панели.`
         : result.stderr || 'Не удалось обновить RuOpenRay UI';
       if (result.ok) {
         setTimeout(() => refresh().catch(() => {}), 2500);

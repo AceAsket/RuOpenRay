@@ -24,6 +24,14 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 }
 
 func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
+	return s.httpOutboundProbeStatusWithConfig(outbound, nil, probeURL, timeoutMs, attempts, strict)
+}
+
+func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any, all []any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
+	outs, err := runtimeProbeOutbounds(outbound, all)
+	if err != nil {
+		return 0, false, err
+	}
 	port, err := freeLocalPort()
 	if err != nil {
 		return 0, false, err
@@ -33,7 +41,7 @@ func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL 
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": false},
 		}},
-		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+		"outbounds": outs,
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -112,8 +120,16 @@ func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL 
 		resp, err := client.Do(req)
 		latency := time.Since(started).Milliseconds()
 		if err == nil {
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+			n, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, (64<<10)+1))
 			_ = resp.Body.Close()
+			if readErr != nil {
+				lastErr = readErr
+				continue
+			}
+			if n > 64<<10 {
+				lastErr = fmt.Errorf("проверочный ответ превышает 64 КиБ; полное чтение не подтверждено")
+				continue
+			}
 			if (!strict && resp.StatusCode < 500) || (strict && resp.StatusCode >= 200 && resp.StatusCode < 300) {
 				if !measured {
 					if !warmSuccess || latency < warmBest {

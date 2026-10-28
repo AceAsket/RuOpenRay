@@ -81,10 +81,19 @@ func (s *serverState) runXray(args ...string) map[string]any {
 }
 
 func (s *serverState) serviceAction(action string) map[string]any {
+	return s.serviceActionWithHealth(action, nil)
+}
+
+func (s *serverState) serviceActionWithHealth(action string, baseline *runtimeHealth) map[string]any {
 	switch action {
 	case "start", "stop", "restart", "enable", "disable":
 	default:
 		return map[string]any{"ok": false, "stderr": "Неподдерживаемое действие сервиса"}
+	}
+	healthEnabled := runtime.GOOS == "linux" && s.cfg.ServiceName == "xray" && (action == "start" || action == "restart")
+	if healthEnabled && baseline == nil {
+		before := s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig))
+		baseline = &before
 	}
 	var logMaintenance map[string]any
 	var xrayEnable map[string]any
@@ -106,13 +115,16 @@ func (s *serverState) serviceAction(action string) map[string]any {
 				}
 			}
 			xrayEnable = s.enableXrayServiceConfig()
+			if xrayEnable["ok"] != true {
+				return map[string]any{"ok": false, "xrayEnable": xrayEnable, "stderr": "Не удалось подготовить init-конфигурацию Xray"}
+			}
 		}
 	}
 	delay := s.waitBeforeXrayAction(action)
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: был бы выполнен сервис " + s.cfg.ServiceName + " " + action, "logMaintenance": logMaintenance, "delay": delay}
 	}
-	result := run("/etc/init.d/"+s.cfg.ServiceName, action)
+	result := runTimeout(30*time.Second, "/etc/init.d/"+s.cfg.ServiceName, action)
 	if logMaintenance != nil {
 		result["logMaintenance"] = logMaintenance
 	}
@@ -127,6 +139,24 @@ func (s *serverState) serviceAction(action string) map[string]any {
 	if delay != nil {
 		result["delay"] = delay
 		result["stdout"] = concatCommandOutput(delay, result)
+	}
+	if result["ok"] == true && healthEnabled {
+		ready := s.waitXrayReady()
+		result["readiness"] = ready
+		if ready["ok"] != true {
+			result["ok"] = false
+			result["stderr"] = ready["stderr"]
+		} else {
+			health := compareRuntimeHealth(*baseline, s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig)))
+			result["health"] = health
+			if health["state"] == "inconclusive" {
+				result["stdout"] = fmt.Sprint(result["stdout"]) + "\nФункциональная проверка DNS/VPN неполная: исходная сеть была недоступна либо результат неоднозначен; автоматический откат не выполнялся."
+			}
+			if health["ok"] != true {
+				result["ok"] = false
+				result["stderr"] = "После перезапуска потеряны ранее работавшие DNS/VPN-проверки"
+			}
+		}
 	}
 	return result
 }
