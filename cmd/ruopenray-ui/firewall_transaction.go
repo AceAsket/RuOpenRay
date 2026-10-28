@@ -420,11 +420,8 @@ func (s *serverState) firewallCommitWith(body, hotplug string, payload map[strin
 		t.cleanup()
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	// Both inverse batch and file copies are allocated before the kernel commit.
-	if err = writeFileAtomic(filepath.Join(t.dir, "rollback.nft"), []byte(firewallBatch(t.table, body != "")), 0600); err != nil {
-		t.cleanup()
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
+	// Both inverse variants were allocated by beginFirewallTransaction. Keep
+	// them intact: fw4 may recreate the old table during boot after a disable.
 	journal := transactionRecovery{Version: 1, Kind: "firewall", Rules: t.rules, Routes: t.routes, Table: t.table, HadTable: t.hadTable}
 	for _, f := range t.files {
 		journal.Files = append(journal.Files, recoveryFile{Path: f.path, Backup: f.backup, Existed: f.exists, Mode: f.mode, SHA256: f.sha256})

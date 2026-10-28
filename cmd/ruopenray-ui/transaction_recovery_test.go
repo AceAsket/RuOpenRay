@@ -208,6 +208,57 @@ func TestRecoveryChecksAllSnapshotsBeforeRestoringAnyFile(t *testing.T) {
 	}
 }
 
+func TestFirewallDisableRecoveryAfterBootReloadsOldTable(t *testing.T) {
+	root := t.TempDir()
+	s := &serverState{cfg: appConfig{DataDir: root}}
+	var paths []string
+	for _, name := range []string{"nft", "legacy", "iface", "fw", "dns", "dhcp"} {
+		path := filepath.Join(root, name)
+		paths = append(paths, path)
+		os.WriteFile(path, []byte("old"), 0600)
+	}
+	old := "table inet ruopenray { chain old {} }\n"
+	crash := true
+	loaded := false
+	run := func(_ time.Duration, name string, args ...string) map[string]any {
+		out := ""
+		if name == "nft" {
+			switch strings.Join(args, " ") {
+			case "list tables":
+				out = "table inet ruopenray\n"
+			case "-s list table inet ruopenray":
+				out = old
+			}
+			if len(args) == 2 && args[0] == "-f" {
+				if crash {
+					panic("simulated power cut after kernel disable")
+				}
+				body, _ := os.ReadFile(args[1])
+				if string(body) != firewallBatch(old, true) {
+					t.Fatal("missing inverse for table recreated during boot")
+				}
+				loaded = true
+			}
+		}
+		return map[string]any{"ok": true, "stdout": out}
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("did not reach live commit")
+			}
+		}()
+		s.firewallCommitWith("", "", nil, paths, run, nil, nil)
+	}()
+	crash = false
+	if err := s.recoverPendingTransactionsWith(run, paths); err != nil {
+		t.Fatal(err)
+	}
+	if !loaded {
+		t.Fatal("old table was not restored")
+	}
+}
+
 func TestInstallerShipsTheSameIndependentAppRecoveryHelper(t *testing.T) {
 	helper, err := os.ReadFile(filepath.Join("..", "..", "packaging", "openwrt", "files", "usr", "libexec", "ruopenray-recover-app"))
 	if err != nil {
