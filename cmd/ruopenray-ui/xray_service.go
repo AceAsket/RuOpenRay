@@ -210,6 +210,10 @@ func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	if cfg, valid := payload["config"].(map[string]any); !valid || cfg == nil {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "config должен быть объектом; для перезапуска используйте /api/service"})
+		return
+	}
 	if cfg, ok := payload["config"].(map[string]any); ok {
 		if expected, supplied := payload["expectedConfigRevision"]; supplied && expected != s.activeConfigRevision() {
 			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "conflict": true, "error": "Активная конфигурация изменилась. Загрузите изменения перед применением; ваш черновик сохранён."})

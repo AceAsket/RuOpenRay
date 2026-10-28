@@ -20,6 +20,12 @@ func reliabilityState(t *testing.T) *serverState {
 	if err := s.ensureData(); err != nil {
 		t.Fatal(err)
 	}
+	fixtureXrayValidator(t)
+	return s
+}
+
+func fixtureXrayValidator(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS != "windows" {
 		bin := t.TempDir()
 		if err := os.WriteFile(filepath.Join(bin, "xray"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
@@ -27,7 +33,6 @@ func reliabilityState(t *testing.T) *serverState {
 		}
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	return s
 }
 
 func TestDraftRevisionRejectsStaleWriterAndStaleDelete(t *testing.T) {
@@ -47,6 +52,19 @@ func TestDraftRevisionRejectsStaleWriterAndStaleDelete(t *testing.T) {
 	}
 	if got := s.readConfigDraft(); mapValue(got["config"])["remark"] != "second" {
 		t.Fatal(got)
+	}
+}
+
+func TestApplyRejectsMissingOrNonObjectConfig(t *testing.T) {
+	s := reliabilityState(t)
+	before, _ := os.ReadFile(s.cfg.ActiveConfig)
+	for _, body := range []string{`{}`, `{"config":null}`, `{"config":[]}`, `{"config":"invalid"}`} {
+		rec := httptest.NewRecorder()
+		s.applyConfigWithRestart(rec, httptest.NewRequest(http.MethodPost, "/api/config/apply", strings.NewReader(body)), func(string) map[string]any { t.Fatal("invalid candidate triggered restart"); return nil })
+		after, _ := os.ReadFile(s.cfg.ActiveConfig)
+		if rec.Code != 400 || !bytes.Equal(before, after) {
+			t.Fatalf("invalid config changed state: %d %s", rec.Code, rec.Body.String())
+		}
 	}
 }
 

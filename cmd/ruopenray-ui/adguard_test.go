@@ -263,7 +263,9 @@ func TestAdGuardWaitsForEngineBeforeClearingCache(t *testing.T) {
 }
 
 func TestAdGuardProfileMarkerFailureRestoresActiveConfig(t *testing.T) {
+	fixtureXrayValidator(t)
 	s, _ := newAdGuardFake(t)
+	s.cfg.BackupDir = filepath.Join(s.cfg.DataDir, "backups")
 	baseline := []byte(`{"outbounds":[]}`)
 	if err := os.WriteFile(s.cfg.ActiveConfig, baseline, 0600); err != nil {
 		t.Fatal(err)
@@ -278,7 +280,7 @@ func TestAdGuardProfileMarkerFailureRestoresActiveConfig(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.activateProfile(w, req)
 	after, _ := os.ReadFile(s.cfg.ActiveConfig)
-	if w.Code != 500 || !bytes.Equal(baseline, after) {
+	if w.Code != 500 || !bytes.Equal(baseline, after) || !strings.Contains(w.Body.String(), "active-profile") {
 		t.Fatalf("failed activation changed config: HTTP %d", w.Code)
 	}
 }
