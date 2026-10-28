@@ -47,3 +47,24 @@ func TestRuntimeProbeKeepsNestedDialerChain(t *testing.T) {
 		t.Fatal("missing chain silently ignored")
 	}
 }
+
+func TestRuntimeHealthUsesActualLocalProxyListener(t *testing.T) {
+	for _, tc := range []struct{ protocol, listen, auth, want string }{
+		{"http", "127.0.0.1", "", "http://127.0.0.1:10808"},
+		{"socks", "127.0.0.1", "noauth", "socks5://127.0.0.1:10808"},
+		{"socks", "::", "noauth", "socks5://[::1]:10808"},
+		{"socks", "0.0.0.0", "noauth", "socks5://127.0.0.1:10808"},
+		{"socks", "127.0.0.1", "password", ""},
+		{"http", "192.0.2.1", "", ""},
+	} {
+		cfg := map[string]any{"inbounds": []any{map[string]any{"protocol": tc.protocol, "listen": tc.listen, "port": 10808, "settings": map[string]any{"auth": tc.auth}}}}
+		p := runtimeHealthProxy(cfg)
+		got := ""
+		if p != nil {
+			got = p.String()
+		}
+		if got != tc.want {
+			t.Fatalf("%+v: %s", tc, got)
+		}
+	}
+}

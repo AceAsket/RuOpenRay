@@ -19,7 +19,7 @@ func TestNativeRuntimeHealthAndRestart(t *testing.T) {
 			healthyVPN++
 		}
 	}
-	if !before.Checks["dns"].OK || healthyVPN == 0 {
+	if !before.Checks["dns"].OK || !before.Checks["live-proxy"].OK || healthyVPN == 0 {
 		t.Fatalf("baseline not ready: %v", before)
 	}
 	result := s.serviceActionWithHealth("restart", &before)

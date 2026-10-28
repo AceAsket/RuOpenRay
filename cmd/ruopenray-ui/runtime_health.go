@@ -87,8 +87,45 @@ func runtimeHealthVPNs(cfg map[string]any) []map[string]any {
 	return selected
 }
 
+func runtimeHealthProxy(cfg map[string]any) *url.URL {
+	for _, item := range anySlice(cfg["inbounds"]) {
+		ib := mapValue(item)
+		proto, _ := ib["protocol"].(string)
+		settings := mapValue(ib["settings"])
+		if proto != "http" && proto != "socks" {
+			continue
+		}
+		if len(anySlice(settings["accounts"])) > 0 || (proto == "socks" && settings["auth"] == "password") {
+			continue
+		}
+		listen, _ := ib["listen"].(string)
+		if listen == "" || listen == "0.0.0.0" {
+			listen = "127.0.0.1"
+		}
+		if listen == "::" {
+			listen = "::1"
+		}
+		ip := net.ParseIP(listen)
+		if ip == nil || !ip.IsLoopback() {
+			continue
+		}
+		port := intPayload(ib, "port", 0)
+		if port < 1 || port > 65535 {
+			continue
+		}
+		if proto == "socks" {
+			proto = "socks5"
+		}
+		proxy, err := url.Parse(proto + "://" + net.JoinHostPort(listen, fmt.Sprint(port)))
+		if err == nil {
+			return proxy
+		}
+	}
+	return nil
+}
+
 func (s *serverState) captureRuntimeHealth(cfg map[string]any) runtimeHealth {
-	result := runtimeHealth{Checks: map[string]runtimeHealthCheck{}, Scope: "DNS localhost:53, HTTP через работающий локальный вход и отдельные проверки VPN-транспортов; LAN/TPROXY здесь не проверяется"}
+	result := runtimeHealth{Checks: map[string]runtimeHealthCheck{}, Scope: "DNS localhost:53, HTTP/SOCKS через работающий локальный вход при его наличии и отдельные проверки VPN-транспортов; LAN/TPROXY здесь не проверяется"}
 	if runtime.GOOS != "linux" || s.cfg.ServiceName != "xray" || !commandExists("/etc/init.d/xray") {
 		return result
 	}
@@ -139,21 +176,8 @@ func (s *serverState) captureRuntimeHealth(cfg map[string]any) runtimeHealth {
 		return runtimeHealthCheck{Detail: "два HTTPS-адреса не передали полный контрольный ответ"}
 	}
 	add("wan-control", runtimeWANControl)
-	for _, item := range anySlice(cfg["inbounds"]) {
-		ib := mapValue(item)
-		if ib["protocol"] != "http" {
-			continue
-		}
-		listen, _ := ib["listen"].(string)
-		if listen != "127.0.0.1" && listen != "::1" {
-			continue
-		}
-		if len(anySlice(mapValue(ib["settings"])["accounts"])) > 0 {
-			continue
-		}
-		proxy, _ := url.Parse("http://" + net.JoinHostPort(listen, fmt.Sprint(ib["port"])))
+	if proxy := runtimeHealthProxy(cfg); proxy != nil {
 		add("live-proxy", func() runtimeHealthCheck { return probeHTTP(proxy) })
-		break
 	}
 	selected := runtimeHealthVPNs(cfg)
 	if len(selected) > 4 {
