@@ -27,6 +27,13 @@ func main() {
 	}
 	cfg := loadAppConfig()
 	state := &serverState{cfg: cfg, sessions: map[string]bool{}, started: time.Now(), systemSampler: rsystem.NewSampler()}
+	if len(os.Args) == 1 || os.Args[1] == "serve" {
+		unlock, err := state.beginMutation()
+		if err != nil {
+			log.Fatal(err)
+		}
+		unlock()
+	}
 	if len(os.Args) > 1 && os.Args[1] != "serve" {
 		unlock, err := state.beginMutation()
 		if err != nil {

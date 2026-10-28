@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,6 +86,7 @@ type firewallFile struct {
 	path, backup string
 	exists       bool
 	mode         os.FileMode
+	sha256       string
 }
 
 type firewallTransaction struct {
@@ -101,12 +101,17 @@ type firewallTransaction struct {
 }
 
 func (t *firewallTransaction) cleanup() {
+	retired, err := retireRecoveryDirectory(t.dir)
+	if err != nil {
+		return
+	}
 	for _, f := range t.files {
 		if f.backup != "" {
 			os.Remove(f.backup)
 		}
 	}
-	os.RemoveAll(t.dir)
+	os.RemoveAll(retired)
+	syncDirectory(filepath.Dir(t.dir))
 }
 
 func (t *firewallTransaction) command(name string, args ...string) (string, error) {
@@ -206,6 +211,10 @@ func (s *serverState) beginFirewallTransaction(runCommand func(time.Duration, st
 				os.Remove(f.backup)
 				return nil, err
 			}
+			f.sha256, err = regularFileSHA(f.backup)
+			if err != nil {
+				return nil, err
+			}
 		} else if !os.IsNotExist(err) {
 			return nil, err
 		}
@@ -244,6 +253,14 @@ func (s *serverState) beginFirewallTransaction(runCommand func(time.Duration, st
 	}
 	t.routes = firewallTableRoutes(allRoutes)
 	if err = firewallPolicyOwned(t.rules, t.routes); err != nil {
+		return nil, err
+	}
+	// Allocate both inverse variants before any live mutation. After reboot the
+	// managed kernel table may be absent, even if it existed before the crash.
+	if err = writeFileAtomic(filepath.Join(dir, "rollback.nft"), []byte(firewallBatch(t.table, true)), 0600); err != nil {
+		return nil, err
+	}
+	if err = writeFileAtomic(filepath.Join(dir, "rollback-empty.nft"), []byte(t.table), 0600); err != nil {
 		return nil, err
 	}
 	ok = true
@@ -297,16 +314,31 @@ func (t *firewallTransaction) rollback() map[string]any {
 	}
 	// Prepared backups can be renamed even when the filesystem is full.
 	for _, f := range t.files {
-		if f.exists {
-			add(os.Rename(f.backup, f.path))
-		} else if err := os.Remove(f.path); !os.IsNotExist(err) {
-			add(err)
-		}
+		add(restoreRecoveryFile(recoveryFile{Path: f.path, Backup: f.backup, Existed: f.exists, Mode: f.mode, SHA256: f.sha256}))
 	}
 	_, err := t.command("uci", "revert", "dhcp")
 	add(err)
-	_, err = t.command("nft", "-f", filepath.Join(t.dir, "rollback.nft"))
-	add(err)
+	tables, tableErr := t.command("nft", "list", "tables")
+	add(tableErr)
+	if tableErr == nil {
+		inverse := "rollback-empty.nft"
+		hasTable := false
+		for _, line := range strings.Split(tables, "\n") {
+			if strings.TrimSpace(line) == "table inet ruopenray" {
+				inverse = "rollback.nft"
+				hasTable = true
+			}
+		}
+		path := filepath.Join(t.dir, inverse)
+		info, statErr := os.Lstat(path)
+		body, readErr := os.ReadFile(path)
+		if statErr != nil || !info.Mode().IsRegular() || readErr != nil || string(body) != firewallBatch(t.table, hasTable) {
+			add(fmt.Errorf("обратный nft batch не совпадает со снимком"))
+		} else {
+			_, err = t.command("nft", "-f", path)
+			add(err)
+		}
+	}
 	add(t.policy(false))
 	if strings.TrimSpace(t.routes) != "" {
 		_, err = t.command("ip", "-4", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
@@ -393,12 +425,11 @@ func (s *serverState) firewallCommitWith(body, hotplug string, payload map[strin
 		t.cleanup()
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	journal := map[string]any{"rules": t.rules, "routes": t.routes, "files": []any{}}
+	journal := transactionRecovery{Version: 1, Kind: "firewall", Rules: t.rules, Routes: t.routes, Table: t.table, HadTable: t.hadTable}
 	for _, f := range t.files {
-		journal["files"] = append(journal["files"].([]any), map[string]any{"path": f.path, "backup": f.backup, "existed": f.exists})
+		journal.Files = append(journal.Files, recoveryFile{Path: f.path, Backup: f.backup, Existed: f.exists, Mode: f.mode, SHA256: f.sha256})
 	}
-	journalBody, _ := json.Marshal(journal)
-	if err = writeFileAtomic(filepath.Join(t.dir, "recovery.json"), journalBody, 0600); err != nil {
+	if err = saveTransactionRecovery(t.dir, journal); err != nil {
 		t.cleanup()
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
@@ -408,9 +439,9 @@ func (s *serverState) firewallCommitWith(body, hotplug string, payload map[strin
 	}
 	for _, path := range paths[:4] {
 		if candidate := staged[path]; candidate != "" {
-			err = os.Rename(candidate, path)
+			err = renameDurable(candidate, path)
 		} else {
-			err = os.Remove(path)
+			err = removeDurable(path)
 			if os.IsNotExist(err) {
 				err = nil
 			}
@@ -435,6 +466,9 @@ func (s *serverState) firewallCommitWith(body, hotplug string, payload map[strin
 	}
 	if strings.Contains(body, " tproxy ") && (status["ipRule"] != true || status["ipRoute"] != true) {
 		return failed(fmt.Errorf("policy routing TPROXY не прошёл проверку"))
+	}
+	if err = commitTransactionRecovery(t.dir); err != nil {
+		return failed(err)
 	}
 	t.cleanup()
 	return map[string]any{"ok": true, "steps": t.steps, "status": status, "atomic": true}

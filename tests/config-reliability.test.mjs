@@ -4,6 +4,19 @@ import { createConfigActions } from '../cmd/ruopenray-ui/web/config-actions.js';
 import { createConfigStateHelpers } from '../cmd/ruopenray-ui/web/config-state.js';
 import { routePresetIconView } from '../cmd/ruopenray-ui/web/route-visuals.js';
 
+test('catalog SVG images get a standalone XML namespace without changing their paths', () => {
+  for (const xmlns of ['', ' xmlns="http://www.w3.org/2000/svg"']) {
+    const svg = `<svg${xmlns} viewBox="0 0 24 24"><path fill="currentColor" d="M0 0h4v4z"/></svg>`;
+    const markup = routePresetIconView(String, 'custom:catalog', { icon: { type: 'svg', svg, foreground: '#ffffff' } });
+    const encoded = markup.match(/src="data:image\/svg\+xml;charset=utf-8,([^"]+)"/)[1];
+    const image = decodeURIComponent(encoded);
+    assert.equal((image.match(/xmlns=/g) || []).length, 1);
+    assert.match(image, /xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+    assert.match(image, /d="M0 0h4v4z"/);
+    assert.match(image, /fill="#ffffff"/);
+  }
+});
+
 const noop = () => {};
 test('imported SVG renders in an isolated image rather than active document markup',()=>{
  const svg='<svg><a href="java&#x73;cript:void(0)"><text>link</text></a></svg>';

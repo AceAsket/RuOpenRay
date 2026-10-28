@@ -23,6 +23,8 @@ type appUpdatePlan struct {
 	Target, Backup, ExpectedSHA, PreviousSHA, ProbeToken, ReadyURL, ServiceScript string
 	KeepBackup                                                                    bool
 	TimeoutSeconds                                                                int
+	BootID                                                                        string
+	WatchdogPID                                                                   int
 }
 
 func panelSelfCheck(files fs.FS) error {
@@ -121,9 +123,8 @@ func executeAppWatchdog(p appUpdatePlan, restart func() error, wait func(string)
 		return map[string]any{"ok": false, "state": "superseded", "error": "целевой бинарник изменился; автоматический откат отменён"}
 	}
 	if err = restart(); err == nil && wait(p.ExpectedSHA) {
-		if !p.KeepBackup {
-			os.Remove(p.Backup)
-		}
+		// Retain the rollback copy until the durable terminal result and journal
+		// removal have committed. Power loss between these steps must be safe.
 		return map[string]any{"ok": true, "state": "healthy", "sha256": p.ExpectedSHA}
 	}
 	previous, e := executableSHA(p.Backup)
@@ -135,7 +136,7 @@ func executeAppWatchdog(p appUpdatePlan, restart func() error, wait func(string)
 		return map[string]any{"ok": false, "state": "superseded", "error": "бинарник изменился во время ожидания"}
 	}
 	if e = os.Chmod(p.Backup, 0755); e == nil {
-		e = os.Rename(p.Backup, p.Target)
+		e = renameDurable(p.Backup, p.Target)
 	}
 	if e != nil {
 		return map[string]any{"ok": false, "state": "rollback_failed", "error": e.Error(), "backup": p.Backup}
@@ -178,7 +179,9 @@ func runAppUpdateWatchdog(path string) int {
 	b, _ := json.Marshal(result)
 	recorded := writeFileAtomic(filepath.Join(filepath.Dir(path), "app-update-result.json"), b, 0600) == nil
 	if recorded && (result["state"] == "healthy" || result["rollbackOK"] == true) {
-		os.Remove(path)
+		if removeDurable(path) == nil && !p.KeepBackup {
+			removeDurable(p.Backup)
+		}
 	}
 	os.Remove(path + ".watching")
 	os.Remove(path + ".armed")
@@ -190,6 +193,24 @@ func runAppUpdateWatchdog(path string) int {
 
 func (s *serverState) scheduleAppUpdate(staged, target, expected string, keep bool) (map[string]any, error) {
 	return s.scheduleAppUpdateWithScript(staged, target, expected, keep, "/etc/init.d/"+appServiceName)
+}
+
+func restoreUnarmedAppReplacement(p appUpdatePlan, cause error) (bool, error) {
+	current, err := executableSHA(p.Target)
+	if err == nil && current == p.PreviousSHA {
+		return true, cause
+	}
+	if err != nil || current != p.ExpectedSHA {
+		return false, fmt.Errorf("%w; целевой файл изменился, резервная копия и журнал сохранены", cause)
+	}
+	previous, err := executableSHA(p.Backup)
+	if err != nil || previous != p.PreviousSHA {
+		return false, fmt.Errorf("%w; резервная копия не прошла проверку", cause)
+	}
+	if err = renameDurable(p.Backup, p.Target); err != nil {
+		return false, fmt.Errorf("%w; откат: %v", cause, err)
+	}
+	return true, cause
 }
 
 func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected string, keep bool, script string) (map[string]any, error) {
@@ -228,7 +249,11 @@ func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected strin
 	if host == "::" {
 		host = "::1"
 	}
-	p := appUpdatePlan{Target: target, Backup: backup, ExpectedSHA: expected, PreviousSHA: hex.EncodeToString(sha[:]), ProbeToken: randomToken(), ReadyURL: "http://" + net.JoinHostPort(host, s.cfg.Port) + "/api/app/update-ready", ServiceScript: script, KeepBackup: keep, TimeoutSeconds: 45}
+	bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return nil, err
+	}
+	p := appUpdatePlan{Target: target, Backup: backup, ExpectedSHA: expected, PreviousSHA: hex.EncodeToString(sha[:]), ProbeToken: randomToken(), ReadyURL: "http://" + net.JoinHostPort(host, s.cfg.Port) + "/api/app/update-ready", ServiceScript: script, KeepBackup: keep, TimeoutSeconds: 45, BootID: strings.TrimSpace(string(bootID))}
 	b, _ := json.Marshal(p)
 	if err = writeFileAtomic(path, b, 0600); err != nil {
 		return nil, err
@@ -254,14 +279,23 @@ func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected strin
 		cmd.Process.Kill()
 		return nil, fmt.Errorf("независимый watchdog не подтвердил запуск")
 	}
-	if err = replaceExecutableAcrossFilesystems(staged, target); err != nil {
+	p.WatchdogPID = cmd.Process.Pid
+	b, _ = json.Marshal(p)
+	if err = writeFileAtomic(path, b, 0600); err != nil {
 		cmd.Process.Kill()
 		return nil, err
 	}
-	if err = os.Rename(path+".waiting", path+".armed"); err != nil {
+	if err = replaceExecutableAcrossFilesystems(staged, target); err != nil {
 		cmd.Process.Kill()
-		os.Rename(backup, target)
-		return nil, err
+		restored, failure := restoreUnarmedAppReplacement(p, err)
+		cleanup = restored
+		return nil, failure
+	}
+	if err = renameDurable(path+".waiting", path+".armed"); err != nil {
+		cmd.Process.Kill()
+		restored, failure := restoreUnarmedAppReplacement(p, err)
+		cleanup = restored
+		return nil, failure
 	}
 	cleanup = false
 	return map[string]any{"ok": true, "watchdogPID": cmd.Process.Pid, "backup": backup, "readinessTimeoutSeconds": 45, "state": "pending"}, nil

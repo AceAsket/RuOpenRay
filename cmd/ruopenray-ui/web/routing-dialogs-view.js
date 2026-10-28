@@ -487,7 +487,7 @@ function routeTargetReplaceDialog() {
           </label>
           <label>
             <span>На что заменить</span>
-            <select id="routeReplaceTo" ${summary.targets.length ? '' : 'disabled'}>
+            <select id="routeReplaceTo" data-route-visual-picker ${summary.targets.length ? '' : 'disabled'}>
               ${summary.targets.length
                 ? summary.targets.map((option) => `<option value="${escapeHtml(option.value)}" ${state.routeReplaceTo === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')
                 : '<option value="">Нет доступных целей</option>'}

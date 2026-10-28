@@ -110,7 +110,11 @@ export function routePresetIconView(escapeHtml, key, preset = {}, className = ''
       background ? `--route-icon-bg:${escapeHtml(background)}` : '',
       foreground ? `--route-icon-fg:${escapeHtml(foreground)}` : ''
     ].filter(Boolean).join(';');
-    const imageSvg = svg.replace(/currentColor/gi, foreground || '#dce7e3');
+    // Inline HTML supplies the SVG namespace implicitly; a standalone image
+    // document needs it explicitly, including icons from older catalogs.
+    const imageSvg = svg.replace(/<svg\b([^>]*)>/i, (root, attrs) =>
+      /\bxmlns\s*=/.test(attrs) ? root : `<svg xmlns="http://www.w3.org/2000/svg"${attrs}>`)
+      .replace(/currentColor/gi, foreground || '#dce7e3');
     const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(imageSvg)}`;
     return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${framedClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true"><img src="${escapeHtml(source)}" alt="" /></span>`;
   }

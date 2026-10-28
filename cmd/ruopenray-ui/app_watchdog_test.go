@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,37 @@ import (
 	"testing"
 	"testing/fstest"
 )
+
+func TestUnarmedReplacementFailurePreservesBackupUnlessRestored(t *testing.T) {
+	for _, mode := range []string{"replaced", "manual", "corrupt-backup"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			target, backup := filepath.Join(dir, "panel"), filepath.Join(dir, "backup")
+			os.WriteFile(target, []byte("candidate"), 0700)
+			os.WriteFile(backup, []byte("previous"), 0700)
+			newSHA, _ := executableSHA(target)
+			oldSHA, _ := executableSHA(backup)
+			if mode == "manual" {
+				os.WriteFile(target, []byte("manual"), 0700)
+			}
+			if mode == "corrupt-backup" {
+				os.WriteFile(backup, []byte("corrupt"), 0700)
+			}
+			ok, err := restoreUnarmedAppReplacement(appUpdatePlan{Target: target, Backup: backup, ExpectedSHA: newSHA, PreviousSHA: oldSHA}, errors.New("directory sync failed"))
+			if err == nil || ok != (mode == "replaced") {
+				t.Fatal(ok, err)
+			}
+			if mode == "replaced" {
+				body, _ := os.ReadFile(target)
+				if string(body) != "previous" {
+					t.Fatal("old binary lost")
+				}
+			} else if _, err := os.Stat(backup); err != nil {
+				t.Fatal("recovery copy lost", err)
+			}
+		})
+	}
+}
 
 func TestPanelSelfCheckVerifiesActualEmbeddedResources(t *testing.T) {
 	if err := panelSelfCheck(embeddedFiles); err != nil {

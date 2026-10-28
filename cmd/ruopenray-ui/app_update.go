@@ -152,7 +152,7 @@ func replaceExecutableAcrossFilesystems(src string, dst string) error {
 		return err
 	}
 	if err := os.Rename(src, dst); err == nil {
-		return nil
+		return syncDirectory(filepath.Dir(dst))
 	}
 	sameDirTmp := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+"-"+time.Now().Format("20060102150405")+".new")
 	in, err := os.Open(src)
@@ -165,6 +165,9 @@ func replaceExecutableAcrossFilesystems(src string, dst string) error {
 		return err
 	}
 	_, copyErr := io.Copy(out, in)
+	if copyErr == nil {
+		copyErr = out.Sync()
+	}
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(sameDirTmp)
@@ -178,7 +181,7 @@ func replaceExecutableAcrossFilesystems(src string, dst string) error {
 		_ = os.Remove(sameDirTmp)
 		return err
 	}
-	if err := os.Rename(sameDirTmp, dst); err != nil {
+	if err := renameDurable(sameDirTmp, dst); err != nil {
 		_ = os.Remove(sameDirTmp)
 		return err
 	}

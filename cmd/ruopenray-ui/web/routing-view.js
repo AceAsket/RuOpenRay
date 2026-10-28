@@ -142,6 +142,7 @@ function routingRulesPanel() {
       <div class="route-tools">
         <button class="btn" data-action="openRouteRuleDialog">Добавить правило</button>
         <button class="btn secondary" data-action="openRouteTargetReplaceDialog" ${userRulesCount > 0 ? '' : 'disabled'}>Заменить серверы</button>
+        <button class="btn secondary" data-action="selectVisibleRouteRules" ${visibleCount ? '' : 'disabled'}>Выбрать показанные (${visibleCount})</button>
         <input id="routeSearch" type="search" aria-label="Поиск правил" value="${escapeHtml(state.routeSearch || '')}" placeholder="Домен, IP, название группы или сервер…" />
         ${restricted && visibleCount ? `<button class="btn secondary" data-action="disableVisibleRoutes">Отключить показанные (${visibleCount})</button>` : ''}
       </div>
@@ -159,6 +160,7 @@ function routingRulesPanel() {
       </label>
       ${selectedRuleCount ? `<div class="route-selection-tools" role="region" aria-label="Действия с выбранными правилами">
         <strong aria-live="polite">Выбрано: ${selectedRuleCount}</strong>
+        <button class="btn" data-action="openSelectedRouteTargetReplaceDialog">Сменить сервер</button>
         <button class="btn" data-action="openSelectedRouteGroupDialog" ${selectedRuleCount >= 2 ? '' : 'disabled'}>Собрать группу</button>
         <button class="btn secondary compact" data-action="disableSelectedRouteRules">Отключить</button>
         <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить</button>

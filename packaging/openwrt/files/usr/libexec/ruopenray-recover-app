@@ -1,0 +1,55 @@
+#!/bin/sh
+# Runs before the panel, including when its candidate binary cannot execute.
+set -eu
+data_dir="${1:-/etc/ruopenray-ui}"
+target="${2:-/usr/bin/ruopenray-ui}"
+plan="$data_dir/app-update-pending.json"
+[ -f "$plan" ] || exit 0
+[ ! -L "$plan" ] || { echo 'RuOpenRay: unsafe update journal' >&2; exit 1; }
+field() { jsonfilter -i "$plan" -e "@.$1"; }
+saved_target="$(field Target)"
+backup="$(field Backup)"
+expected="$(field ExpectedSHA)"
+previous="$(field PreviousSHA)"
+saved_boot="$(field BootID || true)"
+watchdog="$(field WatchdogPID || true)"
+[ "$saved_target" = "$target" ] || { echo 'RuOpenRay: update target changed' >&2; exit 1; }
+[ "$(dirname "$backup")" = "$(dirname "$target")" ] || exit 1
+case "$(basename "$backup")" in .xray-update-*) ;; *) exit 1;; esac
+[ "${#expected}" -eq 64 ] && [ "${#previous}" -eq 64 ] || exit 1
+case "$expected$previous" in *[!a-f0-9]*) exit 1;; esac
+current_boot="$(cat /proc/sys/kernel/random/boot_id)"
+# A normal same-boot watchdog restart must retain its private readiness plan.
+case "$watchdog" in ''|*[!0-9]*|0) ;; *)
+ if [ "$saved_boot" = "$current_boot" ] && [ -r "/proc/$watchdog/cmdline" ]; then
+  running_sha="$(sha256sum "/proc/$watchdog/exe" 2>/dev/null | cut -d ' ' -f 1)"
+  if [ "$running_sha" = "$previous" ] && tr '\000' '\n' <"/proc/$watchdog/cmdline" | grep -Fx -- "$plan" >/dev/null && tr '\000' '\n' <"/proc/$watchdog/cmdline" | grep -Fx -- '--app-update-watchdog' >/dev/null; then exit 0; fi
+ fi
+ ;; esac
+current=""
+if [ -e "$target" ] && { [ ! -f "$target" ] || [ -L "$target" ]; }; then echo 'RuOpenRay: unsafe update target' >&2; exit 1; fi
+if [ -f "$target" ] && [ ! -L "$target" ]; then current="$(sha256sum "$target" | cut -d ' ' -f 1)"; fi
+result="$data_dir/app-update-result.json"
+terminal="$(jsonfilter -i "$result" -e '@.state' 2>/dev/null || true)"
+terminal_sha="$(jsonfilter -i "$result" -e '@.expectedSHA' 2>/dev/null || true)"
+if [ "$terminal" = healthy ] && [ "$terminal_sha" = "$expected" ] && [ "$current" = "$expected" ]; then
+ # The terminal result committed just before a power failure during cleanup.
+ rm -f "$plan" "$plan.armed" "$plan.watching" "$plan.waiting"
+ sync
+ exit 0
+fi
+if [ "$current" != "$previous" ]; then
+ [ -z "$current" ] || [ "$current" = "$expected" ] || { echo 'RuOpenRay: manual replacement preserved; recovery needs review' >&2; exit 1; }
+ [ -f "$backup" ] && [ ! -L "$backup" ] || exit 1
+ [ "$(sha256sum "$backup" | cut -d ' ' -f 1)" = "$previous" ] || { echo 'RuOpenRay: invalid rollback SHA-256' >&2; exit 1; }
+ chmod 755 "$backup"
+ mv -f "$backup" "$target"
+ sync
+fi
+printf '{"ok":true,"state":"interrupted_rollback","sha256":"%s","expectedSHA":"%s"}\n' "$previous" "$expected" >"$result.next"
+chmod 600 "$result.next"
+sync
+mv -f "$result.next" "$result"
+sync
+rm -f "$plan" "$plan.armed" "$plan.watching" "$plan.waiting"
+sync

@@ -75,6 +75,10 @@ func copyGeoFile(src, dst string) error {
 }
 
 func (s *serverState) runGeoTransaction(keep, restart bool, prepare func(*serverState) map[string]any) map[string]any {
+	return s.runGeoTransactionWithRename(keep, restart, prepare, renameDurable)
+}
+
+func (s *serverState) runGeoTransactionWithRename(keep, restart bool, prepare func(*serverState) map[string]any, promote func(string, string) error) map[string]any {
 	fail := func(err error) map[string]any { return map[string]any{"ok": false, "stderr": err.Error()} }
 	if err := os.MkdirAll(s.cfg.GeoDir, 0755); err != nil {
 		return fail(err)
@@ -143,43 +147,71 @@ func (s *serverState) runGeoTransaction(keep, restart bool, prepare func(*server
 	if err != nil {
 		return fail(err)
 	}
-	existed := map[string]bool{}
 	for _, name := range changed {
 		path := filepath.Join(s.cfg.GeoDir, name)
 		if _, err := os.Stat(path); err == nil {
 			if err := copyGeoFile(path, filepath.Join(backup, name)); err != nil {
 				return fail(err)
 			}
-			existed[name] = true
 		} else if !os.IsNotExist(err) {
 			return fail(err)
 		}
 	}
-	applied := []string{}
+	journalDir, err := os.MkdirTemp(s.cfg.DataDir, ".geo-transaction-")
+	if err != nil {
+		return fail(err)
+	}
+	var snapshots []recoveryFile
+	journalReady := false
+	cleanupRecovery := func() {
+		retired, err := retireRecoveryDirectory(journalDir)
+		if err != nil {
+			return
+		}
+		for _, f := range snapshots {
+			if f.Backup != "" {
+				os.Remove(f.Backup)
+			}
+		}
+		os.RemoveAll(retired)
+		syncDirectory(s.cfg.DataDir)
+	}
+	defer func() {
+		if !journalReady {
+			cleanupRecovery()
+		}
+	}()
+	for _, name := range changed {
+		f, e := prepareRecoveryFile(filepath.Join(s.cfg.GeoDir, name), ".ruopenray-geo-rollback-")
+		if e != nil {
+			return fail(e)
+		}
+		snapshots = append(snapshots, f)
+	}
+	if err = saveTransactionRecovery(journalDir, transactionRecovery{Version: 1, Kind: "geo", Files: snapshots, GeoDir: s.cfg.GeoDir, Restart: restart}); err != nil {
+		return fail(err)
+	}
+	journalReady = true
 	rollback := func() error {
 		var errors []string
-		for _, name := range applied {
-			path := filepath.Join(s.cfg.GeoDir, name)
-			var err error
-			if existed[name] {
-				err = os.Rename(filepath.Join(backup, name), path)
-			} else {
-				err = os.Remove(path)
-			}
-			if err != nil {
-				errors = append(errors, name+": "+err.Error())
+		for _, f := range snapshots {
+			if err := restoreRecoveryFile(f); err != nil {
+				errors = append(errors, filepath.Base(f.Path)+": "+err.Error())
 			}
 		}
 		if len(errors) > 0 {
 			return fmt.Errorf("%s", strings.Join(errors, "; "))
 		}
+		if err := commitTransactionRecovery(journalDir); err != nil {
+			return err
+		}
+		cleanupRecovery()
 		return nil
 	}
 	for _, name := range changed {
-		if err := os.Rename(filepath.Join(stageDir, name), filepath.Join(s.cfg.GeoDir, name)); err != nil {
+		if err := promote(filepath.Join(stageDir, name), filepath.Join(s.cfg.GeoDir, name)); err != nil {
 			return map[string]any{"ok": false, "stderr": err.Error(), "rollbackError": fmt.Sprint(rollback()), "rollbackBackup": backup}
 		}
-		applied = append(applied, name)
 	}
 	activation := map[string]any{"ok": true, "skipped": true, "stdout": "Xray не перезапускался"}
 	if restart {
@@ -193,6 +225,10 @@ func (s *serverState) runGeoTransaction(keep, restart bool, prepare func(*server
 		}
 		return map[string]any{"ok": false, "stderr": "Новые geo-базы не активированы; выполнен откат", "restart": activation, "rollback": restored, "rollbackError": fmt.Sprint(restoreErr), "rollbackBackup": backup}
 	}
+	if err := commitTransactionRecovery(journalDir); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "rollbackError": fmt.Sprint(rollback()), "rollbackBackup": backup}
+	}
+	cleanupRecovery()
 	if !keep {
 		_ = os.RemoveAll(backup)
 	} else {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -39,6 +40,11 @@ func (s *serverState) beginMutation() (func(), error) {
 	if err != nil {
 		mu.Unlock()
 		return nil, err
+	}
+	if err := s.recoverPendingTransactions(); err != nil {
+		unlockFile()
+		mu.Unlock()
+		return nil, fmt.Errorf("автовосстановление незавершённой операции: %w", err)
 	}
 	return func() { unlockFile(); mu.Unlock() }, nil
 }

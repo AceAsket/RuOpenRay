@@ -82,6 +82,9 @@ func stageExecutable(target string, body []byte) (string, error) {
 	if err = f.Close(); err != nil {
 		return "", err
 	}
+	if err = syncDirectory(filepath.Dir(target)); err != nil {
+		return "", err
+	}
 	ok = true
 	return name, nil
 }

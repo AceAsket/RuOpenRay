@@ -1235,7 +1235,7 @@ export function createRoutingActions({
     render();
   }
 
-  function disableSelectedRoutingRules() {
+  async function disableSelectedRoutingRules() {
     const indexes = selectedRouteRuleIndexes();
     if (!indexes.length) {
       state.message = 'Отметьте хотя бы одно правило для отключения';
@@ -1256,8 +1256,30 @@ export function createRoutingActions({
       };
     }).filter(Boolean);
     if (!disabled.length) return;
-    state.disabledRouteRules = [...disabled, ...state.disabledRouteRules].slice(0, 160);
-    saveDisabledRouteRules();
+    const archived = [...disabled, ...state.disabledRouteRules];
+    if (archived.length > 200) {
+      state.message = 'В списке отключённых правил не хватает места (лимит 200). Удалите ненужные сохранённые записи; выбранные правила пока не изменены.';
+      render();
+      return;
+    }
+    const fingerprint = JSON.stringify(current);
+    if (state.token) {
+      try {
+        const result = await request('/api/routing/disabled', { method: 'POST', body: JSON.stringify({ rules: archived }) });
+        if (result?.ok !== true || !Array.isArray(result.rules) || result.rules.length !== archived.length) throw new Error('Не удалось сохранить все отключённые правила');
+      } catch (error) {
+        state.message = error.message || 'Не удалось сохранить отключённые правила; черновик не изменён';
+        render();
+        return;
+      }
+      if (JSON.stringify(routeRules()) !== fingerprint) {
+        state.message = 'За время сохранения список правил изменился. Выбранные правила сохранены в отключённых, но из нового черновика не удалены.';
+        state.disabledRouteRules = archived;
+        render();
+        return;
+      }
+    }
+    state.disabledRouteRules = archived;
     setRoutingDraft(current.filter((_, ruleIndex) => !selected.has(ruleIndex)));
     state.selectedRouteRuleIndexes = [];
     state.routeGroupDialog = false;
@@ -1514,7 +1536,7 @@ export function createRoutingActions({
     const targetLocked = managed || (nested && !nestedEditable);
     const editLocked = managed;
     const actionLocked = managed || (nested && !nestedEditable);
-    const selectableForGroup = !managed && !nested;
+    const selectableForGroup = !managed;
     const selectedForGroup = selectableForGroup && (state.selectedRouteRuleIndexes || []).includes(index);
     const moveUpAttrs = nested
       ? `data-route-group-child-move="${index}" data-route-group-child-start="${groupStart}" data-route-group-child-end="${groupEnd}" data-direction="-1"`
@@ -1542,7 +1564,7 @@ export function createRoutingActions({
       : '<span class="route-preset-icon compact route-row-preset-icon route-row-preset-icon-empty" aria-hidden="true"></span>';
     return `<article class="route-row route-row-${escapeHtml(category)} ${managed ? 'route-row-managed' : ''} ${nested ? 'route-row-nested' : ''} ${selectedForGroup ? 'route-row-selected' : ''}" draggable="${dragLocked ? 'false' : 'true'}" ${dragAttrs}>
       <div class="route-order">
-        <label class="route-select-check" title="${selectableForGroup ? 'Выбрать правило для новой группы' : 'Служебные правила и строки внутри группы выбираются через настройки группы'}" aria-label="Выбрать правило для новой группы">
+        <label class="route-select-check" title="${selectableForGroup ? 'Выбрать правило для массового действия' : 'Служебное правило управляется настройками RuOpenRay'}" aria-label="Выбрать правило">
           <input type="checkbox" data-route-select="${index}" ${selectedForGroup ? 'checked' : ''} ${selectableForGroup ? '' : 'disabled'} />
           <span></span>
         </label>
@@ -1606,9 +1628,12 @@ export function createRoutingActions({
     const startIndex = item.index;
     const endIndex = item.index + item.items.length;
     const detailsKey = `routing:preset-group:${item.key}:${startIndex}:${endIndex}`;
+    const selectionIndexes = item.items.map((child) => child.index).filter((index) => !isRuOpenRayManagedRoute(routeRules()[index]));
+    const selectionCount = selectionIndexes.filter((index) => (state.selectedRouteRuleIndexes || []).includes(index)).length;
     return `<details class="route-preset-group-row" draggable="${!displayLocked}" data-details-key="${escapeHtml(detailsKey)}" ${displayLocked ? '' : `data-route-index="${item.index}" data-route-range-start="${item.index}" data-route-range-end="${item.index + item.items.length}"`} data-route-preset-group="${escapeHtml(item.key)}">
       <summary>
         <div class="route-preset-group-order">
+          <input class="route-group-select" type="checkbox" data-route-select-group="${selectionIndexes.join(',')}" ${selectionCount === selectionIndexes.length && selectionCount ? 'checked' : ''} ${selectionCount && selectionCount < selectionIndexes.length ? 'data-indeterminate' : ''} aria-label="Выбрать правила группы ${escapeHtml(item.title)}" ${selectionIndexes.length ? '' : 'disabled'} />
           <button class="route-drag-handle" type="button" ${displayLocked ? 'disabled' : ''} title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
           <span>${displayStart === displayEnd ? displayStart : `${displayStart}–${displayEnd}`}</span>
         </div>
@@ -1722,9 +1747,11 @@ export function createRoutingActions({
       if (['outbound:direct', 'outbound:block', 'outbound:dns-out', 'outbound:ruopenray-api'].includes(value)) return;
       counts.set(value, (counts.get(value) || 0) + 1);
     });
-    return [...counts.entries()]
+    const options = [...counts.entries()]
       .map(([value, count]) => ({ value, count, label: routeTargetLabel(value) }))
       .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+    if (state.routeReplaceScope === 'selected') options.unshift({ value: '__selected_all__', count: selectedRouteRuleIndexes().length, label: 'Любое назначение выбранных правил' });
+    return options;
   }
 
   function routeTargetReplacementTargetOptions() {
@@ -1737,11 +1764,11 @@ export function createRoutingActions({
   function routeTargetReplacementIndexes() {
     const rules = routeRules();
     const selected = new Set(selectedRouteRuleIndexes());
-    const useSelected = state.routeReplaceScope === 'selected' && selected.size > 0;
+    const useSelected = state.routeReplaceScope === 'selected';
     return rules
       .map((rule, index) => ({ rule, index }))
       .filter(({ rule, index }) => rule && !isRuOpenRayManagedRoute(rule) && (!useSelected || selected.has(index)))
-      .filter(({ rule }) => routeRuleTargetValue(rule) === state.routeReplaceFrom)
+      .filter(({ rule }) => (useSelected && state.routeReplaceFrom === '__selected_all__') || routeRuleTargetValue(rule) === state.routeReplaceFrom)
       .map(({ index }) => index);
   }
 
@@ -1753,9 +1780,6 @@ export function createRoutingActions({
     }
     if (!targets.some((option) => option.value === state.routeReplaceTo) || state.routeReplaceTo === state.routeReplaceFrom) {
       state.routeReplaceTo = targets.find((option) => option.value !== state.routeReplaceFrom)?.value || '';
-    }
-    if (state.routeReplaceScope === 'selected' && !selectedRouteRuleIndexes().length) {
-      state.routeReplaceScope = 'all';
     }
   }
 
@@ -1781,7 +1805,7 @@ export function createRoutingActions({
       selectedCount,
       affectedCount: indexes.length,
       sample,
-      fromLabel: routeTargetLabel(state.routeReplaceFrom),
+      fromLabel: sources.find((option) => option.value === state.routeReplaceFrom)?.label || routeTargetLabel(state.routeReplaceFrom),
       toLabel: routeTargetLabel(state.routeReplaceTo)
     };
   }
@@ -1791,6 +1815,13 @@ export function createRoutingActions({
     state.routeTargetReplaceDialog = true;
     state.message = '';
     render();
+  }
+
+  function openSelectedRouteTargetReplaceDialog() {
+    if (!selectedRouteRuleIndexes().length) return;
+    state.routeReplaceScope = 'selected';
+    state.routeReplaceFrom = '__selected_all__';
+    openRouteTargetReplaceDialog();
   }
 
   function closeRouteTargetReplaceDialog() {
@@ -2034,12 +2065,18 @@ export function createRoutingActions({
   }
 
   function toggleRouteRuleSelection(index, selected) {
+    toggleRouteRuleSelectionIndexes([index], selected);
+  }
+
+  function toggleRouteRuleSelectionIndexes(indexes, selected) {
     const selectable = selectableRouteRuleIndexes();
-    index = Number(index);
-    if (!Number.isInteger(index) || !selectable.has(index)) return;
     const next = new Set(selectedRouteRuleIndexes());
-    if (selected) next.add(index);
-    else next.delete(index);
+    for (const value of indexes) {
+      const index = Number(value);
+      if (!Number.isInteger(index) || !selectable.has(index)) continue;
+      if (selected) next.add(index);
+      else next.delete(index);
+    }
     state.selectedRouteRuleIndexes = [...next].sort((left, right) => left - right);
     render();
   }
@@ -2051,6 +2088,10 @@ export function createRoutingActions({
     state.routeGroupDetail = '';
     state.routeGroupIcon = '';
     render();
+  }
+
+  function selectVisibleRouteRules() {
+    toggleRouteRuleSelectionIndexes(routeDisplayLeaves(visibleRoutingRuleItems(state.routeVisibleLimit || 80)).map((item) => item.index), true);
   }
 
   function openSelectedRouteGroupDialog() {
@@ -2243,6 +2284,7 @@ export function createRoutingActions({
     updateRoutingTarget,
     updateRoutingTargetRange,
     openRouteTargetReplaceDialog,
+    openSelectedRouteTargetReplaceDialog,
     closeRouteTargetReplaceDialog,
     applyRouteTargetReplacement,
     routeTargetReplacementSummary,
@@ -2255,7 +2297,9 @@ export function createRoutingActions({
     renameRoutingRule,
     selectedRouteRuleIndexes,
     toggleRouteRuleSelection,
+    toggleRouteRuleSelectionIndexes,
     clearRouteRuleSelection,
+    selectVisibleRouteRules,
     openSelectedRouteGroupDialog,
     closeSelectedRouteGroupDialog,
     createSelectedRouteGroup,

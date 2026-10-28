@@ -32,7 +32,7 @@ define Package/ruopenray-ui
   SUBMENU:=Web Servers/Proxies
   TITLE:=RuOpenRay UI for Xray
   URL:=https://github.com/AceAsket/RuOpenRay
-  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +uci +ip-full +nftables-json +kmod-nf-tproxy +kmod-nft-tproxy +kmod-nft-socket
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +uci +jsonfilter +ip-full +nftables-json +kmod-nf-tproxy +kmod-nft-tproxy +kmod-nft-socket
 endef
 
 define Package/ruopenray-ui/description
@@ -54,6 +54,7 @@ define Package/ruopenray-ui/install
 	$(INSTALL_DIR) $(1)/etc/ruopenray-ui/profiles
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/usr/libexec/ruopenray-firstboot $(1)/usr/libexec/ruopenray-firstboot
+	$(INSTALL_BIN) ./files/usr/libexec/ruopenray-recover-app $(1)/usr/libexec/ruopenray-recover-app
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./files/usr/share/luci/menu.d/luci-app-ruopenray.json $(1)/usr/share/luci/menu.d/luci-app-ruopenray.json
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
@@ -69,6 +70,7 @@ define Package/ruopenray-ui/postinst
 [ -n "$$IPKG_INSTROOT" ] && exit 0
 mkdir -p /etc/ruopenray-ui/profiles /etc/ruopenray-ui/backups
 /usr/libexec/ruopenray-firstboot || exit 1
+sync
 /usr/bin/ruopenray-ui --self-check >/dev/null || exit 1
 [ -x /etc/init.d/ruopenray-ui ] && /etc/init.d/ruopenray-ui enable >/dev/null 2>&1 || true
 /etc/init.d/ruopenray-ui restart || exit 1

@@ -7,7 +7,7 @@ import { routeGroupId } from '../cmd/ruopenray-ui/web/routing-group-identity.js'
 import { routeRuleConditionKey } from '../cmd/ruopenray-ui/web/routing-rule-helpers.js';
 import { escapeHtml } from '../cmd/ruopenray-ui/web/formatters.js';
 
-function fixture() {
+function fixture(options = {}) {
   const state = { config: { routing: { rules: [] }, outbounds: [] }, routeNames: {}, routeSearch: '',
     customRoutePresets: {}, externalRoutePresets: {}, selectedRoutePresets: [], routePresetSources: [],
     routePresetEditTitle: '', routePresetEditDetail: '', routePresetEditIcon: '', routePresetEditTarget: 'outbound:proxy',
@@ -15,12 +15,63 @@ function fixture() {
   const routePresets = { overlap: { title: 'Overlap', rule: { type: 'field', domain: ['domain:ghcr.io'], outboundTag: 'proxy' } } };
   const model = createRoutingModel({ state, routePresets, routeBundles: {}, managedRouteTags: {}, routeKinds: {}, proxyOutbounds: () => [] });
   const dsl = createRoutingDsl({ state, escapeHtml, resolveRoutingAlias: (value) => value });
-  const actions = createRoutingActions({ state, ...model, ...dsl, escapeHtml, render() {}, request: async () => ({ ok: true }),
+  const actions = createRoutingActions({ state, ...model, ...dsl, escapeHtml, render() {}, request: options.request || (async () => ({ ok: true })),
     routePresets, routeBundles: {}, hiddenBuiltinRoutePresetKeys: new Set(), activeProxyTag: () => 'server-de',
     routeTargetOptions: () => [{ value: 'outbound:proxy', label: 'Proxy' }, { value: 'outbound:direct', label: 'Direct' }],
     setRoutingDraft: (rules) => { actions.migrateLegacyRouteGroups(rules); state.config.routing.rules = rules; } });
   return { state, model, actions };
 }
+
+test('bulk destination changes affect selected rules with mixed old destinations only', async () => {
+  const { state, actions } = fixture();
+  state.config.routing.rules = ['proxy', 'proxy', 'direct'].map((outboundTag, i) => ({ type: 'field', domain: [`full:r${i}.test`], outboundTag }));
+  actions.toggleRouteRuleSelectionIndexes([0, 2, -1, 500, 2], true);
+  actions.openSelectedRouteTargetReplaceDialog();
+  assert.equal(actions.routeTargetReplacementSummary().affectedCount, 2);
+  assert.equal(actions.routeTargetReplacementSummary().fromLabel, 'Любое назначение выбранных правил');
+  state.routeReplaceTo = 'outbound:direct';
+  await actions.applyRouteTargetReplacement();
+  assert.deepEqual(state.config.routing.rules.map((r) => r.outboundTag), ['direct', 'proxy', 'direct']);
+  assert.deepEqual(state.selectedRouteRuleIndexes, []);
+});
+
+test('an emptied selection never widens a selected replacement to all rules', async () => {
+  const { state, actions } = fixture();
+  state.config.routing.rules = [{ type: 'field', domain: ['full:a.test'], outboundTag: 'proxy' }];
+  actions.toggleRouteRuleSelection(0, true);
+  actions.openSelectedRouteTargetReplaceDialog();
+  actions.clearRouteRuleSelection();
+  state.routeReplaceTo = 'outbound:direct';
+  assert.equal(actions.routeTargetReplacementSummary().affectedCount, 0);
+  await actions.applyRouteTargetReplacement();
+  assert.equal(state.config.routing.rules[0].outboundTag, 'proxy');
+});
+
+test('bulk disable persists complete selected rules before changing the draft', async () => {
+  let saved;
+  const { state, actions } = fixture({ request: async (_, options) => { saved = JSON.parse(options.body).rules; return { ok: true, rules: saved }; } });
+  state.token = 'test-only';
+  state.config.routing.rules = [0, 1, 2].map((i) => ({ type: 'field', domain: [`full:r${i}.test`], source: ['192.0.2.1'], outboundTag: 'proxy' }));
+  const before = structuredClone(state.config.routing.rules);
+  actions.toggleRouteRuleSelectionIndexes([0, 2], true);
+  await actions.disableSelectedRoutingRules();
+  assert.deepEqual(saved.map((r) => r.rule), [before[0], before[2]]);
+  assert.deepEqual(state.config.routing.rules, [before[1]]);
+});
+
+test('failed archive persistence and full archive preserve selected active rules', async () => {
+  for (const full of [false, true]) {
+    const { state, actions } = fixture({ request: async () => { throw new Error('disk full'); } });
+    state.token = 'test-only';
+    state.config.routing.rules = [{ type: 'field', domain: ['full:keep.test'], outboundTag: 'proxy' }];
+    if (full) state.disabledRouteRules = Array.from({ length: 200 }, (_, i) => ({ id: String(i), rule: { outboundTag: 'direct' } }));
+    const before = structuredClone(state.config.routing.rules), archived = structuredClone(state.disabledRouteRules);
+    actions.toggleRouteRuleSelection(0, true);
+    await actions.disableSelectedRoutingRules();
+    assert.deepEqual(state.config.routing.rules, before);
+    assert.deepEqual(state.disabledRouteRules, archived);
+  }
+});
 
 test('presets save plain domain/IP/geo lists with a default or selected destination', () => {
   for (const target of ['outbound:proxy', 'outbound:direct', 'balancer:pool']) {

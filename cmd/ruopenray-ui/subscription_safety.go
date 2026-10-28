@@ -77,7 +77,7 @@ func writeFileAtomic(path string, body []byte, mode os.FileMode) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), path)
+	return renameDurable(f.Name(), path)
 }
 
 func (s *serverState) restoreSubscriptionConfig(backup string) error {

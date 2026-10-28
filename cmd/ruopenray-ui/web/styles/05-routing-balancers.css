@@ -786,6 +786,20 @@
   font-weight: 950;
 }
 
+.route-group-select {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  accent-color: var(--accent-2);
+  cursor: pointer;
+}
+
+.route-preset-group-order:has(.route-group-select) {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .route-preset-group-order span {
   min-width: 24px;
   text-align: center;

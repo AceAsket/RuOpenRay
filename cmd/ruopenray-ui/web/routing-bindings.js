@@ -25,6 +25,7 @@ export function bindRoutingControls({
   reorderRoutingRuleInsideGroup,
   moveRoutingRuleRange,
   toggleRouteRuleSelection,
+  toggleRouteRuleSelectionIndexes,
   setRouteDefaultLast,
   groupRoutingRuleWithNext,
   renameRoutingRuleGroup,
@@ -204,6 +205,14 @@ export function bindRoutingControls({
     checkbox.addEventListener('click', (event) => event.stopPropagation());
     checkbox.addEventListener('change', (event) => {
       toggleRouteRuleSelection(Number(checkbox.dataset.routeSelect), event.target.checked);
+    });
+  });
+  document.querySelectorAll('[data-route-select-group]').forEach((checkbox) => {
+    checkbox.indeterminate = checkbox.hasAttribute('data-indeterminate');
+    checkbox.addEventListener('click', (event) => event.stopPropagation());
+    checkbox.addEventListener('change', (event) => {
+      event.stopPropagation();
+      toggleRouteRuleSelectionIndexes(checkbox.dataset.routeSelectGroup.split(','), event.target.checked);
     });
   });
   document.querySelectorAll('[data-route-group-rename-start]').forEach((button) => {
