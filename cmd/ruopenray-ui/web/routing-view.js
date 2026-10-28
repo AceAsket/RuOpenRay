@@ -112,7 +112,7 @@ function routingRulesPanel() {
       origin: group ? (state.routeNames?.[`@group-source:${group}`] ? 'presetGroup' : 'customGroup') : 'single' };
   }).filter((item) => routeDisplayMatches(item, state, { kind: item.origin }));
   const select = (key, label, choices) => `<label class="route-display-control"><span>${label}</span><select aria-label="${label}" data-route-display="${key}">${choices.map(([value, text]) => `<option value="${escapeHtml(value)}" ${filters[key] === value ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select></label>`;
-  const targetChoices = [['', 'Все назначения'], ['category:proxy', 'Через VPN / proxy'], ['category:direct', 'Напрямую'], ['category:block', 'Блокировка'], ['category:balancer', 'Балансировщики'],
+  const targetChoices = [['', 'Все назначения'], ['category:proxy', 'Любой VPN / proxy'], ['category:direct', 'Все прямые выходы'], ['category:block', 'Все блокировки'], ['category:balancer', 'Любой балансировщик'],
     ...options.map((option) => [option.value, option.label])];
   if (filters.routeFilterTarget && !targetChoices.some(([value]) => value === filters.routeFilterTarget)) targetChoices.push([filters.routeFilterTarget, `Нет в профиле: ${filters.routeFilterTarget}`]);
   const managedRules = managedRoutingRuleItems();

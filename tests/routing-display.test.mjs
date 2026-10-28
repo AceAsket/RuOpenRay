@@ -67,6 +67,12 @@ test('view grouping can combine nonadjacent matches without changing execution o
     assert.ok(!html.includes('data-route-group-target-start'));
     assert.equal(JSON.stringify(state.config), before);
   }
+  state.routeGrouping = 'target';
+  const groups = actions.visibleRoutingRuleItems();
+  groups[0].title = '????legacy-vpn';
+  const html = actions.orderedRouteList(groups, options, 6, []);
+  assert.ok(html.includes('<span>VPN A</span>'));
+  assert.ok(!html.includes('????legacy-vpn'));
 });
 
 test('search includes long rule values and combines with type, origin, target and disabled state', () => {
@@ -79,6 +85,10 @@ test('search includes long rule values and combines with type, origin, target an
   assert.ok(routeDisplayMatches(disabled, { routeFilterStatus: 'disabled', routeFilterTarget: 'category:proxy' }));
   assert.ok(!routeDisplayMatches(disabled, { routeFilterStatus: 'enabled' }));
   assert.ok(!routeDisplayMatches(disabled, { routeFilterTarget: 'outbound:direct' }));
+  const balanced = { rule: { domain: ['domain:example.com'], balancerTag: 'pool' }, category: 'proxy' };
+  assert.ok(routeDisplayMatches(balanced, { routeFilterTarget: 'category:proxy' }));
+  assert.ok(routeDisplayMatches(balanced, { routeFilterTarget: 'category:balancer' }));
+  assert.ok(!routeDisplayMatches(disabled, { routeFilterTarget: 'category:balancer' }));
 });
 
 test('pagination exposes the tail, keeps groups intact, and counts rules rather than headings', () => {

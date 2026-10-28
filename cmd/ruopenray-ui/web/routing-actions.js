@@ -1575,7 +1575,7 @@ export function createRoutingActions({
 
   function compactRouteTargetLabel(label) {
     return String(label || '')
-      .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, '')
+      .replace(/[\u{1F1E6}-\u{1F1FF}]{2}\s*/gu, '')
       .replace(/^[A-Z]{2}\s+(?=\S)/, '')
       .trim();
   }
@@ -1636,6 +1636,16 @@ export function createRoutingActions({
     </details>`;
   }
 
+  function routeDisplayGroupHtml(item, options, rulesLength) {
+    const byTarget = state.routeGrouping === 'target';
+    const title = byTarget ? compactRouteTargetLabel(options.find((option) => option.value === item.key)?.label || item.title) : item.title;
+    const flag = byTarget ? routeTargetFlagMarkup?.(item.key) || '' : '';
+    return `<details class="route-display-group" open data-details-key="routing:display:${escapeHtml(state.routeGrouping)}:${escapeHtml(item.key)}">
+      <summary><strong class="route-display-heading">${flag}<span>${escapeHtml(title)}</span></strong><span>${ruleCountLabel(item.items.length)}</span></summary>
+      <div class="route-section-list">${item.items.map((child) => routeRowHtml({ ...child, displayOrderStart: child.index + 1 }, options, rulesLength)).join('')}</div>
+    </details>`;
+  }
+
   function orderedRouteList(items, options, rulesLength, managedItems = managedRoutingRuleItems()) {
     const numberedItems = items.map((item) => {
       return { ...item, displayOrderStart: item.index + 1, displayOrderEnd: item.index + (item.items?.length || 1) };
@@ -1648,7 +1658,7 @@ export function createRoutingActions({
       </header>
       <div class="route-section-list">
         ${numberedItems.map((item) => item.kind === 'displayGroup'
-          ? `<details class="route-display-group" open data-details-key="routing:display:${escapeHtml(state.routeGrouping)}:${escapeHtml(item.key)}"><summary><strong>${escapeHtml(item.title)}</strong><span>${ruleCountLabel(item.items.length)}</span></summary><div class="route-section-list">${item.items.map((child) => routeRowHtml({ ...child, displayOrderStart: child.index + 1 }, options, rulesLength)).join('')}</div></details>`
+          ? routeDisplayGroupHtml(item, options, rulesLength)
           : (item.kind === 'presetGroup' || item.kind === 'customGroup') ? routePresetGroupRowHtml(item, options, rulesLength) : routeRowHtml(item, options, rulesLength)).join('')}
       </div>
     </section>` : `<p class="muted route-empty-state">${displayLocked ? 'Включённых правил по этим фильтрам нет.' : 'Пользовательских правил пока нет. Добавьте правило или выберите подборку.'}</p>`;

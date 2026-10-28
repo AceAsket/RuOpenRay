@@ -48,7 +48,7 @@ export function routeDisplayMatches(item, state, context = {}) {
   if (s.routeFilterStatus === (item.disabled ? 'enabled' : 'disabled')) return false;
   if (s.routeFilterTarget) {
     if (s.routeFilterTarget.startsWith('category:')) {
-      const category = rule.balancerTag ? 'balancer' : item.category;
+      const category = s.routeFilterTarget === 'category:balancer' ? (rule.balancerTag ? 'balancer' : '') : item.category;
       if (category !== s.routeFilterTarget.slice(9)) return false;
     } else if (routeDisplayTarget(rule) !== s.routeFilterTarget) return false;
   }
