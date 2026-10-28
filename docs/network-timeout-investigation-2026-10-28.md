@@ -53,7 +53,7 @@
 успешного разрешения имени. Среди 34 найденных запросов с меткой `soak-`
 других запросов дольше секунды не было.
 
-На `.117` используется `upstream_mode: load_balance`, `upstream_timeout: 10s`,
+Во время исходного прогона на `.117` использовались `upstream_mode: load_balance`, `upstream_timeout: 10s`,
 список fallback пуст. DNS идёт dnsmasq → AdGuard → DoH напрямую, без Xray.
 AdGuard 0.107.79 использует [dnsproxy 0.83.2](https://github.com/AdguardTeam/AdGuardHome/blob/v0.107.79/go.mod).
 Его [DoH-клиент](https://github.com/AdguardTeam/dnsproxy/blob/v0.83.2/upstream/doh.go#L144-L175)
@@ -193,3 +193,7 @@ handshake. Такие запросы прежняя проба сочла бы �
 DHCP, сети, firewall и AdGuard совпали с исходными; API active config и draft
 также совпали. Финальные DNS-запрос через dnsmasq и HTTPS через живой SOCKS
 успешны. tcpdump/libpcap на `.117` оставлены для последующей диагностики.
+
+Продолжение расследования и новый SDK-прогон описаны в
+[приёмке RC4 r9](reliability-acceptance-rc4-r9-2026-10-28.md): отказ одного DoH
+проверен, на `.117` включён parallel, но отдельные VPN-таймауты сохраняются.
