@@ -66,6 +66,9 @@ func runtimeHealthVPNs(cfg map[string]any) []map[string]any {
 		}
 	}
 	for _, b := range anySlice(mapValue(cfg["routing"])["balancers"]) {
+		if fallback, ok := mapValue(b)["fallbackTag"].(string); ok && fallback != "" {
+			referenced[fallback] = true
+		}
 		for _, prefix := range stringList(mapValue(b)["selector"]) {
 			for _, o := range outs {
 				tag, _ := mapValue(o)["tag"].(string)
@@ -146,17 +149,14 @@ func (s *serverState) captureRuntimeHealth(cfg map[string]any) runtimeHealth {
 	}
 	add("dns", func() runtimeHealthCheck {
 		resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "udp", "127.0.0.1:53")
+			return (&net.Dialer{}).DialContext(ctx, network, "127.0.0.1:53")
 		}}
-		for _, host := range []string{"example.com", "cloudflare.com"} {
+		return runtimeDNSCheck(func(host string) ([]net.IPAddr, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Millisecond)
+			defer cancel()
 			ips, err := resolver.LookupIPAddr(ctx, host)
-			cancel()
-			if err == nil && len(ips) > 0 {
-				return runtimeHealthCheck{OK: true}
-			}
-		}
-		return runtimeHealthCheck{Detail: "DNS не ответил для двух независимых доменов"}
+			return ips, err
+		})
 	})
 	probeHTTP := func(proxy *url.URL) runtimeHealthCheck {
 		transport := &http.Transport{Proxy: nil}
@@ -196,6 +196,32 @@ func (s *serverState) captureRuntimeHealth(cfg map[string]any) runtimeHealth {
 	}
 	group.Wait()
 	return result
+}
+
+func runtimeDNSCheck(lookup func(string) ([]net.IPAddr, error)) runtimeHealthCheck {
+	positive := false
+	for _, host := range []string{"example.com", "cloudflare.com"} {
+		ips, err := lookup(host)
+		if err == nil && len(ips) > 0 {
+			positive = true
+			break
+		}
+	}
+	if !positive {
+		return runtimeHealthCheck{Detail: "DNS не разрешил два известных домена"}
+	}
+	// A cached positive answer alone cannot establish working upstream DNS.
+	nonce := randomToken()[:12]
+	for _, base := range []string{"example.com", "iana.org"} {
+		ips, err := lookup(nonce + "." + base)
+		if err == nil && len(ips) > 0 {
+			return runtimeHealthCheck{OK: true}
+		}
+		if dns, ok := err.(*net.DNSError); ok && dns.IsNotFound {
+			return runtimeHealthCheck{OK: true}
+		}
+	}
+	return runtimeHealthCheck{Detail: "Кеш отвечает, но два свежих DNS-запроса не завершились"}
 }
 
 // IP-literal HTTPS keeps the WAN control independent of the DNS service being

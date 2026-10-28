@@ -1,8 +1,34 @@
 package main
 
 import (
+	"net"
+	"strings"
 	"testing"
 )
+
+func TestRuntimeDNSHealthDoesNotTrustCacheAlone(t *testing.T) {
+	for _, freshWorks := range []bool{false, true} {
+		r := runtimeDNSCheck(func(host string) ([]net.IPAddr, error) {
+			if host == "example.com" {
+				return []net.IPAddr{{IP: net.ParseIP("192.0.2.1")}}, nil
+			}
+			if freshWorks && strings.HasSuffix(host, ".iana.org") {
+				return nil, &net.DNSError{IsNotFound: true}
+			}
+			return nil, &net.DNSError{IsTimeout: true}
+		})
+		if r.OK != freshWorks {
+			t.Fatalf("fresh=%t result=%v", freshWorks, r)
+		}
+	}
+}
+
+func TestRuntimeHealthIncludesBalancerFallback(t *testing.T) {
+	cfg := map[string]any{"outbounds": []any{map[string]any{"tag": "primary", "protocol": "vless"}, map[string]any{"tag": "backup", "protocol": "vless"}}, "routing": map[string]any{"balancers": []any{map[string]any{"selector": []any{"primary"}, "fallbackTag": "backup"}}}}
+	if got := runtimeHealthVPNs(cfg); len(got) != 2 {
+		t.Fatal("fallback was not tested", got)
+	}
+}
 
 func TestRuntimeHealthQuorumAndBaseline(t *testing.T) {
 	makeHealth := func(rows map[string]bool) runtimeHealth {
