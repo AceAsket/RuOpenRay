@@ -41,6 +41,9 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
 	}
 	var payload map[string]any
 	err = json.Unmarshal(body, &payload)
+	if err == nil && payload == nil {
+		err = fmt.Errorf("JSON должен быть объектом")
+	}
 	return payload, err
 }
 
@@ -60,22 +63,42 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/login" && r.Method == http.MethodPost {
+		if s.loginLimited(r, false, false) {
+			writeJSON(w, 429, map[string]any{"ok": false, "error": "Слишком много попыток входа. Повторите через минуту."})
+			return
+		}
+		unlock, err := s.beginMutation()
+		if err != nil {
+			writeJSON(w, 409, map[string]any{"ok": false, "busy": true, "error": err.Error()})
+			return
+		}
+		defer unlock()
 		payload, err := readJSON(w, r)
 		if err != nil {
 			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		if subtle.ConstantTimeCompare([]byte(fmt.Sprint(payload["password"])), []byte(s.cfg.Password)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(fmt.Sprint(payload["password"])), []byte(s.panelPassword())) != 1 {
+			s.loginLimited(r, true, false)
 			writeJSON(w, 401, map[string]any{"ok": false, "error": "Неверный пароль"})
 			return
 		}
 		remember, _ := payload["remember"].(bool)
+		s.loginLimited(r, false, true)
 		token := randomToken()
 		if remember {
-			token = signedRememberToken(s.cfg.Password, time.Now().Add(rememberSessionTTL))
+			key, err := s.rememberSigningKey()
+			if err != nil {
+				writeJSON(w, 500, map[string]any{"ok": false, "error": "Не удалось подготовить ключ авторизации"})
+				return
+			}
+			token = signedRememberToken(key, time.Now().Add(rememberSessionTTL))
 		}
-		s.addSession(token)
+		if !remember {
+			s.addSession(token)
+		}
 		cookie := &http.Cookie{Name: "openray_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode}
+		cookie.Secure = r.TLS != nil
 		if remember {
 			cookie.Expires = time.Now().Add(rememberSessionTTL)
 			cookie.MaxAge = int(rememberSessionTTL.Seconds())
@@ -88,7 +111,37 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 401, map[string]any{"ok": false, "error": "Требуется авторизация"})
 		return
 	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		if path != "/geo/upload" {
+			payload, err := readJSON(w, r)
+			if err != nil {
+				code := http.StatusBadRequest
+				if _, oversized := err.(*http.MaxBytesError); oversized {
+					code = http.StatusRequestEntityTooLarge
+				}
+				writeJSON(w, code, map[string]any{"ok": false, "error": "Некорректный JSON запроса"})
+				return
+			}
+			body, _ := json.Marshal(payload)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		if apiMutatesState(path) {
+			unlock, err := s.beginMutation()
+			if err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "busy": true, "retryable": true, "error": err.Error()})
+				return
+			}
+			defer unlock()
+		}
+	}
 	switch {
+	case path == "/logout" && r.Method == http.MethodPost:
+		if err := s.revokeSession(requestSessionToken(r)); err != nil {
+			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "openray_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil})
+		writeJSON(w, 200, map[string]any{"ok": true})
 	case path == "/auth/check" && r.Method == http.MethodGet:
 		writeJSON(w, 200, map[string]any{"ok": true, "authenticated": true})
 	case path == "/status" && r.Method == http.MethodGet:
@@ -97,6 +150,12 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		cfg, err := s.readActiveConfig()
 		respond(w, cfg, err)
 	case path == "/config/draft" && r.Method == http.MethodGet:
+		unlock, err := s.beginMutation()
+		if err != nil {
+			writeJSON(w, 409, map[string]any{"ok": false, "busy": true, "error": err.Error()})
+			return
+		}
+		defer unlock()
 		writeJSON(w, 200, s.readConfigDraft())
 	case path == "/config/draft" && r.Method == http.MethodPost:
 		payload, err := readJSON(w, r)
@@ -104,9 +163,31 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		writeJSON(w, 200, s.saveConfigDraft(payload))
+		if _, supplied := payload["expectedRevision"]; !supplied {
+			writeJSON(w, http.StatusPreconditionRequired, map[string]any{"ok": false, "error": "Загрузите ревизию черновика перед сохранением"})
+			return
+		}
+		result := s.saveConfigDraft(payload)
+		code := http.StatusOK
+		if result["conflict"] == true {
+			code = http.StatusConflict
+		}
+		writeJSON(w, code, result)
 	case path == "/config/draft" && r.Method == http.MethodDelete:
-		writeJSON(w, 200, s.clearConfigDraft())
+		payload, _ := readJSON(w, r)
+		revision, supplied := payload["expectedRevision"].(string)
+		if !supplied {
+			writeJSON(w, http.StatusPreconditionRequired, map[string]any{"ok": false, "error": "Загрузите ревизию черновика перед удалением"})
+			return
+		}
+		result := s.clearConfigDraftRevision(&revision)
+		code := http.StatusOK
+		if result["preserved"] == true {
+			code = http.StatusConflict
+			result["ok"] = false
+			result["error"] = "Черновик изменился в другой вкладке и сохранён. Загрузите актуальный черновик."
+		}
+		writeJSON(w, code, result)
 	case path == "/config/test" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
 		cfg, _ := payload["config"].(map[string]any)
@@ -497,12 +578,12 @@ func respond(w http.ResponseWriter, payload any, err error) {
 }
 
 func (s *serverState) authed(r *http.Request) bool {
-	if header := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		token := strings.TrimSpace(header[7:])
-		return s.hasSession(token) || validRememberToken(s.cfg.Password, token, time.Now())
+	token := requestSessionToken(r)
+	if strings.HasPrefix(token, "remember.") {
+		key, err := s.rememberSigningKeyFor(false)
+		return err == nil && validRememberToken(key, token, time.Now()) && !s.sessionRevoked(token)
 	}
-	cookie, err := r.Cookie("openray_session")
-	return err == nil && (s.hasSession(cookie.Value) || validRememberToken(s.cfg.Password, cookie.Value, time.Now()))
+	return token != "" && s.hasSession(token)
 }
 
 func randomToken() string {

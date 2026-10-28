@@ -29,13 +29,25 @@ export function createConfigStateHelpers(state, { onDraftChange } = {}) {
       : options.fromServer
         ? nextText
         : state.appliedConfigText || nextText;
-    state.config = config;
-    if (!options.fromServer || draftWasClean || options.forceDraft) state.jsonDraft = nextText;
+    const replaceDraft = !options.fromServer || draftWasClean || options.forceDraft;
+    if (replaceDraft) { state.config = config; state.jsonDraft = nextText; }
     state.appliedConfigText = activeText;
-    if (options.serverDraft) {
+    if (options.serverDraft && options.serverDraft.ok !== false) {
+      if (replaceDraft || !state.activeConfigRevision) {
+        state.activeConfigRevision = options.serverDraft.activeRevision || '';
+        state.activeConfigConflict = false;
+      } else if (state.activeConfigRevision !== options.serverDraft.activeRevision) {
+        state.activeConfigConflict = true;
+      }
+      if (replaceDraft || !state.serverDraftSaving && state.serverDraftRevision === (options.serverDraft.revision || '')) {
+        state.serverDraftRevision = options.serverDraft.revision || '';
+        state.serverDraftConflict = false;
+      } else if (!state.serverDraftSaving && state.serverDraftRevision !== (options.serverDraft.revision || '')) {
+        state.serverDraftConflict = true;
+      }
       state.serverDraftExists = Boolean(options.serverDraft.exists);
       state.serverDraftSavedAt = options.serverDraft.updatedAt || '';
-      state.serverDraftError = options.serverDraft.error || '';
+      state.serverDraftError = state.serverDraftConflict ? 'Черновик изменился в другой вкладке. Ваши локальные изменения сохранены; обновите черновик перед записью.' : options.serverDraft.error || '';
     }
     if (!options.fromServer && options.persist !== false && typeof onDraftChange === 'function') {
       onDraftChange(config);

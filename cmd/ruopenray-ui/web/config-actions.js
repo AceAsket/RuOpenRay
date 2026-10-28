@@ -16,30 +16,38 @@ export function createConfigActions({
     state.configTesting = true;
     state.messageDetails = null;
     state.message = 'Проверяю конфигурацию Xray...';
+    state.configTestLog = { ok: false, at: new Date().toISOString(), message: 'Проверка выполняется' };
     render();
-    const config = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
-    const [result, analysis] = await Promise.all([
-      request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) }),
-      request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
-    ]);
-    state.configAnalysis = analysis;
-    if (result.geoStatus) {
-      state.geoStatus = result.geoStatus;
-    } else if (result.geoAudit) {
-      state.geoStatus = { ...(state.geoStatus || {}), audit: result.geoAudit };
+    try {
+      const config = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
+      const [result, analysis] = await Promise.all([
+        request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) }),
+        request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
+      ]);
+      state.configAnalysis = analysis;
+      if (result.geoStatus) {
+        state.geoStatus = result.geoStatus;
+      } else if (result.geoAudit) {
+        state.geoStatus = { ...(state.geoStatus || {}), audit: result.geoAudit };
+      }
+      await keepOperationVisible(startedAt);
+      state.configTestLog = {
+        ok: Boolean(result.ok),
+        at: new Date().toISOString(),
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+        message: result.message || ''
+      };
+      state.message = configTestSummary(result, analysis);
+      state.messageDetails = configTestFailureDetails(result, analysis, state.message);
+    } catch (error) {
+      state.message = `Проверка не завершена: ${error.message}`;
+      state.messageDetails = null;
+      state.configTestLog = { ok: false, at: new Date().toISOString(), message: state.message };
+    } finally {
+      state.configTesting = false;
+      render();
     }
-    await keepOperationVisible(startedAt);
-    state.configTesting = false;
-    state.configTestLog = {
-      ok: Boolean(result.ok),
-      at: new Date().toISOString(),
-      stdout: result.stdout || '',
-      stderr: result.stderr || '',
-      message: result.message || ''
-    };
-    state.message = configTestSummary(result, analysis);
-    state.messageDetails = configTestFailureDetails(result, analysis, state.message);
-    render();
   }
 
   async function applyConfig(options = {}) {
@@ -51,10 +59,17 @@ export function createConfigActions({
     try {
       const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
       if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
-      const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed }) });
+      const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision }) });
+      if (result.ok !== true) {
+        state.lastApplyBackup = result.backup || state.lastApplyBackup;
+        state.message = result.error || result.restart?.stderr || result.restart?.message || 'Не удалось применить конфигурацию. Черновик сохранён.';
+        state.messageDetails = result;
+        throw new Error(state.message);
+      }
       state.appliedConfigText = JSON.stringify(parsed, null, 2);
       state.jsonDraft = state.appliedConfigText;
-      state.serverDraftExists = false;
+      state.serverDraftExists = Boolean(result.draft?.exists);
+      state.serverDraftRevision = result.draft?.revision || '';
       state.serverDraftSavedAt = '';
       state.serverDraftError = '';
       state.configAnalysis = result.analysis || null;

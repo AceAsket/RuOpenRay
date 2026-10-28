@@ -522,7 +522,7 @@ settingsActionState.token = 'test-token';
 localStorage.setItem('openray_token', 'test-token');
 localStorage.setItem(authRememberStorageKey, '1');
 sessionStorage.setItem('openray_token', 'test-token');
-settingsActions.logout();
+await settingsActions.logout();
 const logoutClearedSession = !settingsActionState.token
   && !localStorage.getItem('openray_token')
   && !localStorage.getItem(authRememberStorageKey)

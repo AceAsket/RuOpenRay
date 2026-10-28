@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	rproxy "github.com/AceAsket/RuOpenRay/internal/proxy"
 )
@@ -64,5 +65,6 @@ func fragmentDialerProxy(outbound map[string]any) string {
 	if sockopt == nil {
 		return ""
 	}
-	return fmt.Sprint(sockopt["dialerProxy"])
+	value, _ := sockopt["dialerProxy"].(string)
+	return strings.TrimSpace(value)
 }

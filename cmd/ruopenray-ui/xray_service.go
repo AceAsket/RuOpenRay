@@ -199,12 +199,22 @@ func (s *serverState) enableXrayServiceConfig() map[string]any {
 }
 
 func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
+	s.applyConfigWithRestart(w, r, s.restartSubscriptionWithRollback)
+}
+
+func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Request, activate func(string) map[string]any) {
+	draftBefore := s.readConfigDraft()
+	draftVersion, _ := draftBefore["revision"].(string)
 	payload, err := readJSON(w, r)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	if cfg, ok := payload["config"].(map[string]any); ok {
+		if expected, supplied := payload["expectedConfigRevision"]; supplied && expected != s.activeConfigRevision() {
+			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "conflict": true, "error": "Активная конфигурация изменилась. Загрузите изменения перед применением; ваш черновик сохранён."})
+			return
+		}
 		test := s.validateConfigWithGeoAudit(cfg)
 		analysis, _ := test["analysis"].(map[string]any)
 		if analysis == nil {
@@ -219,25 +229,22 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "test": test, "analysis": analysis})
 			return
 		}
-		if err := s.writeActiveConfig(cfg); err != nil {
+		profileName, restoreProfile, err := s.writeCandidateProfile(cfg, backup)
+		if err != nil {
 			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
 			return
 		}
-		profileName, err := s.syncCurrentProfile(cfg)
-		if err != nil {
-			restoreErr := s.restoreSubscriptionConfig(backup)
-			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "rollbackError": fmt.Sprint(restoreErr), "test": test, "analysis": analysis})
-			return
-		}
-		restart := s.restartSubscriptionWithRollback(backup)
+		restart := activate(backup)
 		if restart["ok"] != true {
-			// Restore the matching saved profile even when the DNS API is down.
-			if body, err := os.ReadFile(backup); err == nil {
-				_ = writeFileAtomic(s.profilePath(profileName), body, 0600)
+			if err := restoreProfile(); err != nil {
+				restart["profileRollbackError"] = err.Error()
 			}
 		}
-		_ = s.clearConfigDraft()
-		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName})
+		var draft map[string]any
+		if restart["ok"] == true {
+			draft = s.clearConfigDraftRevision(&draftVersion)
+		}
+		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName, "draft": draft})
 		return
 	}
 	test := s.validateConfig(nil)
@@ -246,7 +253,9 @@ func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	restart := s.serviceAction("restart")
-	_ = s.clearConfigDraft()
+	if restart["ok"] == true {
+		_ = s.clearConfigDraftRevision(&draftVersion)
+	}
 	writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "restart": restart})
 }
 
@@ -327,9 +336,15 @@ func (s *serverState) restoreBackup(rawPath string) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error()}
 	}
-	if err := s.writeActiveConfig(cfg); err != nil {
+	_, restoreProfile, err := s.writeCandidateProfile(cfg, before)
+	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "backup": before}
 	}
 	restart := s.restartSubscriptionWithRollback(before)
+	if restart["ok"] != true {
+		if err := restoreProfile(); err != nil {
+			restart["profileRollbackError"] = err.Error()
+		}
+	}
 	return map[string]any{"ok": restart["ok"], "path": cleanBackupPath, "backup": before, "test": test, "analysis": analysis, "restart": restart}
 }

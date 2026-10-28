@@ -21,7 +21,10 @@ func (s *serverState) disabledRouteRules() []map[string]any {
 }
 
 func (s *serverState) saveDisabledRouteRules(payload map[string]any) map[string]any {
-	raw, _ := payload["rules"].([]any)
+	raw, valid := payload["rules"].([]any)
+	if !valid {
+		return map[string]any{"ok": false, "error": "rules должен быть массивом"}
+	}
 	rules, err := rrouting.SaveDisabledRules(s.disabledRouteRulesPath(), raw)
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}

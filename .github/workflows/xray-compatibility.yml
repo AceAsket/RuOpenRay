@@ -37,4 +37,4 @@ jobs:
       - name: Real tunnels and compatibility
         env:
           RUOPENRAY_TEST_XRAY: ${{ runner.temp }}/xray/xray
-        run: go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility|TestXrayBalancerRecovery|TestXraySniffing' -v -count=1 -timeout=180s
+        run: go test ./cmd/ruopenray-ui -run 'TestTLSSubscriptionTunnelProbe|TestXrayCompatibility|TestXrayBalancerRecovery|TestXraySniffing|TestXrayGeoTransaction' -v -count=1 -timeout=180s

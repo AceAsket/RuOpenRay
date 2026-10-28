@@ -18,7 +18,7 @@ func (s *serverState) changePassword(payload map[string]any) map[string]any {
 	current := fmt.Sprint(payload["currentPassword"])
 	next := strings.TrimSpace(fmt.Sprint(payload["newPassword"]))
 	confirm := strings.TrimSpace(fmt.Sprint(payload["confirmPassword"]))
-	if subtle.ConstantTimeCompare([]byte(current), []byte(s.cfg.Password)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(current), []byte(s.panelPassword())) != 1 {
 		return map[string]any{"ok": false, "stderr": "Текущий пароль не подошел"}
 	}
 	if len(next) < 8 {
@@ -42,7 +42,9 @@ func (s *serverState) changePassword(payload map[string]any) map[string]any {
 		return map[string]any{"ok": false, "stderr": "Не удалось сохранить пароль в UCI", "steps": steps}
 	}
 
+	s.sessionsMu.Lock()
 	s.cfg.Password = next
+	s.sessionsMu.Unlock()
 	s.clearSessions()
 	return map[string]any{
 		"ok":        true,

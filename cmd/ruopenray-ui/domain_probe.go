@@ -52,7 +52,8 @@ func directHTTPProbe(rawURL string, timeoutMs int, attempts int) map[string]any 
 	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	client := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond, Transport: transport}
-	var best int64
+	var best int64 = -1
+	var bestStatus int
 	var lastLatency int64
 	var lastStatus int
 	var lastErr error
@@ -69,20 +70,29 @@ func directHTTPProbe(rawURL string, timeoutMs int, attempts int) map[string]any 
 			lastErr = err
 			continue
 		}
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		readBytes, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, (2<<20)+1))
 		_ = resp.Body.Close()
 		lastStatus = resp.StatusCode
+		if readErr != nil {
+			lastErr = fmt.Errorf("Ответ HTTP прочитан не полностью: %w", readErr)
+			continue
+		}
+		if readBytes > 2<<20 {
+			lastErr = fmt.Errorf("Ответ HTTP превышает 2 МиБ; полная загрузка не подтверждена")
+			continue
+		}
 		if resp.StatusCode < 500 {
-			if best == 0 || latency < best {
+			if best < 0 || latency < best {
 				best = latency
+				bestStatus = resp.StatusCode
 			}
 			lastErr = nil
 			continue
 		}
 		lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	if best > 0 {
-		return map[string]any{"ok": true, "status": lastStatus, "latencyMs": best, "attempts": attempts}
+	if best >= 0 {
+		return map[string]any{"ok": true, "status": bestStatus, "latencyMs": best, "attempts": attempts, "bodyComplete": true}
 	}
 	result := map[string]any{"ok": false, "status": lastStatus, "latencyMs": lastLatency, "attempts": attempts}
 	if lastErr != nil {

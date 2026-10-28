@@ -110,7 +110,9 @@ export function routePresetIconView(escapeHtml, key, preset = {}, className = ''
       background ? `--route-icon-bg:${escapeHtml(background)}` : '',
       foreground ? `--route-icon-fg:${escapeHtml(foreground)}` : ''
     ].filter(Boolean).join(';');
-    return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${framedClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true">${svg}</span>`;
+    const imageSvg = svg.replace(/currentColor/gi, foreground || '#dce7e3');
+    const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(imageSvg)}`;
+    return `<span class="route-preset-icon route-preset-inline-svg ${brandClass} ${framedClass} ${className}" ${style ? `style="${style}"` : ''} aria-hidden="true"><img src="${escapeHtml(source)}" alt="" /></span>`;
   }
   const iconify = normalizeIconifyIcon(objectIcon?.name || preset.icon || preset.iconify || preset.iconUrl || '');
   if (iconify) {

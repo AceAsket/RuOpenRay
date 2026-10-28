@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	rsystem "github.com/AceAsket/RuOpenRay/internal/system"
@@ -14,10 +16,22 @@ import (
 func main() {
 	cfg := loadAppConfig()
 	state := &serverState{cfg: cfg, sessions: map[string]bool{}, started: time.Now(), systemSampler: rsystem.NewSampler()}
-	if err := state.ensureData(); err != nil {
-		log.Fatal(err)
+	if len(os.Args) > 1 && os.Args[1] != "serve" {
+		unlock, err := state.beginMutation()
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer unlock()
 	}
-	state.startLogMaintenance()
+	var dataErr error
+	if len(os.Args) > 1 && os.Args[1] != "serve" {
+		dataErr = state.ensureMaintenanceDirs()
+	} else {
+		dataErr = state.ensureData()
+	}
+	if dataErr != nil {
+		log.Fatal(dataErr)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--geo-update-scheduled" {
 		payload := state.runScheduledGeoUpdate()
 		body, _ := json.MarshalIndent(payload, "", "  ")
@@ -43,11 +57,12 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] != "serve" {
 		os.Exit(state.runCLI(os.Args[1:]))
 	}
+	state.startLogMaintenance()
 	mux := http.NewServeMux()
 	go state.maintainB4Direct()
 	mux.HandleFunc("/api/", state.handleAPI)
 	mux.HandleFunc("/", state.handleStatic)
-	addr := cfg.Host + ":" + cfg.Port
+	addr := net.JoinHostPort(strings.Trim(cfg.Host, "[]"), cfg.Port)
 	log.Printf("RuOpenRay UI слушает http://%s", addr)
 	server := &http.Server{
 		Addr:              addr,

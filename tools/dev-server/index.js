@@ -2268,6 +2268,13 @@ async function api(req, res, pathname) {
 
   if (!authed(req)) return json(res, 401, { ok: false, error: 'Требуется авторизация' });
 
+  if (pathname === '/api/logout' && req.method === 'POST') {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '') || parseCookies(req).openray_session;
+    sessions.delete(token);
+    res.setHeader('set-cookie', 'openray_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+    return json(res, 200, { ok: true });
+  }
+
   if (pathname === '/api/status') return json(res, 200, await status());
   if (pathname === '/api/config' && req.method === 'GET') return json(res, 200, await readActiveConfig());
   if (pathname === '/api/config/test' && req.method === 'POST') {

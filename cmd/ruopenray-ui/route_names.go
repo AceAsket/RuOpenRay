@@ -58,6 +58,9 @@ func (s *serverState) routeNamesReport() map[string]any {
 }
 
 func (s *serverState) saveRouteNames(payload map[string]any) map[string]any {
+	if _, ok := payload["names"].(map[string]any); !ok {
+		return map[string]any{"ok": false, "error": "names должен быть объектом"}
+	}
 	names := routeNamesFromPayload(payload)
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "names": s.routeNames()}

@@ -168,7 +168,7 @@ func (s *serverState) saveServerModeConfig(cfg serverModeConfig) error {
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(s.serverModeConfigPath(), body, 0o600)
+	return writeFileAtomic(s.serverModeConfigPath(), body, 0o600)
 }
 
 func normalizeServerModeConfig(cfg serverModeConfig) serverModeConfig {
@@ -588,7 +588,8 @@ func (s *serverState) serverModeApply(payload map[string]any) map[string]any {
 		result["restart"] = restart
 		result["ok"] = restart["ok"] == true
 	}
-	_ = s.clearConfigDraft()
+	// Applying server-mode operates on active config, not the routing draft.
+	// Keep unrelated draft edits; their active revision check will require review.
 	return result
 }
 

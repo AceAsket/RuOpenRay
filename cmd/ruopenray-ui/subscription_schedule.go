@@ -81,7 +81,7 @@ func (s *serverState) installSubscriptionCron(schedule map[string]any) map[strin
 		if !filepath.IsAbs(binary) {
 			binary = "/usr/bin/ruopenray-ui"
 		}
-		env := fmt.Sprintf("RUOPENRAY_DATA_DIR=%s", geodata.ShellQuote(s.cfg.DataDir))
+		env := s.maintenanceEnvironment()
 		lines = append(lines, fmt.Sprintf("%d %d * * * %s %s --subscriptions-update-scheduled >/tmp/ruopenray-subscriptions-update.log 2>&1 %s", minute, hour, env, geodata.ShellQuote(binary), marker))
 	}
 	content := strings.Join(lines, "\n")

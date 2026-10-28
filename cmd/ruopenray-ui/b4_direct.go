@@ -218,7 +218,10 @@ func (s *serverState) maintainB4Direct() {
 		cfg, err := s.loadB4Settings()
 		if runtime.GOOS != "windows" && err == nil && cfg.DirectEnabled && commandExists("nft") {
 			if status := runTimeout(3*time.Second, "nft", "list", "table", "inet", b4DirectTable); status["ok"] != true {
-				s.restoreB4Direct()
+				if unlock, err := s.beginMutation(); err == nil {
+					s.restoreB4Direct()
+					unlock()
+				}
 			}
 		}
 		time.Sleep(15 * time.Second)

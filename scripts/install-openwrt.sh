@@ -182,7 +182,9 @@ install_dependencies() {
 
 download_binary() {
 	mkdir -p "$INSTALL_DIR"
-	tmp="/tmp/${APP_NAME}.$$"
+	tmp="${INSTALL_DIR}/.${APP_NAME}.new.$$"
+	digest_tmp="${tmp}.sha256"
+	trap 'rm -f "$tmp" "$digest_tmp"' EXIT HUP INT TERM
 	if [ -n "${RUOPENRAY_BINARY_URL:-}" ]; then
 		url="$RUOPENRAY_BINARY_URL"
 	else
@@ -197,8 +199,28 @@ download_binary() {
 		die "нужен curl или wget для скачивания бинарника"
 	fi
 	[ -s "$tmp" ] || die "скачанный файл пустой"
+	command -v sha256sum >/dev/null 2>&1 || die "для проверки бинарника нужен sha256sum"
+	expected_sha="${RUOPENRAY_SHA256:-}"
+	if [ -z "$expected_sha" ]; then
+		if command -v curl >/dev/null 2>&1; then
+			curl -fL --connect-timeout 15 --max-time 30 -o "$digest_tmp" "${url}.sha256"
+		else
+			wget -O "$digest_tmp" "${url}.sha256"
+		fi
+		expected_sha="$(awk 'NR==1 {print $1}' "$digest_tmp")"
+	fi
+	[ "${#expected_sha}" = "64" ] || die "некорректный ожидаемый SHA-256"
+	case "$expected_sha" in *[!a-fA-F0-9]*) die "некорректный ожидаемый SHA-256" ;; esac
+	expected_sha="$(printf '%s' "$expected_sha" | tr 'A-F' 'a-f')"
+	actual_sha="$(sha256sum "$tmp" | awk '{print $1}')"
+	[ "$actual_sha" = "$expected_sha" ] || die "SHA-256 бинарника не совпадает; текущая панель сохранена"
+	if [ -f "$INSTALL_DIR/$APP_NAME" ]; then
+		cp "$INSTALL_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME.backup-$(date +%Y%m%d-%H%M%S)-$$" || die "не удалось создать обязательную копию панели"
+	fi
 	chmod 0755 "$tmp"
 	mv "$tmp" "$INSTALL_DIR/$APP_NAME"
+	rm -f "$digest_tmp"
+	trap - EXIT HUP INT TERM
 	prune_binary_backups
 }
 
@@ -667,7 +689,7 @@ validate_service_password() {
 		i=$((i + 1))
 	done
 	saved_password="$(current_panel_password)"
-	die "сервис запустился не с тем паролем. UCI: ${saved_password:-пусто}, process env: ${running_password:-пусто}"
+	die "сервис запустился не с ожидаемым паролем. Проверьте UCI и окружение процесса; значения паролей скрыты."
 }
 
 print_summary() {
@@ -703,6 +725,7 @@ check_space
 install_dependencies
 download_binary
 write_uci
+chmod 0600 /etc/config/ruopenray-ui
 write_init
 write_luci_launcher
 write_first_config

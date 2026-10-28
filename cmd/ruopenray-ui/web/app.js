@@ -130,29 +130,35 @@ async function upload(path, formData, options = {}) {
 
 let serverDraftSaveTimer = null;
 let serverDraftSaveSeq = 0;
+let serverDraftSaveQueue = Promise.resolve();
 
 function scheduleServerDraftSave(config) {
   if (!state.token || !config || typeof config !== 'object') return;
+  if (state.serverDraftConflict) return;
   const seq = ++serverDraftSaveSeq;
   clearTimeout(serverDraftSaveTimer);
   state.serverDraftSaving = true;
   state.serverDraftError = '';
-  serverDraftSaveTimer = setTimeout(async () => {
+  serverDraftSaveTimer = setTimeout(() => { serverDraftSaveQueue = serverDraftSaveQueue.catch(() => {}).then(async () => {
+    if (seq !== serverDraftSaveSeq || state.serverDraftConflict) return;
     try {
       const result = await request('/api/config/draft', {
         method: 'POST',
-        body: JSON.stringify({ config })
+        body: JSON.stringify({ config, expectedRevision: state.serverDraftRevision || '' })
       });
+      if (result.ok !== true) throw new Error(result.error || 'Черновик не сохранён');
+      state.serverDraftRevision = result.revision || '';
       if (seq !== serverDraftSaveSeq) return;
       state.serverDraftExists = Boolean(result.exists);
       state.serverDraftSavedAt = result.updatedAt || '';
       state.serverDraftError = result.error || '';
     } catch (error) {
+      if (/409|другой вкладке|Черновик изменился/.test(error.message || '')) state.serverDraftConflict = true;
       if (seq === serverDraftSaveSeq) state.serverDraftError = error.message || 'Не удалось сохранить черновик на роутере';
     } finally {
       if (seq === serverDraftSaveSeq) state.serverDraftSaving = false;
     }
-  }, 650);
+  }); }, 650);
 }
 
 function cancelServerDraftSave() {
@@ -995,10 +1001,25 @@ async function discardPendingChanges() {
   cancelServerDraftSave();
   state.serverDraftSaving = false;
   state.serverDraftError = '';
-  await request('/api/config/draft', { method: 'DELETE' });
+  await request('/api/config/draft', { method: 'DELETE', body: JSON.stringify({ expectedRevision: state.serverDraftRevision || '' }) });
+  state.serverDraftRevision = '';
+  state.serverDraftConflict = false;
   state.applySteps = [];
   await refresh({ renderAfter: false });
   state.message = 'Черновик удалён. Показана действующая конфигурация роутера.';
+  render();
+}
+
+async function reloadServerDraft() {
+  if (!confirm('Загрузить актуальный черновик с роутера? Локальные несохранённые изменения будут заменены.')) return;
+  cancelServerDraftSave();
+  await serverDraftSaveQueue.catch(() => {});
+  const draft = await request('/api/config/draft');
+  const activeConfig = draft.activeConfig || await request('/api/config');
+  syncConfig(draft.exists ? draft.config : activeConfig, { activeConfig, fromServer: true, forceDraft: true, serverDraft: draft });
+  state.serverDraftConflict = false;
+  state.activeConfigConflict = false;
+  state.message = 'Загружен актуальный черновик роутера.';
   render();
 }
 
@@ -1818,6 +1839,7 @@ function pendingChangesBanner() {
         </div>
       </details>
       <div class="pending-actions">
+        ${state.serverDraftConflict || state.activeConfigConflict ? '<button class="btn secondary" data-action="reloadServerDraft">Загрузить актуальный черновик</button>' : ''}
         <button class="btn secondary ${state.busyAction === 'discardPendingChanges' ? 'is-busy' : ''}" data-action="discardPendingChanges" ${applying || state.configTesting ? 'disabled' : ''}>Отменить</button>
         <button class="btn ${risks.length ? 'warning' : ''} ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
@@ -2305,6 +2327,7 @@ function bind() {
       test: testConfig,
       apply: applyConfigAndFirewall,
       discardPendingChanges,
+      reloadServerDraft,
       applyFirewall,
       closeFirewallPreflight,
       confirmFirewallPreflight,

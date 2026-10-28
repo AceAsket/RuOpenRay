@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,6 +114,7 @@ func parseAppRelease(raw map[string]any) map[string]any {
 	assetName := ruOpenRayAssetName()
 	assetURL := ""
 	assetSize := 0
+	assetDigest := ""
 	for _, item := range asArray(raw["assets"]) {
 		asset, ok := item.(map[string]any)
 		if !ok || fmt.Sprint(asset["name"]) != assetName {
@@ -119,6 +122,7 @@ func parseAppRelease(raw map[string]any) map[string]any {
 		}
 		assetURL = strings.TrimSpace(fmt.Sprint(asset["browser_download_url"]))
 		assetSize = appReleaseAssetSize(asset["size"])
+		assetDigest, _ = asset["digest"].(string)
 		if assetSize > 0 && assetSize < minRuOpenRayAssetSize {
 			assetSize = 0
 		}
@@ -135,6 +139,7 @@ func parseAppRelease(raw map[string]any) map[string]any {
 		"asset":       assetName,
 		"assetUrl":    assetURL,
 		"assetSize":   assetSize,
+		"assetDigest": assetDigest,
 		"current":     appVersion,
 		"update":      update,
 		"reason":      reason,
@@ -193,13 +198,17 @@ func (s *serverState) updateApp(version string, keepBackup bool, channels ...str
 	if assetURL == "" {
 		return map[string]any{"ok": false, "stderr": fmt.Sprintf("для %s нет ассета %s", release["tag"], ruOpenRayAssetName()), "release": release}
 	}
+	expectedSHA, err := appExpectedSHA256(release, downloadAppChecksum)
+	if err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
 	}
 	exe, _ = filepath.Abs(exe)
 	downloadURL := s.mirrorURL(assetURL)
-	resp, err := (&http.Client{Timeout: 120 * time.Second}).Get(downloadURL)
+	resp, err := (&http.Client{Timeout: 70 * time.Second}).Get(downloadURL)
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "url": downloadURL, "release": release}
 	}
@@ -207,12 +216,16 @@ func (s *serverState) updateApp(version string, keepBackup bool, channels ...str
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return map[string]any{"ok": false, "stderr": fmt.Sprintf("download HTTP %d", resp.StatusCode), "url": downloadURL, "release": release}
 	}
-	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("ruopenray-ui-%d.new", time.Now().UnixNano()))
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	out, err := os.CreateTemp(os.TempDir(), "ruopenray-ui-*.new")
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
 	}
-	size, copyErr := io.Copy(out, io.LimitReader(resp.Body, 64*1024*1024))
+	tmp := out.Name()
+	hash := sha256.New()
+	size, copyErr := io.Copy(io.MultiWriter(out, hash), io.LimitReader(resp.Body, (64<<20)+1))
+	if copyErr == nil {
+		copyErr = out.Sync()
+	}
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)
@@ -226,22 +239,35 @@ func (s *serverState) updateApp(version string, keepBackup bool, channels ...str
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": "скачанный бинарник слишком маленький", "size": size, "release": release}
 	}
-	backup := ""
-	if keepBackup {
-		_ = os.MkdirAll(s.cfg.BackupDir, 0o755)
-		backup = filepath.Join(s.cfg.BackupDir, "ruopenray-ui-"+time.Now().Format("20060102-150405"))
-		if body, err := os.ReadFile(exe); err == nil {
-			_ = os.WriteFile(backup, body, 0o755)
-		}
+	if size > 64<<20 || hex.EncodeToString(hash.Sum(nil)) != expectedSHA || appReleaseAssetSize(release["assetSize"]) > 0 && size != int64(appReleaseAssetSize(release["assetSize"])) {
+		os.Remove(tmp)
+		return map[string]any{"ok": false, "stderr": "SHA-256 или размер бинарника не совпадает с официальным релизом"}
+	}
+	if err := os.MkdirAll(s.cfg.BackupDir, 0700); err != nil {
+		os.Remove(tmp)
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	backup := filepath.Join(s.cfg.BackupDir, fmt.Sprintf("ruopenray-ui-%d.rollback", time.Now().UnixNano()))
+	previous, err := os.ReadFile(exe)
+	if err == nil {
+		err = writeFileAtomic(backup, previous, 0600)
+	}
+	if err != nil {
+		os.Remove(tmp)
+		return map[string]any{"ok": false, "stderr": "Не удалось создать обязательную копию панели; обновление отменено"}
 	}
 	if err := replaceExecutableAcrossFilesystems(tmp, exe); err != nil {
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "stderr": err.Error(), "release": release, "target": exe}
 	}
 	restart := s.restartAppServiceLater()
+	if restart["ok"] != true {
+		rollbackErr := replaceExecutableAcrossFilesystems(backup, exe)
+		return map[string]any{"ok": false, "stderr": "Не удалось запланировать перезапуск панели", "rollbackError": fmt.Sprint(rollbackErr), "backup": backup}
+	}
 	return map[string]any{
 		"ok": true, "version": release["tag"], "previous": appVersion, "release": release,
-		"backup": backup, "backupEnabled": keepBackup, "size": size, "target": exe, "restart": restart,
+		"backup": backup, "backupEnabled": true, "keepBackup": keepBackup, "sha256": expectedSHA, "size": size, "target": exe, "restart": restart,
 		"stdout": fmt.Sprintf("RuOpenRay UI обновлен до %s. Сервис будет перезапущен.", release["tag"]),
 	}
 }

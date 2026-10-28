@@ -499,7 +499,7 @@ func geoRawCategories(body []byte, kind string) ([]geoRawCategory, error) {
 func buildGeoSiteCategory(code string, items []string) ([]byte, []string, error) {
 	seen := map[string]bool{}
 	normalized := []string{}
-	body := geoProtoStringField(1, strings.ToLower(code))
+	body := geoProtoStringField(1, strings.ToUpper(code))
 	for _, raw := range items {
 		item, ok := normalizeGeoDomainForDAT(raw)
 		if !ok {
@@ -547,7 +547,7 @@ func geoDomainDATParts(item string) (uint64, string) {
 func buildGeoIPCategory(code string, items []string) ([]byte, []string, error) {
 	seen := map[string]bool{}
 	normalized := []string{}
-	body := geoProtoStringField(1, strings.ToLower(code))
+	body := geoProtoStringField(1, strings.ToUpper(code))
 	for _, raw := range items {
 		item, ok := normalizeGeoIPForDAT(raw)
 		if !ok {

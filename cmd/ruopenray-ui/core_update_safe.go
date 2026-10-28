@@ -22,7 +22,11 @@ import (
 var coreUpdateMu sync.Mutex
 
 func boundedDownload(address string, limit int64) ([]byte, error) {
-	resp, err := (&http.Client{Timeout: 90 * time.Second}).Get(address)
+	return boundedDownloadWithTimeout(address, limit, 90*time.Second)
+}
+
+func boundedDownloadWithTimeout(address string, limit int64, timeout time.Duration) ([]byte, error) {
+	resp, err := (&http.Client{Timeout: timeout}).Get(address)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось скачать файл")
 	}

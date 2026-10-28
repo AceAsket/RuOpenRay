@@ -13,6 +13,10 @@ import (
 var embeddedFiles embed.FS
 
 func (s *serverState) handleStatic(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy", "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	path := strings.TrimPrefix(r.URL.Path, "/")
 	if path == "" {
 		path = "index.html"

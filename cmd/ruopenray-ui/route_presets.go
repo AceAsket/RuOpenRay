@@ -25,7 +25,6 @@ const defaultRoutePresetSourceURL = "https://raw.githubusercontent.com/AceAsket/
 const defaultRoutePresetSourceName = "RuOpenRay scenarios"
 
 var routePresetSourceIDPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
-var routePresetSVGUnsafePattern = regexp.MustCompile(`(?is)<\s*(script|iframe|object|embed|foreignObject|audio|video|canvas|link|meta|style)\b|on[a-z]+\s*=|javascript:`)
 var routePresetColorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$|^[a-zA-Z][a-zA-Z0-9_-]{0,24}$`)
 
 func (s *serverState) routePresetsPath() string {
@@ -181,7 +180,7 @@ func sanitizeRoutePresetIcon(value any) any {
 		}
 		if iconType == "svg" {
 			svg := optionalRoutePresetString(typed["svg"])
-			if svg != "" && len(svg) <= 20000 && strings.Contains(strings.ToLower(svg), "<svg") && !routePresetSVGUnsafePattern.MatchString(svg) {
+			if safePresetSVG(svg) {
 				clean["svg"] = svg
 				return clean
 			}
@@ -227,6 +226,9 @@ func (s *serverState) routePresetsReport() map[string]any {
 }
 
 func (s *serverState) saveRoutePresets(payload map[string]any) map[string]any {
+	if _, ok := payload["presets"].(map[string]any); !ok {
+		return map[string]any{"ok": false, "error": "presets должен быть объектом"}
+	}
 	presets := routePresetsFromPayload(payload)
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "presets": s.routePresets()}
@@ -235,7 +237,7 @@ func (s *serverState) saveRoutePresets(payload map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "presets": s.routePresets()}
 	}
-	if err := os.WriteFile(s.routePresetsPath(), body, 0o600); err != nil {
+	if err := writeFileAtomic(s.routePresetsPath(), body, 0o600); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "presets": s.routePresets()}
 	}
 	return map[string]any{"ok": true, "presets": presets}
@@ -629,7 +631,7 @@ func (s *serverState) installRoutePresetSourcesCron(sources []map[string]any) ma
 		if !filepath.IsAbs(binary) {
 			binary = "/usr/bin/ruopenray-ui"
 		}
-		env := fmt.Sprintf("RUOPENRAY_DATA_DIR=%s RUOPENRAY_GEO_DIR=%s RUOPENRAY_BACKUP_DIR=%s RUOPENRAY_XRAY_SERVICE=%s", geodata.ShellQuote(s.cfg.DataDir), geodata.ShellQuote(s.cfg.GeoDir), geodata.ShellQuote(s.cfg.BackupDir), geodata.ShellQuote(s.cfg.ServiceName))
+		env := s.maintenanceEnvironment()
 		lines = append(lines, fmt.Sprintf("35 4 * * * %s %s --route-presets-update-scheduled >/tmp/ruopenray-route-presets-update.log 2>&1 %s", env, geodata.ShellQuote(binary), marker))
 	}
 	content := strings.Join(lines, "\n")

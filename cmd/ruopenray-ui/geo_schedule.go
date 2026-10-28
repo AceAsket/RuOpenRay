@@ -88,7 +88,7 @@ func (s *serverState) installGeoCron(schedule map[string]any) map[string]any {
 		if !filepath.IsAbs(binary) {
 			binary = "/usr/bin/ruopenray-ui"
 		}
-		env := fmt.Sprintf("RUOPENRAY_DATA_DIR=%s RUOPENRAY_GEO_DIR=%s RUOPENRAY_BACKUP_DIR=%s RUOPENRAY_XRAY_SERVICE=%s", geodata.ShellQuote(s.cfg.DataDir), geodata.ShellQuote(s.cfg.GeoDir), geodata.ShellQuote(s.cfg.BackupDir), geodata.ShellQuote(s.cfg.ServiceName))
+		env := s.maintenanceEnvironment()
 		lines = append(lines, fmt.Sprintf("%d %d * * %s %s %s --geo-update-scheduled >/tmp/ruopenray-geo-update.log 2>&1 %s", minute, hour, dow, env, geodata.ShellQuote(binary), marker))
 	}
 	content := strings.Join(lines, "\n")

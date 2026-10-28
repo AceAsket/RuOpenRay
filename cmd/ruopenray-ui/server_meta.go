@@ -74,6 +74,9 @@ func (s *serverState) serverMetaReport() map[string]any {
 }
 
 func (s *serverState) saveServerMeta(payload map[string]any) map[string]any {
+	if _, ok := payload["items"].(map[string]any); !ok {
+		return map[string]any{"ok": false, "error": "items должен быть объектом"}
+	}
 	items := serverMetaFromPayload(payload)
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "items": s.serverMeta()}
@@ -82,7 +85,7 @@ func (s *serverState) saveServerMeta(payload map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "items": s.serverMeta()}
 	}
-	if err := os.WriteFile(s.serverMetaPath(), body, 0o600); err != nil {
+	if err := writeFileAtomic(s.serverMetaPath(), body, 0o600); err != nil {
 		return map[string]any{"ok": false, "error": err.Error(), "items": s.serverMeta()}
 	}
 	return map[string]any{"ok": true, "items": items}

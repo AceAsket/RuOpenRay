@@ -1,6 +1,6 @@
 package main
 
-const ruOpenRayAPIVersion = "0.1.0"
+const ruOpenRayAPIVersion = "0.2.0"
 
 type apiEndpoint struct {
 	method      string
@@ -84,6 +84,7 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/version", "System", "Get API and application version", "Public endpoint used by integrations to discover RuOpenRay.", "", "VersionResponse"},
 		{"get", "/openapi.json", "System", "Get OpenAPI schema", "Public machine-readable OpenAPI 3.0 schema.", "", "Object"},
 		{"post", "/login", "Auth", "Login with panel password", "Creates a session cookie and returns a token. Set remember=true for a signed long-lived token.", "LoginRequest", "LoginResponse"},
+		{"post", "/logout", "Auth", "Revoke current session", "Revokes the bearer/cookie session and expires its cookie. Remembered session revocation persists across restarts.", "GenericObject", "OkResponse"},
 		{"get", "/auth/check", "Auth", "Check current session", "Returns ok=true when Authorization bearer token or session cookie is accepted.", "", "OkResponse"},
 		{"get", "/status", "System", "Get router and Xray status", "Main dashboard snapshot: service state, resources, compatibility detectors, versions and warnings.", "", "Object"},
 		{"post", "/service", "System", "Control Xray service", "Start, stop or restart managed Xray service.", "GenericObject", "Object"},
@@ -111,9 +112,9 @@ func apiEndpoints() []apiEndpoint {
 		{"post", "/amnezia/stop", "AmneziaWG", "Stop managed AmneziaWG interface", "Stops only RuOpenRay-managed AmneziaWG interface, userspace pid and route table.", "GenericObject", "Object"},
 
 		{"get", "/config", "Config", "Get active Xray config", "Returns parsed /etc/xray/config.json.", "", "Object"},
-		{"get", "/config/draft", "Config", "Get config draft", "Returns current UI draft if it exists.", "", "Object"},
-		{"post", "/config/draft", "Config", "Save config draft", "Stores a draft config without applying it.", "GenericObject", "Object"},
-		{"delete", "/config/draft", "Config", "Clear config draft", "Removes the saved draft.", "", "OkResponse"},
+		{"get", "/config/draft", "Config", "Get config draft", "Returns draft revision plus activeConfig and activeRevision from one protected snapshot. May return 409 while a mutation is running.", "", "Object"},
+		{"post", "/config/draft", "Config", "Save config draft", "Requires expectedRevision from GET; empty string creates a new draft. Returns 409 on conflict and 428 when the precondition is missing.", "GenericObject", "Object"},
+		{"delete", "/config/draft", "Config", "Clear config draft", "Requires JSON expectedRevision. A stale delete returns 409 and preserves the newer draft.", "GenericObject", "OkResponse"},
 		{"post", "/config/test", "Config", "Validate config", "Runs Xray config validation and RuOpenRay geo/routing checks.", "ConfigRequest", "Object"},
 		{"post", "/config/analyze", "Config", "Analyze config", "Returns a UI-oriented analysis of routes, outbounds, DNS and inbounds.", "ConfigRequest", "Object"},
 		{"post", "/config/apply", "Config", "Apply config", "Writes active Xray config and restarts/reloads according to service settings.", "ConfigRequest", "Object"},

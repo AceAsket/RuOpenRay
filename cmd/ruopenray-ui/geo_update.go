@@ -15,6 +15,10 @@ import (
 )
 
 func (s *serverState) updateGeo(payload map[string]any) map[string]any {
+	return s.runGeoTransaction(boolPayload(payload, "backup", false), true, func(stage *serverState) map[string]any { return stage.updateGeoStaged(payload) })
+}
+
+func (s *serverState) updateGeoStaged(payload map[string]any) map[string]any {
 	geoipURL := strings.TrimSpace(fmt.Sprint(payload["geoipUrl"]))
 	geositeURL := strings.TrimSpace(fmt.Sprint(payload["geositeUrl"]))
 	backup := boolPayload(payload, "backup", false)
@@ -154,7 +158,7 @@ func (s *serverState) updateGeo(payload map[string]any) map[string]any {
 	}
 	restart := map[string]any{"ok": true, "stdout": ""}
 	if ok {
-		restart = s.serviceAction("restart")
+		restart = s.restartGeoService()
 		ok = restart["ok"].(bool)
 	}
 	items := []map[string]any{}
@@ -225,7 +229,7 @@ func (s *serverState) updateGeoLegacy(payload map[string]any) map[string]any {
 		ok := geosite["ok"].(bool)
 		restart := map[string]any{"ok": true, "stdout": ""}
 		if ok {
-			restart = s.serviceAction("restart")
+			restart = s.restartGeoService()
 			ok = restart["ok"].(bool)
 		}
 		return map[string]any{"ok": ok, "geosite": geosite, "restart": restart, "status": s.geoStatus(), "stdout": concatCommandOutput(geosite, restart)}
@@ -241,7 +245,7 @@ func (s *serverState) updateGeoLegacy(payload map[string]any) map[string]any {
 		ok := geoip["ok"].(bool)
 		restart := map[string]any{"ok": true, "stdout": ""}
 		if ok {
-			restart = s.serviceAction("restart")
+			restart = s.restartGeoService()
 			ok = restart["ok"].(bool)
 		}
 		return map[string]any{"ok": ok, "geoip": geoip, "restart": restart, "status": s.geoStatus(), "stdout": concatCommandOutput(geoip, restart)}
@@ -257,7 +261,7 @@ func (s *serverState) updateGeoLegacy(payload map[string]any) map[string]any {
 	ok := geoip["ok"].(bool) && geosite["ok"].(bool)
 	restart := map[string]any{"ok": true, "stdout": ""}
 	if ok {
-		restart = s.serviceAction("restart")
+		restart = s.restartGeoService()
 		ok = restart["ok"].(bool)
 	}
 	return map[string]any{"ok": ok, "geoip": geoip, "geosite": geosite, "restart": restart, "status": s.geoStatus(), "stdout": concatCommandOutput(geoip, geosite, restart)}
@@ -373,12 +377,15 @@ func (s *serverState) downloadGeoFile(name string, rawURL string, keepBackup ...
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return map[string]any{"ok": false, "file": name, "stderr": fmt.Sprintf("download HTTP %d", resp.StatusCode), "url": downloadURL, "sourceUrl": rawURL}
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxGeoDataBytes+1))
 	if err != nil {
 		return map[string]any{"ok": false, "file": name, "stderr": err.Error(), "url": downloadURL, "sourceUrl": rawURL}
 	}
 	if len(body) < 1024 {
 		return map[string]any{"ok": false, "file": name, "stderr": "файл слишком маленький, похоже на ошибку загрузки", "url": downloadURL, "sourceUrl": rawURL}
+	}
+	if err := validateGeoData(body); err != nil {
+		return map[string]any{"ok": false, "file": name, "stderr": err.Error()}
 	}
 	target := filepath.Join(s.cfg.GeoDir, name)
 	backup := len(keepBackup) == 0 || keepBackup[0]
@@ -391,10 +398,12 @@ func (s *serverState) downloadGeoFile(name string, rawURL string, keepBackup ...
 		current, err := os.ReadFile(target)
 		if err == nil && len(current) > 0 {
 			backup := filepath.Join(s.cfg.BackupDir, name+"-"+time.Now().Format("20060102-150405"))
-			_ = os.WriteFile(backup, current, 0o644)
+			if err := writeFileAtomic(backup, current, 0600); err != nil {
+				return map[string]any{"ok": false, "file": name, "stderr": err.Error()}
+			}
 		}
 	}
-	if err := os.WriteFile(target, body, 0o644); err != nil {
+	if err := writeFileAtomic(target, body, 0o644); err != nil {
 		return map[string]any{"ok": false, "file": name, "stderr": err.Error(), "url": downloadURL, "sourceUrl": rawURL}
 	}
 	result := map[string]any{"ok": true, "file": name, "stdout": fmt.Sprintf("%s обновлен: %s", name, byteCount(int64(len(body)))), "url": downloadURL, "sourceUrl": rawURL, "size": len(body)}

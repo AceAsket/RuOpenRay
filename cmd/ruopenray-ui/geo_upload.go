@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,92 +11,29 @@ import (
 	"github.com/AceAsket/RuOpenRay/internal/geodata"
 )
 
-const maxGeoUploadBytes = 128 * 1024 * 1024
+const maxGeoUploadBytes = maxGeoDataBytes
 
 func (s *serverState) uploadGeoFile(r *http.Request) map[string]any {
-	if err := r.ParseMultipartForm(maxGeoUploadBytes); err != nil {
-		return map[string]any{"ok": false, "stderr": "Не удалось прочитать загружаемый файл: " + err.Error(), "status": s.geoStatus()}
-	}
-	file, header, err := r.FormFile("file")
+	tempPath, filename, written, err := s.readGeoUpload(r)
 	if err != nil {
-		return map[string]any{"ok": false, "stderr": "Выберите dat-файл для загрузки", "status": s.geoStatus()}
+		return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
 	}
-	defer file.Close()
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".dat") {
+	defer os.Remove(tempPath)
+	if !strings.HasSuffix(strings.ToLower(filename), ".dat") {
 		return map[string]any{"ok": false, "stderr": "Можно загрузить только файл с расширением .dat", "status": s.geoStatus()}
 	}
 
-	target, err := geoUploadTarget(r, header.Filename)
+	target, err := geoUploadTarget(r, filename)
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
 	}
-	if err := os.MkdirAll(s.cfg.GeoDir, 0o755); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
-	}
-	targetPath := filepath.Join(s.cfg.GeoDir, target)
 	backup := formBool(r, "backup", false)
-	if backup {
-		if err := s.backupGeoDat(target, targetPath); err != nil {
-			return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
+	return s.runGeoTransaction(backup, formBool(r, "restart", true), func(stage *serverState) map[string]any {
+		if err := os.Rename(tempPath, filepath.Join(stage.cfg.GeoDir, target)); err != nil {
+			return map[string]any{"ok": false, "stderr": err.Error()}
 		}
-	}
-	temp, err := os.CreateTemp(s.cfg.GeoDir, "."+target+".upload-*")
-	if err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
-	}
-	tempPath := temp.Name()
-	written, copyErr := io.Copy(temp, io.LimitReader(file, maxGeoUploadBytes+1))
-	closeErr := temp.Close()
-	if copyErr != nil {
-		_ = os.Remove(tempPath)
-		return map[string]any{"ok": false, "stderr": copyErr.Error(), "status": s.geoStatus()}
-	}
-	if closeErr != nil {
-		_ = os.Remove(tempPath)
-		return map[string]any{"ok": false, "stderr": closeErr.Error(), "status": s.geoStatus()}
-	}
-	if written > maxGeoUploadBytes {
-		_ = os.Remove(tempPath)
-		return map[string]any{"ok": false, "stderr": "Файл больше 128 MB. Для экономного режима лучше использовать более компактный DAT.", "status": s.geoStatus()}
-	}
-	if written == 0 {
-		_ = os.Remove(tempPath)
-		return map[string]any{"ok": false, "stderr": "Загруженный dat-файл пустой", "status": s.geoStatus()}
-	}
-	if err := os.Rename(tempPath, targetPath); err != nil {
-		_ = os.Remove(tempPath)
-		return map[string]any{"ok": false, "stderr": err.Error(), "status": s.geoStatus()}
-	}
-	restart := map[string]any{"ok": true, "stdout": ""}
-	ok := true
-	if formBool(r, "restart", true) {
-		restart = s.serviceAction("restart")
-		ok = restart["ok"] == true
-	}
-	stdout := fmt.Sprintf("%s загружен: %s", target, byteCount(written))
-	if source := strings.TrimSpace(header.Filename); source != "" {
-		stdout = fmt.Sprintf("%s\nисходный файл: %s", stdout, source)
-	}
-	if restartText := strings.TrimSpace(fmt.Sprint(restart["stdout"])); restartText != "" && restartText != "<nil>" {
-		stdout = strings.TrimSpace(stdout + "\n" + restartText)
-	}
-	stderr := ""
-	if !ok {
-		stderr = strings.TrimSpace(fmt.Sprint(restart["stderr"]))
-		if stderr == "" || stderr == "<nil>" {
-			stderr = "dat-файл загружен, но Xray не перезапустился"
-		}
-	}
-	return map[string]any{
-		"ok":      ok,
-		"file":    target,
-		"size":    written,
-		"backup":  backup,
-		"restart": restart,
-		"status":  s.geoStatus(),
-		"stdout":  stdout,
-		"stderr":  stderr,
-	}
+		return map[string]any{"ok": true, "file": target, "size": written, "backup": backup, "stdout": fmt.Sprintf("%s загружен: %s", target, byteCount(written))}
+	})
 }
 
 func geoUploadTarget(r *http.Request, uploadedName string) (string, error) {

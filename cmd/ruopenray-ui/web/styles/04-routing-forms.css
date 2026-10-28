@@ -638,6 +638,9 @@
   height: 24px;
 }
 
+.route-preset-inline-svg img { width: 24px; height: 24px; object-fit: contain; }
+.route-preset-icon-brand.route-preset-inline-svg img { width: 100%; height: 100%; display: block; }
+
 .route-preset-icon svg:not(.brand-icon) {
   fill: currentColor;
   stroke: currentColor;

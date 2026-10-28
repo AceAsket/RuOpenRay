@@ -158,7 +158,11 @@ func profileNameFromURL(rawURL string) string {
 }
 
 func (s *serverState) profilePath(name string) string {
-	return filepath.Join(s.cfg.ProfilesDir, cleanProfileName(name))
+	dir := s.cfg.ProfilesDir
+	if dir == "" {
+		dir = filepath.Join(s.cfg.DataDir, "profiles")
+	}
+	return filepath.Join(dir, cleanProfileName(name))
 }
 
 func (s *serverState) currentProfileName() string {
@@ -181,6 +185,12 @@ func (s *serverState) currentProfileName() string {
 }
 
 func (s *serverState) saveProfileConfig(name string, cfg map[string]any) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("Конфигурация профиля отсутствует")
+	}
+	normalizeCatchAllRoutingRules(cfg)
+	normalizeSniffingDomainExclusions(cfg)
+	ensureFragmentOutboundsInConfig(cfg)
 	body, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return "", err
@@ -266,34 +276,36 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	var cfg map[string]any
 	err = json.Unmarshal(body, &cfg)
+	if err != nil || cfg == nil {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": "Некорректный JSON профиля"})
+		return
+	}
+	if err := s.validateB4DirectCandidate(cfg); err != nil {
+		writeJSON(w, 422, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	test := s.validateConfigWithGeoAudit(cfg)
+	if test["ok"] != true {
+		writeJSON(w, 422, map[string]any{"ok": false, "test": test, "error": "Профиль не прошёл проверку Xray"})
+		return
+	}
+	backup, err := s.backupActive("config-before-profile")
 	if err == nil {
-		err = s.validateAdGuardTransportCandidate(cfg)
+		err = s.writeActiveConfig(cfg)
 	}
 	if err == nil {
-		err = s.withAdGuardBootstrap(cfg, func() error {
-			previous, readErr := os.ReadFile(s.cfg.ActiveConfig)
-			if readErr != nil && !os.IsNotExist(readErr) {
-				return readErr
+		if markerErr := s.writeActiveProfileName(fmt.Sprint(payload["name"])); markerErr != nil {
+			err = markerErr
+			if restoreErr := s.restoreSubscriptionConfig(backup); restoreErr != nil {
+				err = fmt.Errorf("%w; откат: %v", err, restoreErr)
 			}
-			if err := writeFileAtomic(s.cfg.ActiveConfig, body, 0o600); err != nil {
-				return err
-			}
-			if err := s.writeActiveProfileName(fmt.Sprint(payload["name"])); err != nil {
-				var restoreErr error
-				if os.IsNotExist(readErr) {
-					restoreErr = os.Remove(s.cfg.ActiveConfig)
-				} else {
-					restoreErr = writeFileAtomic(s.cfg.ActiveConfig, previous, 0o600)
-				}
-				if restoreErr != nil {
-					return fmt.Errorf("%w; откат конфигурации: %v", err, restoreErr)
-				}
-				return err
-			}
-			return nil
-		})
+		}
 	}
-	respond(w, map[string]any{"ok": true, "active": s.normalizeProfileID(fmt.Sprint(payload["name"]))}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "active": s.normalizeProfileID(fmt.Sprint(payload["name"])), "backup": backup, "restartRequired": true})
 }
 
 func (s *serverState) importLink(w http.ResponseWriter, r *http.Request) {

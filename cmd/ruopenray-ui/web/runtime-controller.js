@@ -264,7 +264,8 @@ export function createRuntimeController({
       } = await loadAppSnapshot({ request, text: api.text, logsUrl, appChannel: state.appChannel });
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
-      const activeConfig = hasConfigSurface(config) ? config : state.config;
+      const snapshotConfig = configDraft?.activeConfig || config;
+      const activeConfig = hasConfigSurface(snapshotConfig) ? snapshotConfig : state.config;
       const usableDraft = configDraft?.exists && hasConfigSurface(configDraft.config);
       const draftConfig = usableDraft ? configDraft.config : activeConfig;
       const draftState = configDraft?.exists && !usableDraft
@@ -274,7 +275,7 @@ export function createRuntimeController({
         activeConfig,
         fromServer: true,
         persist: false,
-        forceDraft: usableDraft,
+        forceDraft: usableDraft && !state.serverDraftSaving && (!state.jsonDraft || state.jsonDraft === state.appliedConfigText),
         serverDraft: draftState
       });
       if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {

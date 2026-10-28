@@ -127,7 +127,7 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTag(pool.Candidates[selected], pool.Tag))
+	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[selected], pool.Tag, activeOutboundDialerProxy(asArray(cfg["outbounds"]), pool.Tag)))
 	test := s.validateConfig(cfg)
 	if test["ok"] != true {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Xray отклонил конфигурацию выбранного сервера", "test": test})
@@ -138,7 +138,8 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		writeJSON(w, 500, map[string]any{"ok": false, "error": "Не удалось создать резервную копию"})
 		return
 	}
-	if err := s.writeActiveConfig(cfg); err != nil {
+	_, restoreProfile, err := s.writeCandidateProfile(cfg, backup)
+	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup})
 		return
 	}
@@ -150,7 +151,8 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 	store.Pools[poolIndex] = pool
 	if err := s.writeSubscriptionStore(store); err != nil {
 		restoreErr := s.restoreSubscriptionConfig(backup)
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "restoreError": fmt.Sprint(restoreErr)})
+		profileErr := restoreProfile()
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "restoreError": fmt.Sprint(restoreErr), "profileRollbackError": fmt.Sprint(profileErr)})
 		return
 	}
 	restart := map[string]any{"ok": true, "stdout": "Xray не перезапущен"}
@@ -158,6 +160,9 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		restart = s.restartSubscriptionWithRollback(backup)
 	}
 	if restart["ok"] != true {
+		if err := restoreProfile(); err != nil {
+			restart["profileRollbackError"] = err.Error()
+		}
 		if err := s.writeSubscriptionStoreRaw(previousStore); err != nil {
 			restart["storeRollbackError"] = err.Error()
 		}
@@ -494,12 +499,18 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 	if err != nil {
 		return map[string]any{"ok": false, "error": "Не удалось создать резервную копию; обновление отменено"}
 	}
-	if err := s.writeActiveConfig(cfg); err != nil {
+	_, restoreProfile, err := s.writeCandidateProfile(cfg, backup)
+	if err != nil {
 		return map[string]any{"ok": false, "updated": updated, "skipped": skipped, "backup": backup, "error": err.Error()}
 	}
 	restartResult := map[string]any{"ok": true, "stdout": "Xray не перезапускался"}
 	if restart {
 		restartResult = s.restartSubscriptionWithRollback(backup)
+	}
+	if restartResult["ok"] != true {
+		if err := restoreProfile(); err != nil {
+			restartResult["profileRollbackError"] = err.Error()
+		}
 	}
 	return map[string]any{"ok": restartResult["ok"], "updated": updated, "skipped": skipped, "backup": backup, "restart": restartResult, "error": restartResult["stderr"]}
 }

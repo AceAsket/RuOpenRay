@@ -26,7 +26,14 @@ type appConfig struct {
 type serverState struct {
 	cfg              appConfig
 	sessionsMu       sync.RWMutex
+	draftMu          sync.Mutex
+	geoStaging       bool
 	sessions         map[string]bool
+	sessionUntil     map[string]time.Time
+	rememberKey      string
+	revokedMemory    map[string]time.Time
+	loginMu          sync.Mutex
+	loginAttempts    map[string]loginAttempt
 	started          time.Time
 	systemSampler    *rsystem.Sampler
 	metricsMu        sync.Mutex
@@ -65,18 +72,41 @@ func (s *serverState) addSession(token string) {
 		s.sessions = map[string]bool{}
 	}
 	s.sessions[token] = true
+	if s.sessionUntil == nil {
+		s.sessionUntil = map[string]time.Time{}
+	}
+	now := time.Now()
+	for key, until := range s.sessionUntil {
+		if now.After(until) {
+			delete(s.sessionUntil, key)
+			delete(s.sessions, key)
+		}
+	}
+	for len(s.sessions) > 1024 {
+		for key := range s.sessions {
+			if key == token {
+				continue
+			}
+			delete(s.sessions, key)
+			delete(s.sessionUntil, key)
+			break
+		}
+	}
+	s.sessionUntil[token] = now.Add(12 * time.Hour)
 }
 
 func (s *serverState) hasSession(token string) bool {
 	s.sessionsMu.RLock()
 	defer s.sessionsMu.RUnlock()
-	return s.sessions != nil && s.sessions[token]
+	until, limited := s.sessionUntil[token]
+	return s.sessions != nil && s.sessions[token] && (!limited || time.Now().Before(until))
 }
 
 func (s *serverState) clearSessions() {
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
 	s.sessions = map[string]bool{}
+	s.sessionUntil = map[string]time.Time{}
 }
 
 func (s *serverState) sessionCount() int {
@@ -95,16 +125,23 @@ func getenv(names []string, fallback string) string {
 }
 
 func loadAppConfig() appConfig {
+	options := appUCIOptions()
+	fallback := func(key, value string) string {
+		if option := strings.TrimSpace(options[key]); option != "" {
+			return option
+		}
+		return value
+	}
 	cfg := appConfig{
-		DataDir:      getenv([]string{"RUOPENRAY_DATA_DIR", "OPENRAY_DATA_DIR"}, "data"),
-		ServiceName:  getenv([]string{"RUOPENRAY_XRAY_SERVICE", "OPENRAY_XRAY_SERVICE"}, "xray"),
-		GeoDir:       getenv([]string{"RUOPENRAY_GEO_DIR", "OPENRAY_GEO_DIR"}, ""),
-		Host:         getenv([]string{"RUOPENRAY_HOST", "OPENRAY_HOST"}, "127.0.0.1"),
-		Port:         getenv([]string{"RUOPENRAY_PORT", "OPENRAY_PORT"}, "9090"),
-		Password:     getenv([]string{"RUOPENRAY_PASSWORD", "RUOPENRAY_TOKEN", "OPENRAY_PASSWORD", "OPENRAY_TOKEN"}, "admin"),
-		ActiveConfig: getenv([]string{"RUOPENRAY_ACTIVE_CONFIG", "OPENRAY_ACTIVE_CONFIG"}, ""),
+		DataDir:      getenv([]string{"RUOPENRAY_DATA_DIR", "OPENRAY_DATA_DIR"}, fallback("data_dir", "data")),
+		ServiceName:  getenv([]string{"RUOPENRAY_XRAY_SERVICE", "OPENRAY_XRAY_SERVICE"}, fallback("xray_service", "xray")),
+		GeoDir:       getenv([]string{"RUOPENRAY_GEO_DIR", "OPENRAY_GEO_DIR"}, fallback("geo_dir", "")),
+		Host:         getenv([]string{"RUOPENRAY_HOST", "OPENRAY_HOST"}, fallback("host", "127.0.0.1")),
+		Port:         getenv([]string{"RUOPENRAY_PORT", "OPENRAY_PORT"}, fallback("port", "9090")),
+		Password:     getenv([]string{"RUOPENRAY_PASSWORD", "RUOPENRAY_TOKEN", "OPENRAY_PASSWORD", "OPENRAY_TOKEN"}, fallback("password", "admin")),
+		ActiveConfig: getenv([]string{"RUOPENRAY_ACTIVE_CONFIG", "OPENRAY_ACTIVE_CONFIG"}, fallback("active_config", "")),
 		ProfilesDir:  getenv([]string{"RUOPENRAY_PROFILES_DIR", "OPENRAY_PROFILES_DIR"}, ""),
-		BackupDir:    getenv([]string{"RUOPENRAY_BACKUP_DIR", "OPENRAY_BACKUP_DIR"}, ""),
+		BackupDir:    getenv([]string{"RUOPENRAY_BACKUP_DIR", "OPENRAY_BACKUP_DIR"}, fallback("backup_dir", "")),
 	}
 	if cfg.ActiveConfig == "" {
 		cfg.ActiveConfig = filepath.Join(cfg.DataDir, "config.json")

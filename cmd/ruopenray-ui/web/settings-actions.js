@@ -64,7 +64,8 @@ export function createSettingsActions({
     }
   }
 
-  function logout() {
+  async function logout() {
+    await request('/api/logout', { method: 'POST', body: '{}' });
     state.token = '';
     state.rememberPassword = false;
     clearAuthToken();
