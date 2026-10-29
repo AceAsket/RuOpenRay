@@ -134,7 +134,7 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			tls["certificates"] = []any{map[string]any{"certificateFile": certFile, "usage": "verify"}}
 			s := &serverState{cfg: appConfig{DataDir: dir}}
 			latency, ok, err := s.httpOutboundProbe(outbound, origin.URL, 3000, 1)
-			if !transport.allowLAN && (strings.Contains(string(version), "26.9.9") || strings.Contains(string(version), "26.10.21")) {
+			if !transport.allowLAN && (strings.Contains(string(version), "26.9.9") || strings.Contains(string(version), "26.10.21") || strings.Contains(string(version), "26.10.29")) {
 				if ok {
 					t.Fatal("remote VLESS inbound must not reach private addresses without explicit finalRules")
 				}

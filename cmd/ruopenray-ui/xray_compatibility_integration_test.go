@@ -56,9 +56,9 @@ func TestXrayCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	modern := strings.Contains(string(version), "26.9.9") || strings.Contains(string(version), "26.10.21")
+	modern := strings.Contains(string(version), "26.9.9") || strings.Contains(string(version), "26.10.21") || strings.Contains(string(version), "26.10.29")
 	if !modern && !strings.Contains(string(version), "26.3.27") {
-		t.Skip("expectations pinned to 26.3.27, 26.9.9 and 26.10.21")
+		t.Skip("expectations pinned to 26.3.27, 26.9.9, 26.10.21 and 26.10.29")
 	}
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
 	defer origin.Close()
