@@ -1,6 +1,7 @@
 import { hiddenBuiltinRoutePresetKeys, labels, managedRouteTags, nav, routeBundles, routeKinds, routePlaceholders, routePresets, tabTitles } from './presets.js';
 import { createAmneziaActions } from './amnezia-actions.js';
 import { createAmneziaView } from './amnezia-view.js';
+import { applyStageProgressView, applyStageProgressVisible } from './apply-progress-view.js';
 import { bindActionControls } from './action-bindings.js';
 import { createApiClient } from './api-client.js';
 import { createAuxPanelsView } from './aux-panels-view.js';
@@ -35,7 +36,7 @@ import { bindImportControls } from './import-bindings.js';
 import { createLoginView } from './login-view.js';
 import { interfaceIcon, navigationView } from './navigation-view.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
-import { noticeView } from './notice-view.js';
+import { modalNoticeView, noticeDialogOwner, noticeView } from './notice-view.js';
 import { createObservatoryActions } from './observatory-actions.js';
 import { createProfileActions } from './profile-actions.js';
 import { bindProfileControls } from './profile-bindings.js';
@@ -1300,6 +1301,8 @@ const dashboardView = createDashboardView({
   checkMethodLabel,
   serverLocationChip,
   configHasUnappliedChanges,
+  pendingApplyProgressVisible,
+  mainApplyFallbackVisible,
 });
 const {
   checkModeLabel,
@@ -1647,7 +1650,6 @@ function loadingDashboard() {
         <span class="eyebrow">Состояние роутера</span>
         <h2>Проверяем Xray</h2>
         <p>Получаем статус сервиса, ядра и активной конфигурации с OpenWrt.</p>
-        ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
       </div>
       <div class="dash-actions">
         <button class="btn secondary" data-action="refresh">Обновить статус</button>
@@ -1796,17 +1798,37 @@ function pendingApplyRisks(configDirty, firewallDirty) {
   return risks;
 }
 
+function mainPageContent({ hasApplySteps, hasApplyFallback }) {
+  const applyProgressActive = hasApplyFallback || (hasApplySteps && state.busyAction === 'apply');
+  return `
+    ${applyProgressActive || noticeDialogOwner(state) ? '' : noticeView(state, escapeHtml, { className: 'page-result-notice', live: true })}
+    ${state.tab === 'setup' ? '' : pendingChangesBanner()}
+    ${hasApplyFallback ? operationProgressView({ globalFallback: true }) : ''}
+    ${content()}
+  `;
+}
+
+function pendingApplyProgressVisible() {
+  return state.tab !== 'setup' && applyStageProgressVisible(state)
+    && (configHasUnappliedChanges() || firewallHasUnappliedChanges() || state.busyAction === 'apply');
+}
+
+function mainApplyFallbackVisible() {
+  return !pendingApplyProgressVisible() && Boolean(state.configApplying || state.firewallSaving);
+}
+
 function pendingChangesBanner() {
   const configDirty = configHasUnappliedChanges();
   const firewallDirty = firewallHasUnappliedChanges();
-  if (!configDirty && !firewallDirty) return '';
+  const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
+  const applySteps = applyStageProgressVisible(state) ? state.applySteps : [];
+  if (!configDirty && !firewallDirty && !(state.busyAction === 'apply' && applySteps.length)) return '';
   const firewallReasons = firewallDirty && typeof firewallPendingReasons === 'function'
     ? firewallPendingReasons(state.firewallStatus || {})
     : [];
   const visibleFirewallReasons = firewallReasons.slice(0, 4);
   const xrayReasons = pendingXrayChangeItems();
   const visibleXrayReasons = xrayReasons.slice(0, 5);
-  const applying = state.configApplying || state.firewallSaving || state.busyAction === 'apply';
   const changeItems = [
     configDirty ? 'Xray: будет проверена конфигурация и выполнен перезапуск сервиса' : '',
     firewallDirty ? 'Firewall: nftables и policy routing применятся без перезапуска Xray' : '',
@@ -1814,22 +1836,20 @@ function pendingChangesBanner() {
     firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
   ].filter(Boolean);
   const applyLabel = applying ? 'Применяю изменения...' : 'Применить изменения';
-  const applySteps = Array.isArray(state.applySteps) && state.applySteps.length && applying ? state.applySteps : [];
   const risks = pendingApplyRisks(configDirty, firewallDirty);
   const totalChanges = changeItems.length
     + Math.max(0, xrayReasons.length - visibleXrayReasons.length)
     + Math.max(0, firewallReasons.length - visibleFirewallReasons.length);
-  const summary = `${totalChanges} ${totalChanges === 1 ? 'изменение' : totalChanges < 5 ? 'изменения' : 'изменений'}${risks.length ? ` · рисков: ${risks.length}` : ''}`;
+  const summary = !configDirty && !firewallDirty && applying
+    ? 'Завершаю применение настроек'
+    : `${totalChanges} ${totalChanges === 1 ? 'изменение' : totalChanges < 5 ? 'изменения' : 'изменений'}${risks.length ? ` · рисков: ${risks.length}` : ''}`;
   return `
-    <section class="pending-changes" role="status" aria-live="polite">
+    <section class="pending-changes" ${applySteps.length || mainApplyFallbackVisible() ? 'aria-label="Применение изменений"' : 'role="status" aria-live="polite"'}>
       <div class="pending-summary">
         <div>
-          <strong>Есть непримененные изменения</strong>
+          <strong>${applying ? 'Применение изменений' : 'Есть непримененные изменения'}</strong>
           <span>${escapeHtml(summary)}</span>
         </div>
-        ${applySteps.length ? `<ol class="apply-step-list">
-          ${applySteps.map((step) => `<li class="${escapeHtml(step.status || 'pending')}"><i></i><span>${escapeHtml(step.label)}</span></li>`).join('')}
-        </ol>` : ''}
       </div>
       <details class="pending-details">
         <summary>Что изменится</summary>
@@ -1849,6 +1869,7 @@ function pendingChangesBanner() {
         <button class="btn secondary ${state.busyAction === 'discardPendingChanges' ? 'is-busy' : ''}" data-action="discardPendingChanges" ${applying || state.configTesting ? 'disabled' : ''}>Отменить</button>
         <button class="btn ${risks.length ? 'warning' : ''} ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
+      ${applyStageProgressView(applySteps, escapeHtml, { live: applying || !state.message })}
     </section>
   `;
 }
@@ -2048,6 +2069,7 @@ function firewallPreflightDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeFirewallPreflight" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'firewallPreflight')}
         <div class="firewall-preflight-body">
           <p>RuOpenRay обнаружил B4 или похожие правила DNS, NFQUEUE и policy routing. Первый запрос остановлен до записи nftables и reload firewall.</p>
           <div class="firewall-preflight-meta">
@@ -2096,10 +2118,11 @@ function render() {
       : `Xray${xrayVersionLabel ? ` ${xrayVersionLabel}` : ''} · остановлен`
     : 'Проверяем Xray';
   const activeProfile = activeProfileName();
-  const hasApplySteps = Array.isArray(state.applySteps) && state.applySteps.length > 0 && state.busyAction === 'apply';
+  const hasApplySteps = pendingApplyProgressVisible();
+  const hasApplyFallback = mainApplyFallbackVisible();
   const hasAppUpdateProgress = state.busyAction === 'checkAppUpdate' || state.appReleaseChecking;
-  const hasLocalOperationProgress = state.configApplying || state.configTesting || state.firewallSaving || state.serverChecking || hasApplySteps || hasAppUpdateProgress;
-  const showTopActionPill = state.busyAction && !hasAppUpdateProgress;
+  const hasLocalOperationProgress = hasApplyFallback || state.configTesting || state.serverChecking || hasApplySteps || hasAppUpdateProgress;
+  const showTopActionPill = state.busyAction && !hasAppUpdateProgress && !hasApplySteps && !hasApplyFallback;
   const ruOpenRayModeBusy = state.busyAction === 'stopRuOpenRayMode';
   const showRuOpenRayStop = statusLoaded && (
     Boolean(state.firewallStatus?.active || state.firewallStatus?.persistent)
@@ -2175,8 +2198,7 @@ function render() {
             ${serviceButtons ? `<div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>` : ''}
           </div>
         </header>
-        ${state.tab === 'setup' ? '' : pendingChangesBanner()}
-        ${content()}
+        ${mainPageContent({ hasApplySteps, hasApplyFallback })}
       </main>
     </div>
     ${installWizardDialog()}

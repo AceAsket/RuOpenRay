@@ -1,5 +1,6 @@
 import { isServiceOutbound } from './outbound-tags.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { modalNoticeView } from './notice-view.js';
 
 export const setupWizardStepIds = Object.freeze(['connection', 'scenarios', 'launch']);
 
@@ -675,6 +676,7 @@ function installWizardDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeInstallWizard" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'install')}
         <div class="install-steps">
           ${steps.length ? steps.map((step) => `<article class="${step.ok ? 'ok' : 'warn'}">
             <span>${step.ok ? '✓' : '!'}</span>
@@ -757,6 +759,7 @@ function coreUpdateDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeCoreDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'core')}
         <div class="core-update-banner ${info.hasUpdate ? 'has-update' : ''}">
           <strong>${missing ? 'Xray не установлен' : info.hasUpdate ? 'Есть обновление' : 'Актуальная стабильная версия уже установлена'}</strong>
           <span>${missing ? 'Для OpenWrt проще начать с пакета xray-core из репозитория, а версии из GitHub оставить для ручного выбора.' : info.target ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}` : 'Релизы пока не загружены'}</span>

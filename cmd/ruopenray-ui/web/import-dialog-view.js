@@ -1,5 +1,6 @@
 import { countryPickerView } from './server-location-view.js';
-import { proxyDisplayName, proxyDisplayText } from './proxy-label.js';
+import { proxyDisplayName } from './proxy-label.js';
+import { modalNoticeView } from './notice-view.js';
 
 export function createImportDialogView({
   state,
@@ -64,6 +65,7 @@ function importDialog(kind) {
             </div>
             <button class="icon-btn" type="button" data-action="closeImport" aria-label="Закрыть">×</button>
           </div>
+          ${modalNoticeView(state, escapeHtml, 'import')}
           <div class="import-choice import-choice-dialog">
             ${importButton('Сервер', 'Вставить одну ссылку, увидеть имя, протокол и адрес, затем подтвердить добавление.', 'server')}
             ${importButton('Подписка', 'Скачать subscription URL, проверить найденные серверы и добавить их в профиль.', 'subscription')}
@@ -86,6 +88,7 @@ function importDialog(kind) {
           <button class="btn secondary" type="button" data-action="closeImport">Закрыть</button>
         </div>
       </div>
+      ${modalNoticeView(state, escapeHtml, 'import')}
       <div class="form-row">
         <label>Имя профиля</label>
         <input id="profileName" placeholder="Пусто = имя клиента" value="${escapeHtml(state.profileName)}" />
@@ -166,7 +169,6 @@ function importDialog(kind) {
             ${serverImportPreviewItem() ? previewBox(serverImportPreviewItem()) : ''}
           `
       }
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
       </section>
     </div>
   `;

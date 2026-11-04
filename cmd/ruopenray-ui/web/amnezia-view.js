@@ -1,5 +1,5 @@
 import { amneziaInterfaceFields, amneziaPeerFields, parseAmneziaConfigText } from './amnezia-config-editor.js';
-import { proxyDisplayText } from './proxy-label.js';
+import { modalNoticeView } from './notice-view.js';
 
 export function createAmneziaView({ state, escapeHtml }) {
   const array = (value) => Array.isArray(value) ? value : [];
@@ -456,6 +456,7 @@ export function createAmneziaView({ state, escapeHtml }) {
           </div>
           <button class="icon-btn" type="button" data-action="closeAmneziaImportDialog" aria-label="Закрыть">&times;</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'amneziaImport')}
         <div class="form-row">
           <label>Название профиля</label>
           <input class="input" data-amnezia-name value="${escapeHtml(profileName)}" placeholder="Например: cloudfour AWG">
@@ -492,7 +493,6 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить подключение</button>
         <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить конфигурацию</button>
       </div>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
       </section>
     </div>`;
   }

@@ -1,4 +1,3 @@
-import { noticeView } from './notice-view.js';
 import { routingListTargetPicker } from './routing-dsl.js';
 import { routeExplanationView } from './routing-insights.js';
 import { routePresetIconView } from './route-visuals.js';
@@ -166,7 +165,6 @@ function routingRulesPanel() {
         <button class="btn danger compact" data-action="removeSelectedRouteRules">Удалить</button>
         <button class="btn secondary compact" data-action="clearRouteRuleSelection">Снять выбор</button>
       </div>` : ''}
-      ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       ${filters.routeFilterStatus !== 'disabled' ? `<div class="route-table">
         ${orderedRouteList(visibleRules, options, rules.length, managedRules)}
       </div>` : ''}
@@ -748,7 +746,6 @@ function firewallPanel() {
           <button class="btn" data-action="prepareTransparent" ${state.configApplying || state.configTesting ? 'disabled' : ''}>Подготовить черновик</button>
           <button class="btn secondary ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
         </div>
-        ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
         ${xrayConfigTestLogView()}
       </section>
     </div>

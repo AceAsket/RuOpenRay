@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ruopenray-ui
-PKG_VERSION:=0.5.1_rc5
-APP_VERSION:=0.5.1-rc5
+PKG_VERSION:=0.5.2
+APP_VERSION:=0.5.2
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git

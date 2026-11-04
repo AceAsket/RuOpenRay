@@ -4121,3 +4121,314 @@ body[data-theme] :is(.geo-nand-files > summary > span, .firewall-preflight-list 
     white-space: normal;
   }
 }
+
+/* One compact result notice follows the page heading in the normal document flow. */
+body[data-theme] .notice.page-result-notice {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .page-result-notice + .pending-changes {
+  margin-top: 0;
+}
+
+body[data-theme] .notice.page-result-notice:is(.ok, .success) {
+  border-left-color: var(--status-good-text);
+}
+
+body[data-theme] .notice.page-result-notice:is(.warn, .warning) {
+  border-left-color: var(--status-warn-text);
+}
+
+body[data-theme] .notice.page-result-notice:is(.bad, .danger, .error) {
+  border-left-color: var(--status-bad-text);
+}
+
+body[data-theme] .page-result-notice > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .page-result-notice .notice-details {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+body[data-theme] .page-result-notice .notice-details > summary {
+  color: var(--accent-strong);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .page-result-notice .notice-details-body {
+  min-width: 0;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+body[data-theme] .page-result-notice .notice-details-body > strong {
+  font-size: 13px;
+}
+
+body[data-theme] .page-result-notice .notice-details-body > pre {
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* Real apply stages replace the duplicate indeterminate apply indicators. */
+body[data-theme] .apply-stage-progress {
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .apply-stage-progress.apply-stage-fallback {
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  padding: 10px 12px;
+}
+
+body[data-theme] .pending-changes > .apply-stage-progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0;
+}
+
+body[data-theme] .pending-changes:has(.pending-details[open]) > .apply-stage-progress {
+  grid-row: 3;
+}
+
+body[data-theme] .apply-stage-heading {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+body[data-theme] .apply-stage-heading > .apply-stage-count {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+body[data-theme] .apply-stage-heading > .apply-stage-current {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .apply-stage-list {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--apply-stage-count, 4), minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+body[data-theme] .apply-stage-list > .apply-stage {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel);
+  list-style: none;
+}
+
+body[data-theme] .apply-stage > .apply-stage-marker,
+body[data-theme] .apply-stage-fallback > .apply-stage-marker {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+body[data-theme] .apply-stage > .apply-stage-copy {
+  min-width: 0;
+}
+
+body[data-theme] .apply-stage-copy > .apply-stage-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .apply-stage.is-complete > .apply-stage-marker {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+body[data-theme] .apply-stage.is-complete .apply-stage-label {
+  color: var(--text);
+}
+
+body[data-theme] .apply-stage-list > .apply-stage.is-current {
+  border-color: var(--accent);
+}
+
+body[data-theme] .apply-stage.is-current > .apply-stage-marker,
+body[data-theme] .apply-stage-fallback > .apply-stage-marker {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+body[data-theme] .apply-stage.is-current > .apply-stage-marker::after,
+body[data-theme] .apply-stage-fallback > .apply-stage-marker::after {
+  position: absolute;
+  inset: 4px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-radius: 50%;
+  animation: gl-apply-stage-spin 1s linear infinite;
+  content: "";
+}
+
+body[data-theme] .apply-stage.is-current .apply-stage-label {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+body[data-theme] .apply-stage.is-error > .apply-stage-marker {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .apply-stage.is-error .apply-stage-label {
+  color: var(--status-bad-text);
+}
+
+body[data-theme] .pending-changes:has(> .apply-stage-progress) .pending-actions .btn[data-action="apply"]::after,
+body[data-theme] .main:has(> .apply-stage-fallback) > .pending-changes .pending-actions .btn[data-action="apply"]::after {
+  animation: none;
+  content: none;
+}
+
+@keyframes gl-apply-stage-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 720px) {
+  body[data-theme] .pending-changes > .apply-stage-progress {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  body[data-theme] .pending-changes:has(.pending-details[open]) > .apply-stage-progress {
+    grid-row: 5;
+  }
+}
+
+@media (max-width: 700px) {
+  body[data-theme] .apply-stage-progress {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  body[data-theme] .apply-stage-progress.apply-stage-fallback {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  body[data-theme] .apply-stage-heading {
+    align-items: start;
+  }
+
+  body[data-theme] .apply-stage-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  body[data-theme] .apply-stage-list:has(> .apply-stage:only-child) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .apply-stage-list > .apply-stage {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 6px;
+    min-height: 40px;
+    padding: 7px;
+  }
+
+  body[data-theme] .apply-stage > .apply-stage-marker,
+  body[data-theme] .apply-stage-fallback > .apply-stage-marker {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-theme] .apply-stage-progress *,
+  body[data-theme] .apply-stage.is-current > .apply-stage-marker::after,
+  body[data-theme] .apply-stage-fallback > .apply-stage-marker::after {
+    animation: none;
+    transition: none;
+  }
+}

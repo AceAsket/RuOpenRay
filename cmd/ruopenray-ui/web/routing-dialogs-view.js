@@ -1,8 +1,9 @@
 import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
 import { routingDestinationPicker, routingListTargetPicker } from './routing-dsl.js';
 import { isFailoverBalancer } from './balancer-policy.js';
-import { proxyDisplayName, proxyDisplayText } from './proxy-label.js';
+import { proxyDisplayName } from './proxy-label.js';
 import { countryFlagMarkup, serverLocation } from './server-location.js';
+import { modalNoticeView } from './notice-view.js';
 
 export function createRoutingDialogsView({
   state,
@@ -82,6 +83,7 @@ function routeRuleDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeRouteRuleDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'routeRule')}
         ${editing ? '' : `
         <div class="segmented route-dialog-mode" aria-label="Режим добавления правил">
           <button type="button" class="${!listMode && !presetsMode ? 'active' : ''}" data-route-rule-mode="single">Одно правило</button>
@@ -216,7 +218,6 @@ function routeRuleDialog() {
           ${routeRuleTestResultView(state.routeRuleTestResult)}
         </div>
         `}
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteRuleDialog">Отмена</button>
           ${presetsMode ? `
@@ -289,6 +290,7 @@ function routeBalancerDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeRouteBalancerDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'routeBalancer')}
 
         <div class="balancer-layout ${balancers.length ? '' : 'is-empty'}">
           <section class="balancer-form">
@@ -401,7 +403,6 @@ function routeBalancerDialog() {
           </section>` : ''}
         </div>
 
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteBalancerDialog">Отмена</button>
           <button class="btn warning ${state.busyAction === 'saveRouteBalancer' ? 'is-busy' : ''}" type="button" data-action="saveRouteBalancer" ${state.busyAction === 'saveRouteBalancer' ? 'disabled' : ''}>${state.busyAction === 'saveRouteBalancer' ? 'Сохраняю...' : 'Сохранить'}</button>
@@ -430,6 +431,7 @@ function selectedRouteGroupDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeSelectedRouteGroupDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'routeGroup')}
         <div class="preset-editor route-group-editor">
           <div class="preset-editor-grid">
             <label>
@@ -452,7 +454,6 @@ function selectedRouteGroupDialog() {
           </div>
           <div class="preset-editor-hint">После создания группа появится в списке правил как единый блок. Порядок выбранных правил сохранится, а остальные правила останутся вокруг него.</div>
         </div>
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeSelectedRouteGroupDialog">Отмена</button>
           <button class="btn warning" type="button" data-action="createSelectedRouteGroup" ${selectedCount >= 2 ? '' : 'disabled'}>Создать группу</button>
@@ -476,6 +477,7 @@ function routeTargetReplaceDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeRouteTargetReplaceDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'routeTargetReplace')}
         <div class="route-replace-grid">
           <label>
             <span>Что заменить</span>
@@ -516,7 +518,6 @@ function routeTargetReplaceDialog() {
             </ul>
           ` : '<p class="muted">Нет правил, подходящих под выбранную замену.</p>'}
         </div>
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteTargetReplaceDialog">Отмена</button>
           <button class="btn warning" type="button" data-action="applyRouteTargetReplacement" ${summary.affectedCount && state.routeReplaceFrom && state.routeReplaceTo && state.routeReplaceFrom !== state.routeReplaceTo ? '' : 'disabled'}>Заменить в черновике</button>
@@ -548,6 +549,7 @@ function routePresetDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeRoutePresetDialog" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'routePreset')}
           <div class="preset-editor">
             <div class="preset-editor-grid">
               <label>

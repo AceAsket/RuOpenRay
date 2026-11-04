@@ -1,4 +1,3 @@
-import { noticeView } from './notice-view.js';
 import { adguardSection } from './adguard-view.js';
 
 export function createDnsView(deps) {
@@ -850,7 +849,6 @@ function dnsPanel() {
     </section>
 
     ${views[view]()}
-    ${noticeView(state, escapeHtml, { className: 'dns-page-message' })}
   `;
 }
 

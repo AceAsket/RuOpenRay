@@ -1,5 +1,5 @@
-import { noticeView } from './notice-view.js';
 import { countryPickerView } from './server-location-view.js';
+import { modalNoticeView } from './notice-view.js';
 import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
@@ -352,6 +352,7 @@ function serverEditDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeServerEdit" aria-label="Закрыть">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'serverEditor')}
         <div class="server-edit-layout">
           <div class="server-edit-form">
             <div class="server-edit-section">
@@ -512,7 +513,6 @@ function serversPanel() {
           .map(({ outbound, index }) => serverCard(outbound, index, activeTag))
           .join('') || '<p class="muted">В конфигурации пока нет proxy-серверов. Добавьте VLESS/VMess/Trojan ссылкой или подпиской.</p>'}
       </div>
-      ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
     </section>
     ` : ''}
 

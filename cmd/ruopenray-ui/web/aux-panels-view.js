@@ -1,5 +1,5 @@
-import { noticeView } from './notice-view.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { modalNoticeView } from './notice-view.js';
 
 export function createAuxPanelsView({
   state,
@@ -72,7 +72,6 @@ function devicesPanel() {
           <button class="mode-card" data-device-mode="direct"><strong>Напрямую</strong><span>Банки, локальные сервисы, умный дом и IPTV.</span></button>
           <button class="mode-card" data-device-mode="block"><strong>Блокировка</strong><span>Отключить доступ для отдельного клиента.</span></button>
         </div>
-        ${noticeView(state, escapeHtml, { style: 'margin-top: 14px' })}
       </section>
 
       <section class="panel">
@@ -200,6 +199,7 @@ function profileEditorDialog() {
           </div>
           <button class="icon-btn" type="button" data-action="closeProfileEdit">×</button>
         </div>
+        ${modalNoticeView(state, escapeHtml, 'profileEditor')}
         <div class="form-row">
           <label>Имя профиля</label>
           <input id="profileEditName" value="${escapeHtml(state.profileEditName || '')}" placeholder="default" />

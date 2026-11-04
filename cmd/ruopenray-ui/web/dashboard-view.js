@@ -1,6 +1,6 @@
-import { noticeView } from './notice-view.js';
 import { interfaceIcon } from './navigation-view.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { applyOperationProgressView } from './apply-progress-view.js';
 
 export function createDashboardView(deps) {
   const {
@@ -31,6 +31,8 @@ export function createDashboardView(deps) {
     checkMethodLabel,
     serverLocationChip = () => '',
     configHasUnappliedChanges,
+    pendingApplyProgressVisible = () => false,
+    mainApplyFallbackVisible = () => false,
   } = deps;
 
 function dashboard() {
@@ -80,7 +82,6 @@ function dashboard() {
       <div class="dash-status">
         <span class="eyebrow">Ресурсы роутера</span>
         ${dashboardSystemStats(s.system)}
-        ${noticeView(state, escapeHtml, { className: 'dash-notice' })}
       </div>
       ${configDirty ? `<div class="dash-actions">
         <button class="btn ${state.configTesting ? 'is-busy' : ''}" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю...' : 'Проверить черновик'}</button>
@@ -842,15 +843,11 @@ function dashboardServerDisplayName(outbound) {
   return tag ? proxyDisplayName(tag) : 'Сервер';
 }
 
-function operationProgressView() {
+function operationProgressView({ globalFallback = false } = {}) {
+  if (pendingApplyProgressVisible()) return '';
+  if (!globalFallback && mainApplyFallbackVisible()) return '';
   if (state.configApplying) {
-    return `
-      <div class="operation-progress apply-progress" role="status">
-        <span>Применяю конфигурацию</span>
-        <strong>Проверка, запись и перезапуск Xray</strong>
-        <i></i>
-      </div>
-    `;
+    return applyOperationProgressView(state.busyLabel || 'Проверка, запись и перезапуск Xray', escapeHtml);
   }
   if (state.configTesting) {
     return `
@@ -862,13 +859,7 @@ function operationProgressView() {
     `;
   }
   if (state.firewallSaving) {
-    return `
-      <div class="operation-progress apply-progress" role="status">
-        <span>Применяю firewall</span>
-        <strong>Записываю nftables и проверяю состояние перехвата</strong>
-        <i></i>
-      </div>
-    `;
+    return applyOperationProgressView(state.busyLabel || 'Записываю nftables и проверяю состояние перехвата', escapeHtml);
   }
   if (state.serverChecking) {
     const count = state.serverCheckingTags.length || proxyOutbounds().length;
