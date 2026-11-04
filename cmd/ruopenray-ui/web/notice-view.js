@@ -1,4 +1,5 @@
 import { configTestLogDetails } from './xray-error-details.js';
+import { proxyDisplayText } from './proxy-label.js';
 
 export function noticeView(state, escapeHtml, { className = '', style = '' } = {}) {
   if (!state.message) return '';
@@ -9,8 +10,8 @@ export function noticeView(state, escapeHtml, { className = '', style = '' } = {
   const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
   return `
     <div class="${classes}"${styleAttr}>
-      <div>${escapeHtml(state.message)}</div>
-      ${details ? noticeDetails(details, escapeHtml) : ''}
+      <div>${escapeHtml(proxyDisplayText(state.message, state))}</div>
+      ${details ? noticeDetails(details, (text) => escapeHtml(proxyDisplayText(text, state))) : ''}
     </div>
   `;
 }

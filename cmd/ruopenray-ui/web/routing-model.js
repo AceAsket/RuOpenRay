@@ -2,6 +2,7 @@ import { countryFlagMarkup, flagForCountry, serverDisplayName, serverLocation } 
 import { isFragmentOutboundTag } from './outbound-tags.js';
 import { displayRouteDomainValues } from './routing-values.js';
 import { isDefaultRoute } from './routing-order.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 const privateBypassValues = new Set([
   'geoip:private',
@@ -131,16 +132,16 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
       'dns-out': 'DNS Xray',
     };
     if (systemLabels[tag]) return systemLabels[tag];
-    if (!isProxyTargetTag(tag)) return readableRouteTag(tag);
+    if (!isProxyTargetTag(tag)) return proxyDisplayName(readableRouteTag(tag));
     const pool = subscriptionPoolByTag(tag);
     const outbound = routeTargetOutbound(tag);
     const meta = state.serverMeta?.[tag] || {};
     const location = serverLocation(outbound, meta);
     const flag = flagForCountry(location.code);
     const readable = readableRouteTag(tag);
-    const name = readable === tag ? serverDisplayName(outbound, meta) : readable;
+    const name = proxyDisplayName(readable === tag ? serverDisplayName(outbound, meta) : readable);
     const suffix = pool
-      ? ` · подписка${pool.activeCandidate?.tag ? `: ${pool.activeCandidate.tag}` : pool.activeMissing ? ': активный удален' : ''}`
+      ? ` · подписка${pool.activeCandidate?.tag ? `: ${proxyDisplayName(pool.activeCandidate.tag)}` : pool.activeMissing ? ': активный удален' : ''}`
       : '';
     return `Xray - ${flag ? `${flag} ` : ''}${name}${suffix}`;
   }
@@ -149,7 +150,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     return [
       ...selectedAmneziaProfiles().map((profile) => ({ value: `outbound:${amneziaDirectTag(profile.id)}`, label: amneziaProfileTargetLabel(profile) })),
       ...outboundOptions().map((tag) => ({ value: `outbound:${tag}`, label: routeTargetOptionLabel(tag) })),
-      ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${tag}` }))
+      ...balancerOptions().map((tag) => ({ value: `balancer:${tag}`, label: `Балансировщик · ${proxyDisplayName(tag)}` }))
     ];
   }
   
@@ -361,7 +362,9 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const values = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
     const fullValues = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
     const network = rule.network ? ` · ${rule.network}` : '';
-    const outbound = rule.balancerTag ? `Балансировщик · ${rule.balancerTag}` : readableRouteTag(rule.outboundTag || 'не задано');
+    const outbound = rule.balancerTag
+      ? `Балансировщик · ${proxyDisplayName(rule.balancerTag)}`
+      : proxyDisplayName(readableRouteTag(rule.outboundTag || 'не задано'), state.serverMeta?.[rule.outboundTag]);
     const managedDetail = managedRouteDetail(rule || {});
     if (target.kind === 'default') {
       return {

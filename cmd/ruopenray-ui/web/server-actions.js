@@ -1,5 +1,6 @@
 import { parseServerEditJson, patchServerEditField, stringifyServerEditOutbound } from './server-edit-model.js';
 import { inferredCountryForOutbound } from './server-location.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createServerActions({
   state,
@@ -17,6 +18,9 @@ export function createServerActions({
 }) {
   let subscriptionFallbackAbort = null;
   let subscriptionFallbackTimer = 0;
+
+  const serverName = (tag) => proxyDisplayName(tag, state.serverMeta?.[tag]);
+  const candidateName = (candidate, fallback) => proxyDisplayName(candidate?.displayTag || candidate?.tag || candidate?.address || fallback, state.serverMeta?.[candidate?.tag]);
 
   function restoreServerEditScroll(top) {
     const restore = () => {
@@ -195,6 +199,7 @@ export function createServerActions({
     }
     outbound = parsed.outbound;
     const oldTag = String(current.tag || '').trim();
+    const oldName = serverName(oldTag);
     const newTag = String(outbound.tag || '').trim();
     if (!newTag) {
       state.serverEditError = 'У сервера должен быть outbound tag';
@@ -203,7 +208,7 @@ export function createServerActions({
     }
     const duplicate = configOutbounds().some((item, itemIndex) => itemIndex !== index && item?.tag === newTag);
     if (duplicate) {
-      state.serverEditError = `Тег ${newTag} уже используется другим направлением`;
+      state.serverEditError = `Тег ${serverName(newTag)} уже используется другим направлением`;
       render();
       return;
     }
@@ -221,14 +226,15 @@ export function createServerActions({
     if (state.activeServerTag === oldTag && oldTag !== newTag && typeof setActiveServerTag === 'function') setActiveServerTag(newTag);
     await persistServerMeta(nextMeta);
     state.message = oldTag === newTag
-      ? `Сервер ${newTag} обновлен в черновике`
-      : `Сервер ${oldTag} переименован в ${newTag}, ссылки в правилах обновлены`;
+      ? `Сервер ${serverName(newTag)} обновлен в черновике`
+      : `Сервер ${oldName} переименован в ${serverName(newTag)}, ссылки в правилах обновлены`;
     closeServerEditor();
   }
 
   function removeOutbound(index) {
     const outbound = configOutbounds()[index];
     const tag = outbound?.tag || '';
+    const name = tag ? serverName(tag) : index + 1;
     if (['direct', 'block', 'dns-out'].includes(tag)) {
       state.message = 'Служебные направления direct, block и dns-out лучше не удалять';
       render();
@@ -243,15 +249,16 @@ export function createServerActions({
       persistServerMeta(nextMeta).catch(() => {});
     }
     syncConfig(next);
-    state.message = `Сервер ${tag || index + 1} удален из черновика`;
+    state.message = `Сервер ${name} удален из черновика`;
     render();
   }
 
   async function routeAllToOutbound(tag, { apply = true } = {}) {
     if (state.configApplying) return;
+    const name = serverName(tag);
     const before = proxyRuleStrategyStats();
     state.pendingServerTag = tag;
-    state.message = `Подключаю ${tag}: меняю основное proxy-направление...`;
+    state.message = `Подключаю ${name}: меняю основное proxy-направление...`;
     render();
     setActiveProxyDraft(tag);
     const after = proxyRuleStrategyStats(tag);
@@ -259,15 +266,15 @@ export function createServerActions({
     const pinned = after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : '';
     if (!apply) {
       state.pendingServerTag = '';
-      state.message = `Основное proxy-направление теперь ведет в ${tag}. Переключено правил: ${switched}${pinned}`;
+      state.message = `Основное proxy-направление теперь ведет в ${name}. Переключено правил: ${switched}${pinned}`;
       render();
       return;
     }
-    state.message = `Подключаю ${tag}: меняю proxy-направление, записываю config.json и перезапускаю Xray...`;
+    state.message = `Подключаю ${name}: меняю proxy-направление, записываю config.json и перезапускаю Xray...`;
     render();
     try {
       await applyConfig({
-        successMessage: `Подключен ${tag}. Переключено правил: ${switched}${pinned}`
+        successMessage: `Подключен ${name}. Переключено правил: ${switched}${pinned}`
       });
     } finally {
       state.pendingServerTag = '';
@@ -371,7 +378,7 @@ export function createServerActions({
           if (!progress?.active || state.subscriptionFallbackTag !== tag) return;
           state.subscriptionFallbackChecked = Number(progress.checked || 0);
           state.subscriptionFallbackTotal = Number(progress.total || state.subscriptionFallbackTotal || 0);
-          state.subscriptionFallbackCurrent = [progress.currentTag, progress.currentAddress, progress.currentPort ? `:${progress.currentPort}` : '']
+          state.subscriptionFallbackCurrent = [progress.currentTag ? serverName(progress.currentTag) : '', progress.currentAddress, progress.currentPort ? `:${progress.currentPort}` : '']
             .filter(Boolean)
             .join(' ');
           render();
@@ -393,14 +400,14 @@ export function createServerActions({
         })
       });
       state.message = result.ok
-        ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'новый сервер'}`
-        : `Подписка ${tag}: ${result.error || 'доступный сервер не найден'}`;
+        ? `Подписка ${serverName(tag)}: выбран ${candidateName(result.selected, 'новый сервер')}`
+        : `Подписка ${serverName(tag)}: ${result.error || 'доступный сервер не найден'}`;
       rememberSubscriptionCandidateChecks(tag, result.results || []);
       await persistPoolActiveCandidateMeta(result, tag);
       await refresh();
     } catch (error) {
       if (error?.name === 'AbortError') {
-        state.message = `Поиск доступного сервера подписки ${tag} остановлен`;
+        state.message = `Поиск доступного сервера подписки ${serverName(tag)} остановлен`;
         render();
         return;
       }
@@ -423,8 +430,8 @@ export function createServerActions({
       body: JSON.stringify({ tag, index: Number(index), restart: true })
     });
     state.message = result.ok
-      ? `Подписка ${tag}: выбран ${result.selected?.tag || result.selected?.address || 'сервер'}`
-      : `Подписка ${tag}: ${result.error || 'не удалось выбрать сервер'}`;
+      ? `Подписка ${serverName(tag)}: выбран ${candidateName(result.selected, 'сервер')}`
+      : `Подписка ${serverName(tag)}: ${result.error || 'не удалось выбрать сервер'}`;
     await persistPoolActiveCandidateMeta(result, tag);
     await refresh();
   }
@@ -452,10 +459,10 @@ export function createServerActions({
       if (result?.result) {
         rememberSubscriptionCandidateChecks(tag, [result.result]);
         state.message = result.result.ok
-          ? `Сервер подписки доступен: ${result.result.tag || result.result.address || numericIndex + 1}`
-          : `Сервер подписки не ответил: ${result.result.tag || result.result.address || numericIndex + 1}`;
+          ? `Сервер подписки доступен: ${candidateName(result.result, numericIndex + 1)}`
+          : `Сервер подписки не ответил: ${candidateName(result.result, numericIndex + 1)}`;
       } else {
-        state.message = `Не удалось проверить сервер подписки ${tag}`;
+        state.message = `Не удалось проверить сервер подписки ${serverName(tag)}`;
       }
     } finally {
       state.subscriptionCandidateChecking = '';
@@ -471,8 +478,8 @@ export function createServerActions({
     });
     const activeApplied = Number(result?.activeApply?.updated || 0);
     state.message = result.ok
-      ? `Подписка ${tag}: обновлено серверов ${result.before} → ${result.count}${activeApplied ? ', активный proxy обновлен в Xray' : ''}${result.activeMissing ? ', активный сервер исчез из подписки' : ''}`
-      : `Подписка ${tag}: ${result.error || 'не удалось обновить список серверов'}`;
+      ? `Подписка ${serverName(tag)}: обновлено серверов ${result.before} → ${result.count}${activeApplied ? ', активный proxy обновлен в Xray' : ''}${result.activeMissing ? ', активный сервер исчез из подписки' : ''}`
+      : `Подписка ${serverName(tag)}: ${result.error || 'не удалось обновить список серверов'}`;
     await persistPoolActiveCandidateMeta(result, tag);
     await refresh();
   }
@@ -518,27 +525,27 @@ export function createServerActions({
       body: JSON.stringify({ tag, indexes, all })
     });
     if (!result?.ok || !Array.isArray(result.outbounds) || !result.outbounds.length) {
-      state.message = `Подписка ${tag}: ${result?.error || 'серверы не выбраны'}`;
+      state.message = `Подписка ${serverName(tag)}: ${result?.error || 'серверы не выбраны'}`;
       render();
       return;
     }
     syncConfig(mergeSubscriptionOutbounds(state.config, result.outbounds));
     const inferred = await persistInferredServerMeta(result.outbounds);
-    state.message = `Подписка ${tag}: добавлено в черновик прокси-серверов: ${result.outbounds.length}`;
+    state.message = `Подписка ${serverName(tag)}: добавлено в черновик прокси-серверов: ${result.outbounds.length}`;
     if (inferred) state.message += `, флагов определено: ${inferred}`;
     render();
   }
 
   async function deleteSubscriptionPool(tag) {
     if (!tag) return;
-    if (!confirm(`Удалить подписку ${tag}? Сервер в профиле и правила маршрутизации останутся на месте.`)) return;
+    if (!confirm(`Удалить подписку ${serverName(tag)}? Сервер в профиле и правила маршрутизации останутся на месте.`)) return;
     const result = await request('/api/subscriptions/delete', {
       method: 'POST',
       body: JSON.stringify({ tag })
     });
     state.message = result.ok
-      ? `Подписка ${tag} удалена из списка. Сервер в профиле не удалялся.`
-      : `Не удалось удалить подписку ${tag}`;
+      ? `Подписка ${serverName(tag)} удалена из списка. Сервер в профиле не удалялся.`
+      : `Не удалось удалить подписку ${serverName(tag)}`;
     await refresh();
   }
 

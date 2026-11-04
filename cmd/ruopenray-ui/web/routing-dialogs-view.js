@@ -1,7 +1,7 @@
 import { normalizeIconifyIcon, routePresetIconView } from './route-visuals.js';
 import { routingDestinationPicker, routingListTargetPicker } from './routing-dsl.js';
 import { isFailoverBalancer } from './balancer-policy.js';
-import { proxyDisplayName } from './proxy-label.js';
+import { proxyDisplayName, proxyDisplayText } from './proxy-label.js';
 import { countryFlagMarkup, serverLocation } from './server-location.js';
 
 export function createRoutingDialogsView({
@@ -203,7 +203,7 @@ function routeRuleDialog() {
             <div class="route-target-control">
               ${state.routeTargetType === 'balancer' ? `
                 <select id="routeBalancer">
-                  ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
+                  ${balancers.map((tag) => `<option value="${escapeHtml(tag)}" ${state.routeBalancer === tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(tag))}</option>`).join('')}
                 </select>
               ` : `
                 <select id="routeOutbound" class="route-outbound" data-route-outbound-picker>
@@ -216,7 +216,7 @@ function routeRuleDialog() {
           ${routeRuleTestResultView(state.routeRuleTestResult)}
         </div>
         `}
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteRuleDialog">Отмена</button>
           ${presetsMode ? `
@@ -244,7 +244,7 @@ function routeBalancerDialog() {
   const failover = state.routeBalancerMode === 'failover';
   const monitored = failover || ['leastPing', 'leastLoad'].includes(state.routeBalancerStrategy) || state.routeBalancerHealthCheck !== false;
   const burst = state.routeBalancerMonitorType === 'burstObservatory';
-  const targetOptions = (selected) => targets.map((target) => `<option value="${escapeHtml(target.tag)}" ${selected === target.tag ? 'selected' : ''}>${escapeHtml(target.title)}</option>`).join('');
+  const targetOptions = (selected) => targets.map((target) => `<option value="${escapeHtml(target.tag)}" ${selected === target.tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(target.title))}</option>`).join('');
   const withTargetFlag = (tag, select) => {
     const outbound = state.config?.outbounds?.find((item) => item.tag === tag) ||
       state.subscriptionPools?.find((pool) => pool.tag === tag)?.activeCandidate || { tag };
@@ -322,7 +322,7 @@ function routeBalancerDialog() {
                     <input type="checkbox" data-balancer-selector="${escapeHtml(target.tag)}" ${selectedSelectors.has(target.tag) ? 'checked' : ''} />
                     <span class="balancer-kind">${target.kind === 'subscription' ? 'pool' : 'server'}</span>
                     <span>
-                      <strong>${escapeHtml(target.title)}</strong>
+                      <strong>${escapeHtml(proxyDisplayName(target.title))}</strong>
                       <em>${escapeHtml(target.detail)}</em>
                     </span>
                   </div>
@@ -378,7 +378,7 @@ function routeBalancerDialog() {
             </details>` : '<p class="inline-help">Без автопроверки Xray продолжит выбирать недоступные серверы.</p>'}
             ${failover ? `<div class="balancer-preview"><strong>Автоматический возврат на основной VPN</strong><span>Резерв используется после обнаружения отказа основного. Когда основной снова проходит проверку, новые соединения возвращаются на него. Если не работает и резерв, соединение завершится ошибкой. Уже открытые соединения не переносятся.</span></div>` : `<div class="balancer-preview ${matches.length ? '' : 'empty'}">
               <strong>${matches.length ? `Подходит серверов: ${matches.length}` : 'Пока нет совпадений'}</strong>
-              <span>${matches.length ? escapeHtml(matches.map(proxyDisplayName).join(', ')) : 'Выберите серверы или подписки, которые уже есть в профиле.'}</span>
+              <span>${matches.length ? escapeHtml(matches.map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ')) : 'Выберите серверы или подписки, которые уже есть в профиле.'}</span>
             </div>`}
             ${!failover && advancedStrategy ? `<p class="settings-warning compact"><strong>${escapeHtml(observerLabel(advancedObserver))}</strong><span>${escapeHtml(advancedHelp)}</span></p>` : ''}
             <p class="inline-help">Балансировка распределяет соединения, а не суммирует скорость каналов для одной загрузки. Выходной IP может меняться между соединениями.</p>
@@ -391,8 +391,8 @@ function routeBalancerDialog() {
               const used = routeRules().filter((rule) => rule.balancerTag === balancer.tag).length;
               return `<article class="balancer-row">
                 <div>
-                  <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-                  <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? balancer.selector.map(proxyDisplayName).join(', ') : 'не задан')} · правил: ${used}</span>
+                  <strong>${escapeHtml(proxyDisplayName(balancer.tag || 'без имени'))}</strong>
+                  <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? balancer.selector.map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}</span>
                 </div>
                 <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
                 <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
@@ -401,7 +401,7 @@ function routeBalancerDialog() {
           </section>` : ''}
         </div>
 
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteBalancerDialog">Отмена</button>
           <button class="btn warning ${state.busyAction === 'saveRouteBalancer' ? 'is-busy' : ''}" type="button" data-action="saveRouteBalancer" ${state.busyAction === 'saveRouteBalancer' ? 'disabled' : ''}>${state.busyAction === 'saveRouteBalancer' ? 'Сохраняю...' : 'Сохранить'}</button>
@@ -452,7 +452,7 @@ function selectedRouteGroupDialog() {
           </div>
           <div class="preset-editor-hint">После создания группа появится в списке правил как единый блок. Порядок выбранных правил сохранится, а остальные правила останутся вокруг него.</div>
         </div>
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeSelectedRouteGroupDialog">Отмена</button>
           <button class="btn warning" type="button" data-action="createSelectedRouteGroup" ${selectedCount >= 2 ? '' : 'disabled'}>Создать группу</button>
@@ -516,7 +516,7 @@ function routeTargetReplaceDialog() {
             </ul>
           ` : '<p class="muted">Нет правил, подходящих под выбранную замену.</p>'}
         </div>
-        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice route-dialog-notice">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeRouteTargetReplaceDialog">Отмена</button>
           <button class="btn warning" type="button" data-action="applyRouteTargetReplacement" ${summary.affectedCount && state.routeReplaceFrom && state.routeReplaceTo && state.routeReplaceFrom !== state.routeReplaceTo ? '' : 'disabled'}>Заменить в черновике</button>

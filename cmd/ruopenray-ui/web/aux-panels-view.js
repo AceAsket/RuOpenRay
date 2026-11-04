@@ -1,4 +1,5 @@
 import { noticeView } from './notice-view.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createAuxPanelsView({
   state,
@@ -61,7 +62,7 @@ function devicesPanel() {
           <div class="form-row">
             <label>Режим</label>
             <select id="deviceMode">
-              ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.deviceMode === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
+              ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${state.deviceMode === tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}</option>`).join('')}
             </select>
           </div>
           <button class="btn" data-action="addDevice">Добавить правило</button>
@@ -89,11 +90,11 @@ function devicesPanel() {
               return `<article class="device-row">
                 <div class="device-ip">${escapeHtml(sources)}</div>
                 <div class="device-main">
-                  <strong>${escapeHtml(lease?.name || rule.outboundTag || 'не задано')}</strong>
-                  <span>${escapeHtml(lease ? `${rule.outboundTag} · ${lease.mac}` : ((rule.inboundTag || []).join(', ') || 'все входящие'))}</span>
+                  <strong>${escapeHtml(lease?.name || proxyDisplayName(rule.outboundTag || 'не задано', state.serverMeta?.[rule.outboundTag]))}</strong>
+                  <span>${escapeHtml(lease ? `${proxyDisplayName(rule.outboundTag, state.serverMeta?.[rule.outboundTag])} · ${lease.mac}` : ((rule.inboundTag || []).join(', ') || 'все входящие'))}</span>
                 </div>
                 <select data-device-outbound="${index}">
-                  ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${rule.outboundTag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}
+                  ${options.map((tag) => `<option value="${escapeHtml(tag)}" ${rule.outboundTag === tag ? 'selected' : ''}>${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}</option>`).join('')}
                 </select>
                 <button class="btn secondary" data-device-delete="${index}">Удалить</button>
               </article>`;

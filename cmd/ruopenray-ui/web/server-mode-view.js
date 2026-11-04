@@ -1,3 +1,5 @@
+import { proxyDisplayName } from './proxy-label.js';
+
 export function createServerModeView({ state, escapeHtml }) {
   const array = (value) => Array.isArray(value) ? value : [];
   const byteSize = (value = 0) => {
@@ -22,7 +24,7 @@ export function createServerModeView({ state, escapeHtml }) {
 
   function outboundSelect(path, value = 'direct') {
     const labels = { direct: 'Напрямую', block: 'Без выхода в интернет' };
-    const options = outbounds().map((tag) => `<option value="${escapeHtml(tag)}" ${tag === value ? 'selected' : ''}>${escapeHtml(labels[tag] || tag)}</option>`).join('');
+    const options = outbounds().map((tag) => `<option value="${escapeHtml(tag)}" ${tag === value ? 'selected' : ''}>${escapeHtml(labels[tag] || proxyDisplayName(tag, state.serverMeta?.[tag]))}</option>`).join('');
     return `<select class="input" data-server-mode-field="${escapeHtml(path)}">${options}</select>`;
   }
 
@@ -422,7 +424,7 @@ export function createServerModeView({ state, escapeHtml }) {
         ${rows.map((row) => `<article class="${row.enabled ? '' : 'disabled'}">
           <div>
             <strong>${escapeHtml(row.name)}</strong>
-            <span>${escapeHtml(`${row.kind} · ${row.parent} · ${row.egress}`)}</span>
+            <span>${escapeHtml(`${row.kind} · ${row.parent} · ${proxyDisplayName(row.egress, state.serverMeta?.[row.egress])}`)}</span>
           </div>
           <div class="server-mode-policy-chips">
             ${policyChip(row.enabled ? 'включен' : 'выключен', row.enabled ? 'ok' : 'muted')}
@@ -485,7 +487,7 @@ export function createServerModeView({ state, escapeHtml }) {
         ${clients.map((client) => `<article>
           <div>
             <strong>${escapeHtml(client.name || client.email || 'Клиент')}</strong>
-            <span>${escapeHtml(`${client.inboundName || client.inboundId || 'вход'} → ${client.egressTag || 'direct'}`)}</span>
+            <span>${escapeHtml(`${client.inboundName || client.inboundId || 'вход'} → ${proxyDisplayName(client.egressTag || 'direct', state.serverMeta?.[client.egressTag])}`)}</span>
           </div>
           <div>
             <strong>${escapeHtml(client.status || 'ждем трафик')}</strong>

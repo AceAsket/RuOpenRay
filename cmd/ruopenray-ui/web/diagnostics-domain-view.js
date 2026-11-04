@@ -1,4 +1,4 @@
-import { proxyOptionLabel } from './proxy-label.js';
+import { proxyDisplayName, proxyOptionLabel } from './proxy-label.js';
 
 export function createDiagnosticsDomainView(deps) {
   const {
@@ -321,12 +321,13 @@ function domainProbeDetailText(result) {
   if (!result) return '';
   if (result.ok === false) return result.stderr || result.error || 'не удалось проверить';
   const checks = result.checks || {};
+  const proxyName = proxyDisplayName(result.tag || 'proxy', state.serverMeta?.[result.tag]);
   return [
     domainProbeLine(checks.ping, 'ping с роутера').replace(/<[^>]+>/g, ''),
     domainProbeLine(checks.tcpDirect, 'tcp напрямую').replace(/<[^>]+>/g, ''),
-    domainProbeLine(checks.tcpProxy, `tcp через ${result.tag || 'proxy'}`).replace(/<[^>]+>/g, ''),
+    domainProbeLine(checks.tcpProxy, `tcp через ${proxyName}`).replace(/<[^>]+>/g, ''),
     domainProbeLine(checks.httpDirect || result.direct, 'http напрямую').replace(/<[^>]+>/g, ''),
-    domainProbeLine(checks.httpProxy || result.proxy, `http через ${result.tag || 'proxy'}`).replace(/<[^>]+>/g, ''),
+    domainProbeLine(checks.httpProxy || result.proxy, `http через ${proxyName}`).replace(/<[^>]+>/g, ''),
     result.verdict?.detail || ''
   ].filter(Boolean).join(' · ');
 }
@@ -362,7 +363,7 @@ function domainProbeTargetSelectHtml() {
   return `<label class="domain-probe-target">
     <span>Проверять через</span>
     <select id="domainProbeTag">
-      ${proxies || `<option value="">${escapeHtml(activeProxyTag() || 'proxy')}</option>`}
+      ${proxies || `<option value="">${escapeHtml(proxyDisplayName(activeProxyTag() || 'proxy', state.serverMeta?.[activeProxyTag()]))}</option>`}
     </select>
   </label>`;
 }
@@ -399,13 +400,14 @@ function domainProbeStatusHtml(host, { compact = false } = {}) {
   }
   const code = result.verdict?.code || '';
   const checks = result.checks || {};
+  const proxyName = proxyDisplayName(result.tag || 'proxy', state.serverMeta?.[result.tag]);
   return `<div class="domain-probe ${escapeHtml(code)}">
     <strong>${escapeHtml(result.verdict?.label || 'проверено')}</strong>
     ${domainProbeLine(checks.ping, 'ping с роутера')}
     ${domainProbeLine(checks.tcpDirect, 'tcp напрямую')}
-    ${domainProbeLine(checks.tcpProxy, `tcp через ${result.tag || 'proxy'}`)}
+    ${domainProbeLine(checks.tcpProxy, `tcp через ${proxyName}`)}
     ${domainProbeLine(checks.httpDirect || result.direct, 'http напрямую')}
-    ${domainProbeLine(checks.httpProxy || result.proxy, `http через ${result.tag || 'proxy'}`)}
+    ${domainProbeLine(checks.httpProxy || result.proxy, `http через ${proxyName}`)}
     <small>${escapeHtml(result.verdict?.detail || '')}</small>
     <button class="btn secondary compact" data-domain-probe="${escapeHtml(host)}">Повторить</button>
   </div>`;

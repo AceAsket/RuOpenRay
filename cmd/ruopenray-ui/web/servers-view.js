@@ -3,6 +3,7 @@ import { countryPickerView } from './server-location-view.js';
 import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createServersView(deps) {
   const {
@@ -54,7 +55,7 @@ function serverActionState(label) {
 function serverDisplayName(outbound) {
   const tag = String(outbound?.tag || '').trim();
   const configured = String(state.serverMeta?.[tag]?.label || '').trim();
-  if (configured) return configured;
+  if (configured) return proxyDisplayName(configured);
   const address = String(outboundAddress(outbound) || '').trim();
   const host = address.replace(/^\[/, '').split(']')[0].split(':')[0];
   const firstLabel = host.includes('.') ? host.split('.')[0] : '';
@@ -65,7 +66,7 @@ function serverDisplayName(outbound) {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
   }
-  return tag || 'Сервер';
+  return tag ? proxyDisplayName(tag) : 'Сервер';
 }
 
 function subscriptionCandidateStatus(check, checking = false) {
@@ -121,7 +122,7 @@ function serverCard(outbound, index, activeTag) {
     <div class="server-identity">
       <span class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</span>
       <div class="server-main">
-        <strong title="${escapeHtml(tag)}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
+        <strong title="${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(outboundAddress(outbound))}</span>
         ${meta}
       </div>
@@ -154,13 +155,13 @@ function subscriptionPoolCard(pool) {
   const fallbackCountText = fallbackTotal
     ? `${fallbackChecked} из ${fallbackTotal}`
     : `${fallbackChecked} проверено`;
-  const fallbackCurrent = String(state.subscriptionFallbackCurrent || '').trim();
+  const fallbackCurrent = state.subscriptionFallbackCurrent ? proxyDisplayName(state.subscriptionFallbackCurrent) : '';
   const search = String(state.subscriptionCandidateSearch?.[tag] || '').trim();
   const query = search.toLowerCase();
   const candidateChecks = state.subscriptionCandidateChecks?.[tag] || {};
   const candidateEntries = candidates.map((candidate, index) => {
     const address = [candidate?.address, candidate?.port].filter(Boolean).join(':');
-    const candidateTitle = candidate?.displayTag || candidate?.tag || `server-${index + 1}`;
+    const candidateTitle = proxyDisplayName(candidate?.displayTag || candidate?.tag || `server-${index + 1}`, state.serverMeta?.[candidate?.tag]);
     const selected = index === activeIndex;
     const location = serverLocation(candidate, {});
     const searchText = subscriptionCandidateSearchText(candidate, index, location, address);
@@ -196,8 +197,8 @@ function subscriptionPoolCard(pool) {
   });
   const visibleCount = candidateEntries.filter((entry) => entry.visible).length;
   const candidateRows = candidateEntries.map((entry) => entry.markup).join('');
-  const activeName = active?.displayTag || active?.tag || '';
-  const missingName = missing?.displayTag || missing?.tag || '';
+  const activeName = active?.displayTag || active?.tag ? proxyDisplayName(active.displayTag || active.tag, state.serverMeta?.[active.tag]) : '';
+  const missingName = missing?.displayTag || missing?.tag ? proxyDisplayName(missing.displayTag || missing.tag, state.serverMeta?.[missing.tag]) : '';
   const activeText = activeName
     ? `активен ${activeName} · ${[active.address, active.port].filter(Boolean).join(':')}`
     : activeMissing
@@ -209,7 +210,7 @@ function subscriptionPoolCard(pool) {
     <div class="server-identity">
       <span class="server-protocol">pool</span>
       <div class="server-main">
-        <strong>${escapeHtml(tag || 'subscription')}</strong>
+        <strong>${escapeHtml(proxyDisplayName(tag || 'subscription', state.serverMeta?.[tag]))}</strong>
         <span>${escapeHtml(pool?.url || 'subscription URL')}</span>
       </div>
     </div>
@@ -309,14 +310,14 @@ function serverAvailabilityPanel() {
           <small>Тестовый сайт открывается через выбранное подключение Xray. HTTP-сайт на порту VLESS или Trojan не нужен. Проверка TCP-порта не проверяет пароль, TLS и передачу трафика.</small>
         </div>
         <div class="availability-note">
-          <strong>Активный сервер: ${escapeHtml(activeTag || 'не выбран')}</strong>
+          <strong>Активный сервер: ${escapeHtml(proxyDisplayName(activeTag || 'не выбран', state.serverMeta?.[activeTag]))}</strong>
           <span>Подключение меняет основное proxy-направление: ${proxyStats.primary} правил. Правила, закрепленные на других серверах, не трогаются: ${proxyStats.pinned}.</span>
         </div>
       </div>
       ${state.serverCheckHistory.length ? `<div class="health-history">
         ${state.serverCheckHistory.slice(0, 5).map((item) => `<article>
           <strong>${new Date(item.at).toLocaleTimeString()} · ${item.alive}/${item.total}</strong>
-          <span>${escapeHtml(item.results.filter((result) => result.ok).map((result) => `${result.tag} ${result.latencyMs || 0}мс`).join(' · ') || 'нет доступных')}</span>
+          <span>${escapeHtml(item.results.filter((result) => result.ok).map((result) => `${proxyDisplayName(result.tag, state.serverMeta?.[result.tag])} ${result.latencyMs || 0}мс`).join(' · ') || 'нет доступных')}</span>
         </article>`).join('')}
       </div>` : ''}
     </section>
@@ -449,7 +450,7 @@ function serverEditDialog() {
         ${state.serverEditError ? `<p class="notice danger">${escapeHtml(state.serverEditError)}</p>` : ''}
         <div class="modal-actions">
           <button class="btn secondary" type="button" data-action="closeServerEdit">Отмена</button>
-          <span class="muted">${escapeHtml(outbound?.tag || '')}</span>
+          <span class="muted">${escapeHtml(outbound?.tag ? proxyDisplayName(outbound.tag, state.serverMeta?.[outbound.tag]) : '')}</span>
           <button class="btn warning" type="button" data-action="saveServerEdit">Сохранить прокси</button>
         </div>
       </section>
@@ -486,7 +487,7 @@ function serversPanel() {
         <article><span>Подключения</span><strong>${proxyServers.length}</strong></article>
         <article><span>Используются</span><strong>${stats.used}</strong></article>
         <article class="${alive === proxyServers.length && proxyServers.length ? 'is-ok' : ''}"><span>Доступны</span><strong>${alive} из ${proxyServers.length}</strong></article>
-        <article class="servers-overview-active"><span>Основное</span><strong title="${escapeHtml(activeTag || '')}">${escapeHtml(activeName)}</strong></article>
+        <article class="servers-overview-active"><span>Основное</span><strong title="${escapeHtml(activeTag ? proxyDisplayName(activeTag, state.serverMeta?.[activeTag]) : '')}">${escapeHtml(activeName)}</strong></article>
       </div>
     </section>
 
@@ -542,7 +543,7 @@ function serversPanel() {
           return `<article class="server-row system-row">
             <div class="server-protocol">${escapeHtml(protocolLabel)}</div>
             <div class="server-main">
-              <strong title="${escapeHtml(tag)}">${escapeHtml(label)}</strong>
+              <strong title="${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}">${escapeHtml(proxyDisplayName(label))}</strong>
               <span>${escapeHtml(detail)}</span>
             </div>
             <div class="server-meta">

@@ -1,3 +1,5 @@
+import { proxyDisplayText } from './proxy-label.js';
+
 export function createSniView({
   state,
   escapeHtml,
@@ -106,7 +108,7 @@ export function createSniView({
           </div>
         </div>
         <p class="muted">Сканируйте только свои адреса или диапазоны, где у вас есть разрешение. Это активная проверка TCP/443.</p>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
       </section>
   
       ${state.sniScan ? `<section class="stats route-stats">

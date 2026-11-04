@@ -1,3 +1,5 @@
+import { proxyDisplayName } from './proxy-label.js';
+
 export function createDiagnosticsActions({
   state,
   request,
@@ -72,7 +74,7 @@ export function createDiagnosticsActions({
       pushStep(Boolean(browserTraffic.ok || nftDelta > 0 || statsDelta > 0), 'Проверка выхода с роутера', trafficDetail, browserTraffic.ok ? 'warn' : '');
   
       const active = xrayActiveStats(statsAfter || state.status?.xrayStats || {});
-      pushStep(Boolean(statsAfter?.enabled), 'Статистика Xray', statsAfter?.enabled ? `активный: ${active?.tag || 'не выбран'} · proxy принято ${byteSize(statsAfter.groups?.proxy?.downlink || 0)} · отправлено ${byteSize(statsAfter.groups?.proxy?.uplink || 0)}` : 'учет трафика выключен', statsAfter?.enabled ? '' : 'warn');
+      pushStep(Boolean(statsAfter?.enabled), 'Статистика Xray', statsAfter?.enabled ? `активный: ${proxyDisplayName(active?.tag || 'не выбран', state.serverMeta?.[active?.tag])} · proxy принято ${byteSize(statsAfter.groups?.proxy?.downlink || 0)} · отправлено ${byteSize(statsAfter.groups?.proxy?.uplink || 0)}` : 'учет трафика выключен', statsAfter?.enabled ? '' : 'warn');
     } catch (error) {
       pushStep(false, 'Диагностика остановлена', error.message);
     } finally {

@@ -1,4 +1,5 @@
 import { inferredCountryForOutbound } from './server-location.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createImportActions({
   state,
@@ -210,8 +211,8 @@ export function createImportActions({
     state.importPreview = null;
     state.importDialog = '';
     state.message = makeActive
-      ? `Сервер ${outbound.tag} добавлен в текущий профиль и выбран активным`
-      : `Сервер ${outbound.tag} добавлен в текущий профиль`;
+      ? `Сервер ${proxyDisplayName(outbound.tag, state.serverMeta?.[outbound.tag])} добавлен в текущий профиль и выбран активным`
+      : `Сервер ${proxyDisplayName(outbound.tag, state.serverMeta?.[outbound.tag])} добавлен в текущий профиль`;
     if (makeActive) await applyConfig();
     else await refresh();
   }
@@ -245,8 +246,8 @@ export function createImportActions({
     state.subscriptionBalancerTag = '';
     state.importDialog = '';
     state.message = makeActive
-      ? `Подписка добавлена в текущий профиль, активная цель ${stableTag || outbounds[0].tag}`
-      : `Подписка добавлена в текущий профиль: ${outbounds.length} серверов${stableTag ? `, стабильная цель ${stableTag}` : ''}`;
+      ? `Подписка добавлена в текущий профиль, активная цель ${proxyDisplayName(stableTag || outbounds[0].tag, state.serverMeta?.[stableTag || outbounds[0].tag])}`
+      : `Подписка добавлена в текущий профиль: ${outbounds.length} серверов${stableTag ? `, стабильная цель ${proxyDisplayName(stableTag, state.serverMeta?.[stableTag])}` : ''}`;
     if (skipped) state.message += `; пропущено: ${skipped}`;
     if (makeActive) await applyConfig();
     else await refresh();

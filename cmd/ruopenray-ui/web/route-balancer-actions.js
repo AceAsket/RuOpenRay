@@ -1,4 +1,5 @@
 import { balancerMonitorForm, balancerNeedsMonitor, buildBalancerDraft, isFailoverBalancer } from './balancer-policy.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createRouteBalancerActions({
   state,
@@ -80,7 +81,7 @@ export function createRouteBalancerActions({
     state.routeTargetType = 'balancer';
     state.routeBalancerDialog = false;
     resetRouteBalancerForm();
-    state.message = `Группа серверов ${tag} сохранена в черновик. Выберите её в нужных правилах, проверьте конфигурацию и примените изменения.`;
+    state.message = `Группа серверов ${proxyDisplayName(tag)} сохранена в черновик. Выберите её в нужных правилах, проверьте конфигурацию и примените изменения.`;
     render();
   }
 
@@ -89,13 +90,13 @@ export function createRouteBalancerActions({
     if (!balancer) return;
     const used = routeRules().some((rule) => rule.balancerTag === balancer.tag);
     if (used) {
-      state.message = `Балансировщик ${balancer.tag} используется в правилах. Сначала переназначьте эти правила.`;
+      state.message = `Балансировщик ${proxyDisplayName(balancer.tag)} используется в правилах. Сначала переназначьте эти правила.`;
       render();
       return;
     }
     setRouteBalancersDraft(routeBalancers().filter((_, itemIndex) => itemIndex !== index));
     if (state.routeBalancer === balancer.tag) state.routeBalancer = '';
-    state.message = `Балансировщик ${balancer.tag} удален из черновика`;
+    state.message = `Балансировщик ${proxyDisplayName(balancer.tag)} удален из черновика`;
     render();
   }
 

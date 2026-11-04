@@ -343,7 +343,7 @@ function balancerHistoryEvents(tags = []) {
 function balancerHistoryLabel(item = {}) {
   const latency = Number(item.latencyMs || item.httpLatencyMs || item.endpointLatencyMs || item.pingLatencyMs || 0);
   const status = item.ok ? 'доступен' : item.error ? 'ошибка' : 'нет ответа';
-  return `${item.tag || 'сервер'}: ${status}${latency ? ` · ${Math.round(latency)} мс` : ''}`;
+  return `${proxyDisplayName(item.tag || 'сервер', state.serverMeta?.[item.tag])}: ${status}${latency ? ` · ${Math.round(latency)} мс` : ''}`;
 }
 
 function balancerHistoryTime(value) {
@@ -413,8 +413,8 @@ function routingBalancersPanel() {
                 <span class="server-chip ${matched.length ? 'info' : 'muted'}">${escapeHtml(`${matched.length} серверов`)}</span>
                 <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
               </div>
-              <strong>${escapeHtml(balancer.tag || 'без имени')}</strong>
-              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map(proxyDisplayName).join(', ') : 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag))}` : ''}</span>
+              <strong>${escapeHtml(proxyDisplayName(balancer.tag || 'без имени'))}</strong>
+              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag, state.serverMeta?.[balancer.fallbackTag]))}` : ''}</span>
               ${balancerMembersView(matched)}
               ${balancerHistoryView(matched)}
             </div>
@@ -576,7 +576,7 @@ function firewallPanel() {
     ? info.dnsOut.map((item) => `${item.tag || 'dns'} · ${item.protocol}`).join('\n')
     : 'DNS-выход пока не найден.';
   const sourceRows = info.sourceRules.length
-    ? info.sourceRules.slice(0, 8).map((rule) => `${rule.source.join(', ')} -> ${rule.outboundTag}`).join('\n')
+    ? info.sourceRules.slice(0, 8).map((rule) => `${rule.source.join(', ')} -> ${proxyDisplayName(rule.outboundTag, state.serverMeta?.[rule.outboundTag])}`).join('\n')
     : 'Отдельных правил для LAN-устройств пока нет.';
   const missingTransparent = !info.transparent.length;
 

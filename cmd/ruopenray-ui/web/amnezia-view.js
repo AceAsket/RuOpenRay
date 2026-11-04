@@ -1,4 +1,5 @@
 import { amneziaInterfaceFields, amneziaPeerFields, parseAmneziaConfigText } from './amnezia-config-editor.js';
+import { proxyDisplayText } from './proxy-label.js';
 
 export function createAmneziaView({ state, escapeHtml }) {
   const array = (value) => Array.isArray(value) ? value : [];
@@ -491,7 +492,7 @@ AllowedIPs = 0.0.0.0/0">${escapeHtml(text)}</textarea>
         <button class="btn warning" type="button" data-action="saveAmneziaConfig">Сохранить подключение</button>
         <button class="btn secondary" type="button" data-action="checkAmneziaPreflight">Проверить конфигурацию</button>
       </div>
-        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+        ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
       </section>
     </div>`;
   }

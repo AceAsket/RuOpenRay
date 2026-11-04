@@ -1,4 +1,4 @@
-import { proxyOptionLabel } from './proxy-label.js';
+import { proxyDisplayName, proxyOptionLabel } from './proxy-label.js';
 
 export function createDiagnosticsTrafficView(deps) {
   const {
@@ -56,7 +56,7 @@ function diagnosticsTrafficView() {
     <section class="traffic-overview-panel">
       <article class="traffic-overview-main">
         <span>Активный сервер Xray</span>
-        <strong>${escapeHtml(active?.tag || 'статистика выключена')}</strong>
+        <strong>${escapeHtml(proxyDisplayName(active?.tag || 'статистика выключена', state.serverMeta?.[active?.tag]))}</strong>
         <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'включите статистику Xray, чтобы видеть трафик по серверам')}</small>
       </article>
       <article>
@@ -124,7 +124,7 @@ function clientTrafficTestView(embedded = false) {
       </div>
       ${result ? `<div class="setup-result ${result.ok ? 'ok' : 'bad'}">
         <strong>${result.ok ? 'Трафик идет через цепочку' : 'Рост счетчиков не найден'}</strong>
-        <span>nft +${byteSize(result.nftDelta)} · Xray stats +${byteSize(result.statsDelta)}${result.statsEnabled ? '' : ' · учет Xray stats выключен'}${result.activeTag ? ` · активный proxy: ${escapeHtml(result.activeTag)}` : ''}</span>
+        <span>nft +${byteSize(result.nftDelta)} · Xray stats +${byteSize(result.statsDelta)}${result.statsEnabled ? '' : ' · учет Xray stats выключен'}${result.activeTag ? ` · активный proxy: ${escapeHtml(proxyDisplayName(result.activeTag, state.serverMeta?.[result.activeTag]))}` : ''}</span>
       </div>` : '<p class="muted">Для проверки нужен реальный LAN-клиент. Запрос с самого роутера может идти другим путем и не доказывает работу перехвата.</p>'}
     </section>
   `;
@@ -241,7 +241,7 @@ function diagnosticsDpiView() {
           <strong>${escapeHtml(verdict.label || 'готово')}</strong>
           <small>${escapeHtml(verdict.detail || '')}</small>
         </div>
-        <code>${escapeHtml(result.tag ? `proxy: ${result.tag}` : 'proxy не выбран')}</code>
+        <code>${escapeHtml(result.tag ? `proxy: ${proxyDisplayName(result.tag, state.serverMeta?.[result.tag])}` : 'proxy не выбран')}</code>
       </div>` : result ? `<div class="setup-result bad"><strong>DPI-проверка не выполнена</strong><span>${escapeHtml(result.stderr || result.error || 'неизвестная ошибка')}</span></div>` : '<p class="muted">Введите домен или URL и нажмите проверку. Для HTTPS отдельно проверяются TLS 1.2 и TLS 1.3.</p>'}
       <div class="dpi-dns-grid">
         ${dpiCheckCard('UDP/QUIC 443', checks.udp443)}

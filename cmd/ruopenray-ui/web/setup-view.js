@@ -1,4 +1,5 @@
 import { isServiceOutbound } from './outbound-tags.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export const setupWizardStepIds = Object.freeze(['connection', 'scenarios', 'launch']);
 
@@ -576,7 +577,8 @@ function activeProxyName() {
   const outbounds = proxyOutboundsSafe();
   const routingRules = state.config?.routing?.rules || [];
   const firstProxy = routingRules.find((rule) => rule?.outboundTag && outbounds.some((outbound) => outbound.tag === rule.outboundTag));
-  return firstProxy?.outboundTag || outbounds[0]?.tag || 'не выбран';
+  const tag = firstProxy?.outboundTag || outbounds[0]?.tag;
+  return tag ? proxyDisplayName(tag, state.serverMeta?.[tag]) : 'не выбран';
 }
 
 function lastServerCheckText() {

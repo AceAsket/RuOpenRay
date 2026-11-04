@@ -4,6 +4,7 @@ import { assignRouteGroup, migrateNamedRouteGroups, routeGroupId } from './routi
 import { analyzeRuleImport } from './routing-insights.js';
 import { isDefaultRoute, orderRoutingRules, saveRouteDefaultLast } from './routing-order.js';
 import { projectRoutingItems, routeDisplayLeaves, routeDisplayRestricted } from './routing-display.js';
+import { proxyDisplayName } from './proxy-label.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -353,14 +354,16 @@ export function createRoutingActions({
   function routeRuleTestDetail(tag, result) {
     const proxy = result?.proxy || {};
     const tcpProxy = result?.checks?.tcpProxy || {};
-    if (proxy.ok) return `Через ${tag}: HTTP ${latencyText(proxy.latencyMs) || 'ok'}`;
-    if (tcpProxy.ok) return `Через ${tag}: TCP ${latencyText(tcpProxy.latencyMs) || 'ok'}, HTTP не ответил`;
-    return `Через ${tag}: ${proxy.error || tcpProxy.error || result?.stderr || 'нет ответа'}`;
+    const name = proxyDisplayName(tag, state.serverMeta?.[tag]);
+    if (proxy.ok) return `Через ${name}: HTTP ${latencyText(proxy.latencyMs) || 'ok'}`;
+    if (tcpProxy.ok) return `Через ${name}: TCP ${latencyText(tcpProxy.latencyMs) || 'ok'}, HTTP не ответил`;
+    return `Через ${name}: ${proxy.error || tcpProxy.error || result?.stderr || 'нет ответа'}`;
   }
 
   async function testRouteRuleTarget() {
     state.routeRuleTestResult = null;
     const tag = state.routeTargetType === 'balancer' ? '' : String(state.routeOutbound || '').trim();
+    const name = proxyDisplayName(tag, state.serverMeta?.[tag]);
     if (isAmneziaDirectOutboundTag(tag)) {
       state.routeRuleTestResult = {
         ok: false,
@@ -385,8 +388,8 @@ export function createRoutingActions({
     const hosts = routeProbeHostsFromForm();
     const host = hosts[0] || '';
     state.message = hosts.length
-      ? `Проверяю ${hosts.length === 1 ? host : `${hosts.length} знач.`} через ${tag}...`
-      : `Проверяю доступность ${tag}...`;
+      ? `Проверяю ${hosts.length === 1 ? host : `${hosts.length} знач.`} через ${name}...`
+      : `Проверяю доступность ${name}...`;
     render();
     try {
       if (hosts.length) {
@@ -410,7 +413,7 @@ export function createRoutingActions({
           tone: proxyOk ? 'both-ok' : 'bad',
           title: hosts.length === 1
             ? `${host}: ${results[0]?.verdict?.label || (proxyOk ? 'работает через сервер' : 'нет ответа через сервер')}`
-            : `Список: ${passed.length}/${results.length} работает через ${tag}`,
+            : `Список: ${passed.length}/${results.length} работает через ${name}`,
           detail: hosts.length === 1
             ? routeRuleTestDetail(tag, results[0])
             : (firstFailed ? `${firstFailed.host || 'значение'}: ${routeRuleTestDetail(tag, firstFailed)}` : `Проверено значений: ${results.length}`)
@@ -432,7 +435,7 @@ export function createRoutingActions({
         state.routeRuleTestResult = {
           ok,
           tone: ok ? 'both-ok' : 'bad',
-          title: `${tag}: ${ok ? 'сервер отвечает' : 'сервер не ответил'}`,
+          title: `${name}: ${ok ? 'сервер отвечает' : 'сервер не ответил'}`,
           detail: ok
             ? `Проверка ${item.method || result.mode || 'http'} ${latencyText(item.latencyMs || item.endpointLatencyMs) || 'ok'}`
             : (item.error || 'У этого типа правила нет одного домена для HTTP-теста')
@@ -1548,7 +1551,7 @@ export function createRoutingActions({
     const moveDownDisabled = displayLocked || managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
     const targetOptions = options.some((option) => option.value === selectedTarget)
       ? options
-      : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${item.rule.balancerTag}` : readableRouteTag(item.rule.outboundTag || 'не задано') }, ...options];
+      : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${proxyDisplayName(item.rule.balancerTag)}` : proxyDisplayName(readableRouteTag(item.rule.outboundTag || 'не задано'), state.serverMeta?.[item.rule.outboundTag]) }, ...options];
     const section = routeSectionDefinitions().find((entry) => entry.id === category) || routeSectionDefinitions().find((entry) => entry.id === 'other');
     const dragAttrs = dragLocked
       ? ''
@@ -1624,7 +1627,7 @@ export function createRoutingActions({
       ? [{ value: '__mixed__', label: 'Разные назначения', disabled: true }, ...options]
       : options.some((option) => option.value === selectedTarget)
         ? options
-        : [{ value: selectedTarget, label: readableRouteTag(selectedTarget.replace(/^(outbound|balancer):/, '') || 'не задано') }, ...options];
+        : [{ value: selectedTarget, label: proxyDisplayName(readableRouteTag(selectedTarget.replace(/^(outbound|balancer):/, '') || 'не задано'), state.serverMeta?.[selectedTarget.replace(/^(outbound|balancer):/, '')]) }, ...options];
     const startIndex = item.index;
     const endIndex = item.index + item.items.length;
     const detailsKey = `routing:preset-group:${item.key}:${startIndex}:${endIndex}`;
@@ -1734,9 +1737,12 @@ export function createRoutingActions({
   function routeTargetLabel(value) {
     const option = routeTargetOptionMap().get(value);
     if (option?.label) return option.label;
-    if (String(value || '').startsWith('balancer:')) return `Балансировщик · ${String(value).slice('balancer:'.length)}`;
-    if (String(value || '').startsWith('outbound:')) return readableRouteTag(String(value).slice('outbound:'.length));
-    return value || 'не задано';
+    if (String(value || '').startsWith('balancer:')) return `Балансировщик · ${proxyDisplayName(String(value).slice('balancer:'.length))}`;
+    if (String(value || '').startsWith('outbound:')) {
+      const tag = String(value).slice('outbound:'.length);
+      return proxyDisplayName(readableRouteTag(tag), state.serverMeta?.[tag]);
+    }
+    return value ? proxyDisplayName(value) : 'не задано';
   }
 
   function routeTargetReplacementSourceOptions() {

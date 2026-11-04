@@ -1,4 +1,5 @@
 import { countryPickerView } from './server-location-view.js';
+import { proxyDisplayName, proxyDisplayText } from './proxy-label.js';
 
 export function createImportDialogView({
   state,
@@ -29,7 +30,7 @@ function serverMini(outbound) {
         <span class="active-badge">активный</span>
         <span class="check-badge ${check?.ok ? 'ok' : check ? 'bad' : ''}">${escapeHtml(checkLabel(check))}</span>
       </div>
-      <strong>${escapeHtml(tag)}</strong>
+      <strong>${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}</strong>
       <span>${escapeHtml(outbound?.protocol || 'protocol')} · ${escapeHtml(outboundTransport(outbound))}</span>
       <code>${escapeHtml(outboundAddress(outbound))}</code>
       <div class="server-mini-actions">
@@ -165,7 +166,7 @@ function importDialog(kind) {
             ${serverImportPreviewItem() ? previewBox(serverImportPreviewItem()) : ''}
           `
       }
-      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(state.message)}</p>` : ''}
+      ${state.message ? `<p class="notice" style="margin-top: 14px">${escapeHtml(proxyDisplayText(state.message, state))}</p>` : ''}
       </section>
     </div>
   `;
@@ -173,7 +174,7 @@ function importDialog(kind) {
 
 function previewBox(item) {
   return `<article class="preview-box">
-    <strong>${escapeHtml(item.tag || 'server')}</strong>
+    <strong>${escapeHtml(proxyDisplayName(item.tag || 'server', state.serverMeta?.[item.tag]))}</strong>
     <span>${escapeHtml(item.protocol || '')} · ${escapeHtml([item.address, item.port].filter(Boolean).join(':'))}</span>
     <small>${escapeHtml(item.network || 'tcp')} / ${escapeHtml(item.security || 'none')}</small>
   </article>`;

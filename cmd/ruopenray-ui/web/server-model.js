@@ -1,6 +1,6 @@
 import { countryFlagMarkup, serverLocation } from './server-location.js';
 import { isServiceOutbound } from './outbound-tags.js';
-import { proxyOptionLabel } from './proxy-label.js';
+import { proxyDisplayName, proxyOptionLabel } from './proxy-label.js';
 import { balancerNeedsMonitor, monitorTypeForConfig } from './balancer-policy.js';
 
 export function createServerModel({
@@ -138,7 +138,7 @@ export function createServerModel({
     if (!count) return 'Proxy-направления пока не настроены.';
     if (count === 1 && summary.balancers.size === 1) {
       const item = [...summary.balancers.values()][0];
-      return `${item.tag} · ${item.rules || 0} правил ведут в балансировщик`;
+      return `${proxyDisplayName(item.tag)} · ${item.rules || 0} правил ведут в балансировщик`;
     }
     if (count === 1) {
       const item = [...summary.outbounds.values()][0];
@@ -160,7 +160,7 @@ export function createServerModel({
           : outboundAddress(proxyOutbounds().find((outbound) => outbound?.tag === item.tag)) || 'сервер';
         return `<article>
           <span>${item.kind === 'balancer' ? 'Группа' : 'Сервер'}</span>
-          <strong>${escapeHtml(item.tag)}</strong>
+          <strong>${escapeHtml(proxyDisplayName(item.tag, state.serverMeta?.[item.tag]))}</strong>
           <small>${escapeHtml(`${item.rules || 0} правил · ${detail}`)}</small>
         </article>`;
       }).join('')}
@@ -190,7 +190,7 @@ export function createServerModel({
         kind: pool ? 'subscription' : 'server',
         title: proxyOptionLabel(outbound, state.serverMeta?.[tag] || {}),
         detail: pool
-          ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${pool.activeCandidate.tag}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
+          ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${proxyDisplayName(pool.activeCandidate.tag, state.serverMeta?.[pool.activeCandidate.tag])}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
           : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
       });
     });
@@ -255,7 +255,7 @@ export function createServerModel({
     ];
     if (location.source !== 'unknown') chips.push({ label: `${location.code} · ${location.label}`, tone: 'info' });
     if (pool) chips.push({ label: `подписка: ${pool.count || 0}`, tone: 'info' });
-    if (balancers.length) chips.push({ label: `группа: ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
+    if (balancers.length) chips.push({ label: `группа: ${balancers.map((item) => item.tag).filter(Boolean).slice(0, 2).map(proxyDisplayName).join(', ')}${balancers.length > 2 ? ` +${balancers.length - 2}` : ''}`, tone: 'info' });
     if (observers.length) chips.push({ label: observers.join(' + '), tone: 'ok' });
     if (check) {
       const ping = check.pingOk ? `ping ${check.pingLatencyMs || 0} мс` : 'ping нет';
@@ -288,7 +288,7 @@ export function createServerModel({
         const outbound = proxyOutbounds().find((item) => item?.tag === tag);
         const check = checkForTag(tag);
         return `<span class="${check?.ok ? 'ok' : check ? 'warn' : ''}" title="${escapeHtml(outboundAddress(outbound))}">
-          ${escapeHtml(proxyOptionLabel(outbound || { tag }))}
+          ${escapeHtml(proxyOptionLabel(outbound || { tag }, state.serverMeta?.[tag]))}
         </span>`;
       }).join('')}
       ${tags.length > 6 ? `<span>+${tags.length - 6}</span>` : ''}
