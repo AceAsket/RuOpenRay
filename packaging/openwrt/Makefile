@@ -1,13 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ruopenray-ui
-PKG_VERSION:=0.5.3
-APP_VERSION:=0.5.3+fix.ui.e71b342
-PKG_RELEASE:=3
+PKG_VERSION:=0.5.4
+APP_VERSION:=0.5.4
+PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/AceAsket/RuOpenRay.git
-PKG_SOURCE_VERSION:=e71b342fd469b739a1d8b41ca4b44198b17056c5
+PKG_SOURCE_VERSION:=979cbc9460f50617371dcbac15188bbd9dc88cff
 # OpenWrt otherwise reuses name-version.tar.zst when only the Git ref changes.
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION)
 PKG_SOURCE:=$(PKG_SOURCE_SUBDIR).tar.zst
