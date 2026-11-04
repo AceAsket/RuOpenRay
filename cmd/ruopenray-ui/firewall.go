@@ -65,14 +65,22 @@ func killSwitchNftsetEntry(domain string) string {
 	return "/" + domain + "/4#inet#ruopenray#killswitch4"
 }
 
-func dnsmasqNftsetValuesForSet(setName string) []string {
+func dnsmasqNftsetValues() []string {
 	if runtime.GOOS == "windows" || !commandExists("uci") {
 		return []string{}
 	}
 	out := fmt.Sprint(runTimeout(5*time.Second, "uci", "-q", "get", "dhcp.@dnsmasq[0].nftset")["stdout"])
+	return strings.Fields(strings.ReplaceAll(out, "\n", " "))
+}
+
+func dnsmasqNftsetValuesForSet(setName string) []string {
+	return dnsmasqNftsetValuesFromSnapshot(setName, dnsmasqNftsetValues())
+}
+
+func dnsmasqNftsetValuesFromSnapshot(setName string, snapshot []string) []string {
 	values := []string{}
 	marker := "#inet#ruopenray#" + setName
-	for _, item := range strings.Fields(strings.ReplaceAll(out, "\n", " ")) {
+	for _, item := range snapshot {
 		clean := strings.TrimSpace(item)
 		if strings.Contains(clean, marker) {
 			values = append(values, clean)
@@ -125,7 +133,11 @@ func routeNftsetEntry(domain string, setName string) string {
 }
 
 func routeNftsetStatus(setName string) map[string]any {
-	values := dnsmasqNftsetValuesForSet(setName)
+	return routeNftsetStatusFromSnapshot(setName, dnsmasqNftsetValues())
+}
+
+func routeNftsetStatusFromSnapshot(setName string, snapshot []string) map[string]any {
+	values := dnsmasqNftsetValuesFromSnapshot(setName, snapshot)
 	domains := []string{}
 	for _, entry := range values {
 		if domain := domainFromNftsetEntry(entry, setName); domain != "" {
@@ -330,6 +342,8 @@ func (s *serverState) firewallStatus() map[string]any {
 	if value := strings.TrimSpace(fmt.Sprint(meta["routerMode"])); value != "" && value != "<nil>" {
 		routerMode = value
 	}
+	// Every set is stored in the same UCI option; read it once for this report.
+	nftsets := dnsmasqNftsetValues()
 	status := map[string]any{
 		"ok":          true,
 		"available":   runtime.GOOS != "windows" && commandExists("nft"),
@@ -353,11 +367,11 @@ func (s *serverState) firewallStatus() map[string]any {
 			}
 			return ""
 		}()),
-		"killSwitchNftset":    killSwitchNftsetStatus(),
+		"killSwitchNftset":    routeNftsetStatusFromSnapshot("killswitch4", nftsets),
 		"killSwitchDNSBlock":  killSwitchDNSBlockStatus(),
-		"directNftset":        routeNftsetStatus("bypass4"),
-		"proxyNftset":         routeNftsetStatus("proxy4"),
-		"amneziaPolicyNftset": routeNftsetStatus("amnezia4"),
+		"directNftset":        routeNftsetStatusFromSnapshot("bypass4", nftsets),
+		"proxyNftset":         routeNftsetStatusFromSnapshot("proxy4", nftsets),
+		"amneziaPolicyNftset": routeNftsetStatusFromSnapshot("amnezia4", nftsets),
 		"needsPolicyFix":      routerMode == "tproxy" && (!ipRuleActive || !ipRouteActive || !hotplugExists),
 	}
 	for key, value := range meta {

@@ -51,12 +51,13 @@ export function createSettingsActions({
       saveAuthToken(result.token, state.rememberPassword);
       promptBrowserPasswordSave(state.password);
       state.message = '';
-      configureLogTimer();
-      configureStatusTimer();
       render();
       refresh({ background: true }).catch((error) => {
         state.message = error.message;
         render();
+      }).finally(() => {
+        configureLogTimer();
+        configureStatusTimer();
       });
     } catch (error) {
       state.message = error.message;
@@ -71,6 +72,8 @@ export function createSettingsActions({
     clearAuthToken();
     state.message = '';
     state.tab = 'dashboard';
+    configureLogTimer();
+    configureStatusTimer();
     render();
   }
 

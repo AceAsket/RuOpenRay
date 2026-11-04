@@ -17,6 +17,7 @@ export function createRuntimeController({
   syncServiceSettings,
   clearAuth
 }) {
+  let activeRefreshes = 0;
   function logsUrl() {
     const params = new URLSearchParams({
       kind: state.logKind,
@@ -35,8 +36,10 @@ export function createRuntimeController({
     return lines.reverse().join('\n');
   }
   
-  async function refreshLogs(renderAfter = true, patchOnly = false) {
-    state.logs = displayLogText(await api.text(logsUrl()));
+  async function refreshLogs(renderAfter = true, patchOnly = false, options = {}) {
+    const logs = await api.text(logsUrl());
+    if (options.isCurrent && !options.isCurrent()) return;
+    state.logs = displayLogText(logs);
     if (!renderAfter) return;
     if (patchOnly) {
       const consoles = document.querySelectorAll('.log-console');
@@ -57,7 +60,9 @@ export function createRuntimeController({
       if (renderAfter) render();
       return state.domainMonitor;
     }
-    state.domainMonitor = await request('/api/domain-monitor?limit=1200');
+    const monitor = await request('/api/domain-monitor?limit=1200');
+    if (options.isCurrent && !options.isCurrent()) return state.domainMonitor;
+    state.domainMonitor = monitor;
     if (renderAfter) render();
     return state.domainMonitor;
   }
@@ -215,7 +220,8 @@ export function createRuntimeController({
     clearAuth,
     setMessage: (message) => {
       state.message = message;
-    }
+    },
+    isRefreshing: () => activeRefreshes > 0
   });
 
   function configureLogTimer() {
@@ -236,6 +242,7 @@ export function createRuntimeController({
   }
 
   async function refresh(options = {}) {
+    activeRefreshes++;
     const renderAfter = options.renderAfter !== false;
     const background = Boolean(options.background);
     try {
@@ -377,6 +384,8 @@ export function createRuntimeController({
         if (background) backgroundRender();
         else render();
       }
+    } finally {
+      activeRefreshes--;
     }
   }
 

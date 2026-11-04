@@ -33,6 +33,7 @@ import { bindGeoControls } from './geo-bindings.js';
 import { createImportActions } from './import-actions.js';
 import { bindImportControls } from './import-bindings.js';
 import { createLoginView } from './login-view.js';
+import { interfaceIcon, navigationView } from './navigation-view.js';
 import { bindModalControls, bindNavigationControls } from './navigation-bindings.js';
 import { noticeView } from './notice-view.js';
 import { createObservatoryActions } from './observatory-actions.js';
@@ -707,6 +708,7 @@ const serverModeActions = createServerModeActions({
 });
 const {
   refreshServerMode,
+  ensureServerModeLoaded,
   setServerModeEnabled,
   addServerModeXrayInbound,
   addServerModeClient,
@@ -2131,21 +2133,26 @@ function render() {
       <aside class="sidebar ${state.mobileNavOpen ? 'nav-open' : ''}">
         <div class="brand">
           <img class="brand-mark" src="/assets/ruopenray-icon-512.png" alt="" />
-          <div><strong>RuOpenRay UI</strong><span>Панель Xray для OpenWrt</span></div>
+          <div><strong>RuOpenRay</strong><span>OPENWRT · CONTROL PANEL</span></div>
         </div>
         <button class="mobile-menu-toggle" data-action="toggleMobileNav" type="button" aria-expanded="${state.mobileNavOpen ? 'true' : 'false'}">
           <span>${state.mobileNavOpen ? 'Закрыть меню' : 'Меню'}</span>
         </button>
-        <nav class="nav">
-          ${visibleNavItems().map(([key, title]) => `<button class="${key === state.tab ? 'active' : ''}" data-tab="${key}">${title}</button>`).join('')}
+        <nav class="nav" aria-label="Основная навигация">
+          ${navigationView(visibleNavItems(), state.tab)}
         </nav>
         <div class="sidebar-footer">
+          <div class="sidebar-version">Панель управления OpenWrt</div>
           <button class="logout-button" data-action="logout" type="button" title="Выйти из панели" aria-label="Выйти из панели">
             <span aria-hidden="true">↩</span>
             <span>Выйти</span>
           </button>
         </div>
       </aside>
+      <header class="device-header">
+        <div class="device-header-context">${interfaceIcon('router')}<span><strong>RuOpenRay</strong><small>${escapeHtml(globalThis.location?.host || 'Панель управления')}</small></span></div>
+        <div class="device-header-tools"><span class="device-header-label">Локальное управление</span><div class="device-theme-switch" role="group" aria-label="Цветовая тема">${[['light', 'sun', 'Светлая'], ['dark', 'moon', 'Тёмная']].map(([theme, icon, title]) => `<button class="device-theme-toggle ${state.uiTheme === theme ? 'active' : ''}" type="button" data-ui-theme="${theme}" title="${title} тема" aria-label="${title} тема" aria-pressed="${state.uiTheme === theme}">${interfaceIcon(icon)}<span class="theme-toggle-label">${title}</span></button>`).join('')}</div></div>
+      </header>
       <main class="main main-${escapeHtml(state.tab)}">
         ${state.busyAction && !hasLocalOperationProgress ? `
           <div class="global-action-progress" role="status" aria-live="polite">
@@ -2160,9 +2167,11 @@ function render() {
           </div>
           <div class="top-actions">
             ${showTopActionPill ? `<span class="pill action-pill"><i></i>${escapeHtml(state.busyLabel || 'Выполняю действие')}</span>` : ''}
+            <div class="topbar-meta">
             ${appVersionPill()}
             <button class="pill xray-version-pill ${xrayUpdate.hasUpdate ? 'has-update' : ''}" type="button" data-action="${state.status?.core?.available ? 'openCoreDialog' : 'openInstallWizard'}" title="${escapeHtml(xrayVersionTitle)}" aria-label="${escapeHtml(xrayVersionTitle)}" ${statusLoaded ? '' : 'disabled'}><i class="dot ${xrayUpdate.hasUpdate ? 'warn' : running ? 'ok' : ''}"></i><span>${escapeHtml(xrayStatusText)}</span>${xrayUpdate.hasUpdate ? '<span class="xray-update-indicator" aria-hidden="true">↑</span>' : ''}</button>
             <button class="pill profile-pill" data-tab-jump="profiles" type="button" title="Выбрать профиль"><svg class="profile-pill-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.75 19c.75-3.25 3-5 6.25-5s5.5 1.75 6.25 5"></path></svg><span>${escapeHtml(activeProfile)}</span></button>
+            </div>
             ${serviceButtons ? `<div class="service-controls" aria-label="Управление сервисом Xray">${serviceButtons}</div>` : ''}
           </div>
         </header>
@@ -2303,6 +2312,7 @@ function bind() {
       refreshCompatibility({ silent: true }),
       ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
     ])
+      : tab === 'serverMode' ? ensureServerModeLoaded()
       : tab === 'dns' && state.dnsView === 'adguard' ? adguardActions.adguardRefresh() : null;
     pending?.catch((error) => { state.message = error.message; render(); });
   } });
@@ -2838,10 +2848,10 @@ function bind() {
 
 render();
 if (state.token) {
-  configureLogTimer();
-  configureStatusTimer();
-  refresh({ background: true });
-  refreshServerMode({ silent: true }).catch(() => {});
+  refresh({ background: true }).finally(() => {
+    configureLogTimer();
+    configureStatusTimer();
+  });
 }
 
 function enhanceFormAccessibility() {

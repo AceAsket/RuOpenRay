@@ -247,8 +247,5 @@ func b4ClearTablesStep() map[string]any {
 }
 
 func (s *serverState) clearB4Cache() {
-	s.metricsMu.Lock()
-	defer s.metricsMu.Unlock()
-	s.b4Cache = nil
-	s.b4At = time.Time{}
+	s.b4StatusCache.invalidate()
 }

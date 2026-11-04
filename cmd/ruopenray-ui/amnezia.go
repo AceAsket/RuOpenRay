@@ -36,20 +36,7 @@ func amneziaPolicyRuleCleanupCommand() string {
 }
 
 func (s *serverState) cachedAmneziaStatus() map[string]any {
-	now := time.Now()
-	s.metricsMu.Lock()
-	if s.amneziaCache != nil && now.Sub(s.amneziaAt) < 15*time.Second {
-		cached := s.amneziaCache
-		s.metricsMu.Unlock()
-		return cached
-	}
-	s.metricsMu.Unlock()
-	status := s.amneziaStatus()
-	s.metricsMu.Lock()
-	s.amneziaCache = status
-	s.amneziaAt = now
-	s.metricsMu.Unlock()
-	return status
+	return s.amneziaStatusCache.get(15*time.Second, s.amneziaStatus)
 }
 
 func (s *serverState) amneziaStatus() map[string]any {
@@ -273,10 +260,7 @@ func (s *serverState) saveAmneziaClientConfig(payload map[string]any) map[string
 	if err := s.saveAmneziaProfile(raw, name, strings.TrimSpace(cleanPayloadString(payload, "id")), true); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
@@ -285,10 +269,7 @@ func (s *serverState) deleteAmneziaClientConfig() map[string]any {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
@@ -524,10 +505,7 @@ func (s *serverState) activateAmneziaProfile(payload map[string]any) map[string]
 	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
@@ -591,10 +569,7 @@ func (s *serverState) updateAmneziaProfilePool(payload map[string]any) map[strin
 	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
@@ -604,10 +579,7 @@ func (s *serverState) updateAmneziaPolicyRules(payload map[string]any) map[strin
 	if err := s.writeAmneziaProfileRegistry(reg); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{"ok": true, "status": s.amneziaStatus()}
 }
 
@@ -1234,10 +1206,7 @@ func (s *serverState) prepareAmneziaUserspace(payload map[string]any) map[string
 		_ = os.Remove(tmp)
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	s.metricsMu.Lock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
-	s.metricsMu.Unlock()
+	s.clearAmneziaCache()
 	return map[string]any{
 		"ok":      true,
 		"target":  target,
@@ -1511,10 +1480,7 @@ func (s *serverState) amneziaControlStatus() map[string]any {
 }
 
 func (s *serverState) clearAmneziaCache() {
-	s.metricsMu.Lock()
-	defer s.metricsMu.Unlock()
-	s.amneziaCache = nil
-	s.amneziaAt = time.Time{}
+	s.amneziaStatusCache.invalidate()
 }
 
 func amneziaStartMessage(ok bool) string {

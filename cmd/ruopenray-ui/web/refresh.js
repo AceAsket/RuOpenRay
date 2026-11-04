@@ -43,28 +43,28 @@ export async function loadAppSnapshot({ request, text, logsUrl, appChannel = 'st
     routeNames,
     routePresets,
     serverMeta
-  ] = await Promise.all([
-    request('/api/status'),
-    request('/api/profiles'),
-    request('/api/config'),
-    request('/api/config/draft').catch(() => ({ ok: false, exists: false })),
-    text(logsUrl()),
-    request('/api/dhcp/leases').catch(() => ({ leases: [] })),
-    optionalRequest(request, '/api/core/releases', { releases: [], asset: '', error: true }, 15000),
-    optionalRequest(request, `/api/app/releases?channel=${appChannel}`, null),
-    optionalRequest(request, '/api/geo/status', null),
-    request('/api/domain-monitor?limit=1200').catch(() => null),
-    request('/api/settings/logging').catch(() => null),
-    request('/api/settings/service').catch(() => null),
-    optionalRequest(request, '/api/storage/report', null),
-    request('/api/network/tcp-fast-open').catch(() => null),
-    request('/api/dns/lan-upstream').catch(() => null),
-    request('/api/firewall/status').catch(() => null),
-    request('/api/subscriptions').catch(() => ({ pools: [] })),
-    request('/api/routing/disabled').catch(() => null),
-    request('/api/routing/names').catch(() => null),
-    request('/api/routing/presets').catch(() => null),
-    request('/api/server-meta').catch(() => null)
+  ] = await loadSnapshotJobs([
+    () => request('/api/status'),
+    () => request('/api/profiles'),
+    () => request('/api/config'),
+    () => request('/api/config/draft').catch(() => ({ ok: false, exists: false })),
+    () => text(logsUrl()),
+    () => request('/api/dhcp/leases').catch(() => ({ leases: [] })),
+    () => optionalRequest(request, '/api/core/releases', { releases: [], asset: '', error: true }, 15000),
+    () => optionalRequest(request, `/api/app/releases?channel=${appChannel}`, null),
+    () => optionalRequest(request, '/api/geo/status', null),
+    () => request('/api/domain-monitor?limit=1200').catch(() => null),
+    () => request('/api/settings/logging').catch(() => null),
+    () => request('/api/settings/service').catch(() => null),
+    () => optionalRequest(request, '/api/storage/report', null),
+    () => request('/api/network/tcp-fast-open').catch(() => null),
+    () => request('/api/dns/lan-upstream').catch(() => null),
+    () => request('/api/firewall/status').catch(() => null),
+    () => request('/api/subscriptions').catch(() => ({ pools: [] })),
+    () => request('/api/routing/disabled').catch(() => null),
+    () => request('/api/routing/names').catch(() => null),
+    () => request('/api/routing/presets').catch(() => null),
+    () => request('/api/server-meta').catch(() => null)
   ]);
   return {
     status,
@@ -91,6 +91,26 @@ export async function loadAppSnapshot({ request, text, logsUrl, appChannel = 'st
   };
 }
 
+async function loadSnapshotJobs(jobs) {
+  const results = new Array(jobs.length);
+  let next = 0;
+  let failed = false;
+  async function worker() {
+    while (!failed && next < jobs.length) {
+      const index = next++;
+      try {
+        results[index] = await jobs[index]();
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  }
+  // Keep router-side commands from all sections from starting at once.
+  await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, worker));
+  return results;
+}
+
 export function createRefreshTimers({
   state,
   request,
@@ -99,9 +119,17 @@ export function createRefreshTimers({
   recordStatus,
   backgroundRender,
   clearAuth,
-  setMessage
+  setMessage,
+  isRefreshing = () => false
 }) {
+  let logGeneration = 0;
+  let statusGeneration = 0;
+  let logsInFlight = false;
+  let statusInFlight = false;
+  const visible = () => globalThis.document?.visibilityState !== 'hidden';
+
   function configureLogTimer() {
+    const generation = ++logGeneration;
     if (state.logTimer) {
       clearInterval(state.logTimer);
       state.logTimer = null;
@@ -111,43 +139,58 @@ export function createRefreshTimers({
     if (!state.token || (!liveLogs && !liveDomainMonitor)) return;
     const interval = Math.max(1, Number(state.logIntervalSec) || 2) * 1000;
     state.logTimer = setInterval(async () => {
+      if (!state.token || !visible() || logsInFlight || isRefreshing()) return;
+      const token = state.token;
+      const isCurrent = () => generation === logGeneration && token === state.token && visible();
+      logsInFlight = true;
       try {
         if (liveLogs && state.logLive) {
-          await refreshLogs(true, true);
+          await refreshLogs(true, true, { isCurrent });
         }
         if (liveDomainMonitor && !state.domainMonitorPaused) {
-          await refreshDomainMonitor(false);
-          backgroundRender();
+          await refreshDomainMonitor(false, { isCurrent });
+          if (isCurrent()) backgroundRender();
         }
       } catch (error) {
+        if (!isCurrent()) return;
         if (isAuthError(error)) {
           clearAuth();
           configureLogTimer();
         }
         setMessage(error.message);
         backgroundRender();
+      } finally {
+        logsInFlight = false;
       }
     }, interval);
   }
 
   function configureStatusTimer() {
+    const generation = ++statusGeneration;
     if (state.statusTimer) {
       clearInterval(state.statusTimer);
       state.statusTimer = null;
     }
     if (!state.token) return;
     state.statusTimer = setInterval(async () => {
+      if (!state.token || !visible() || statusInFlight || isRefreshing()) return;
       if (state.tab !== 'dashboard' && state.tab !== 'servers' && !(state.tab === 'diagnostics' && state.diagnosticsView === 'traffic')) return;
+      const token = state.token;
+      statusInFlight = true;
       try {
         const status = await request('/api/status');
+        if (generation !== statusGeneration || token !== state.token || !visible()) return;
         recordStatus(status);
         backgroundRender();
       } catch (error) {
+        if (generation !== statusGeneration || token !== state.token) return;
         if (isAuthError(error)) {
           clearAuth();
           configureLogTimer();
           configureStatusTimer();
         }
+      } finally {
+        statusInFlight = false;
       }
     }, 5000);
   }

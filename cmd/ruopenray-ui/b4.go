@@ -19,20 +19,7 @@ const (
 )
 
 func (s *serverState) cachedB4Status() map[string]any {
-	now := time.Now()
-	s.metricsMu.Lock()
-	if s.b4Cache != nil && now.Sub(s.b4At) < 15*time.Second {
-		cached := s.b4Cache
-		s.metricsMu.Unlock()
-		return cached
-	}
-	s.metricsMu.Unlock()
-	status := s.b4Status()
-	s.metricsMu.Lock()
-	s.b4Cache = status
-	s.b4At = now
-	s.metricsMu.Unlock()
-	return status
+	return s.b4StatusCache.get(15*time.Second, s.b4Status)
 }
 
 func (s *serverState) b4Status() map[string]any {

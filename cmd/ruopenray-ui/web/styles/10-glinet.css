@@ -1,0 +1,2980 @@
+/* Router admin layout inspired by GL.iNet 4. Keep this layer after feature styles. */
+:root {
+  --sidebar-width: 228px;
+  --header-height: 60px;
+}
+
+.modal-backdrop {
+  z-index: 120;
+}
+
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f4f7;
+  --panel: #ffffff;
+  --panel-2: #f7f9fb;
+  --line: #d9e0e8;
+  --line-soft: #e5e9ef;
+  --text: #27394b;
+  --muted: #536579;
+  --soft: #465d73;
+  --accent: #087f9a;
+  --accent-2: #087b98;
+  --accent-strong: #08687e;
+  --green: #18864b;
+  --amber: #a96a0a;
+  --red: #cc4252;
+  --shadow: 0 2px 8px rgba(28, 49, 72, 0.035);
+  --status-good-bg: #edf8f1;
+  --status-good-border: #b9dbc8;
+  --status-good-text: #176e40;
+  --status-warn-bg: #fff7e8;
+  --status-warn-border: #e6cb95;
+  --status-warn-text: #79500f;
+  --status-bad-bg: #fff0f2;
+  --status-bad-border: #e8b6bd;
+  --status-bad-text: #a22d3b;
+  background: var(--bg);
+}
+
+body[data-theme="dark"] {
+  --bg: #101b26;
+  --panel: #192a39;
+  --panel-2: #203345;
+  --line: #354b5f;
+  --line-soft: #2c4053;
+  --text: #e9f0f6;
+  --muted: #a0b2c3;
+  --soft: #c2d0dd;
+  --accent: #3fc1d9;
+  --accent-2: #7bdaec;
+  --accent-strong: #a1e5f2;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --status-good-bg: #19382c;
+  --status-good-border: #3c6b50;
+  --status-good-text: #b4edca;
+  --status-warn-bg: #372f20;
+  --status-warn-border: #75603a;
+  --status-warn-text: #f4d49b;
+  --status-bad-bg: #402933;
+  --status-bad-border: #87515e;
+  --status-bad-text: #ffc1ca;
+  background: var(--bg);
+}
+
+body {
+  font-family: "Segoe UI", Arial, sans-serif;
+  line-height: 1.45;
+}
+
+.sidebar,
+body[data-theme="light"] .sidebar {
+  z-index: 70;
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  height: 100vh;
+  height: 100dvh;
+  padding: 0 0 18px;
+  overflow-y: auto;
+  border: 0;
+  background: #243e58;
+  color: #fff;
+  backdrop-filter: none;
+  scrollbar-width: thin;
+  scrollbar-color: #54718e #243e58;
+}
+
+.brand {
+  min-height: var(--header-height);
+  flex: 0 0 auto;
+  gap: 10px;
+  margin: 0 0 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.brand-mark,
+body[data-theme="light"] .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.brand strong {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.brand span {
+  color: #b9cad9;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+
+.nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  overflow: visible;
+  padding: 0 12px;
+}
+
+.nav-group {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nav-group-label {
+  padding: 6px 12px;
+  color: #a9bfd2;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.nav button,
+body[data-theme="light"] .nav button {
+  width: 100%;
+  min-height: 42px;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 4px;
+  color: #d7e2ed;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  white-space: normal;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.nav button:hover,
+body[data-theme="light"] .nav button:hover {
+  color: #fff;
+  background: #304e6a;
+}
+
+.nav button.active,
+body[data-theme="light"] .nav button.active {
+  color: #fff;
+  background: #187e98;
+  box-shadow: inset 3px 0 #62d9ef;
+}
+
+.nav-icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  color: #a9c4d9;
+}
+
+.nav-icon svg,
+svg.nav-icon,
+.device-header-context svg,
+.device-header-tools svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav button.active .nav-icon {
+  color: #d2f7ff;
+}
+
+.nav-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 24px 12px 0;
+}
+
+.sidebar-version {
+  display: block;
+  margin: 14px 12px 0;
+  color: #b5c7d7;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.logout-button,
+body[data-theme="light"] .logout-button {
+  width: 100%;
+  min-height: 40px;
+  height: auto;
+  padding: 9px 12px;
+  border-radius: 4px;
+  color: #d7e2ed;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.logout-button:hover,
+body[data-theme="light"] .logout-button:hover {
+  color: #fff;
+  background: #304e6a;
+}
+
+.logout-button span[aria-hidden="true"] {
+  color: #a9c4d9;
+}
+
+.device-header {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  right: 0;
+  left: var(--sidebar-width);
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  background: var(--panel);
+}
+
+.device-header-context {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.device-header-context > svg {
+  color: var(--accent);
+}
+
+.device-header-context strong {
+  font-weight: 600;
+}
+
+.device-header-context span,
+.device-header-context small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-header-context > span {
+  display: grid;
+  gap: 1px;
+}
+
+.device-header-context strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.device-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.device-header-tools .pill {
+  min-height: 30px;
+  padding: 0 9px;
+  border-color: transparent;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 12px;
+}
+
+.device-header-tools .icon-btn {
+  width: 32px;
+  min-height: 32px;
+}
+
+.device-header-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+.device-theme-toggle {
+  width: auto;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--soft);
+  background: transparent;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.device-theme-toggle:hover {
+  color: var(--accent-2);
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+.device-theme-toggle.active,
+.device-theme-toggle[aria-pressed="true"] {
+  border-color: var(--line);
+  color: var(--accent-strong);
+  background: var(--panel);
+  box-shadow: 0 1px 3px rgba(20, 42, 63, 0.08);
+  font-weight: 600;
+}
+
+.device-theme-toggle.active svg,
+.device-theme-toggle[aria-pressed="true"] svg {
+  color: var(--accent-2);
+}
+
+.main {
+  min-height: 100vh;
+  margin-left: var(--sidebar-width);
+  padding: 84px 28px 36px;
+}
+
+.topbar {
+  min-height: 48px;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.title h1 {
+  color: var(--text);
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.title p {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.top-actions {
+  gap: 7px;
+}
+
+.panel,
+.stat,
+.core-stat,
+.login-card,
+.modal,
+.dashboard-technical-panel {
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel-title {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.panel-title h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.panel-title span {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: filter 0.15s, border-color 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.btn.secondary,
+body[data-theme="light"] .btn.secondary {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel);
+}
+
+.btn.secondary:hover:not(:disabled),
+body[data-theme="light"] .btn.secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme="dark"] .btn:not(.secondary):not(.danger):not(.warning) {
+  border-color: #3fc1d9;
+  color: #e5fbff;
+  background: #176c81;
+}
+
+.pill,
+.service-controls,
+.service-icon {
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.pill {
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.dot.ok,
+.dot.warn {
+  box-shadow: none;
+}
+
+.service-controls {
+  gap: 4px;
+  padding: 3px;
+}
+
+.service-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.service-mode-stop {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  border-radius: 4px;
+  padding: 10px 11px;
+  font-size: 13px;
+}
+
+select {
+  padding-right: 36px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+body[data-theme="light"] :is(.panel, .stat, .core-stat, .settings-card, .settings-overview-card, .modal, .login-card, .dashboard-technical-panel, .server-card, .dns-card, .lease-card, .mode-card, .route-card, .route-row, .profile-config-card, .compat-card, .amnezia-interface-card) {
+  border-color: var(--line-soft);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+body[data-theme="light"] :is(.dash-hero, .dash-hero.is-warn, .settings-hero, .route-hero, .devices-hero, .intercept-hero, .compat-hero) {
+  border-color: var(--line-soft);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+body[data-theme="light"] :is(.settings-card, .settings-overview-card, .settings-advanced-details, .route-card, .server-card, .dns-card, .diagnostic-card, .diagnostic-row, .lease-card, .device-rule-card, .profile-config-card, .compat-card) {
+  border-radius: 6px;
+}
+
+body[data-theme="light"] :is(.pill, .service-controls, .service-icon, .password-toggle, .settings-subnav, .segmented, .route-target-select, .manual-check-settings, .observatory-settings) {
+  border-color: var(--line-soft);
+  background: var(--panel);
+}
+
+body[data-theme="light"] :is(input, select, textarea) {
+  border-color: var(--line);
+  background-color: #fff;
+  color: var(--text);
+}
+
+body[data-theme="light"] :is(input, select, textarea):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(8, 127, 154, 0.09);
+}
+
+body[data-theme="light"] :is(.console, .dsl-editor, .config-summary, .notice-details-body pre, .traffic-chart svg) {
+  border-color: var(--line-soft);
+  color: var(--soft);
+  background: #f7f9fc;
+}
+
+body[data-theme="light"] :is(.settings-overview-card:hover, .settings-overview-card:focus-visible) {
+  border-color: #9ac9d5;
+  background: #f5fbfd;
+}
+
+body[data-theme="light"] :is(.route-kind, .route-category, .server-protocol, .server-protocol.doh, .server-chip, .server-location-chip, .geo-coverage-badge, .geo-coverage-badge.system, .tag, .action-pill, .status-chip) {
+  color: var(--accent-strong);
+  border-color: #cae4eb;
+  background: #eff8fb;
+}
+
+body[data-theme="light"] .status-chip.ok {
+  border-color: #bfe4ce;
+  color: #176e40;
+  background: #edf8f1;
+}
+
+body[data-theme="light"] .status-chip.warn {
+  border-color: #f0dbad;
+  color: #875608;
+  background: #fff7e7;
+}
+
+body[data-theme="light"] :is(.dashboard-current-server, .dashboard-selected-server, .current-server-panel, .dashboard-server-option, .server-option-pick) {
+  border-color: var(--line-soft);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme="light"] .dashboard-server-option.active,
+body[data-theme="light"] .server-option-pick.active {
+  border-color: #8bc9d8;
+  background: #eff8fb;
+}
+
+.dashboard-primary-grid {
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.dashboard-primary-grid > .panel + .panel {
+  margin-top: 0;
+}
+
+.dash-hero {
+  margin-bottom: 18px;
+  padding: 16px 20px;
+  border-radius: 6px;
+}
+
+.eyebrow {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+}
+
+.router-health-metrics {
+  gap: 0;
+  margin-top: 0;
+}
+
+.metric-stat,
+body[data-theme="light"] .dash-hero .metric-stat {
+  min-width: 140px;
+  flex: 1 1 140px;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 0;
+  border-right: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.metric-stat:last-child,
+body[data-theme="light"] .dash-hero .metric-stat:last-child {
+  border-right: 0;
+}
+
+.metric-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  color: var(--accent-2);
+  background: rgba(32, 156, 185, 0.08);
+}
+
+.metric-stat strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.metric-stat strong,
+.metric-stat small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.traffic-metric,
+body[data-theme="light"] .dash-hero .traffic-metric {
+  min-width: 260px;
+  flex-basis: 260px;
+}
+
+.dashboard-traffic-grid {
+  gap: 12px;
+}
+
+body[data-theme="light"] .dashboard-traffic-grid article {
+  padding: 12px;
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] .dashboard-traffic-grid article.proxy {
+  border-top: 2px solid #27a7c6;
+}
+
+body[data-theme="light"] .dashboard-traffic-grid article.direct {
+  border-top: 2px solid #41a76b;
+}
+
+body[data-theme="light"] .dashboard-traffic-grid article.block {
+  border-top: 2px solid #d46b78;
+}
+
+.dashboard-health-panel.is-ok {
+  border-top: 2px solid var(--green);
+}
+
+.dashboard-health-panel.is-warn {
+  border-top: 2px solid var(--amber);
+}
+
+.dashboard-health-ok i {
+  width: 10px;
+  height: 10px;
+  box-shadow: none;
+}
+
+.flow-strip {
+  gap: 0;
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.flow-step {
+  padding: 15px 20px;
+  border: 0;
+  border-right: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.flow-step:last-child {
+  border-right: 0;
+}
+
+body[data-theme="light"] .flow-step {
+  border-color: var(--line-soft);
+  background: transparent;
+}
+
+.connection-overview {
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+
+.connection-topology {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(30px, 0.5fr) minmax(100px, 1fr) minmax(30px, 0.5fr) minmax(100px, 1fr);
+  align-items: start;
+  max-width: 760px;
+  margin: 20px auto 24px;
+}
+
+.connection-node {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.connection-node-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  color: var(--accent-2);
+  background: var(--panel-2);
+}
+
+.connection-node-icon svg {
+  width: 29px;
+  height: 29px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.connection-node-label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.connection-node-status {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.connection-node-status.online {
+  color: var(--green);
+}
+
+.connection-node-status.offline {
+  color: var(--red);
+}
+
+.connection-node-status.pending {
+  color: var(--muted);
+}
+
+.connection-link {
+  position: relative;
+  height: 1px;
+  margin: 29px 10px 0;
+  border-top: 2px solid var(--line);
+}
+
+.connection-link.online {
+  border-top-color: #3ba570;
+}
+
+.connection-link.offline,
+.connection-link.pending {
+  border-top-style: dashed;
+}
+
+.connection-link::after {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  color: var(--muted);
+  transform: rotate(45deg);
+  content: "";
+}
+
+.connection-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 -20px -20px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--panel-2);
+}
+
+.connection-detail {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.connection-detail strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.connection-detail .dot {
+  flex: 0 0 8px;
+}
+
+.global-action-progress {
+  top: calc(var(--header-height) + 8px);
+}
+
+body[data-theme="light"].is-login-page {
+  background: #edf1f5;
+}
+
+.login-card {
+  padding: 32px;
+  border-top: 3px solid #27a7c6;
+}
+
+.login-card .brand {
+  min-height: 48px;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+}
+
+.login-card .brand strong {
+  color: var(--text);
+  font-size: 22px;
+}
+
+.login-card .brand span {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.login-card .brand-mark {
+  width: 40px;
+  height: 40px;
+}
+
+.login-card h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+body[data-theme="dark"] :is(.panel, .stat, .core-stat, .dash-hero, .dash-hero.is-warn, .login-card, .modal, .dashboard-technical-panel) {
+  background: var(--panel);
+  border-color: var(--line-soft);
+}
+
+body[data-theme="dark"] :is(.pill, .service-controls, .service-icon, .dashboard-traffic-grid article, .dashboard-server-option, .dashboard-current-server, .dashboard-selected-server) {
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+}
+
+/* Disclosure contents need their own surfaces; the original styles assumed dark mode. */
+body[data-theme] .pending-details-body {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] .pending-details summary {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel);
+}
+
+body[data-theme] .pending-details summary:hover {
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.pending-changes, .notice, .settings-warning, .amnezia-warning-summary) {
+  border-color: var(--line-soft);
+  border-left: 3px solid #d89a36;
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] :is(.notice.danger, .settings-warning.danger) {
+  border-color: var(--line-soft);
+  border-left: 3px solid var(--red);
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] :is(.pending-changes strong, .notice-details-body p) {
+  color: var(--text);
+}
+
+body[data-theme] .settings-warning strong {
+  color: var(--text);
+}
+
+body[data-theme] .pending-more {
+  color: var(--muted);
+}
+
+body[data-theme] .pending-changes .btn.warning {
+  border-color: #087f9a;
+  color: #fff;
+  background: #087f9a;
+}
+
+body[data-theme="dark"] .pending-changes .btn.warning {
+  border-color: #3fc1d9;
+  background: #176c81;
+}
+
+body[data-theme] .pending-details-body strong,
+body[data-theme] .pending-change-list li,
+body[data-theme] .pending-risk-list article span {
+  color: var(--text);
+}
+
+body[data-theme] .pending-risk-list article.danger span,
+body[data-theme] .settings-warning.danger strong,
+body[data-theme] .notice.danger .notice-details-body p {
+  color: var(--status-bad-text);
+}
+
+body[data-theme] .notice-details-body pre,
+body[data-theme] .core-result pre {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] .notice-details {
+  border-color: var(--line-soft);
+}
+
+body[data-theme] .notice.danger .notice-details {
+  border-color: var(--line-soft);
+}
+
+body[data-theme="dark"] :is(.settings-advanced-details, .profile-backup-details, .profile-more-menu, .diagnostics-details, .dns-guard-details, .lan-dns-details, .amnezia-advanced-panel, .amnezia-tech-section) {
+  border-color: var(--line-soft);
+  color: var(--text);
+  background: var(--panel);
+}
+
+/* Explicit missing light surfaces, including route and balancer modal contents. */
+body[data-theme="light"] :is(.server-mini code, .xray-core-card, .profile-meta span, .core-summary, .config-analysis li, .preset-check, .preset-check .checkmark, .route-replace-scope label, .route-replace-preview, .route-replace-preview li, .preset-icon-preview, .diagnostics-chain-counts span, .route-list-form, .route-lease-picker, .balancer-form, .balancer-target, .balancer-order-controls button, .balancer-members span, .balancer-row, .balancer-history-strip span, .route-preset-group-toggle, .route-actions .route-action-btn, .amnezia-route-policy-list, .xray-test-log, .routing-audit-finding, .system-row, .availability-note, .health-history article, .log-control-panel, .dns-guard-overview-counts > span, .guard-item, .dns-policy-row, .profile-more > summary, .profile-more-menu, .amnezia-active-profile, .amnezia-profile-card, .amnezia-check-grid article, .amnezia-pool-editor, .amnezia-integration-editor, .amnezia-integration-metrics span, .amnezia-profile-meta span, .amnezia-profile-runtime span, .amnezia-dashboard-state span) {
+  border-color: var(--line-soft);
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] :is(.domain-monitor-toolbar input, .domain-probe-target select) {
+  border-color: var(--line);
+  color: var(--text);
+  background-color: var(--panel);
+}
+
+body[data-theme="light"] .geo-catalog-category.readonly:is(:hover, :focus-visible) {
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] :is(.route-replace-scope label.active, .balancer-target.active, .preset-check.active, .preset-check.custom, .amnezia-profile-card.selected:not(.ok)) {
+  border-color: #8bc9d8;
+  color: var(--text);
+  background: #eff8fb;
+}
+
+body[data-theme="light"] :is(.config-analysis li.error, .apply-step-list li.error, .core-update-toolbar .form-error, .service-icon.danger, .service-icon.danger:hover, .icon-btn.danger, .route-section-block .route-section-head strong, .route-actions .icon-btn.danger, .server-action-icon.danger:hover:not(:disabled), .domain-probe span.bad) {
+  color: var(--status-bad-text);
+}
+
+body[data-theme="light"] :is(.config-analysis li.warn, .dsl-preview small.warn, .preset-check-result li, .route-actions .disable, .route-actions .disable:hover:not(:disabled), .geo-coverage-badge.service) {
+  color: var(--status-warn-text);
+}
+
+body[data-theme="light"] :is(.route-actions .move-up, .route-actions .move-down, .route-actions .move-up:hover:not(:disabled), .route-actions .move-down:hover:not(:disabled), .route-actions .edit:hover:not(:disabled)) {
+  color: var(--soft);
+}
+
+body[data-theme] :is(.release-badge.pre, .server-chip.warn, .balancer-members span.warn, .status-chip.warn, .balancer-target.legacy, .preset-check.partial, .preset-check.bundle, .dpi-verdict.dns-fail, .dpi-verdict.tcp-block, .dpi-verdict.tls-block, .dpi-verdict.proxy-needed, .guard-item.warn, .amnezia-dashboard-state span.warn, .amnezia-profile-runtime.warn span) {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] :is(.server-chip.bad, .balancer-history-strip span.bad, .status-chip.bad, .route-category-block, .guard-item.bad) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] :is(.server-chip.ok, .server-actions .active-tag, .balancer-members span.ok, .balancer-history-strip span.ok, .status-chip.ok, .preset-check.installed, .guard-item.ok, .amnezia-dashboard-state span.ok, .amnezia-profile-runtime.ok span) {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] :is(.status-card.ok span, .domain-probe span.ok) {
+  color: var(--status-good-text);
+}
+
+body[data-theme="light"] .status-card.warn span {
+  color: var(--status-warn-text);
+}
+
+body[data-theme="light"] :is(.server-chip.info, .route-category-other) {
+  color: var(--accent-strong);
+  border-color: #cae4eb;
+  background: #eff8fb;
+}
+
+body[data-theme="light"] .server-actions .btn.danger {
+  color: #fff;
+  border-color: #b93c47;
+  background: #b93c47;
+}
+
+body[data-theme="light"] :is(.check-badge.ok, .preset-icon, .preset-install-badge, .diagnostics-chain-summary-icon, .diagnostics-chain-attention-icon, .setup-flow-step > span, .setup-stepper button span, .setup-stepper button.ok span, .setup-stepper button.warn span, .setup-readiness article > span, .setup-result-list article > span, .install-steps article > span) {
+  color: #fff;
+}
+
+body[data-theme="light"] :is(.btn.warning, .guard-action, .xray-update-indicator) {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme="light"] .preset-check:is(.active, .installed) .checkmark::after {
+  color: #fff;
+}
+
+body[data-theme="light"] .preset-check:is(.active, .installed) .checkmark {
+  background: #18864b;
+}
+
+body[data-theme="light"] .setup-stepper span {
+  color: #fff;
+  background: #536579;
+}
+
+body[data-theme="light"] .setup-stepper button.pending span {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] :is(.setup-stepper button.warn span, .setup-readiness article.warn > span, .setup-result-list article.warn > span, .install-steps article.warn > span, .diagnostics-chain-summary.warn .diagnostics-chain-summary-icon, .diagnostics-chain-attention-icon) {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme="light"] .guard-item > span {
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] .guard-item.ok > span {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] .guard-item.warn > span {
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme="light"] .guard-item.bad > span {
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme="light"] .scenario-summary strong,
+body[data-theme="light"] .setup-fallback-choice button.active .setup-choice-mark {
+  color: #fff;
+}
+
+body[data-theme="light"] .setup-fallback-choice button:not(.active) .setup-choice-mark {
+  color: var(--soft);
+}
+
+body[data-theme="light"] .mini-console {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] .route-preset-group-row[open] .route-preset-group-toggle {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* Amnezia readiness and runtime tags use complete foreground/background pairs. */
+body[data-theme] .amnezia-setup-progress article > span {
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .amnezia-setup-progress article.done > span,
+body[data-theme] .amnezia-check-grid article.ok > span {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+  border: 1px solid var(--status-good-border);
+}
+
+body[data-theme] .amnezia-setup-progress article.active > span,
+body[data-theme] .amnezia-check-grid article.warn > span {
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+  border: 1px solid var(--status-warn-border);
+}
+
+body[data-theme] .amnezia-tech-section summary .status-chip.ok {
+  color: var(--status-good-text);
+}
+
+body[data-theme] .amnezia-tech-section summary .status-chip.warn {
+  color: var(--status-warn-text);
+}
+
+body[data-theme="light"] :is(.amnezia-profile-card.ok, .amnezia-active-profile.ok) {
+  border-color: var(--status-good-border);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] .amnezia-profile-select span {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+body[data-theme="light"] .amnezia-profile-select input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 4px var(--panel);
+}
+
+/* Navigation selection is cyan; green remains a service/readiness status. */
+body[data-theme] :is(.routing-subnav, .settings-subnav, .segmented, .intercept-segmented, .diagnostic-switcher) button {
+  color: var(--soft);
+}
+
+body[data-theme] :is(.routing-subnav, .settings-subnav, .segmented, .intercept-segmented, .diagnostic-switcher) button:hover {
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.routing-subnav, .settings-subnav, .segmented, .intercept-segmented, .diagnostic-switcher) button.active,
+body[data-theme] .domain-monitor-filters button.active {
+  border-color: transparent;
+  color: #fff;
+  background: #087f9a;
+}
+
+body[data-theme="dark"] :is(.routing-subnav, .settings-subnav, .segmented, .intercept-segmented, .diagnostic-switcher) button.active,
+body[data-theme="dark"] .domain-monitor-filters button.active {
+  border-color: #3fc1d9;
+  color: #e5fbff;
+  background: #176c81;
+}
+
+body[data-theme="light"] .server-mode-steps article > span {
+  color: var(--accent-strong);
+}
+
+body[data-theme="light"] .dns-provider-mark {
+  color: #fff;
+}
+
+body[data-theme="light"] .settings-warning:not(.danger) strong {
+  color: var(--text);
+}
+
+body[data-theme] .settings-warning.ok {
+  border-color: var(--line-soft);
+  border-left: 3px solid var(--green);
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] .settings-warning.ok strong {
+  color: var(--text);
+}
+
+body[data-theme="light"] .lan-dns-current.ok .lan-dns-current-icon {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] .dns-guard-section-head > strong {
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme="dark"] .settings-check.active em {
+  color: var(--soft);
+}
+
+body[data-theme="light"] .scenario-source-badge.source-github {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] .firewall-steps strong {
+  color: #fff;
+}
+
+body[data-theme="light"] .intercept-details > summary b {
+  color: var(--accent-strong);
+}
+
+body[data-theme="light"] .intercept-details[open] > summary b {
+  color: #fff;
+}
+
+body[data-theme="light"] .leak-check-list article.ok i {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme="light"] .leak-check-list article.warn i {
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme="light"] .geo-presets .geo-purpose {
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] .domain-monitor-health article.bad > span {
+  color: var(--status-bad-text);
+}
+
+/* Header controls use the same neutral surfaces as the GL-style shell. */
+body[data-theme] .xray-version-pill.has-update {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] .xray-version-pill.has-update .dot.warn {
+  background: var(--accent);
+}
+
+body[data-theme] .xray-version-pill.has-update .xray-update-indicator {
+  border-color: transparent;
+  color: var(--accent-strong);
+  background: rgba(8, 127, 154, 0.1);
+}
+
+body[data-theme="dark"] .xray-version-pill.has-update {
+  background: var(--panel-2);
+}
+
+body[data-theme="dark"] .xray-version-pill.has-update .xray-update-indicator {
+  background: rgba(63, 193, 217, 0.13);
+}
+
+body[data-theme] .service-mode-stop {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel);
+}
+
+body[data-theme] .service-mode-stop svg {
+  color: var(--red);
+}
+
+body[data-theme] .service-mode-stop:hover:not(:disabled) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+@media (max-width: 1200px) {
+  .device-header {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .main {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .dashboard-primary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 860px) {
+  .device-header {
+    left: 0;
+    gap: 8px;
+    padding: 0 16px 0 62px;
+  }
+
+  .device-header-context {
+    gap: 7px;
+  }
+
+  .device-header-context > svg,
+  .device-header-context small {
+    display: none;
+  }
+
+  .device-header-tools {
+    gap: 3px;
+  }
+
+  .device-header-label {
+    display: none;
+  }
+
+  .device-header-tools .pill {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar,
+  body[data-theme="light"] .sidebar {
+    position: fixed;
+    top: var(--header-height);
+    bottom: auto;
+    width: var(--sidebar-width);
+    height: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: #243e58;
+  }
+
+  .sidebar .brand {
+    display: none;
+  }
+
+  .mobile-menu-toggle,
+  body[data-theme="light"] .mobile-menu-toggle {
+    position: fixed;
+    z-index: 80;
+    top: 12px;
+    left: 16px;
+    width: 34px;
+    height: 36px;
+    min-height: 36px;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    color: var(--text);
+    background: var(--panel);
+    font-size: 0;
+  }
+
+  .mobile-menu-toggle::before {
+    font-size: 20px;
+    line-height: 1;
+    content: "\2630";
+  }
+
+  .sidebar .nav,
+  .sidebar .sidebar-footer {
+    display: none;
+  }
+
+  .sidebar.nav-open,
+  body[data-theme="light"] .sidebar.nav-open {
+    height: calc(100vh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
+    display: flex;
+    padding: 14px 0;
+    overflow-y: auto;
+    box-shadow: 8px 8px 24px rgba(23, 41, 61, 0.2);
+  }
+
+  .sidebar.nav-open .nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  .sidebar.nav-open .nav button {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 12px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .sidebar.nav-open .sidebar-footer {
+    display: block;
+    margin-top: auto;
+    padding: 24px 12px 0;
+  }
+
+  .sidebar.nav-open .logout-button {
+    justify-content: flex-start;
+    min-height: 40px;
+    height: auto;
+    padding: 9px 12px;
+    color: #d7e2ed;
+    background: transparent;
+    text-align: left;
+  }
+
+  .main {
+    min-height: 100vh;
+    margin-left: 0;
+    padding: 80px 18px 28px;
+  }
+
+  .topbar {
+    margin-bottom: 18px;
+  }
+
+  .title h1 {
+    font-size: 21px;
+  }
+
+  .top-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .service-controls {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .connection-summary {
+    margin: 0 -16px -16px;
+    padding: 14px 16px;
+  }
+
+  .flow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flow-step {
+    padding: 12px 16px;
+  }
+
+  .flow-step:nth-child(2) {
+    border-right: 0;
+  }
+
+  .flow-step:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line-soft);
+  }
+}
+
+@media (max-width: 520px) {
+  .theme-toggle-label {
+    display: none;
+  }
+
+  .device-theme-toggle {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .device-theme-switch {
+    gap: 2px;
+    padding: 2px;
+  }
+
+  .device-header-tools .app-version-pill {
+    max-width: 100px;
+  }
+
+  .device-header-context strong {
+    font-size: 13px;
+  }
+
+  .main {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .dash-hero {
+    padding: 14px;
+  }
+
+  .router-health-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 0;
+  }
+
+  .metric-stat,
+  body[data-theme="light"] .dash-hero .metric-stat {
+    min-width: 0;
+    width: 100%;
+    padding: 5px 8px;
+    gap: 8px;
+  }
+
+  .metric-stat:nth-child(even),
+  body[data-theme="light"] .dash-hero .metric-stat:nth-child(even) {
+    border-right: 0;
+  }
+
+  .metric-stat:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  .metric-stat strong {
+    font-size: 14px;
+  }
+
+  .connection-topology {
+    grid-template-columns: minmax(64px, 1fr) minmax(12px, 0.25fr) minmax(64px, 1fr) minmax(12px, 0.25fr) minmax(64px, 1fr);
+    margin: 16px auto 20px;
+  }
+
+  .connection-node {
+    gap: 6px;
+  }
+
+  .connection-node-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .connection-node-icon svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .connection-node-label {
+    font-size: 12px;
+  }
+
+  .connection-node-status {
+    font-size: 10px;
+  }
+
+  .connection-link {
+    margin: 22px 3px 0;
+  }
+
+  .connection-detail {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+
+  .login-card {
+    padding: 26px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav button,
+  .btn {
+    transition: none;
+  }
+}
+
+/* Keep the connection overview compact while retaining its status and actions. */
+.panel.connection-overview {
+  padding: 14px 18px;
+}
+
+.connection-overview .panel-title {
+  margin-bottom: 8px;
+}
+
+.connection-overview .panel-title > div > span {
+  display: none;
+}
+
+.connection-overview .btn {
+  min-height: 30px;
+  padding: 0 11px;
+}
+
+.connection-overview .connection-topology {
+  max-width: none;
+  grid-template-columns: minmax(130px, 1fr) minmax(24px, 0.3fr) minmax(130px, 1fr) minmax(24px, 0.3fr) minmax(130px, 1fr);
+  align-items: center;
+  margin: 8px 0 12px;
+}
+
+.connection-overview .connection-node {
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  justify-items: start;
+  gap: 1px 10px;
+  min-height: 40px;
+  text-align: left;
+}
+
+.connection-overview .connection-node-icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  width: 40px;
+  height: 40px;
+}
+
+.connection-overview .connection-node-icon svg {
+  width: 23px;
+  height: 23px;
+}
+
+.connection-overview .connection-node-label {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+}
+
+.connection-overview .connection-node-status {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+}
+
+.connection-overview .connection-link {
+  align-self: center;
+  margin: 0 10px;
+}
+
+.connection-overview .connection-summary {
+  min-height: 42px;
+  margin: 0 -18px -14px;
+  padding: 8px 18px;
+  gap: 8px 14px;
+}
+
+@media (max-width: 520px) {
+  .panel.connection-overview {
+    padding: 12px 14px;
+  }
+
+  .connection-overview .panel-title {
+    gap: 8px;
+  }
+
+  .connection-overview .panel-title h2 {
+    font-size: 14px;
+  }
+
+  .connection-overview .panel-title .btn {
+    max-width: 146px;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .connection-overview .connection-topology {
+    grid-template-columns: minmax(60px, 1fr) minmax(12px, 0.2fr) minmax(60px, 1fr) minmax(12px, 0.2fr) minmax(60px, 1fr);
+    align-items: start;
+    margin: 10px 0 12px;
+  }
+
+  .connection-overview .connection-node {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 32px auto auto;
+    justify-items: center;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .connection-overview .connection-node-icon {
+    grid-column: 1;
+    grid-row: 1;
+    width: 32px;
+    height: 32px;
+  }
+
+  .connection-overview .connection-node-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .connection-overview .connection-node-label {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 11px;
+  }
+
+  .connection-overview .connection-node-status {
+    grid-column: 1;
+    grid-row: 3;
+    font-size: 10px;
+  }
+
+  .connection-overview .connection-link {
+    align-self: start;
+    margin: 16px 3px 0;
+  }
+
+  .connection-overview .connection-summary {
+    margin: 0 -14px -12px;
+    padding: 8px 14px;
+    gap: 8px 12px;
+  }
+}
+
+/* Shared feature surfaces: every section uses the router shell's neutral palette. */
+body[data-theme] :is(.dash-hero, .dash-hero.is-warn, .route-hero, .servers-hero, .dns-hero, .amnezia-hero, .settings-hero, .devices-hero, .intercept-hero, .compat-hero, .compat-hero.warn, .compat-hero.danger, .diagnostics-overview, .profile-active-overview, .profile-active-overview.ok, .profile-active-overview.warn, .setup-page-head, .server-mode-hero) {
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+body[data-theme] :is(.route-hero, .settings-hero, .compat-hero, .diagnostics-overview-copy, .profile-active-overview, .setup-page-head, .setup-simple-hero, .server-mode-hero) :is(h1, h2, h3) {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] :is(.route-hero, .settings-hero, .compat-hero, .diagnostics-overview-copy, .profile-active-overview, .setup-page-head, .setup-simple-hero) p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+body[data-theme] :is(.route-score, .settings-hero-status, .servers-overview article, .servers-overview article.is-ok, .dns-overview article, .dns-overview article.is-ok, .dns-overview article.is-warn, .profile-meta span, .profile-card-icon, .diagnostics-chain-counts span) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.route-score, .settings-hero-status) {
+  padding: 10px 12px;
+}
+
+body[data-theme] .route-score strong {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Setup workspace and its nested choices no longer carry presentation-style gradients. */
+body[data-theme] :is(.setup-guide-rail, .setup-stepper, .setup-step-summary, .setup-step-panel, .setup-mode-grid article, .setup-mode-grid article.active, .setup-readiness article, .setup-result-list article, .setup-choice-grid article, .setup-flow-guide, .setup-flow-step, .setup-flow-step.ok, .setup-lan-dns, .install-command-card, .setup-snapshot, .setup-result, .setup-config-card, .setup-callout, .setup-callout.warn, .setup-connection-card, .setup-connection-card.ready, .setup-rule-summary, .setup-auto-plan, .setup-action-card, .setup-action-card.primary, .setup-auto-checks, .setup-advanced-summary, .setup-fallback-choice button, .setup-launch-summary article, .setup-context-banner, .setup-step-actions) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.setup-step-panel, .setup-flow-guide) {
+  gap: 14px;
+  padding: 16px 18px;
+}
+
+body[data-theme] :is(.setup-config-card, .setup-callout, .setup-connection-card, .setup-rule-summary, .setup-auto-plan, .setup-action-card, .setup-fallback-choice button, .setup-launch-summary article) {
+  padding: 12px 14px;
+}
+
+body[data-theme] :is(.setup-choice-grid article, .setup-mode-grid article, .setup-flow-step, .setup-readiness article, .setup-result-list article, .compat-flow-step) {
+  min-height: 0;
+}
+
+body[data-theme] .setup-flow-step {
+  grid-template-rows: auto auto;
+}
+
+body[data-theme] :is(.setup-simple-step, .setup-page, .setup-guide-workspace) {
+  gap: 14px;
+}
+
+body[data-theme] .setup-simple-hero {
+  gap: 4px;
+}
+
+body[data-theme] :is(.setup-step-panel h3, .setup-connection-card strong, .setup-choice-grid strong, .setup-rule-summary strong) {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] :is(.setup-action-card > span, .setup-connection-icon, .setup-config-card-head span) {
+  border-radius: 6px;
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .setup-action-card > span {
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+}
+
+body[data-theme] .setup-action-card {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+body[data-theme] .setup-connection-icon {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+  font-size: 18px;
+}
+
+body[data-theme] .setup-action-card:hover {
+  border-color: var(--accent);
+  background: var(--panel-2);
+  transform: none;
+}
+
+body[data-theme] :is(.setup-mode-grid article.active, .setup-fallback-choice button.active) {
+  border-color: var(--accent);
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+body[data-theme] .setup-stepper button {
+  border-radius: 4px;
+  color: var(--soft);
+  background: transparent;
+}
+
+body[data-theme] .setup-stepper button.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+body[data-theme] .setup-stepper button.ok {
+  color: var(--text);
+  background: transparent;
+}
+
+body[data-theme] .setup-stepper button.active.ok {
+  background: var(--panel-2);
+}
+
+body[data-theme] .setup-step-actions .btn.warning {
+  min-width: 180px;
+}
+
+/* Cards, including their selected states, share neutral fills; compact status badges retain their tones. */
+body[data-theme] :is(.settings-card, .settings-overview-card, .settings-overview-card.attention, .settings-overview-card.danger, .settings-theme-card, .settings-advanced-details, .advanced-card, .advanced-card.active, .local-proxy-card, .local-proxy-card.active, .local-proxy-card.warn, .current-server-panel, .xray-core-card, .xray-core-card.has-update, .profile-config-card, .profile-more-menu, .route-card, .route-row, .route-preset-group-row, .scenario-card, .scenario-card.custom, .scenario-card.installed, .scenario-card.partial, .preset-check, .preset-check.active, .preset-check.installed, .preset-check.partial, .routing-summary-card, .route-empty-state, .server-row, .server-row.is-active, .server-card, .subscription-pool, .subscription-candidate, .subscription-candidate.selected, .server-edit-section, .server-json-details, .country-picker, .dashboard-server-option, .dashboard-server-option.active, .dashboard-server-option.selected, .dns-card, .dns-provider-card, .dns-provider-card.is-added, .dns-bootstrap-card, .dns-custom-add, .dns-diagnostics-card, .wizard-card, .diagnostic-card, .diagnostic-row, .diagnostics-server-health, .diagnostics-chain-summary, .diagnostics-chain-summary.warn, .diagnostics-chain-summary.bad, .dpi-verdict, .dpi-verdict.dns-fail, .dpi-verdict.down, .dpi-verdict.tcp-block, .dpi-verdict.tls-block, .dpi-verdict.proxy-needed, .compat-card, .compat-flow-step, .compat-flow-step.ok, .compat-flow-step.warn, .compat-next-step, .compat-next-step.warn, .compat-next-step.danger, .amnezia-next-step, .amnezia-next-step.ok, .amnezia-next-step.warn, .amnezia-active-profile, .amnezia-active-profile.ok, .amnezia-profile-card, .amnezia-profile-card.ok, .amnezia-usage-mode, .amnezia-advanced-panel, .amnezia-tech-section, .amnezia-structured-editor article, .amnezia-interface-card, .amnezia-interface-card.ok, .amnezia-pool-editor, .amnezia-integration-editor, .server-mode-inbound, .server-mode-client, .server-mode-firewall, .server-mode-security, .server-mode-traffic, .server-mode-export, .server-mode-awg-plan, .server-mode-toolbar, .geo-file-card, .geo-catalog-panel, .geo-catalog-category-card, .geo-upload-panel, .routing-audit-finding, .b4-api-panel details, .b4-set, .lease-card, .device-rule-card, .mode-card) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.server-row.is-active, .dashboard-server-option.active, .dashboard-server-option.active.selected, .amnezia-profile-card.ok, .amnezia-active-profile.ok) {
+  border-left: 3px solid var(--green);
+}
+
+body[data-theme] :is(.dashboard-server-option.selected, .subscription-candidate.selected, .advanced-card.active, .local-proxy-card.active, .preset-check.active, .settings-theme-card.active) {
+  border-left: 3px solid var(--accent);
+}
+
+body[data-theme] :is(.settings-check, .settings-check.active, .settings-info-grid article, .settings-storage-row, .traffic-overview-panel article, .traffic-overview-panel .traffic-overview-main, .dsl-preview-stats div, .dashboard-current-server, .dashboard-selected-server, .server-traffic, .dashboard-server-traffic, .dns-overview article, .amnezia-setup-progress article, .amnezia-setup-progress article.done, .amnezia-setup-progress article.active, .amnezia-diagnostics-grid article, .amnezia-diagnostics-grid article.ok, .amnezia-diagnostics-grid article.warn, .compat-metrics article, .dns-diagnostics-grid article, .lan-dns-readiness article, .lan-dns-readiness article.ok, .lan-dns-readiness article.warn, .manual-check-settings, .client-test-grid article, .observatory-grid article, .observatory-targets article, .firewall-device, .firewall-device.active, .firewall-preview-grid article, .intercept-summary-grid article) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.server-card, .amnezia-active-profile, .amnezia-next-step, .compat-card, .compat-flow-step, .dns-diagnostics-card, .diagnostic-card, .profile-config-card) {
+  padding: 14px 16px;
+}
+
+body[data-theme] :is(.amnezia-next-step h3, .amnezia-active-profile h3, .amnezia-usage-mode h3, .compat-flow-step h3, .compat-next-step strong, .modal-head h2) {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] :is(.settings-overview-card:hover, .settings-overview-card:focus-visible, .settings-card:hover, .scenario-card:hover, .server-row:hover, .dashboard-server-option:hover, .dns-provider-card:hover) {
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.apply-state-panel, .apply-state-panel.ok, .firewall-safety-panel, .firewall-safety-panel.safe, .firewall-safety-panel.danger, .dns-guard-overview, .dns-guard-overview.ok, .dns-guard-overview.warn, .dns-guard-overview.bad, .dns-guard-attention, .lan-dns-current, .lan-dns-current.ok, .lan-dns-current.warn) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.firewall-safety-panel.danger, .dns-guard-overview.bad, .diagnostics-chain-summary.bad) {
+  border-left: 3px solid var(--red);
+}
+
+body[data-theme] :is(.dns-guard-overview.warn, .diagnostics-chain-summary.warn) {
+  border-left: 3px solid #d89a36;
+}
+
+/* A normal primary operation is cyan, including older buttons labelled "warning" in markup. */
+body[data-theme] .btn:not(.secondary):not(.danger),
+body[data-theme] .server-action-icon.warning {
+  border-color: #087f9a;
+  color: #fff;
+  background: #087f9a;
+}
+
+body[data-theme="dark"] .btn:not(.secondary):not(.danger),
+body[data-theme="dark"] .server-action-icon.warning {
+  border-color: #3fc1d9;
+  color: #e5fbff;
+  background: #176c81;
+}
+
+body[data-theme] .server-action-icon.warning:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  color: #fff;
+  background: #086b82;
+}
+
+body[data-theme] .server-action-icon {
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .server-action-icon.active {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+  box-shadow: none;
+}
+
+body[data-theme] .server-action-icon.danger {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--panel);
+}
+
+body[data-theme] .server-action-icon.danger:hover:not(:disabled) {
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .server-option-state.selected {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .dashboard-server-option.active .server-traffic.muted {
+  opacity: 1;
+}
+
+body[data-theme] :is(.server-ping.ok, .server-check-pill.ok, .server-option-state.active, .server-state-pill.active) {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] :is(.server-ping.bad, .server-check-pill.bad) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.server-ping.warn, .server-check-pill.warn) {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] :is(.pill, .tag, .status-chip, .server-chip, .server-protocol, .server-option-state, .server-check-pill, .server-state-pill, .profile-meta span, .amnezia-profile-meta span, .amnezia-profile-runtime span, .amnezia-dashboard-state span, .geo-purpose, .scenario-source-badge, .scenario-install-badge, .preset-install-badge, .route-kind, .route-category, .route-target-status, .balancer-kind, .balancer-members span, .balancer-history-strip span, .diagnostic-card span) {
+  border-radius: 4px;
+}
+
+body[data-theme] :is(.routing-subnav, .settings-subnav, .segmented, .diagnostic-switcher, .manual-check-settings) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.routing-subnav, .settings-subnav, .segmented, .diagnostic-switcher) button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-theme] :is(.setup-progress span, .global-action-progress i::before, .operation-progress i::before, .subscription-fallback-progress i::before, .btn.is-busy::after, .xray-traffic-bar em) {
+  background: var(--accent);
+}
+
+body[data-theme] :is(.route-value-chips code, .route-value-chips button, .route-preset-tags em, .route-preset-group-toggle, .core-summary, .status-card, .status-card.ok, .status-card.warn, .domain-monitor-scroll-window, .domain-monitor-events-window, .domain-monitor-device-filter, .domain-monitor-device.active, .diagnostics-details, .dns-guard-details, .lan-dns-details, .geo-manager-details, .profile-backup-details) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--soft);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.route-value-chips code, .route-value-chips button, .route-preset-tags em, .route-preset-group-toggle, .diagnostics-details > summary b, .dns-guard-details > summary b, .lan-dns-details > summary b, .geo-manager-details > summary em, .profile-backup-details > summary b) {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+.topbar-meta {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+/* Equal resource cells prevent long uptime and traffic values from wrapping the whole row. */
+body[data-theme] .dash-hero .router-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+body[data-theme] .dash-hero .router-health-metrics > .metric-stat,
+body[data-theme] .dash-hero .router-health-metrics > .metric-stat:nth-child(5) {
+  grid-column: auto;
+  width: auto;
+  min-width: 0;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+body[data-theme] .dash-hero .metric-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+body[data-theme] .dash-hero .metric-stat > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+body[data-theme] .dash-hero .metric-stat strong {
+  overflow: visible;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .dash-hero .metric-stat div > span,
+body[data-theme] .dash-hero .metric-stat small {
+  overflow: visible;
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .dash-hero .traffic-metric > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 8px;
+}
+
+body[data-theme] .dash-hero .traffic-metric div > span {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+body[data-theme] .dash-hero .traffic-metric strong:first-of-type {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+body[data-theme] .dash-hero .traffic-metric small:first-of-type {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+body[data-theme] .dash-hero .traffic-metric strong:last-of-type {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+body[data-theme] .dash-hero .traffic-metric small:last-of-type {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+body[data-theme] .dash-hero .traffic-metric strong {
+  font-size: 12px;
+}
+
+@media (min-width: 1500px) {
+  body[data-theme] .dash-hero .router-health-metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px 8px;
+  }
+
+  .topbar > .title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .topbar > .top-actions {
+    display: contents;
+  }
+
+  .topbar .topbar-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .topbar .top-actions > .action-pill {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: start;
+  }
+
+  .topbar .service-controls {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    justify-self: end;
+    align-self: center;
+    justify-content: flex-end;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .topbar .service-controls :is(.service-icon, .service-mode-stop) {
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+    height: 32px;
+    min-height: 32px;
+    flex: 0 0 32px;
+    padding: 0;
+  }
+
+  .topbar .service-mode-stop span,
+  .topbar .service-controls-divider {
+    display: none;
+  }
+
+  .topbar .topbar-meta .pill {
+    min-width: 0;
+    min-height: 28px;
+    max-width: 100%;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .topbar .topbar-meta .app-version-pill {
+    order: 1;
+    max-width: calc(55% - 3px);
+  }
+
+  .topbar .topbar-meta .profile-pill {
+    order: 2;
+    max-width: calc(45% - 3px);
+  }
+
+  .topbar .topbar-meta .xray-version-pill {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .topbar .profile-pill > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-theme] :is(.route-hero, .settings-hero, .compat-hero, .setup-page-head, .setup-guide-rail, .setup-step-panel, .diagnostics-overview, .profile-active-overview) {
+    padding: 14px;
+  }
+
+  body[data-theme] .dashboard-server-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  body[data-theme] .dashboard-server-option .server-option-pick {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "state side" "traffic traffic";
+    gap: 6px 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    opacity: 1;
+  }
+
+  .dashboard-server-option .server-option-main {
+    grid-area: main;
+  }
+
+  .dashboard-server-option .server-option-state {
+    grid-area: state;
+    align-self: start;
+    max-width: 76px;
+    padding: 3px 5px;
+    font-size: 9px;
+  }
+
+  .dashboard-server-option .server-option-side {
+    grid-area: side;
+    width: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-self: start;
+    gap: 4px 8px;
+    text-align: left;
+  }
+
+  .dashboard-server-option .server-option-tech,
+  .dashboard-server-option .server-check-pill {
+    margin: 0;
+    font-size: 10px;
+  }
+
+  .dashboard-server-option .server-check-pill {
+    padding: 3px 6px;
+  }
+
+  .dashboard-server-option .server-option-main strong,
+  .server-card .server-main strong {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .dashboard-server-option .server-option-main small,
+  .server-card .server-main > span {
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .dashboard-server-option .server-option-main .flag-icon,
+  .server-card .server-location-chip .flag-icon {
+    width: 22px;
+    height: 16px;
+  }
+
+  .dashboard-server-option .dashboard-server-traffic {
+    grid-area: traffic;
+    min-height: 0;
+    padding: 6px 8px;
+  }
+
+  .dashboard-server-option .server-option-actions,
+  .server-card .server-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .dashboard-server-option .server-option-actions {
+    max-width: 74px;
+  }
+
+  .dashboard-server-option .server-option-actions :is(.compact-action, .server-action-icon),
+  .server-card .server-actions :is(.btn, .tag, .server-action-icon) {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    flex: 0 0 34px;
+    padding: 0;
+    border-radius: 4px;
+  }
+
+  .dashboard-server-option .server-option-actions .server-action-icon svg,
+  .server-card .server-actions .server-action-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  body[data-theme] .server-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "identity actions" "traffic actions";
+    min-height: 0;
+    align-items: center;
+    gap: 8px 10px;
+    padding: 10px 12px;
+  }
+
+  .server-card .server-identity {
+    grid-area: identity;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .server-card .server-protocol {
+    width: max-content;
+    max-width: 100%;
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  .server-card .server-actions {
+    grid-area: actions;
+    grid-column: 2;
+    width: 74px;
+    align-self: center;
+  }
+
+  .server-card .server-traffic {
+    grid-area: traffic;
+    padding: 6px 8px;
+  }
+
+  .server-card .server-meta-chips {
+    gap: 4px;
+    margin-top: 5px;
+  }
+
+  .server-card .server-chip {
+    min-height: 20px;
+    padding: 3px 5px;
+    font-size: 10px;
+  }
+
+  .dashboard-server-option .stats-disabled,
+  .server-card .stats-disabled {
+    display: none;
+  }
+
+  body[data-theme] .server-card .server-actions .active-tag::before {
+    width: 16px;
+    height: 16px;
+    color: var(--status-good-text);
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 700px) {
+  body[data-theme] .dash-hero .router-health-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 1fr;
+  }
+
+  body[data-theme] .dash-hero .router-health-metrics > .traffic-metric {
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .dash-hero .router-health-metrics > .metric-stat {
+    min-height: 92px;
+    padding: 8px;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric .metric-icon {
+    display: none;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric strong:last-of-type {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric small:last-of-type {
+    grid-column: 1;
+    grid-row: 5;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric small {
+    font-size: 10px;
+  }
+
+  body[data-theme] .dash-hero .metric-stat strong {
+    font-size: 14px;
+  }
+
+  body[data-theme] .dash-hero .traffic-metric strong {
+    font-size: 12px;
+  }
+
+  body[data-theme] .setup-step-actions .btn.warning {
+    min-width: 0;
+  }
+}
+
+@media (min-width: 861px) {
+  .topbar > .title {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .topbar > .title h1 {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar .top-actions,
+  .topbar .topbar-meta {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .topbar .topbar-meta > .pill {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .topbar .profile-pill > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .connection-overview .connection-topology {
+    max-width: 920px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .connection-overview .connection-summary {
+    justify-content: flex-start;
+    column-gap: 32px;
+  }
+
+  .connection-overview .connection-summary > .btn {
+    margin-left: auto;
+  }
+}
+
+/* The custom route picker follows the same palette and type scale as native forms. */
+body[data-theme] .route-target-trigger {
+  min-height: 36px;
+  gap: 7px;
+  padding: 7px 10px;
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+body[data-theme] .route-target-trigger:hover,
+body[data-theme] .route-target-select.open .route-target-trigger {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .route-target-menu {
+  padding: 4px;
+  border-color: var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 5px 18px rgba(20, 39, 59, 0.16);
+}
+
+body[data-theme] .route-target-option {
+  min-height: 36px;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 4px;
+  color: var(--text);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+body[data-theme] .route-target-option:hover {
+  color: var(--accent-strong);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+body[data-theme] .route-target-option.active,
+body[data-theme] .route-target-option.active:hover {
+  color: #fff;
+  background: #087f9a;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+body[data-theme="dark"] .route-target-option.active,
+body[data-theme="dark"] .route-target-option.active:hover {
+  color: #e5fbff;
+  background: #176c81;
+}
+
+body[data-theme] .country-option {
+  min-height: 36px;
+  grid-template-columns: 20px 26px minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px 9px;
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+body[data-theme] .country-option .flag-icon {
+  width: 20px;
+  height: 15px;
+}
+
+body[data-theme] .country-option strong {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-theme] .country-option em {
+  overflow: visible;
+  color: var(--soft);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .country-option:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+body[data-theme] .country-option.active,
+body[data-theme] .country-option.active:hover {
+  border-color: #087f9a;
+  color: #fff;
+  background: #087f9a;
+}
+
+body[data-theme="dark"] .country-option.active,
+body[data-theme="dark"] .country-option.active:hover {
+  border-color: #3fc1d9;
+  color: #e5fbff;
+  background: #176c81;
+}
+
+body[data-theme] .country-option.active strong,
+body[data-theme] .country-option.active em {
+  color: inherit;
+}
+
+body[data-theme] .country-search-current {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  height: auto;
+  padding: 7px 9px;
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .country-search-current .flag-icon {
+  width: 20px;
+  height: 15px;
+}
+
+body[data-theme] .country-search-current b {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body[data-theme] .country-search-current em {
+  overflow: visible;
+  color: var(--soft);
+  line-height: 1.3;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] :is(.core-arch-strip, .core-dialog-release, .core-release-list button, .core-install-card, .core-result, .quick-action, .import-action-bar, .preview-box) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .quick-action {
+  min-height: 76px;
+  padding: 12px;
+}
+
+body[data-theme] .quick-action.compact {
+  min-height: 64px;
+}
+
+body[data-theme] .quick-action:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+body[data-theme] .core-update-banner,
+body[data-theme] .core-update-banner.has-update {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .core-arch-strip strong {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+body[data-theme] .core-dialog-release strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body[data-theme] .core-dialog-release.is-pre {
+  border-left: 3px solid #d89a36;
+}
+
+body[data-theme] .core-dialog-release.active,
+body[data-theme] .core-release-list button.active {
+  border-color: var(--line);
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .core-dialog-release:hover:not(:disabled),
+body[data-theme] .core-release-list button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.route-target-trigger-flag,
+.route-target-option-flag {
+  width: 20px;
+  min-width: 20px;
+  height: 15px;
+}
+
+.route-target-trigger-flag .flag-icon,
+.route-target-option-flag .flag-icon,
+.route-target-flag .flag-icon {
+  width: 20px;
+  height: 15px;
+}
+
+.route-target-trigger-caret {
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+}
+
+body[data-theme] .route-target-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: none;
+}
+
+body[data-theme] .route-target-status.ok {
+  background: var(--green);
+}
+
+body[data-theme] .route-target-status.bad {
+  background: var(--red);
+}
+
+body[data-theme="light"] .app-version-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme="light"] .setup-connection-card.ready .setup-connection-icon {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] :is(.route-section, .route-ordered-list, .route-system-panel, .route-display-group, .route-system-explainer, .route-system-row, .route-selection-tools) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] .route-display-group > summary {
+  padding: 12px 14px;
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.route-section-head h3, .route-order-head strong) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+body[data-theme] :is(.route-preset-group-order, .route-preset-group-title strong, .route-preset-group-toggle) {
+  font-weight: 600;
+}
+
+body[data-theme] .route-section-head strong {
+  min-width: 32px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body[data-theme] .route-section-direct .route-section-head strong {
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .route-section-block .route-section-head strong {
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .route-section-other .route-section-head strong {
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .sni-map {
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+body[data-theme] .sni-map-ring {
+  border-color: var(--line);
+}
+
+body[data-theme] .sni-map-grid::before,
+body[data-theme] .sni-map-grid::after {
+  background: var(--line);
+}
+
+body[data-theme] :is(.sni-map-center, .sni-map-point) {
+  border-color: var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+body[data-theme] .sni-map-point.near {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .sni-map-point.near small {
+  color: var(--status-good-text);
+}
+
+body[data-theme] .server-mode-policy-chip.ok {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .server-mode-policy-chip.warn {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .server-mode-policy-chip.bad,
+body[data-theme] .server-mode-policy-chip.danger {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme="light"] .balancer-target.active .balancer-kind {
+  color: var(--accent-strong);
+}
+
+@media (max-width: 860px) {
+  .amnezia-system-grid,
+  .amnezia-interface-grid,
+  .balancer-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .amnezia-system-grid > *,
+  .amnezia-interface-grid > *,
+  .balancer-layout > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .balancer-preview > span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Keep the dirty-banner toggle in place while its content opens in the next row. */
+body[data-theme] .pending-details,
+body[data-theme] .pending-details[open],
+body[data-theme] .pending-details::details-content {
+  display: contents;
+}
+
+body[data-theme] .pending-summary,
+body[data-theme] .pending-actions {
+  grid-row: 1;
+}
+
+body[data-theme] .pending-details > summary {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+body[data-theme] .pending-details > .pending-details-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 0;
+}
+
+body[data-theme] .pending-details:not([open]) > .pending-details-body {
+  display: none;
+}
+
+body[data-theme] .pending-details[open] > .pending-details-body {
+  display: block;
+}
+
+@media (max-width: 720px) {
+  body[data-theme] .pending-details > summary {
+    grid-column: 1;
+    grid-row: 2;
+    width: max-content;
+    justify-self: start;
+    justify-content: flex-start;
+  }
+
+  body[data-theme] .pending-details > .pending-details-body {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  body[data-theme] .pending-actions {
+    grid-row: 3;
+  }
+
+  body[data-theme] .pending-changes:has(.pending-details[open]) .pending-actions {
+    grid-row: 4;
+  }
+}

@@ -1,4 +1,6 @@
 import { noticeView } from './notice-view.js';
+import { interfaceIcon } from './navigation-view.js';
+import { proxyDisplayName } from './proxy-label.js';
 
 export function createDashboardView(deps) {
   const {
@@ -56,7 +58,24 @@ function dashboard() {
   const proxyServers = snapshot?.proxyServers || [];
   const loadingConfig = !snapshot && !configReady;
   const configDirty = typeof configHasUnappliedChanges === 'function' ? configHasUnappliedChanges() : false;
+  const selectedTag = activeProxyTag();
+  const selectedServer = proxyServers.find((server) => server.tag === selectedTag);
+  const firewall = state.firewallStatus;
+  const interceptActive = firewall?.active === true && (firewall.routerMode === 'redirect' || (firewall.ipRule === true && firewall.ipRoute === true));
+  const interceptLabel = !firewall ? 'Проверяется' : interceptActive ? 'Включён' : firewall.active ? 'Требует проверки' : 'Выключен';
   return `
+    <section class="panel connection-overview" aria-label="Обзор подключения">
+      <div class="panel-title"><div><h2>Обзор подключения</h2><span>Локальная сеть и VPN</span></div><button class="btn secondary" data-tab-jump="diagnostics">Проверить соединение</button></div>
+      <div class="connection-topology">
+        <div class="connection-node"><span class="connection-node-icon">${interfaceIcon('devices')}</span><strong class="connection-node-label">Устройства</strong><span class="connection-node-status">${state.leases.length ? `${state.leases.length} в списке DHCP` : 'Нет данных DHCP'}</span></div>
+        <span class="connection-link ${interceptActive ? 'online' : ''}" aria-hidden="true"></span>
+        <div class="connection-node"><span class="connection-node-icon">${interfaceIcon('router')}</span><strong class="connection-node-label">RuOpenRay</strong><span class="connection-node-status ${serviceRunning ? 'online' : 'offline'}">${!state.status ? 'Загрузка статуса' : serviceRunning ? 'Xray запущен' : 'Xray остановлен'}</span></div>
+        <span class="connection-link" aria-hidden="true"></span>
+        <div class="connection-node"><span class="connection-node-icon">${interfaceIcon('servers')}</span><strong class="connection-node-label">VPN-сервер</strong><span class="connection-node-status">${escapeHtml(loadingConfig ? 'Загрузка конфигурации' : selectedServer ? dashboardServerDisplayName(selectedServer) : selectedTag ? proxyDisplayName(selectedTag) : 'Не выбран')}</span></div>
+      </div>
+      <div class="connection-summary"><span class="connection-detail">Перехват трафика <strong>${interceptLabel}</strong></span><span class="connection-detail">Сервер <strong>${escapeHtml(selectedServer ? outboundAddress(selectedServer) : '—')}</strong></span><button class="btn secondary" data-tab-jump="servers">Управление VPN</button></div>
+    </section>
+
     <section class="dash-hero ${serviceRunning ? 'is-ok' : 'is-warn'}">
       <div class="dash-status">
         <span class="eyebrow">Ресурсы роутера</span>
@@ -475,7 +494,7 @@ function serverTrafficView(tag, className = '') {
   const share = traffic && Array.isArray(stats.outbounds)
     ? xrayStatsShare(traffic, stats.outbounds, 'downlink')
     : 0;
-  return `<div class="server-traffic ${className} ${traffic ? '' : 'muted'}">
+  return `<div class="server-traffic ${className} ${traffic ? '' : 'muted'} ${stats.enabled === false ? 'stats-disabled' : ''}">
     ${traffic ? `
       <span>Статистика Xray</span>
       <strong>${escapeHtml(byteRate(traffic.downRate))} прием · ${escapeHtml(byteRate(traffic.upRate))} отдача</strong>
@@ -645,9 +664,9 @@ function trafficMetricStat(traffic = {}) {
     <span class="metric-icon">${metricIcon('traffic')}</span>
     <div>
       <span>Трафик · ${escapeHtml(iface)}</span>
-      <strong>${escapeHtml(byteSize(traffic.rxBytes))} принято</strong>
+      <strong title="Принято">${escapeHtml(byteSize(traffic.rxBytes))} ↓</strong>
       <small>${escapeHtml(byteRate(traffic.rxRate))} прием</small>
-      <strong>${escapeHtml(byteSize(traffic.txBytes))} отправлено</strong>
+      <strong title="Отправлено">${escapeHtml(byteSize(traffic.txBytes))} ↑</strong>
       <small>${escapeHtml(byteRate(traffic.txRate))} отдача</small>
     </div>
   </span>`;
@@ -809,7 +828,7 @@ function dashboardServerTech(outbound) {
 function dashboardServerDisplayName(outbound) {
   const tag = String(outbound?.tag || '').trim();
   const configured = String(state.serverMeta?.[tag]?.label || '').trim();
-  if (configured) return configured;
+  if (configured) return proxyDisplayName(configured);
   const address = String(outboundAddress(outbound) || '').trim();
   const host = address.replace(/^\[/, '').split(']')[0].split(':')[0];
   const firstLabel = host.includes('.') ? host.split('.')[0] : '';
@@ -820,7 +839,7 @@ function dashboardServerDisplayName(outbound) {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
   }
-  return tag || 'Сервер';
+  return tag ? proxyDisplayName(tag) : 'Сервер';
 }
 
 function operationProgressView() {

@@ -15,6 +15,8 @@ type Sampler struct {
 	mu            sync.Mutex
 	prevCPUTotal  uint64
 	prevCPUIdle   uint64
+	prevCPUAt     time.Time
+	cpuPercent    any
 	prevTrafficIf string
 	prevTrafficRx uint64
 	prevTrafficTx uint64
@@ -26,24 +28,37 @@ func NewSampler() *Sampler {
 }
 
 func (s *Sampler) CPUPercent() any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	total, idle := ReadCPUStat()
+	return s.sampleCPU(total, idle, time.Now())
+}
+
+// sampleCPU runs with mu held. Closely spaced clients share a complete sample
+// instead of reporting the CPU cost of an individual status request.
+func (s *Sampler) sampleCPU(total, idle uint64, now time.Time) any {
 	if total == 0 {
 		return nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	prevTotal, prevIdle := s.prevCPUTotal, s.prevCPUIdle
-	s.prevCPUTotal, s.prevCPUIdle = total, idle
-	if prevTotal == 0 || total <= prevTotal || idle < prevIdle {
+	if prevTotal == 0 || total < prevTotal || idle < prevIdle {
+		s.prevCPUTotal, s.prevCPUIdle, s.prevCPUAt = total, idle, now
+		s.cpuPercent = nil
 		return nil
+	}
+	if now.Sub(s.prevCPUAt) < time.Second {
+		return s.cpuPercent
 	}
 	totalDelta := total - prevTotal
 	idleDelta := idle - prevIdle
-	if totalDelta == 0 {
+	s.prevCPUTotal, s.prevCPUIdle, s.prevCPUAt = total, idle, now
+	if totalDelta == 0 || idleDelta > totalDelta {
+		s.cpuPercent = nil
 		return nil
 	}
 	used := float64(totalDelta-idleDelta) / float64(totalDelta) * 100
-	return int(used + 0.5)
+	s.cpuPercent = int(used + 0.5)
+	return s.cpuPercent
 }
 
 func ClockTicksPerSecond() float64 {

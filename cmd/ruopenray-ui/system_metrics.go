@@ -23,6 +23,7 @@ func (s *serverState) status(w http.ResponseWriter) {
 	version := s.cachedXrayVersion()
 	service := s.cachedXrayServiceStatus()
 	profiles, _ := s.listProfiles()
+	checks := s.readOutboundCheckResultsStore()
 	writeJSON(w, 200, map[string]any{
 		"app": map[string]any{
 			"version": appVersion,
@@ -47,9 +48,9 @@ func (s *serverState) status(w http.ResponseWriter) {
 		"amnezia":   s.cachedAmneziaStatus(),
 		"xrayStats": s.xrayTrafficStats(cfg, false),
 		"serverChecks": map[string]any{
-			"results":                s.readOutboundCheckResults(),
-			"history":                s.readOutboundCheckHistory(),
-			"historySettings":        s.readOutboundCheckHistorySettings(),
+			"results":                checks.Results,
+			"history":                checks.History,
+			"historySettings":        checks.HistorySettings,
 			"subscriptionCandidates": s.readSubscriptionCandidateCheckResults(),
 		},
 		"uptime": time.Since(s.started).Seconds(),

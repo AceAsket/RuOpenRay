@@ -536,6 +536,9 @@ export function createServerModeView({ state, escapeHtml }) {
   }
 
   function serverModePanel() {
+    if (!state.serverMode && !state.serverModeDraft) {
+      return `<section class="panel"><div class="panel-title"><h2>Серверный режим</h2></div><p class="muted">${escapeHtml(state.serverModeLoadError || 'Загружаем настройки входящих подключений…')}</p>${state.serverModeLoadError ? '<button class="btn secondary" data-action="refreshServerMode">Повторить</button>' : ''}</section>`;
+    }
     const model = draft();
     const preflight = state.serverModePreflight || state.serverMode?.preflight || {};
     const xray = array(model.xray);

@@ -50,6 +50,18 @@ export function applyServerModeAccessPreset(target, preset) {
 }
 
 export function createServerModeActions({ state, request, render }) {
+  let initialLoad = null;
+
+  function ensureServerModeLoaded() {
+    if (state.serverMode) return Promise.resolve(state.serverMode);
+    if (!initialLoad) {
+      initialLoad = refreshServerMode({ silent: true }).finally(() => {
+        initialLoad = null;
+        if (state.tab === 'serverMode') render();
+      });
+    }
+    return initialLoad;
+  }
   function syncServerMode(result) {
     if (!result || typeof result !== 'object') return;
     state.serverMode = result;
@@ -61,6 +73,7 @@ export function createServerModeActions({ state, request, render }) {
   }
 
   async function refreshServerMode({ silent = false } = {}) {
+    state.serverModeLoadError = '';
     if (!silent) {
       state.busyAction = 'refreshServerMode';
       render();
@@ -70,6 +83,9 @@ export function createServerModeActions({ state, request, render }) {
       syncServerMode(result);
       if (!silent) state.message = 'Серверный режим обновлен';
       return result;
+    } catch (error) {
+      state.serverModeLoadError = error.message;
+      throw error;
     } finally {
       if (!silent && state.busyAction === 'refreshServerMode') {
         state.busyAction = '';
@@ -548,6 +564,7 @@ export function createServerModeActions({ state, request, render }) {
   }
 
   return {
+    ensureServerModeLoaded,
     refreshServerMode,
     syncServerMode,
     setServerModeEnabled,
