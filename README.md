@@ -4,9 +4,9 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-Версия ветки `dev` — [0.5.3](docs/releases/v0.5.3.md): исправления логики интерфейса, безопасной установки и обновления, сохранение точки отката мастера и единое оформление DNS и Geo.
+Версия ветки `dev` — [0.5.4](docs/releases/v0.5.4.md): согласованное оформление страниц в обеих темах, исправленные отступы и формы, которые помещаются на узких экранах.
 
-Стабильная версия: [v0.5.3](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.3). [Приёмка исправлений](docs/ui-install-update-fixes-2026-11-04.md), [аудит и очередь работ](docs/reliability-implementation-plan.md).
+Стабильная версия: [v0.5.4](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.4). [Проверка тем и отступов](docs/ui-theme-spacing-audit-2026-11-05.md), [приёмка предыдущих исправлений](docs/ui-install-update-fixes-2026-11-04.md).
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 
