@@ -76,7 +76,7 @@ export function createSniView({
         </div>
       </section>
   
-      <section class="panel">
+      <section class="panel sni-search-panel">
         <div class="panel-title">
           <div><h2>Поиск рядом с адресом</h2><span>По умолчанию ограничиваем поиск /24 и 256 адресами, чтобы не перегружать роутер.</span></div>
           <button class="btn" data-action="scanSni" ${state.sniScanning ? 'disabled' : ''}>${state.sniScanning ? 'Ищу...' : 'Начать поиск'}</button>

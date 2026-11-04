@@ -1091,15 +1091,20 @@
   background: rgba(255, 107, 107, 0.72);
 }
 
+.sni-search-panel + .route-stats {
+  margin-top: 16px;
+}
+
 .sni-form {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) 110px 150px 120px 120px;
+  grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
   margin-bottom: 12px;
 }
 
 .sni-form .form-row {
+  min-width: 0;
   margin-bottom: 0;
 }
 
