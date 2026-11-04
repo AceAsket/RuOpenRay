@@ -32,6 +32,24 @@ test('failed apply preserves draft and reports activation/rollback failure', asy
  assert.equal(state.jsonDraft,draft);assert.equal(state.appliedConfigText,'old');assert.equal(state.serverDraftExists,true);
  assert.equal(state.configApplying,false);assert.match(state.message,/restart failed/);assert.equal(refreshed,false);
 });
+
+test('applying a prepared draft identifies the saved revision it is replacing without authorizing a newer draft deletion', async () => {
+  const config = { outbounds: [{ tag: 'selected-proxy', protocol: 'vless' }] };
+  const state = { jsonDraft: JSON.stringify(config), serverDraftRevision: 'known-draft-B', activeConfigRevision: 'active-A' };
+  let payload;
+  const actions = createConfigActions({
+    state,
+    render: () => { state.serverDraftRevision = 'newer-draft-C'; },
+    request: async (_path, options) => { payload = JSON.parse(options.body); return { ok: true, draft: { exists: true, revision: 'newer-draft-C', preserved: true } }; },
+    refresh: async () => {}, keepOperationVisible: async () => {}, activeProxyTag: () => 'selected-proxy',
+  });
+  await actions.applyConfig();
+  assert.deepEqual(payload.config, config);
+  assert.equal(payload.expectedConfigRevision, 'active-A');
+  assert.equal(payload.expectedDraftRevision, 'known-draft-B');
+  assert.equal(state.serverDraftExists, true);
+  assert.equal(state.serverDraftRevision, 'newer-draft-C');
+});
 test('API or JSON errors during config test release busy state without losing edits',async()=>{
  for (const jsonDraft of ['{', '{}']) {
   const state={jsonDraft};

@@ -13,6 +13,7 @@ export function createRouteBalancerActions({
 }) {
   function resetRouteBalancerForm() {
     state.routeBalancerEditingIndex = -1;
+    state.routeBalancerEditingTag = '';
     state.routeBalancerTag = '';
     state.routeBalancerStrategy = 'random';
     state.routeBalancerSelectors = '';
@@ -28,6 +29,7 @@ export function createRouteBalancerActions({
     const balancer = routeBalancers()[index];
     if (balancer) {
       state.routeBalancerEditingIndex = index;
+      state.routeBalancerEditingTag = balancer.tag || '';
       state.routeBalancerTag = balancer.tag || '';
       state.routeBalancerStrategy = balancer.strategy?.type || 'random';
       state.routeBalancerSelectors = Array.isArray(balancer.selector) ? balancer.selector.join('\n') : '';
@@ -89,12 +91,15 @@ export function createRouteBalancerActions({
     const balancer = routeBalancers()[index];
     if (!balancer) return;
     const used = routeRules().some((rule) => rule.balancerTag === balancer.tag);
-    if (used) {
-      state.message = `Балансировщик ${proxyDisplayName(balancer.tag)} используется в правилах. Сначала переназначьте эти правила.`;
+    const archived = (state.disabledRouteRules || []).some((item) => item?.rule?.balancerTag === balancer.tag);
+    if (used || archived) {
+      state.message = `Балансировщик ${proxyDisplayName(balancer.tag)} используется ${archived ? 'в отключенных правилах. Восстановите и переназначьте или удалите эти правила.' : 'в правилах. Сначала переназначьте эти правила.'}`;
       render();
       return;
     }
     setRouteBalancersDraft(routeBalancers().filter((_, itemIndex) => itemIndex !== index));
+    if (state.routeBalancerEditingIndex === index) resetRouteBalancerForm();
+    else if (state.routeBalancerEditingIndex > index) state.routeBalancerEditingIndex--;
     if (state.routeBalancer === balancer.tag) state.routeBalancer = '';
     state.message = `Балансировщик ${proxyDisplayName(balancer.tag)} удален из черновика`;
     render();

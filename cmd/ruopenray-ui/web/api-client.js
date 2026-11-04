@@ -1,6 +1,5 @@
 export function createApiClient({ getToken = () => '', onUnauthorized = () => {} } = {}) {
-  function authHeaders(extra = {}) {
-    const token = getToken();
+  function authHeaders(extra = {}, token = getToken()) {
     return {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...extra
@@ -21,16 +20,17 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
   }
 
   async function request(path, options = {}) {
+    const token = getToken();
     const response = await fetch(path, {
       ...options,
       headers: {
         'content-type': 'application/json',
-        ...authHeaders(options.headers || {})
+        ...authHeaders(options.headers || {}, token)
       }
     });
     const payload = await parseResponse(response);
     if (!response.ok) {
-      if (response.status === 401) onUnauthorized();
+      if (response.status === 401 && token === getToken()) onUnauthorized();
       const message = typeof payload === 'string'
         ? payload
         : payload.error || payload.message || response.statusText;
@@ -40,15 +40,16 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
   }
 
   async function upload(path, formData, options = {}) {
+    const token = getToken();
     const response = await fetch(path, {
       ...options,
       method: options.method || 'POST',
       body: formData,
-      headers: authHeaders(options.headers || {})
+      headers: authHeaders(options.headers || {}, token)
     });
     const payload = await parseResponse(response);
     if (!response.ok) {
-      if (response.status === 401) onUnauthorized();
+      if (response.status === 401 && token === getToken()) onUnauthorized();
       const message = typeof payload === 'string'
         ? payload
         : payload.error || payload.message || response.statusText;
@@ -58,12 +59,13 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
   }
 
   async function text(path, options = {}) {
+    const token = getToken();
     const response = await fetch(path, {
       ...options,
-      headers: authHeaders(options.headers || {})
+      headers: authHeaders(options.headers || {}, token)
     });
     if (response.status === 401) {
-      onUnauthorized();
+      if (token === getToken()) onUnauthorized();
       throw new Error('Требуется авторизация');
     }
     if (!response.ok) {

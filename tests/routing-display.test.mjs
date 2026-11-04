@@ -5,7 +5,8 @@ import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
 import { createRoutingView } from '../cmd/ruopenray-ui/web/routing-view.js';
 import { bindRoutingControls } from '../cmd/ruopenray-ui/web/routing-bindings.js';
 import { assignRouteGroup } from '../cmd/ruopenray-ui/web/routing-group-identity.js';
-import { routeDisplayDefaults, routeDisplayLeaves, routeDisplayMatches, projectRoutingItems, loadRouteDisplay } from '../cmd/ruopenray-ui/web/routing-display.js';
+import { routeDisplayDefaults, routeDisplayLeaves, routeDisplayMatches, routeDisplayTarget, projectRoutingItems, loadRouteDisplay } from '../cmd/ruopenray-ui/web/routing-display.js';
+import { routeDestination } from '../cmd/ruopenray-ui/web/routing-insights.js';
 import { escapeHtml } from '../cmd/ruopenray-ui/web/formatters.js';
 
 const domain = (host, target = 'vpn-a') => ({ type: 'field', domain: [`domain:${host}`], outboundTag: target });
@@ -23,6 +24,22 @@ function fixture() {
     setRoutingDraft: (rules) => { state.config.routing.rules = rules; }, saveDisabledRouteRules() {}, saveRouteNames() {} });
   return { state, model, actions, options };
 }
+
+test('imported rules with both targets display and filter the outbound actually used by Xray', () => {
+  const { state, model, actions } = fixture();
+  const rule = { type: 'field', domain: ['domain:both.example'], outboundTag: 'direct', balancerTag: 'ignored-balancer' };
+  const before = structuredClone(rule);
+  state.config.routing.rules = [rule];
+  assert.equal(model.encodedRouteTarget(rule), 'outbound:direct');
+  assert.equal(model.routeCategoryForRule(rule), 'direct');
+  assert.doesNotMatch(model.describeRouteRule(rule).outbound, /Балансировщик/);
+  assert.equal(routeDisplayTarget(rule), 'outbound:direct');
+  assert.equal(routeDestination(rule), 'outbound:direct');
+  const item = { rule, category: 'direct' };
+  assert.equal(routeDisplayMatches(item, { routeFilterTarget: 'outbound:direct' }), true);
+  assert.equal(routeDisplayMatches(item, { routeFilterTarget: 'category:balancer' }), false);
+  assert.deepEqual(rule, before, 'display does not rewrite the imported rule');
+});
 
 test('a filter inside a mixed group returns only matching rules with original indices and no range actions', () => {
   const { state, actions, options } = fixture();

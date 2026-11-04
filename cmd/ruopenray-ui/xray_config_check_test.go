@@ -1,9 +1,36 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestAnalyzeDualTargetRuleUsesEffectiveOutbound(t *testing.T) {
+	for _, scenario := range []struct {
+		name, outbound, balancer string
+		wantErrors, wantDirect   int
+	}{
+		{"valid-outbound-ignored-missing-balancer", "direct", "missing-group", 0, 1},
+		{"missing-outbound-valid-ignored-balancer", "missing-outbound", "pool", 1, 0},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			cfg := map[string]any{"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}},
+				"routing": map[string]any{"balancers": []any{map[string]any{"tag": "pool", "selector": []any{"direct"}, "strategy": map[string]any{"type": "random"}}},
+					"rules": []any{map[string]any{"type": "field", "network": "tcp,udp", "outboundTag": scenario.outbound, "balancerTag": scenario.balancer}}}}
+			before := cloneConfigMap(cfg)
+			result := (&serverState{}).analyzeConfig(cfg)
+			warnings := strings.Join(stringSlice(result["warnings"]), "\n")
+			counts := result["counts"].(map[string]int)
+			if len(stringSlice(result["errors"])) != scenario.wantErrors || !strings.Contains(warnings, "outboundTag") || counts["direct"] != scenario.wantDirect || counts["proxy"] != 0 {
+				t.Fatalf("effective outbound was not honored: errors=%v warnings=%v counts=%v", result["errors"], result["warnings"], counts)
+			}
+			if !reflect.DeepEqual(cfg, before) {
+				t.Fatal("analysis rewrote the imported raw rule")
+			}
+		})
+	}
+}
 
 func TestAnalyzeBalancerMonitoring(t *testing.T) {
 	for _, scenario := range []struct {

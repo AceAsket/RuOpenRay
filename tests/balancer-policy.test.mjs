@@ -4,6 +4,7 @@ import { balancerMonitorForm, buildBalancerDraft, isFailoverBalancer } from '../
 import { createRouteBalancerActions } from '../cmd/ruopenray-ui/web/route-balancer-actions.js';
 import { createObservatoryActions } from '../cmd/ruopenray-ui/web/observatory-actions.js';
 import { createRoutingDialogsView } from '../cmd/ruopenray-ui/web/routing-dialogs-view.js';
+import { createServerModel } from '../cmd/ruopenray-ui/web/server-model.js';
 
 const config = () => ({ outbounds: [
   { tag: '????fin-vpn', protocol: 'vless' }, { tag: 'de-vpn', protocol: 'trojan' }, { tag: 'direct', protocol: 'freedom' },
@@ -136,4 +137,147 @@ test('dialog exposes primary, backup and common probe settings, or four balancin
   for (const strategy of ['random', 'roundRobin', 'leastPing', 'leastLoad']) assert.match(html, new RegExp(`value="${strategy}"`));
   assert.match(html, /Исключать недоступные серверы/);
   assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img src=x/);
+});
+
+const splitValues = (value) => String(value || '').split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
+const balanceForm = (cfg = config()) => ({ ...form(cfg), routeBalancerMode: 'balance', routeBalancerStrategy: 'random',
+  routeBalancerSelectors: 'de-vpn', routeBalancerFallback: '', routeBalancerHealthCheck: false });
+
+function actionsFixture(cfg = config()) {
+  const state = { ...balanceForm(cfg), config: cfg, disabledRouteRules: [] };
+  let saves = 0;
+  const actions = createRouteBalancerActions({ state, render() {}, routeBalancers: () => state.config.routing.balancers || [],
+    routeRules: () => state.config.routing.rules, splitRouteValues: splitValues,
+    balancerTargetOptions: () => state.config.outbounds.filter((item) => ['vless', 'trojan'].includes(item.protocol)),
+    syncConfig(next) { saves++; state.config = next; },
+    setRouteBalancersDraft(next) { saves++; state.config.routing.balancers = next; } });
+  return { state, actions, saves: () => saves };
+}
+
+test('balance rejects missing selectors, service prefixes and ambiguous unchecked prefix members', () => {
+  const cfg = config();
+  cfg.outbounds.push({ tag: 'de-vpn-copy', protocol: 'vless' }, { tag: 'de-system', protocol: 'freedom' });
+  const eligible = [...targets, { tag: 'de-vpn-copy' }];
+  for (const selector of ['missing', 'direct', 'de', 'de-vpn']) {
+    assert.throws(() => buildBalancerDraft(cfg, { ...balanceForm(cfg), routeBalancerSelectors: selector }, eligible),
+      /не найден|служебн|префикс/);
+  }
+  const next = buildBalancerDraft(cfg, { ...balanceForm(cfg), routeBalancerSelectors: 'de-vpn\nde-vpn-copy' }, eligible);
+  assert.deepEqual(next.routing.balancers[0].selector, ['de-vpn', 'de-vpn-copy']);
+  const legacy = buildBalancerDraft(config(), { ...balanceForm(), routeBalancerSelectors: 'de-' }, targets);
+  assert.deepEqual(legacy.routing.balancers[0].selector, ['de-']);
+});
+
+test('failover rejects service or absent primary/backup even if a stale target option contains it', () => {
+  for (const patch of [{ routeBalancerPrimary: 'direct' }, { routeBalancerFallback: 'direct' },
+    { routeBalancerPrimary: 'orphan-pool' }, { routeBalancerFallback: 'orphan-pool' }]) {
+    assert.throws(() => buildBalancerDraft(config(), { ...form(), ...patch }, [...targets, { tag: 'direct' }, { tag: 'orphan-pool' }]));
+  }
+});
+
+test('rename and delete protect archived rule references without mutating either draft', () => {
+  const cfg = config(); cfg.routing.balancers = [{ tag: 'old', selector: ['de-vpn'], strategy: { type: 'random' } }];
+  const f = actionsFixture(cfg);
+  f.state.disabledRouteRules = [{ id: 'archived', rule: { domain: ['domain:archived.test'], balancerTag: 'old' } }];
+  const before = structuredClone(f.state.config), archived = structuredClone(f.state.disabledRouteRules);
+  f.actions.openRouteBalancerDialog(0);
+  f.state.routeBalancerTag = 'renamed';
+  f.actions.saveRouteBalancer();
+  assert.equal(f.saves(), 0); assert.match(f.state.message, /отключенн/);
+  f.actions.removeRouteBalancer(0);
+  assert.equal(f.saves(), 0); assert.match(f.state.message, /отключенн/);
+  assert.deepEqual(f.state.config, before); assert.deepEqual(f.state.disabledRouteRules, archived);
+  f.state.routeBalancerTag = 'old';
+  f.actions.saveRouteBalancer();
+  assert.equal(f.saves(), 1, 'editing settings with the same name remains possible');
+});
+
+test('deleting a preceding group keeps the edited group anchored and cancel/reentry discard form edits', () => {
+  const cfg = config();
+  cfg.routing.balancers = ['first', 'second', 'third'].map((tag) => ({ tag, selector: ['de-vpn'], strategy: { type: 'random' } }));
+  const f = actionsFixture(cfg);
+  f.actions.openRouteBalancerDialog(1);
+  f.actions.removeRouteBalancer(0);
+  assert.equal(f.state.routeBalancerEditingIndex, 0);
+  f.state.routeBalancerTag = 'second-edited';
+  f.actions.saveRouteBalancer();
+  assert.deepEqual(f.state.config.routing.balancers.map((item) => item.tag), ['second-edited', 'third']);
+  const before = structuredClone(f.state.config);
+  f.actions.openRouteBalancerDialog(0); f.state.routeBalancerTag = 'unsaved'; f.actions.closeRouteBalancerDialog();
+  assert.deepEqual(f.state.config, before);
+  f.actions.openRouteBalancerDialog(0); assert.equal(f.state.routeBalancerTag, 'second-edited');
+  f.actions.removeRouteBalancer(0); assert.equal(f.state.routeBalancerEditingIndex, -1); assert.equal(f.state.routeBalancerTag, '');
+});
+
+test('stale edit anchors and duplicate group names cannot overwrite another group', () => {
+  const cfg = config();
+  cfg.routing.balancers = ['first', 'second'].map((tag) => ({ tag, selector: ['de-vpn'], strategy: { type: 'random' } }));
+  const f = actionsFixture(cfg);
+  f.actions.openRouteBalancerDialog(1);
+  f.state.config.routing.balancers.shift();
+  f.actions.saveRouteBalancer(); assert.equal(f.saves(), 0); assert.match(f.state.message, /изменил|откройте/i);
+  assert.throws(() => buildBalancerDraft(cfg, { ...balanceForm(cfg), routeBalancerTag: 'second' }, targets), /уже есть/);
+  const namespace = buildBalancerDraft(config(), { ...balanceForm(), routeBalancerTag: 'direct' }, targets);
+  assert.equal(namespace.routing.balancers[0].tag, 'direct', 'outbound and balancer tag namespaces stay separate');
+});
+
+test('balancer options exclude orphan subscription pools and selector preview includes service matches', () => {
+  const cfg = config();
+  const state = { config: cfg, subscriptionPools: [{ tag: 'orphan', count: 2 }, { tag: 'de-vpn', count: 3 }] };
+  const model = createServerModel({ state, configOutbounds: () => cfg.outbounds, splitRouteValues: splitValues,
+    outboundAddress: () => 'server.example.test', outboundTransport: () => 'tcp' });
+  assert.deepEqual(model.balancerTargetOptions().map((item) => item.tag), ['????fin-vpn', 'de-vpn']);
+  assert.equal(model.balancerTargetOptions()[1].kind, 'subscription');
+  assert.deepEqual(model.balancerSelectorMatches('dir'), ['direct']);
+});
+
+test('prefix-expanded and service primaries are not presented as single-server failover', () => {
+  const cfg = config();
+  const balancer = { selector: ['de-vpn'], fallbackTag: '????fin-vpn', strategy: { type: 'leastPing' } };
+  assert.equal(isFailoverBalancer(balancer, cfg), true);
+  cfg.outbounds.push({ tag: 'de-vpn-other', protocol: 'vless' });
+  assert.equal(isFailoverBalancer(balancer, cfg), false);
+  assert.equal(isFailoverBalancer({ ...balancer, selector: ['direct'] }, cfg), false);
+});
+
+test('monitored prefixes cannot accidentally select the auto-created blocking fallback', () => {
+  const cfg = config(); cfg.outbounds.push({ tag: 'ruopenray-vpn', protocol: 'vless' });
+  const before = structuredClone(cfg);
+  assert.throws(() => buildBalancerDraft(cfg, { ...balanceForm(cfg), routeBalancerSelectors: 'ruopenray-', routeBalancerHealthCheck: true }, targets), /служебн/);
+  assert.deepEqual(cfg, before);
+});
+
+test('active rules protect deletion and stale anchors reject a different group at a still-valid index', () => {
+  const cfg = config(); cfg.routing.balancers = ['first', 'second'].map((tag) => ({ tag, selector: ['de-vpn'], strategy: { type: 'random' } }));
+  cfg.routing.rules.push({ domain: ['domain:group.test'], balancerTag: 'first' });
+  const f = actionsFixture(cfg);
+  f.actions.removeRouteBalancer(0); assert.equal(f.saves(), 0); assert.match(f.state.message, /используется/);
+  f.actions.openRouteBalancerDialog(0);
+  f.state.config.routing.balancers.reverse();
+  f.actions.saveRouteBalancer(); assert.equal(f.saves(), 0); assert.match(f.state.message, /изменил|откройте/i);
+});
+
+test('direction usage follows outboundTag priority when a legacy rule contains both targets', () => {
+  const cfg = config(); cfg.routing.rules = [{ domain: ['domain:both.test'], outboundTag: 'de-vpn', balancerTag: 'group' }];
+  const model = createServerModel({ state: { config: cfg }, configOutbounds: () => cfg.outbounds, routeRules: () => cfg.routing.rules,
+    routeTarget: (rule) => ({ kind: 'domain', values: rule.domain }) });
+  const usage = model.proxyDirectionSummary();
+  assert.equal(usage.outbounds.get('de-vpn').rules, 1);
+  assert.equal(usage.balancers.size, 0);
+});
+
+test('dialog labels member checkboxes and explains archived references before disabled delete', () => {
+  const cfg = config(); cfg.routing.balancers = [{ tag: 'old', selector: ['de-vpn'], strategy: { type: 'random' } }];
+  const state = { ...balanceForm(cfg), config: cfg, routeBalancerDialog: true,
+    disabledRouteRules: [{ id: 'disabled-rule', rule: { balancerTag: 'old' } }] };
+  const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  const view = createRoutingDialogsView({ state, escapeHtml, routeBalancers: () => cfg.routing.balancers,
+    balancerTargetOptions: () => targets.map((item) => ({ ...item, title: item.tag, detail: '' })),
+    splitRouteValues: splitValues, balancerSelectorMatches: () => ['de-vpn'], strategyObserverType: () => '',
+    routeRules: () => [], balancerStrategyLabel: () => 'Случайно' });
+  const html = view.routeBalancerDialog();
+  assert.match(html, /<label class="balancer-target active">\s*<input type="checkbox" data-balancer-selector="de-vpn" checked/);
+  assert.match(html, /отключено: 1/);
+  assert.match(html, /data-route-balancer-delete="0" disabled/);
+  assert.match(html, /Xray сопоставляет имена по префиксу/);
 });

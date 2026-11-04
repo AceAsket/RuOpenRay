@@ -320,27 +320,28 @@ function routeBalancerDialog() {
                 ${orderedTargets.length ? orderedTargets.map((target) => {
                   const selected = selectedSelectors.has(target.tag);
                   return `
-                  <div class="balancer-target ${selected ? 'active' : ''}">
+                  <label class="balancer-target ${selected ? 'active' : ''}">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(target.tag)}" ${selectedSelectors.has(target.tag) ? 'checked' : ''} />
                     <span class="balancer-kind">${target.kind === 'subscription' ? 'pool' : 'server'}</span>
                     <span>
                       <strong>${escapeHtml(proxyDisplayName(target.title))}</strong>
                       <em>${escapeHtml(target.detail)}</em>
                     </span>
-                  </div>
+                  </label>
                 `; }).join('') : '<p class="muted">Сначала добавьте хотя бы один сервер или подписку.</p>'}
                 ${legacySelectors.map((selector) => {
                   return `
-                  <div class="balancer-target active legacy">
+                  <label class="balancer-target active legacy">
                     <input type="checkbox" data-balancer-selector="${escapeHtml(selector)}" checked />
                     <span class="balancer-kind">selector</span>
                     <span>
-                      <strong>${escapeHtml(selector)}</strong>
-                      <em>Сохраненный selector из текущей конфигурации.</em>
+                      <strong>${escapeHtml(proxyDisplayName(selector, state.serverMeta?.[selector]))}</strong>
+                      <em>Сохраненный префикс: Xray выбирает все выходы, чьи имена начинаются с него.</em>
                     </span>
-                  </div>
+                  </label>
                 `; }).join('')}
               </div>
+              <span class="inline-help">Xray сопоставляет имена по префиксу. Ниже показаны все совпадения, включая неотмеченные выходы с таким же началом имени.</span>
             </div>`}
             ${!failover && state.routeBalancerStrategy === 'roundRobin' ? '<p class="inline-help">Xray чередует доступных участников в порядке сортировки их тегов. Порядок выбора флажков его не меняет.</p>' : ''}
             ${!failover && ['random', 'roundRobin'].includes(state.routeBalancerStrategy) ? `<label class="balancer-health-toggle"><input id="routeBalancerHealthCheck" type="checkbox" ${monitored ? 'checked' : ''} /> Исключать недоступные серверы</label>` : ''}
@@ -391,13 +392,14 @@ function routeBalancerDialog() {
               const selectors = Array.isArray(balancer.selector) ? balancer.selector.join(', ') : '';
               const strategy = balancer.strategy?.type || 'random';
               const used = routeRules().filter((rule) => rule.balancerTag === balancer.tag).length;
+              const archived = (state.disabledRouteRules || []).filter((item) => item?.rule?.balancerTag === balancer.tag).length;
               return `<article class="balancer-row">
                 <div>
                   <strong>${escapeHtml(proxyDisplayName(balancer.tag || 'без имени'))}</strong>
-                  <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? balancer.selector.map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}</span>
+                  <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? balancer.selector.map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}${archived ? ` · отключено: ${archived}` : ''}</span>
                 </div>
                 <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
-                <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
+                <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used || archived ? 'disabled' : ''}>Удалить</button>
               </article>`;
             }).join('') : `<p class="muted">Групп пока нет. Создайте группу и затем выберите ее в правиле маршрутизации.</p>`}
           </section>` : ''}

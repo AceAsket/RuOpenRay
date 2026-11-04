@@ -240,7 +240,7 @@ function logsPanel(compact = false) {
       <div class="panel-title">
         <div><h2>Live-Xray</h2><span>Живой журнал Xray: system, access и error-логи с фильтрами.</span></div>
         <div class="split-actions">
-          <label class="toggle-row log-toggle">
+          <label class="toggle-row log-toggle log-checkbox" for="logLive">
             <input id="logLive" type="checkbox" ${state.logLive ? 'checked' : ''} />
             <span>Live</span>
           </label>
@@ -294,7 +294,7 @@ function logsPanel(compact = false) {
           <input id="logQuery" value="${escapeHtml(state.logQuery)}" placeholder="domain, error, outbound..." />
         </div>
         </div>
-        <label class="toggle-row log-follow">
+        <label class="toggle-row log-follow log-checkbox" for="logFollow">
           <input id="logFollow" type="checkbox" ${state.logFollow ? 'checked' : ''} ${state.logSort === 'desc' ? 'disabled' : ''} />
           <span>Держать окно внизу при новых строках</span>
         </label>

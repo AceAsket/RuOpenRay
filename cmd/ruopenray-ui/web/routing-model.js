@@ -184,7 +184,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   }
   
   function encodedRouteTarget(rule) {
-    if (rule?.balancerTag) return `balancer:${rule.balancerTag}`;
+    if (!rule?.outboundTag && rule?.balancerTag) return `balancer:${rule.balancerTag}`;
     return `outbound:${rule?.outboundTag || 'proxy'}`;
   }
   
@@ -362,7 +362,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
     const values = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value) : value).join(', ');
     const fullValues = displayValues.map((value) => target.kind === 'inboundTag' ? routeTagValue(value, 'full') : value).join(', ');
     const network = rule.network ? ` · ${rule.network}` : '';
-    const outbound = rule.balancerTag
+    const outbound = !rule.outboundTag && rule.balancerTag
       ? `Балансировщик · ${proxyDisplayName(rule.balancerTag)}`
       : proxyDisplayName(readableRouteTag(rule.outboundTag || 'не задано'), state.serverMeta?.[rule.outboundTag]);
     const managedDetail = managedRouteDetail(rule || {});
@@ -404,7 +404,7 @@ export function createRoutingModel({ state, managedRouteTags, routeBundles, rout
   
   function routeCategoryForRule(rule) {
     if (isRuOpenRayManagedRoute(rule)) return 'other';
-    if (rule?.balancerTag) return 'proxy';
+    if (!rule?.outboundTag && rule?.balancerTag) return 'proxy';
     const outbound = rule?.outboundTag || '';
     if (isAmneziaDirectTag(outbound)) return 'other';
     const subscriptionTags = (state.subscriptionPools || []).map((pool) => pool?.tag).filter(Boolean);

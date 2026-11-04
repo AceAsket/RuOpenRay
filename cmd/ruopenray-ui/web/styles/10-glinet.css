@@ -1630,6 +1630,187 @@ body[data-theme] .domain-monitor-item.dns .domain-monitor-kind {
   background: var(--status-warn-bg);
 }
 
+/* Live and follow remain native checkboxes, without the old button-like shell. */
+body[data-theme] .log-panel .log-checkbox {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+body[data-theme] .log-panel .log-toggle.log-checkbox {
+  min-height: 36px;
+  justify-self: start;
+  align-self: center;
+}
+
+body[data-theme] .log-panel .log-follow.log-checkbox {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+}
+
+body[data-theme] .log-panel .log-checkbox > input[type="checkbox"] {
+  appearance: auto;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+
+body[data-theme] .log-panel .log-follow.log-checkbox > input {
+  margin-top: 1px;
+}
+
+body[data-theme] .log-panel .log-checkbox > span {
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .log-panel .log-checkbox:has(> input:disabled) {
+  opacity: 1;
+  color: var(--muted);
+  background: transparent;
+  cursor: default;
+}
+
+body[data-theme] .log-panel .log-checkbox > input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+/* The setup summary has one text stack, one count, and a separate progress row. */
+body[data-theme] .setup-guide-rail > .setup-step-summary {
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  align-self: start;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .setup-step-summary > .setup-step-summary-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+body[data-theme] .setup-step-summary-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+body[data-theme] .setup-step-summary .setup-step-summary-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .setup-step-summary .setup-step-summary-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .setup-step-summary .setup-step-summary-count {
+  min-width: 36px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body[data-theme] .setup-step-summary > .setup-progress {
+  min-width: 0;
+  height: 3px;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+body[data-theme] .setup-step-summary > .setup-progress > span {
+  height: 100%;
+  margin: 0;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+body[data-theme] .setup-step-summary > p {
+  min-width: 0;
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* Keep the connection overview compact while retaining its status and actions. */
 .panel.connection-overview {
   padding: 14px 18px;
@@ -4755,4 +4936,35 @@ body[data-theme] .main:has(> .apply-stage-fallback) > .pending-changes .pending-
     animation: none;
     transition: none;
   }
+}
+
+/* Saved groups use the same history surface before and after the first check. */
+body[data-theme] .balancer-history,
+body[data-theme] .balancer-history.muted {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] .balancer-history.muted {
+  color: var(--muted);
+}
+
+body[data-theme] .balancer-history-strip > span:not(.ok):not(.bad) {
+  border-color: var(--line);
+  color: var(--muted);
+  background: var(--panel-2);
+}
+
+body[data-theme] .balancer-history-strip > span.ok {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .balancer-history-strip > span.bad {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
 }

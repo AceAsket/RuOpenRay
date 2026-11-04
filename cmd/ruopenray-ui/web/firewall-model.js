@@ -121,7 +121,7 @@ export function createFirewallModel({ state, configInbounds, configOutbounds, ro
         ['freedom', 'blackhole', 'dns'].includes(outbound?.protocol);
       if (tag && !system) proxyTags.add(tag);
     }
-    const isProxyRule = (rule) => Boolean(rule?.balancerTag || proxyTags.has(rule?.outboundTag || ''));
+    const isProxyRule = (rule) => Boolean((!rule?.outboundTag && rule?.balancerTag) || proxyTags.has(rule?.outboundTag || ''));
     const isDirectRule = (rule) => rule?.outboundTag === 'direct';
     const isConcreteIp = (value) => /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(String(value || '').trim());
     const addTarget = (target, bucket, value) => {

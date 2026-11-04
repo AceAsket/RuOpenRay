@@ -62,6 +62,7 @@ import { createSetupActions } from './setup-actions.js';
 import { createSetupView, setupWizardStepIds } from './setup-view.js';
 import { createUpdatesActions } from './updates-actions.js';
 import { createSetupModel } from './setup-model.js';
+import { createSetupNavigation } from './setup-navigation.js';
 import { createSniActions } from './sni-actions.js';
 import { createSniView } from './sni-view.js';
 import { createInitialState } from './state.js';
@@ -1917,6 +1918,8 @@ function setupStepGate(step) {
   return { ok: true, notice: null };
 }
 
+const setupNavigation = createSetupNavigation({ state, render, stepIds: setupStepOrder(), stepGate: setupStepGate });
+
 function content() {
   if (!state.status) return loadingDashboard();
   if (state.tab === 'dashboard') return dashboard();
@@ -2024,6 +2027,7 @@ function captureRenderState() {
     diagnosticsView: state.diagnosticsView,
     domainMonitorMode: state.domainMonitorMode,
     domainMonitorScrollTop,
+    logScrollTop: Array.from(document.querySelectorAll('.log-console'), (node) => Number(node.scrollTop || 0)),
   };
 }
 
@@ -2038,6 +2042,13 @@ function restoreRenderState(snapshot) {
   if (typeof window === 'undefined' || snapshot.tab !== state.tab) return;
   const top = Number(snapshot.scrollY || 0);
   requestAnimationFrame(() => window.scrollTo({ top, left: 0 }));
+  if ((!state.logFollow || state.logSort === 'desc') && snapshot.diagnosticsView === state.diagnosticsView) {
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.log-console').forEach((node, index) => {
+        if (snapshot.logScrollTop?.[index] !== undefined) node.scrollTop = snapshot.logScrollTop[index];
+      });
+    });
+  }
   if (state.tab === 'diagnostics' && snapshot.diagnosticsView === state.diagnosticsView && snapshot.domainMonitorMode === state.domainMonitorMode) {
     const scrollTop = Number(snapshot.domainMonitorScrollTop || state.domainMonitorScrollTop || 0);
     requestAnimationFrame(() => {
@@ -2330,7 +2341,7 @@ async function loadCoreReleases({ force = false } = {}) {
 }
 
 function bind() {
-  bindNavigationControls({ state, render, configureLogTimer, onTabChange: (tab) => {
+  bindNavigationControls({ state, render, configureLogTimer, onSetupStepChange: setupNavigation.selectSetupStep, onTabChange: (tab) => {
     const pending = tab === 'compat' ? Promise.all([
       refreshCompatibility({ silent: true }),
       ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
@@ -2508,27 +2519,8 @@ function bind() {
         state.setupWizardOpen = false;
         render();
       },
-      setupStepBack: () => {
-        const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
-        state.setupStep = steps[Math.max(0, index - 1)] || 'connection';
-        state.setupStepNotice = null;
-        render();
-      },
-      setupStepNext: () => {
-        const gate = setupStepGate(state.setupStep || 'connection');
-        if (!gate.ok) {
-          state.setupStepNotice = gate.notice;
-          render();
-          return;
-        }
-        const steps = setupStepOrder();
-        const index = Math.max(0, steps.indexOf(state.setupStep || 'connection'));
-        const nextStep = steps[Math.min(steps.length - 1, index + 1)] || 'launch';
-        state.setupStep = nextStep;
-        state.setupStepNotice = gate.notice ? { ...gate.notice, step: nextStep } : null;
-        render();
-      },
+      setupStepBack: setupNavigation.setupStepBack,
+      setupStepNext: setupNavigation.setupStepNext,
       setupPrepareDraft,
       runSetupWizard,
       rollbackSetupWizard,

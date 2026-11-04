@@ -249,6 +249,9 @@ func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Requ
 			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "conflict": true, "error": "Активная конфигурация изменилась. Загрузите изменения перед применением; ваш черновик сохранён."})
 			return
 		}
+		expectedDraftVersion, _ := payload["expectedDraftRevision"].(string)
+		canClearDraft := configDraftMatchesCandidate(draftBefore, cfg) ||
+			(expectedDraftVersion != "" && expectedDraftVersion == draftVersion)
 		test := s.validateConfigWithGeoAudit(cfg)
 		analysis, _ := test["analysis"].(map[string]any)
 		if analysis == nil {
@@ -276,7 +279,13 @@ func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Requ
 		}
 		var draft map[string]any
 		if restart["ok"] == true {
-			draft = s.clearConfigDraftRevision(&draftVersion)
+			if draftBefore["exists"] != true || canClearDraft {
+				draft = s.clearConfigDraftRevision(&draftVersion)
+			} else {
+				draft = s.readConfigDraft()
+				draft["preserved"] = true
+			}
+			draft["activeRevision"] = s.activeConfigRevision()
 		}
 		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName, "draft": draft})
 		return

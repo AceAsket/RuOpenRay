@@ -18,6 +18,9 @@ export function createRuntimeController({
   clearAuth
 }) {
   let activeRefreshes = 0;
+  let refreshGeneration = 0;
+  let logRequestGeneration = 0;
+  let domainRequestGeneration = 0;
   function logsUrl() {
     const params = new URLSearchParams({
       kind: state.logKind,
@@ -37,8 +40,20 @@ export function createRuntimeController({
   }
   
   async function refreshLogs(renderAfter = true, patchOnly = false, options = {}) {
-    const logs = await api.text(logsUrl());
-    if (options.isCurrent && !options.isCurrent()) return;
+    const generation = ++logRequestGeneration;
+    const token = state.token;
+    const url = logsUrl();
+    const sort = state.logSort;
+    const isCurrent = () => generation === logRequestGeneration && token === state.token
+      && url === logsUrl() && sort === state.logSort && (!options.isCurrent || options.isCurrent());
+    let logs;
+    try {
+      logs = await api.text(url);
+    } catch (error) {
+      if (!isCurrent()) return;
+      throw error;
+    }
+    if (!isCurrent()) return;
     state.logs = displayLogText(logs);
     if (!renderAfter) return;
     if (patchOnly) {
@@ -60,8 +75,18 @@ export function createRuntimeController({
       if (renderAfter) render();
       return state.domainMonitor;
     }
-    const monitor = await request('/api/domain-monitor?limit=1200');
-    if (options.isCurrent && !options.isCurrent()) return state.domainMonitor;
+    const generation = ++domainRequestGeneration;
+    const token = state.token;
+    const isCurrent = () => generation === domainRequestGeneration && token === state.token
+      && (!state.domainMonitorPaused || options.force) && (!options.isCurrent || options.isCurrent());
+    let monitor;
+    try {
+      monitor = await request('/api/domain-monitor?limit=1200');
+    } catch (error) {
+      if (!isCurrent()) return state.domainMonitor;
+      throw error;
+    }
+    if (!isCurrent()) return state.domainMonitor;
     state.domainMonitor = monitor;
     if (renderAfter) render();
     return state.domainMonitor;
@@ -221,7 +246,8 @@ export function createRuntimeController({
     setMessage: (message) => {
       state.message = message;
     },
-    isRefreshing: () => activeRefreshes > 0
+    isRefreshing: () => activeRefreshes > 0,
+    getRefreshVersion: () => refreshGeneration
   });
 
   function configureLogTimer() {
@@ -242,6 +268,13 @@ export function createRuntimeController({
   }
 
   async function refresh(options = {}) {
+    const generation = ++refreshGeneration;
+    const token = state.token;
+    const isCurrent = () => generation === refreshGeneration && token === state.token;
+    const snapshotLogUrl = logsUrl();
+    const snapshotLogSort = state.logSort;
+    const snapshotLogGeneration = ++logRequestGeneration;
+    const snapshotDomainGeneration = ++domainRequestGeneration;
     activeRefreshes++;
     const renderAfter = options.renderAfter !== false;
     const background = Boolean(options.background);
@@ -268,7 +301,11 @@ export function createRuntimeController({
         routeNames,
         routePresets,
         serverMeta
-      } = await loadAppSnapshot({ request, text: api.text, logsUrl, appChannel: state.appChannel });
+      } = await loadAppSnapshot({ request, text: api.text, logsUrl: () => snapshotLogUrl, appChannel: state.appChannel });
+      if (!isCurrent()) {
+        if (options.throwOnError) throw new Error('Состояние панели изменилось во время обновления. Повторите проверку.');
+        return;
+      }
       recordStatusSnapshot(status);
       state.profiles = Array.isArray(profiles) ? profiles : [];
       const snapshotConfig = configDraft?.activeConfig || config;
@@ -288,7 +325,9 @@ export function createRuntimeController({
       if (!state.activeServerTag || !proxyOutbounds().some((outbound) => outbound?.tag === state.activeServerTag)) {
         setActiveServerTag(inferredActiveProxyTag());
       }
-      state.logs = displayLogText(logs);
+      if (snapshotLogGeneration === logRequestGeneration && snapshotLogUrl === logsUrl() && snapshotLogSort === state.logSort) {
+        state.logs = displayLogText(logs);
+      }
       state.leases = leases.leases || [];
       state.leasesSource = leases.source || '';
       const loadedCoreReleases = Array.isArray(releases?.releases) ? releases.releases : [];
@@ -306,7 +345,7 @@ export function createRuntimeController({
       }
       state.geoStatus = geo;
       state.storageReport = storageReport;
-      if (!state.domainMonitorPaused || !state.domainMonitor) {
+      if (snapshotDomainGeneration === domainRequestGeneration && (!state.domainMonitorPaused || !state.domainMonitor)) {
         state.domainMonitor = domainMonitor;
       }
       state.tcpFastOpen = tcpFastOpen;
@@ -374,6 +413,10 @@ export function createRuntimeController({
         else render();
       }
     } catch (error) {
+      if (!isCurrent()) {
+        if (options.throwOnError) throw error;
+        return;
+      }
       if (isAuthError(error)) {
         clearAuth();
         configureLogTimer();
@@ -384,6 +427,7 @@ export function createRuntimeController({
         if (background) backgroundRender();
         else render();
       }
+      if (options.throwOnError) throw error;
     } finally {
       activeRefreshes--;
     }

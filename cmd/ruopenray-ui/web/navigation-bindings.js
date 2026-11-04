@@ -1,4 +1,4 @@
-export function bindNavigationControls({ state, render, configureLogTimer, onTabChange }) {
+export function bindNavigationControls({ state, render, configureLogTimer, onTabChange, onSetupStepChange }) {
   function finishNavigation() {
     render();
     if (typeof configureLogTimer === 'function') configureLogTimer();
@@ -114,6 +114,11 @@ export function bindNavigationControls({ state, render, configureLogTimer, onTab
   });
   document.querySelectorAll('[data-setup-step]').forEach((button) => {
     button.addEventListener('click', () => {
+      if (state.setupApplying || state.setupRollbacking) return;
+      if (typeof onSetupStepChange === 'function') {
+        onSetupStepChange(button.dataset.setupStep);
+        return;
+      }
       state.setupStep = button.dataset.setupStep || state.setupStep || 'environment';
       render();
     });

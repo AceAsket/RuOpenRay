@@ -46,7 +46,7 @@ function dnsLeakChecklist(dns, stats) {
     return address && !String(address).startsWith('https://') && network !== 'tcp';
   });
   const checked = Boolean(state.dnsCheckResult);
-  const udpRule = routeRules().some((rule) => String(rule.network || '').includes('udp') && (rule.balancerTag || ['proxy', activeProxyTag(), 'block'].includes(rule.outboundTag)));
+  const udpRule = routeRules().some((rule) => String(rule.network || '').includes('udp') && ((!rule.outboundTag && rule.balancerTag) || ['proxy', activeProxyTag(), 'block'].includes(rule.outboundTag)));
   const dnsInbound = configInbounds().some((item) => item?.tag === 'ruopenray_dns_in');
   const dnsRouting = routeRules().some((rule) => {
     const inbound = Array.isArray(rule.inboundTag) && rule.inboundTag.includes('ruopenray_dns_in');

@@ -106,6 +106,131 @@ func TestSuccessfulApplyPreservesNewerDraft(t *testing.T) {
 	}
 }
 
+func TestSuccessfulApplyPreservesDifferentDraftSavedBeforeRequest(t *testing.T) {
+	s := reliabilityState(t)
+	makeConfig := func(remark string) map[string]any {
+		return map[string]any{"remark": remark, "outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}}}
+	}
+	first := s.saveConfigDraft(map[string]any{"config": makeConfig("tab A"), "expectedRevision": ""})
+	second := s.saveConfigDraft(map[string]any{"config": makeConfig("tab B"), "expectedRevision": first["revision"]})
+	if first["ok"] != true || second["ok"] != true {
+		t.Fatal("could not prepare the two tabs' draft revisions")
+	}
+	draftBefore, _ := os.ReadFile(s.configDraftPath())
+	body, _ := json.Marshal(map[string]any{"config": makeConfig("tab A"), "expectedConfigRevision": s.activeConfigRevision()})
+	rec := httptest.NewRecorder()
+	s.applyConfigWithRestart(rec, httptest.NewRequest(http.MethodPost, "/api/config/apply", bytes.NewReader(body)), func(string) map[string]any { return map[string]any{"ok": true} })
+	var result map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &result)
+	draftAfter, _ := os.ReadFile(s.configDraftPath())
+	got := s.readConfigDraft()
+	if result["ok"] != true || got["exists"] != true || got["revision"] != second["revision"] || !bytes.Equal(draftBefore, draftAfter) {
+		t.Fatalf("applying tab A removed tab B's previously saved draft: ok=%v exists=%v revision=%v bytes-preserved=%v", result["ok"], got["exists"], got["revision"], bytes.Equal(draftBefore, draftAfter))
+	}
+	active, _ := s.readActiveConfig()
+	if active["remark"] != "tab A" || mapValue(result["draft"])["preserved"] != true {
+		t.Fatalf("candidate was not applied with the separate draft preserved: response=%s", rec.Body.String())
+	}
+}
+
+func TestSuccessfulApplyClearsMatchingNormalizedDraft(t *testing.T) {
+	s := reliabilityState(t)
+	cfg := map[string]any{"inbounds": []any{map[string]any{"tag": "legacy", "sniffing": map[string]any{"enabled": true, "domainsExcluded": []any{""}}}},
+		"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}}}
+	body, _ := json.Marshal(map[string]any{"config": cfg, "expectedConfigRevision": s.activeConfigRevision()})
+	draft := s.saveConfigDraft(map[string]any{"config": cfg})
+	if draft["ok"] != true {
+		t.Fatal("could not prepare a normalized draft")
+	}
+	rec := httptest.NewRecorder()
+	s.applyConfigWithRestart(rec, httptest.NewRequest(http.MethodPost, "/api/config/apply", bytes.NewReader(body)), func(string) map[string]any { return map[string]any{"ok": true} })
+	var result map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &result)
+	if result["ok"] != true || s.readConfigDraft()["exists"] != false || mapValue(result["draft"])["exists"] != false {
+		t.Fatalf("matching normalized draft was retained: %s", rec.Body.String())
+	}
+}
+
+func TestSuccessfulApplyResponseRevisionAllowsOwnRollback(t *testing.T) {
+	s := reliabilityState(t)
+	original, _ := s.readActiveConfig()
+	candidate := map[string]any{"remark": "wizard candidate", "outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}}}
+	apply := func(config map[string]any, revision string) map[string]any {
+		body, _ := json.Marshal(map[string]any{"config": config, "expectedConfigRevision": revision})
+		rec := httptest.NewRecorder()
+		s.applyConfigWithRestart(rec, httptest.NewRequest(http.MethodPost, "/api/config/apply", bytes.NewReader(body)), func(string) map[string]any { return map[string]any{"ok": true} })
+		var result map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &result)
+		if rec.Code != 200 || result["ok"] != true {
+			t.Fatalf("apply/rollback rejected its own revision: code=%d ok=%v", rec.Code, result["ok"])
+		}
+		return result
+	}
+	result := apply(candidate, s.activeConfigRevision())
+	revision, _ := mapValue(result["draft"])["activeRevision"].(string)
+	if revision == "" || revision != s.activeConfigRevision() {
+		t.Fatal("successful apply did not return the new active revision needed for rollback")
+	}
+	apply(original, revision)
+}
+
+func TestSuccessfulApplyClearsOnlyKnownDraftRevision(t *testing.T) {
+	for _, scenario := range []struct {
+		name       string
+		stale      bool
+		concurrent bool
+		preserved  bool
+	}{
+		{"own-prepared-candidate", false, false, false},
+		{"different-draft-before-apply", true, false, true},
+		{"different-draft-during-apply", false, true, true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			s := reliabilityState(t)
+			config := func(remark string) map[string]any {
+				return map[string]any{"remark": remark, "outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}}}
+			}
+			known := s.saveConfigDraft(map[string]any{"config": config("own original B")})
+			if known["ok"] != true {
+				t.Fatal("could not prepare known draft")
+			}
+			var preservedBytes []byte
+			var preservedRevision any
+			saveOther := func() {
+				other := s.saveConfigDraft(map[string]any{"config": config("other tab C"), "expectedRevision": known["revision"]})
+				if other["ok"] != true {
+					t.Fatal("could not prepare newer draft")
+				}
+				preservedRevision = other["revision"]
+				preservedBytes, _ = os.ReadFile(s.configDraftPath())
+			}
+			if scenario.stale {
+				saveOther()
+			}
+			body, _ := json.Marshal(map[string]any{"config": config("prepared A"), "expectedConfigRevision": s.activeConfigRevision(), "expectedDraftRevision": known["revision"]})
+			rec := httptest.NewRecorder()
+			s.applyConfigWithRestart(rec, httptest.NewRequest(http.MethodPost, "/api/config/apply", bytes.NewReader(body)), func(string) map[string]any {
+				if scenario.concurrent {
+					saveOther()
+				}
+				return map[string]any{"ok": true}
+			})
+			var result map[string]any
+			json.Unmarshal(rec.Body.Bytes(), &result)
+			draft := s.readConfigDraft()
+			if result["ok"] != true || draft["exists"] != scenario.preserved {
+				t.Fatalf("wrong draft ownership result: ok=%v exists=%v", result["ok"], draft["exists"])
+			}
+			if scenario.preserved {
+				after, _ := os.ReadFile(s.configDraftPath())
+				if draft["revision"] != preservedRevision || !bytes.Equal(preservedBytes, after) || mapValue(result["draft"])["preserved"] != true {
+					t.Fatal("the unrelated newer draft changed")
+				}
+			}
+		})
+	}
+}
+
 func TestProfileActivationNormalizesLegacySniffingAndRejectsB4Mark(t *testing.T) {
 	s := reliabilityState(t)
 	cfg := map[string]any{"inbounds": []any{map[string]any{"tag": "legacy", "sniffing": map[string]any{"enabled": true, "domainsExcluded": []any{""}}}}, "outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}}}

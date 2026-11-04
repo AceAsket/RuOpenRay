@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRoutingModel } from '../cmd/ruopenray-ui/web/routing-model.js';
+import { createRoutingActions } from '../cmd/ruopenray-ui/web/routing-actions.js';
 
 function model(state) {
   return createRoutingModel({
@@ -9,6 +10,19 @@ function model(state) {
     outboundAddress() {}, persistRouteNames() {},
   });
 }
+
+test('opening an imported dual-target rule selects the effective outbound without changing the rule', () => {
+  const rule = { type: 'field', domain: ['domain:example.test'], outboundTag: 'direct', balancerTag: 'unused-group' };
+  const state = { routeNames: {}, config: { outbounds: [{ tag: 'direct', protocol: 'freedom' }], routing: { rules: [rule], balancers: [] } } };
+  const before = structuredClone(rule);
+  const routing = model(state);
+  const actions = createRoutingActions({ state, ...routing, routeKinds: { domain: 'Домен' }, render() {} });
+  actions.openRoutingRuleEditor(0);
+  assert.equal(state.routeRuleDialog, true);
+  assert.equal(state.routeTargetType, 'outbound');
+  assert.equal(state.routeOutbound, 'direct');
+  assert.deepEqual(rule, before);
+});
 
 test('merged routing picker retains a legacy AWG client and its exact profile identifier', () => {
   const state = {

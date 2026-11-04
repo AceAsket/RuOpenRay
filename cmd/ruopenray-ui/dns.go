@@ -633,6 +633,15 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 	if runtime.GOOS == "windows" || !commandExists("uci") {
 		return map[string]any{"ok": false, "available": false, "error": "UCI недоступен на этой системе"}
 	}
+	return applyLANDNSUpstreamWith(payload, s.lanDNSUpstreamStatus, s.lanDNSReadiness, s.xrayDNSUpstreamTarget, func(command []string) map[string]any {
+		if command[0] == "/etc/init.d/dnsmasq" {
+			return runTimeout(15*time.Second, command[0], command[1:]...)
+		}
+		return run(command[0], command[1:]...)
+	})
+}
+
+func applyLANDNSUpstreamWith(payload map[string]any, statusFn func(map[string]any) map[string]any, readinessFn func() map[string]any, targetFn func() string, commandFn func([]string) map[string]any) map[string]any {
 	mode := strings.TrimSpace(fmt.Sprint(payload["mode"]))
 	if mode == "" {
 		mode = "xray"
@@ -644,46 +653,66 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 	dryRun := boolPayload(payload, "dryRun", false)
 	upstream := fmt.Sprint(payload["upstream"])
 	if mode == "xray" && strings.TrimSpace(upstream) == "" {
-		upstream = s.xrayDNSUpstreamTarget()
+		upstream = targetFn()
 	}
 	plan, err := dnsconfig.LANCommandPlan(mode, upstream, restart)
 	if err != nil {
-		status := s.lanDNSUpstreamStatus(plan)
+		status := statusFn(plan)
 		status["ok"] = false
 		status["error"] = err.Error()
 		return status
 	}
 	if dryRun {
-		status := s.lanDNSUpstreamStatus(plan)
+		status := statusFn(plan)
 		status["ok"] = true
 		status["dryRun"] = true
 		return status
 	}
-	before := s.lanDNSUpstreamStatus(plan)
+	before := statusFn(plan)
 	if lanDNSStatusMatchesRequest(before, mode, upstream) {
-		before["ok"] = true
-		before["alreadyApplied"] = true
-		before["steps"] = []map[string]any{}
-		return before
+		if !restart {
+			before["ok"] = true
+			before["alreadyApplied"] = true
+			before["steps"] = []map[string]any{}
+			return before
+		}
+		// Matching UCI state does not prove a previous restart succeeded.
+		// Honor an explicit restart request without rewriting those settings.
+		step := commandFn([]string{"/etc/init.d/dnsmasq", "restart"})
+		status := statusFn(plan)
+		ok := step["ok"] == true && lanDNSStatusMatchesRequest(status, mode, upstream)
+		status["ok"] = ok
+		status["steps"] = []map[string]any{step}
+		if ok {
+			status["alreadyApplied"] = true
+		} else {
+			status["error"] = "Не удалось перезапустить dnsmasq с выбранными настройками"
+		}
+		return status
 	}
-	readiness := s.lanDNSReadiness()
+	readiness := readinessFn()
 	if mode == "xray" && readiness["ready"] != true {
-		status := s.lanDNSUpstreamStatus(plan)
+		status := statusFn(plan)
 		status["ok"] = false
 		status["readiness"] = readiness
 		status["error"] = "DNS-вход Xray еще не готов. Сначала примените конфигурацию Xray и убедитесь, что порт " + fmt.Sprint(readiness["targetTCP"]) + " слушает."
 		return status
 	}
 	steps := []map[string]any{}
+	criticalError := ""
 	for _, command := range dnsconfig.PlanCommands(plan) {
 		if len(command) == 0 {
 			continue
 		}
-		if command[0] == "/etc/init.d/dnsmasq" {
-			steps = append(steps, runTimeout(15*time.Second, command[0], command[1:]...))
-			continue
+		step := commandFn(command)
+		steps = append(steps, step)
+		if step["ok"] != true {
+			if command[0] == "/etc/init.d/dnsmasq" {
+				criticalError = "Не удалось перезапустить dnsmasq"
+			} else if command[0] == "uci" && len(command) > 1 && command[1] == "commit" {
+				criticalError = "Не удалось сохранить настройки dnsmasq (uci commit)"
+			}
 		}
-		steps = append(steps, run(command[0], command[1:]...))
 	}
 	ok := true
 	for _, step := range steps {
@@ -691,10 +720,13 @@ func (s *serverState) applyLANDNSUpstream(payload map[string]any) map[string]any
 			ok = false
 		}
 	}
-	status := s.lanDNSUpstreamStatus(plan)
-	if !ok && lanDNSStatusMatchesRequest(status, mode, upstream) {
+	status := statusFn(plan)
+	if !ok && criticalError == "" && lanDNSStatusMatchesRequest(status, mode, upstream) {
 		ok = true
 		status["warning"] = "Некоторые команды вернули ненулевой код, но итоговая настройка dnsmasq уже соответствует выбранному режиму."
+	}
+	if criticalError != "" {
+		status["error"] = criticalError
 	}
 	status["ok"] = ok
 	status["steps"] = steps

@@ -120,7 +120,8 @@ export function createRefreshTimers({
   backgroundRender,
   clearAuth,
   setMessage,
-  isRefreshing = () => false
+  isRefreshing = () => false,
+  getRefreshVersion = () => 0
 }) {
   let logGeneration = 0;
   let statusGeneration = 0;
@@ -141,7 +142,8 @@ export function createRefreshTimers({
     state.logTimer = setInterval(async () => {
       if (!state.token || !visible() || logsInFlight || isRefreshing()) return;
       const token = state.token;
-      const isCurrent = () => generation === logGeneration && token === state.token && visible();
+      const refreshVersion = getRefreshVersion();
+      const isCurrent = () => generation === logGeneration && token === state.token && refreshVersion === getRefreshVersion() && visible();
       logsInFlight = true;
       try {
         if (liveLogs && state.logLive) {
@@ -176,14 +178,15 @@ export function createRefreshTimers({
       if (!state.token || !visible() || statusInFlight || isRefreshing()) return;
       if (state.tab !== 'dashboard' && state.tab !== 'servers' && !(state.tab === 'diagnostics' && state.diagnosticsView === 'traffic')) return;
       const token = state.token;
+      const refreshVersion = getRefreshVersion();
       statusInFlight = true;
       try {
         const status = await request('/api/status');
-        if (generation !== statusGeneration || token !== state.token || !visible()) return;
+        if (generation !== statusGeneration || token !== state.token || refreshVersion !== getRefreshVersion() || !visible()) return;
         recordStatus(status);
         backgroundRender();
       } catch (error) {
-        if (generation !== statusGeneration || token !== state.token) return;
+        if (generation !== statusGeneration || token !== state.token || refreshVersion !== getRefreshVersion()) return;
         if (isAuthError(error)) {
           clearAuth();
           configureLogTimer();

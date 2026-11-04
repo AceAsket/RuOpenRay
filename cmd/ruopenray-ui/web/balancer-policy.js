@@ -1,3 +1,5 @@
+import { isServiceOutbound } from './outbound-tags.js';
+
 // Xray uses prefixes for selectors and one Observatory feature for all groups.
 export function balancerNeedsMonitor(balancer = {}) {
   return ['leastPing', 'leastLoad'].includes(balancer.strategy?.type) || Boolean(balancer.fallbackTag);
@@ -5,10 +7,12 @@ export function balancerNeedsMonitor(balancer = {}) {
 
 export function isFailoverBalancer(balancer = {}, config = {}) {
   const backup = (config.outbounds || []).find((outbound) => outbound.tag === balancer.fallbackTag);
+  const selector = balancer.selector?.[0];
+  const primary = selector ? (config.outbounds || []).filter((outbound) => outbound.tag?.startsWith(selector)) : [];
   return balancer.strategy?.type === 'leastPing' && balancer.selector?.length === 1 &&
     Boolean(balancer.fallbackTag) && balancer.fallbackTag !== balancer.selector[0] &&
-    (config.outbounds || []).some((outbound) => outbound.tag === balancer.selector[0]) &&
-    Boolean(backup) && !['freedom', 'blackhole', 'dns', 'loopback'].includes(backup.protocol);
+    primary.length === 1 && primary[0].tag === balancer.selector[0] && !isServiceOutbound(primary[0]) && primary[0].protocol !== 'loopback' &&
+    Boolean(backup) && !isServiceOutbound(backup) && backup.protocol !== 'loopback';
 }
 
 export function monitorTypeForConfig(config = {}) {
@@ -75,20 +79,39 @@ export function buildBalancerDraft(config, form, targets) {
   const balancers = next.routing.balancers ||= [];
   const editing = form.routeBalancerEditingIndex;
   const original = editing >= 0 ? balancers[editing] : null;
+  if (editing >= 0 && (!original || (form.routeBalancerEditingTag && original.tag !== form.routeBalancerEditingTag))) {
+    throw new Error('Список групп изменился. Откройте нужную группу заново перед сохранением.');
+  }
   const tag = String(form.routeBalancerTag || '').trim();
   if (!tag) throw new Error('Укажите имя группы серверов');
   if (balancers.some((item, index) => item.tag === tag && index !== editing)) throw new Error(`Группа ${tag} уже есть`);
+  if (original && original.tag !== tag && (form.disabledRouteRules || []).some((item) => item?.rule?.balancerTag === original.tag)) {
+    throw new Error('Группа используется в отключенных правилах. Восстановите и переназначьте или удалите эти правила перед переименованием.');
+  }
   const failover = form.routeBalancerMode === 'failover';
   const strategy = failover ? 'leastPing' : form.routeBalancerStrategy || 'random';
   if (!['random', 'roundRobin', 'leastPing', 'leastLoad'].includes(strategy)) throw new Error('Неизвестная стратегия балансировки');
   const selectors = failover ? [form.routeBalancerPrimary].filter(Boolean) :
     [...new Set(String(form.routeBalancerSelectors || '').split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))];
   if (!selectors.length) throw new Error(failover ? 'Выберите основной VPN-сервер' : 'Выберите участников группы');
+  const outbounds = (next.outbounds || []).filter((item) => typeof item?.tag === 'string' && item.tag);
+  const eligible = (item) => !isServiceOutbound(item) && item.protocol !== 'loopback';
+  for (const selector of selectors) {
+    const matches = outbounds.filter((item) => item.tag.startsWith(selector));
+    if (!matches.length) throw new Error(`Для префикса ${selector} сервер не найден. Выберите доступных участников группы.`);
+    if (!failover && matches.some((item) => !eligible(item))) {
+      throw new Error(`Префикс ${selector} включает служебный выход. Выберите отдельные VPN-серверы.`);
+    }
+    if (!failover && outbounds.some((item) => item.tag === selector) && matches.some((item) => !selectors.includes(item.tag))) {
+      throw new Error(`Имя ${selector} является префиксом других серверов. Выберите всех совпавших участников или задайте серверу уникальное имя.`);
+    }
+  }
   const monitored = failover || ['leastPing', 'leastLoad'].includes(strategy) || form.routeBalancerHealthCheck !== false;
   let fallback = String(form.routeBalancerFallback || '').trim();
   if (failover) {
     if (!fallback || fallback === selectors[0]) throw new Error('Выберите отдельный резервный VPN-сервер');
-    if (![selectors[0], fallback].every((value) => targets.some((target) => target.tag === value))) {
+    if (![selectors[0], fallback].every((value) => targets.some((target) => target.tag === value)
+      && outbounds.some((item) => item.tag === value && eligible(item)))) {
       throw new Error('Основной или резервный сервер больше недоступен в профиле');
     }
     const matches = (next.outbounds || []).filter((item) => item.tag?.startsWith(selectors[0]));
@@ -105,6 +128,9 @@ export function buildBalancerDraft(config, form, targets) {
       while (next.outbounds.some((item) => item.tag === fallback)) fallback += '-1';
       next.outbounds.push({ tag: fallback, protocol: 'blackhole', settings: {} });
     }
+  }
+  if (!failover && (next.outbounds || []).some((item) => !eligible(item) && selectors.some((selector) => item.tag?.startsWith(selector)))) {
+    throw new Error('Выбранный префикс включает служебный резервный выход. Выберите отдельные VPN-серверы.');
   }
   if (!monitored && fallback) throw new Error('Для резервного выхода включите проверку доступности');
   const balancer = { ...original, tag, selector: selectors,

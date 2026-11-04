@@ -41,14 +41,14 @@ export function routeDisplayKind(rule = {}) {
   return routeKindFilters.find(([key]) => key !== 'default' && populated(rule[key]))?.[0] || 'other';
 }
 export function routeDisplayTarget(rule = {}) {
-  return rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || 'proxy'}`;
+  return !rule.outboundTag && rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || 'proxy'}`;
 }
 export function routeDisplayMatches(item, state, context = {}) {
   const s = normalizeRouteDisplay(state), rule = item.rule || {};
   if (s.routeFilterStatus === (item.disabled ? 'enabled' : 'disabled')) return false;
   if (s.routeFilterTarget) {
     if (s.routeFilterTarget.startsWith('category:')) {
-      const category = s.routeFilterTarget === 'category:balancer' ? (rule.balancerTag ? 'balancer' : '') : item.category;
+      const category = s.routeFilterTarget === 'category:balancer' ? (!rule.outboundTag && rule.balancerTag ? 'balancer' : '') : item.category;
       if (category !== s.routeFilterTarget.slice(9)) return false;
     } else if (routeDisplayTarget(rule) !== s.routeFilterTarget) return false;
   }

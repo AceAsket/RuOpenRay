@@ -14,6 +14,7 @@ export function createFirewallActions({
     let lastResult = null;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       if (attempt > 0) await delay(1200);
+      options.beforeAttempt?.();
       const payload = firewallPayload();
       if (options.compatConfirmed) payload.compatConfirmed = true;
       lastResult = await request('/api/firewall/apply', {

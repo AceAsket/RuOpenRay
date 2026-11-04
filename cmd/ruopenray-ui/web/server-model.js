@@ -112,7 +112,7 @@ export function createServerModel({
       map.set(tag, current);
     };
     for (const rule of routeRules()) {
-      if (rule?.balancerTag) {
+      if (!rule?.outboundTag && rule?.balancerTag) {
         add(balancers, rule.balancerTag, rule);
         continue;
       }
@@ -170,7 +170,7 @@ export function createServerModel({
   function balancerSelectorMatches(selectors) {
     const prefixes = splitRouteValues(selectors);
     if (!prefixes.length) return [];
-    return proxyOutbounds()
+    return configOutbounds()
       .map((item) => item?.tag)
       .filter(Boolean)
       .filter((tag) => prefixes.some((prefix) => tag.startsWith(prefix)));
@@ -180,7 +180,7 @@ export function createServerModel({
     const pools = new Map((state.subscriptionPools || []).map((pool) => [pool?.tag, pool]).filter(([tag]) => tag));
     const targets = [];
     const seen = new Set();
-    proxyOutbounds().forEach((outbound) => {
+    proxyOutbounds().filter((outbound) => outbound.protocol !== 'loopback').forEach((outbound) => {
       const tag = outbound?.tag || '';
       if (!tag || seen.has(tag)) return;
       seen.add(tag);
@@ -192,17 +192,6 @@ export function createServerModel({
         detail: pool
           ? `${pool.count || 0} кандидатов · ${pool.activeCandidate?.tag ? `активен ${proxyDisplayName(pool.activeCandidate.tag, state.serverMeta?.[pool.activeCandidate.tag])}` : pool.activeMissing ? 'активный удален из подписки' : 'сервер не выбран'}`
           : `${outboundAddress(outbound)} · ${outboundTransport(outbound)}`
-      });
-    });
-    (state.subscriptionPools || []).forEach((pool) => {
-      const tag = pool?.tag || '';
-      if (!tag || seen.has(tag)) return;
-      seen.add(tag);
-      targets.push({
-        tag,
-        kind: 'subscription',
-        title: proxyOptionLabel({ tag }, state.serverMeta?.[tag] || {}),
-        detail: `${pool.count || 0} кандидатов · stable outbound подписки`
       });
     });
     return targets;

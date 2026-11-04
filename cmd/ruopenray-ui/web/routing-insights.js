@@ -10,7 +10,7 @@ function canonical(value) {
   return value;
 }
 export function routeDestination(rule) {
-  return rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || ''}`;
+  return !rule.outboundTag && rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || ''}`;
 }
 
 export function ipRange(raw) {

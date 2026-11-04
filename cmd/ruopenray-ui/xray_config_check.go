@@ -229,8 +229,10 @@ func (s *serverState) analyzeConfig(cfg map[string]any) map[string]any {
 			balancerTag = ""
 		}
 		if tag != "" && balancerTag != "" {
-			errors = append(errors, fmt.Sprintf("Правило %d: укажите сервер или балансировщик, но не оба сразу", index+1))
-		} else if tag == "" && balancerTag == "" {
+			warnings = append(warnings, fmt.Sprintf("Правило %d: одновременно заданы outboundTag и balancerTag; Xray использует outboundTag %q, balancerTag %q игнорируется", index+1, tag, balancerTag))
+			balancerTag = ""
+		}
+		if tag == "" && balancerTag == "" {
 			warnings = append(warnings, fmt.Sprintf("Правило %d: не указан сервер или балансировщик", index+1))
 		} else if balancerTag != "" && !balancers[balancerTag] {
 			errors = append(errors, fmt.Sprintf("Правило %d: balancerTag %q не найден в routing.balancers", index+1, balancerTag))

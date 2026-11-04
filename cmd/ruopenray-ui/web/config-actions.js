@@ -52,6 +52,7 @@ export function createConfigActions({
 
   async function applyConfig(options = {}) {
     const startedAt = Date.now();
+    const expectedDraftRevision = state.serverDraftRevision || '';
     state.configApplying = true;
     state.messageDetails = null;
     state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
@@ -59,7 +60,7 @@ export function createConfigActions({
     try {
       const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
       if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
-      const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision }) });
+      const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision, expectedDraftRevision }) });
       if (result.ok !== true) {
         state.lastApplyBackup = result.backup || state.lastApplyBackup;
         state.message = result.error || result.restart?.stderr || result.restart?.message || 'Не удалось применить конфигурацию. Черновик сохранён.';

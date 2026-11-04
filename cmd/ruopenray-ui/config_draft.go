@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -69,6 +70,24 @@ func (s *serverState) activeConfigRevision() string {
 		return ""
 	}
 	return draftRevision(body)
+}
+
+// A different browser tab can save a draft before this apply request begins.
+// Only clear a saved draft when it represents the candidate being applied.
+func configDraftMatchesCandidate(draft, candidate map[string]any) bool {
+	saved, ok := draft["config"].(map[string]any)
+	if !ok || saved == nil || candidate == nil {
+		return false
+	}
+	normalizedJSON := func(config map[string]any) []byte {
+		config = cloneConfigMap(config)
+		normalizeCatchAllRoutingRules(config)
+		normalizeSniffingDomainExclusions(config)
+		ensureFragmentOutboundsInConfig(config)
+		body, _ := json.Marshal(config)
+		return body
+	}
+	return bytes.Equal(normalizedJSON(saved), normalizedJSON(candidate))
 }
 
 func (s *serverState) saveConfigDraft(payload map[string]any) map[string]any {

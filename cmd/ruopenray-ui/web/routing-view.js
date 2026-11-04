@@ -402,6 +402,7 @@ function routingBalancersPanel() {
           const selectors = Array.isArray(balancer.selector) ? balancer.selector.join(', ') : '';
           const strategy = balancer.strategy?.type || 'random';
           const used = routeRules().filter((rule) => rule.balancerTag === balancer.tag).length;
+          const archived = (state.disabledRouteRules || []).filter((item) => item?.rule?.balancerTag === balancer.tag).length;
           const matched = balancerSelectorMatches(selectors);
           const observer = balancerObserverSummary(balancer);
           return `<article class="balancer-row">
@@ -412,12 +413,12 @@ function routingBalancersPanel() {
                 <span class="server-chip ${observer.tone}">${escapeHtml(observer.label)}</span>
               </div>
               <strong>${escapeHtml(proxyDisplayName(balancer.tag || 'без имени'))}</strong>
-              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag, state.serverMeta?.[balancer.fallbackTag]))}` : ''}</span>
+              <span>${isFailoverBalancer(balancer, state.config) ? 'Основной → резервный' : escapeHtml(balancerStrategyLabel(strategy))} · выбор: ${escapeHtml(selectors ? (balancer.selector || []).map((tag) => proxyDisplayName(tag, state.serverMeta?.[tag])).join(', ') : 'не задан')} · правил: ${used}${archived ? ` · отключено: ${archived}` : ''}${balancer.fallbackTag ? ` · при отказе: ${escapeHtml(proxyDisplayName(balancer.fallbackTag, state.serverMeta?.[balancer.fallbackTag]))}` : ''}</span>
               ${balancerMembersView(matched)}
               ${balancerHistoryView(matched)}
             </div>
             <button class="btn secondary" type="button" data-route-balancer-edit="${index}">Править</button>
-            <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used ? 'disabled' : ''}>Удалить</button>
+            <button class="btn danger" type="button" data-route-balancer-delete="${index}" ${used || archived ? 'disabled' : ''}>Удалить</button>
           </article>`;
         }).join('') : `<p class="muted">Групп пока нет. Создайте группу, если хотите переключать серверы случайно, по очереди или по меньшей задержке.</p>`}
       </div>

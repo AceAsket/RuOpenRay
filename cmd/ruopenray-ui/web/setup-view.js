@@ -1,7 +1,7 @@
 import { isServiceOutbound } from './outbound-tags.js';
 import { proxyDisplayName } from './proxy-label.js';
 import { modalNoticeView } from './notice-view.js';
-import { setupSelectionSignature } from './setup-model.js';
+import { setupSelectionSignature, setupTrafficTarget } from './setup-model.js';
 
 export const setupWizardStepIds = Object.freeze(['connection', 'scenarios', 'launch']);
 
@@ -207,10 +207,10 @@ function setupWizardSummary(steps) {
   return `<section class="setup-step-summary">
     <div class="setup-step-summary-head">
       <div>
-      <span>${current?.ok ? 'Шаг настроен' : state.setupApplying ? 'Выполняется запуск' : 'Осталось настроить'}</span>
-      <strong>${escapeHtml(current?.title || 'Подключение')}</strong>
+      <span class="setup-step-summary-status">${current?.ok ? 'Шаг настроен' : state.setupApplying ? 'Выполняется запуск' : 'Осталось настроить'}</span>
+      <strong class="setup-step-summary-title">${escapeHtml(current?.title || 'Подключение')}</strong>
       </div>
-      <em aria-label="Готово этапов: ${done} из ${steps.length}">${done}/${steps.length}</em>
+      <em class="setup-step-summary-count" aria-label="Готово этапов: ${done} из ${steps.length}">${done}/${steps.length}</em>
     </div>
     <div class="setup-progress" aria-hidden="true"><span style="width: ${progress}%"></span></div>
     <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово этапов: ${done} из ${steps.length}.` : 'Мастер завершён.'}</p>
@@ -258,7 +258,7 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
         <div class="setup-connection-icon">${proxyCount ? '✓' : '+'}</div>
         <div>
           <span>${proxyCount ? 'Подключение найдено' : 'Подключения пока нет'}</span>
-          <strong>${proxyCount ? 'Основное подключение' : 'Сервер или подписка'}</strong>
+          <strong>${proxyCount ? escapeHtml(activeProxyName()) : 'Сервер или подписка'}</strong>
           <small>${proxyCount ? `${proxyCount} доступных выходов${subscriptionCount ? ` · ${subscriptionCount} подписок` : ''}` : 'Добавьте данные, которые выдал провайдер VPN или прокси.'}</small>
         </div>
       </div>
@@ -288,7 +288,7 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
       <div class="setup-simple-hero">
         <span class="setup-kicker">Шаг 2</span>
         <h3>Выберите, что направлять через подключение</h3>
-        <p>Можно взять готовые сценарии для сервисов, добавить свои правила или направить через подключение весь интернет.</p>
+        <p>Можно взять готовые сценарии для сервисов, добавить свои правила или направить весь интернет через ${escapeHtml(activeProxyName())}.</p>
       </div>
       <div class="setup-big-actions">
         <button class="setup-action-card primary" type="button" data-tab-jump="routing" data-routing-view-jump="scenarios">
@@ -505,7 +505,7 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
     </div>
     ${coreReady ? '' : '<section class="setup-callout warn"><div><strong>Сначала установите Xray</strong><span>Без ядра Xray мастер не сможет запустить подключение.</span></div><button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button></section>'}
     <div class="setup-launch-summary">
-      <article><span>Подключение</span><strong>${proxyCount ? 'Готово' : 'Не выбрано'}</strong><small>${proxyCount} доступных выходов</small></article>
+      <article><span>Подключение</span><strong>${proxyCount ? escapeHtml(activeProxyName()) : 'Не выбрано'}</strong><small>${setupTrafficTarget(state)?.kind === 'balancer' ? 'Группа серверов' : 'Сервер'} · ${proxyCount} доступных выходов</small></article>
       <article><span>Через подключение</span><strong>${allTraffic ? 'Весь интернет' : `${readiness.proxyRuleCount} правил`}</strong><small>${allTraffic ? 'Кроме локальной сети и служебных адресов' : 'Остальной интернет — напрямую'}</small></article>
       <article><span>Устройства</span><strong>Локальная сеть</strong><small>Охват можно ограничить позднее</small></article>
     </div>
@@ -518,6 +518,7 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
       <summary>Резервная копия и технические параметры</summary>
       ${setupSnapshotBlock(snapshot)}
       <div class="setup-advanced-summary"><span>DNS: ${escapeHtml(state.setupLanDnsMode === 'xray' ? 'через Xray' : state.setupLanDnsMode)}</span><span>Перехват: ${escapeHtml(String(fwMode).toUpperCase())}</span></div>
+      ${setupLanDnsBlock()}
     </details>
   </section>`;
 }
@@ -529,14 +530,14 @@ function setupLanDnsBlock() {
         ['keep', 'Не трогать'],
         ['xray', 'Через Xray'],
         ['upstream', 'Внешний DNS']
-      ].map(([mode, label]) => `<button type="button" class="${state.setupLanDnsMode === mode ? 'active' : ''}" data-setup-dns-mode="${mode}">${label}</button>`).join('')}
+      ].map(([mode, label]) => `<button type="button" class="${state.setupLanDnsMode === mode ? 'active' : ''}" data-setup-dns-mode="${mode}" ${state.setupApplying || state.setupRollbacking ? 'disabled' : ''}>${label}</button>`).join('')}
     </div>
     ${state.setupLanDnsMode === 'upstream' ? `<div class="form-row">
       <label>DNS / Pi-hole / AdGuard Home</label>
-      <input id="setupLanDnsUpstream" value="${escapeHtml(state.setupLanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10:53" />
+      <input id="setupLanDnsUpstream" value="${escapeHtml(state.setupLanDnsUpstream)}" placeholder="192.168.1.10 или 192.168.1.10:53" ${state.setupApplying || state.setupRollbacking ? 'disabled' : ''} />
     </div>` : ''}
     <label class="toggle-row">
-      <input id="setupRestartDnsmasq" type="checkbox" ${state.setupRestartDnsmasq ? 'checked' : ''} />
+      <input id="setupRestartDnsmasq" type="checkbox" ${state.setupRestartDnsmasq ? 'checked' : ''} ${state.setupApplying || state.setupRollbacking ? 'disabled' : ''} />
       <span>Перезапустить dnsmasq после изменения</span>
     </label>
   </section>`;
@@ -582,10 +583,7 @@ function resultBlock(result, rollback) {
 }
 
 function activeProxyName() {
-  const outbounds = proxyOutboundsSafe();
-  const routingRules = state.config?.routing?.rules || [];
-  const firstProxy = routingRules.find((rule) => rule?.outboundTag && outbounds.some((outbound) => outbound.tag === rule.outboundTag));
-  const tag = firstProxy?.outboundTag || outbounds[0]?.tag;
+  const tag = setupTrafficTarget(state)?.tag;
   return tag ? proxyDisplayName(tag, state.serverMeta?.[tag]) : 'не выбран';
 }
 
@@ -607,13 +605,14 @@ function geoDoctorText() {
 function setupPage() {
   const readiness = setupReadiness();
   if (!['direct', 'proxy'].includes(state.setupFallbackMode)) {
-    const proxyTags = new Set(proxyOutboundsSafe().map((item) => String(item?.tag || '').trim()).filter(Boolean));
-    state.setupFallbackMode = readiness.defaultRouteTarget && proxyTags.has(readiness.defaultRouteTarget) ? 'proxy' : 'direct';
+    const target = setupTrafficTarget(state);
+    state.setupFallbackMode = target && readiness.defaultRouteTarget === target.tag ? 'proxy' : 'direct';
   }
   if (!setupWizardStepIds.includes(state.setupStep)) state.setupStep = setupWizardStepIds[0];
   const savedResult = state.setupResult;
   const currentSuccess = savedResult?.phase === 'complete' && savedResult.ok
     && !state.setupApplying && !state.setupRollbacking && readiness.canApply
+    && !state.activeConfigConflict && !state.serverDraftConflict
     && state.status?.service?.running === true
     && readiness.items.some((item) => item.key === 'firewall' && item.ok)
     && (state.setupLanDnsMode === 'keep' || (state.lanDnsStatus?.mode === state.setupLanDnsMode

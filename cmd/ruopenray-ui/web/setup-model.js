@@ -1,4 +1,4 @@
-import { ensureKnownDohBootstrapHosts } from './dns-bootstrap.js';
+import { ensureKnownDohBootstrapHosts, isIpLiteral } from './dns-bootstrap.js';
 import { isServiceOutbound } from './outbound-tags.js';
 
 export function setupSelectionSignature(state) {
@@ -15,6 +15,57 @@ export function setupSelectionSignature(state) {
   return JSON.stringify(normalize({ config: state.config, draft, activeServerTag: state.activeServerTag,
     fallbackMode: state.setupFallbackMode, dnsMode: state.setupLanDnsMode, dnsUpstream: state.setupLanDnsUpstream,
     restartDnsmasq: state.setupRestartDnsmasq, firewall: Object.fromEntries(firewallKeys.map((key) => [key, state[key]])) }));
+}
+
+export function validateSetupSnapshot(snapshot) {
+  if (!snapshot?.config || typeof snapshot.config !== 'object' || Array.isArray(snapshot.config)) {
+    throw new Error('Не удалось сохранить конфигурацию Xray для отката. Настройки не применены.');
+  }
+  const firewall = snapshot.firewall;
+  if (!firewall || firewall.ok !== true || !firewall.status || typeof firewall.nftBody !== 'string'
+    || typeof firewall.hotplugBody !== 'string' || (firewall.status.active && !firewall.nftBody.trim())) {
+    throw new Error('Не удалось сохранить полный снимок firewall для отката. Настройки не применены.');
+  }
+  if (!snapshot.lanDns || snapshot.lanDns.ok === false || !snapshot.lanDns.mode) {
+    throw new Error('Не удалось сохранить состояние LAN DNS для отката. Настройки не применены.');
+  }
+}
+
+function transparentInboundTag(config) {
+  const inbounds = Array.isArray(config?.inbounds) ? config.inbounds : [];
+  return inbounds.find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy)?.tag || 'transparent_ipv4';
+}
+
+function transparentCatchAllRoute(config) {
+  const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
+  const transparentTag = transparentInboundTag(config);
+  for (const rule of rules) {
+    const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
+    if (!inbound.includes(transparentTag)) continue;
+    if (['domain', 'ip', 'source'].some((key) => Array.isArray(rule?.[key]) && rule[key].length)) continue;
+    const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
+    const port = String(rule?.port || '').trim();
+    if (network && network !== 'tcp,udp' && network !== 'udp,tcp') continue;
+    if (port && port !== '0-65535') continue;
+    const target = String(rule?.outboundTag || rule?.balancerTag || '');
+    if (target.trim()) return { target, rule };
+  }
+  return { target: '', rule: null };
+}
+
+export function setupTrafficTarget(state, config = state.config) {
+  const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
+  const proxies = outbounds.filter((outbound) => !isServiceOutbound(outbound) && outbound?.tag);
+  const current = transparentCatchAllRoute(config);
+  if (current.rule?.outboundTag && proxies.some((outbound) => outbound.tag === current.rule.outboundTag)) {
+    return { kind: 'outbound', tag: current.rule.outboundTag };
+  }
+  const balancers = Array.isArray(config?.routing?.balancers) ? config.routing.balancers : [];
+  if (!current.rule?.outboundTag && current.rule?.balancerTag && balancers.some((item) => item?.tag === current.rule.balancerTag)) {
+    return { kind: 'balancer', tag: current.rule.balancerTag };
+  }
+  const selected = proxies.find((outbound) => outbound.tag === state.activeServerTag) || proxies[0];
+  return selected ? { kind: 'outbound', tag: selected.tag } : null;
 }
 
 export function createSetupModel({
@@ -41,8 +92,9 @@ export function createSetupModel({
     const proxyTags = new Set(proxyOutbounds().map((item) => String(item?.tag || '').trim()).filter(Boolean));
     const userRules = (Array.isArray(config?.routing?.rules) ? config.routing.rules : [])
       .filter((rule) => !isSetupManagedRule(rule, bootstrapDomains));
+    const balancerTags = new Set((Array.isArray(config.routing?.balancers) ? config.routing.balancers : []).map((item) => item?.tag).filter(Boolean));
     const proxyRuleCount = userRules.filter((rule) =>
-      Boolean(String(rule?.balancerTag || '').trim())
+      (!rule?.outboundTag && balancerTags.has(rule?.balancerTag))
       || proxyTags.has(String(rule?.outboundTag || '').trim())
     ).length;
     const firewallMatchesSelection = typeof firewallReadyStatus === 'function'
@@ -132,32 +184,40 @@ export function createSetupModel({
     state.setupSnapshot = snapshot;
   }
 
-  function clearSetupSnapshot() {
+  function clearSetupSnapshot({ force = false } = {}) {
+    if (!force && (state.setupApplying || state.setupRollbacking)) return;
     state.setupSnapshot = null;
     state.setupRollbackResult = null;
   }
 
   async function captureSetupSnapshot() {
+    if (state.setupSnapshot?.recoveryPending) return state.setupSnapshot;
     const [config, firewall, lanDns] = await Promise.all([
       request('/api/config'),
-      request('/api/firewall/snapshot').catch(async () => ({ status: await request('/api/firewall/status').catch(() => null) })),
-      request('/api/dns/lan-upstream').catch(() => null)
+      request('/api/firewall/snapshot'),
+      request('/api/dns/lan-upstream')
     ]);
     const snapshot = {
       createdAt: new Date().toISOString(),
       config,
       firewall,
-      lanDns
+      lanDns,
+      dnsMutationAttempted: false,
+      recoveryPending: false
     };
+    validateSetupSnapshot(snapshot);
+    if (state.setupLanDnsMode !== 'keep') lanDnsRestorePayload(lanDns);
     saveSetupSnapshot(snapshot);
     return snapshot;
   }
 
   function lanDnsRestorePayload(lanDns) {
-    const mode = lanDns?.mode || 'system';
+    const mode = lanDns?.mode;
+    const servers = Array.isArray(lanDns?.servers) ? lanDns.servers : [];
     if (mode === 'xray') return { mode: 'xray', restart: true };
-    if (mode === 'upstream') return { mode: 'upstream', upstream: (lanDns.servers || [])[0] || '', restart: true };
-    return { mode: 'system', restart: true };
+    if (mode === 'upstream' && servers.length === 1) return { mode: 'upstream', upstream: servers[0], restart: true };
+    if (mode === 'system' && !servers.length) return { mode: 'system', restart: true };
+    throw new Error('Текущий LAN DNS нельзя полностью восстановить автоматически. Выберите «Не трогать» DNS перед запуском мастера.');
   }
 
   function privateBypassCidrs() {
@@ -187,10 +247,6 @@ export function createSetupModel({
       }, {});
     };
     return JSON.stringify(normalize(rule));
-  }
-
-  function isIpLiteral(value) {
-    return /^(\d{1,3}\.){3}\d{1,3}$/.test(value || '') || /^\[[0-9a-f:]+\]$/i.test(value || '') || /^[0-9a-f:]+$/i.test(value || '');
   }
 
   function hostnameFromUrl(value) {
@@ -232,42 +288,10 @@ export function createSetupModel({
     return '';
   }
 
-  function transparentInboundTag(config) {
-    const inbounds = Array.isArray(config?.inbounds) ? config.inbounds : [];
-    return inbounds.find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy)?.tag || 'transparent_ipv4';
-  }
-
-  function selectedProxyOutboundTag(config) {
-    const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
-    const tags = new Set(outbounds.filter((outbound) => !isServiceOutbound(outbound)).map((outbound) => outbound.tag).filter(Boolean));
-    const current = transparentCatchAllRoute(config).target;
-    if (tags.has(current)) return current;
-    if (tags.has(state.activeServerTag)) return state.activeServerTag;
-    return firstProxyOutboundTag(config);
-  }
-
-  function transparentCatchAllRoute(config) {
-    const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
-    const transparentTag = transparentInboundTag(config);
-    for (const rule of rules) {
-      const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
-      if (!inbound.includes(transparentTag)) continue;
-      const hasTargets = ['domain', 'ip', 'source'].some((key) => Array.isArray(rule?.[key]) && rule[key].length);
-      if (hasTargets) continue;
-      const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
-      const port = String(rule?.port || '').trim();
-      if (network && network !== 'tcp,udp' && network !== 'udp,tcp') continue;
-      if (port && port !== '0-65535') continue;
-      const target = String(rule?.balancerTag || rule?.outboundTag || '').trim();
-      if (target) return { target, rule };
-    }
-    return { target: '', rule: null };
-  }
-
   function setupFallbackModeFromConfig(config = state.config || {}) {
-    const target = transparentCatchAllRoute(config).target;
-    const proxyTags = new Set(proxyOutbounds().map((item) => String(item?.tag || '').trim()).filter(Boolean));
-    return target && proxyTags.has(target) ? 'proxy' : 'direct';
+    const current = transparentCatchAllRoute(config);
+    const selected = setupTrafficTarget(state, config);
+    return selected && current.target === selected.tag ? 'proxy' : 'direct';
   }
 
   function isSetupManagedRule(rule, bootstrapDomains = [], transparentTag = transparentInboundTag(state.config)) {
@@ -296,7 +320,7 @@ export function createSetupModel({
     config.routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
     const rules = Array.isArray(config.routing.rules) ? config.routing.rules : [];
     const bootstrapDomains = serverBootstrapDomains(config);
-    const defaultProxyTag = selectedProxyOutboundTag(config);
+    const target = setupTrafficTarget(state, config);
     const transparentTag = transparentInboundTag(config);
     const managedRules = [
       { type: 'field', outboundTag: 'direct', inboundTag: [transparentTag], ip: privateBypassCidrs() },
@@ -304,9 +328,9 @@ export function createSetupModel({
       { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
       { type: 'field', outboundTag: 'dns-out', port: '53' }
     ];
-    const fallbackTag = state.setupFallbackMode === 'proxy' ? defaultProxyTag : 'direct';
-    const catchAllRules = fallbackTag
-      ? [{ type: 'field', inboundTag: [transparentTag], outboundTag: fallbackTag, network: 'tcp,udp' }]
+    const fallback = state.setupFallbackMode === 'proxy' ? target && { [`${target.kind}Tag`]: target.tag } : { outboundTag: 'direct' };
+    const catchAllRules = fallback
+      ? [{ type: 'field', inboundTag: [transparentTag], ...fallback, network: 'tcp,udp' }]
       : [];
     const seen = new Set();
     const keptRules = [];

@@ -372,7 +372,7 @@ const setupModel = createSetupModel({
   request: async (path) => {
     if (path === '/api/install/plan') return { ok: true, steps: [] };
     if (path === '/api/config') return setupState.config;
-    if (path === '/api/firewall/snapshot') return { ok: true };
+    if (path === '/api/firewall/snapshot') return { ok: true, status: { active: false }, nftBody: '', hotplugBody: '' };
     if (path === '/api/dns/lan-upstream') return { ok: true, mode: 'xray', readiness: { ready: true } };
     return {};
   },
@@ -470,7 +470,7 @@ const setupActions = createSetupActions({
   request: async (path) => {
     if (path === '/api/install/plan') return { ok: true, steps: [] };
     if (path === '/api/config') return setupState.config;
-    if (path === '/api/firewall/snapshot') return { ok: true };
+    if (path === '/api/firewall/snapshot') return { ok: true, status: { active: false }, nftBody: '', hotplugBody: '' };
     if (path === '/api/dns/lan-upstream') return { ok: true, mode: 'xray', readiness: { ready: true } };
     if (path === '/api/config/test') return { ok: true, stdout: 'ok' };
     if (path === '/api/config/apply') return { ok: true, test: { stdout: 'applied' } };

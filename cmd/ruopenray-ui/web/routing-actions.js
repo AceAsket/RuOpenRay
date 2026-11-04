@@ -511,7 +511,7 @@ export function createRoutingActions({
     state.routeValueMultiline = target.values.length > 1;
     const cleanRouteNetwork = String(rule.network || 'tcp,udp').replace(/\s+/g, '').toLowerCase();
     state.routeNetwork = target.kind === 'port' && ['tcp', 'udp'].includes(cleanRouteNetwork) ? cleanRouteNetwork : 'tcp,udp';
-    state.routeTargetType = rule.balancerTag ? 'balancer' : 'outbound';
+    state.routeTargetType = !rule.outboundTag && rule.balancerTag ? 'balancer' : 'outbound';
     state.routeBalancer = rule.balancerTag || balancerOptions()[0] || '';
     state.routeOutbound = rule.outboundTag || 'proxy';
     state.message = '';
@@ -977,7 +977,7 @@ export function createRoutingActions({
   }
 
   function routeRuleToDslLines(rule) {
-    const outbound = rule.balancerTag ? `balancer:${rule.balancerTag}` : (rule.outboundTag || 'proxy');
+    const outbound = !rule.outboundTag && rule.balancerTag ? `balancer:${rule.balancerTag}` : (rule.outboundTag || 'proxy');
     const parts = rule.network ? [`network(${rule.network})`] : [];
     for (const field of ['domain', 'ip', 'source', 'inboundTag']) {
       const values = Array.isArray(rule[field]) ? rule[field] : rule[field] ? [rule[field]] : [];
@@ -1037,7 +1037,7 @@ export function createRoutingActions({
     state.routePresetEditDetail = routePresetDetail(key);
     state.routePresetEditIcon = routePresetIconFieldValue(key, routePresetData(key) || {});
     state.routePresetEditDsl = [`# ${title}`, ...rules.flatMap(routeRuleToDslLines)].join('\n');
-    const targets = [...new Set(rules.map((rule) => rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || 'proxy'}`))];
+    const targets = [...new Set(rules.map((rule) => !rule.outboundTag && rule.balancerTag ? `balancer:${rule.balancerTag}` : `outbound:${rule.outboundTag || 'proxy'}`))];
     state.routePresetEditTarget = targets.length === 1 ? targets[0] : 'outbound:proxy';
     // Keep explicit arrows only for rules whose destination differs from the picker.
     if (targets.length === 1) state.routePresetEditDsl = state.routePresetEditDsl.replace(/ -> [^\n]+/g, '');
@@ -1551,7 +1551,7 @@ export function createRoutingActions({
     const moveDownDisabled = displayLocked || managed || (nested ? !canMoveNestedDown : index === rulesLength - 1);
     const targetOptions = options.some((option) => option.value === selectedTarget)
       ? options
-      : [{ value: selectedTarget, label: item.rule.balancerTag ? `Балансировщик · ${proxyDisplayName(item.rule.balancerTag)}` : proxyDisplayName(readableRouteTag(item.rule.outboundTag || 'не задано'), state.serverMeta?.[item.rule.outboundTag]) }, ...options];
+      : [{ value: selectedTarget, label: !item.rule.outboundTag && item.rule.balancerTag ? `Балансировщик · ${proxyDisplayName(item.rule.balancerTag)}` : proxyDisplayName(readableRouteTag(item.rule.outboundTag || 'не задано'), state.serverMeta?.[item.rule.outboundTag]) }, ...options];
     const section = routeSectionDefinitions().find((entry) => entry.id === category) || routeSectionDefinitions().find((entry) => entry.id === 'other');
     const dragAttrs = dragLocked
       ? ''
@@ -1726,7 +1726,7 @@ export function createRoutingActions({
   }
 
   function routeRuleTargetValue(rule) {
-    if (rule?.balancerTag) return `balancer:${rule.balancerTag}`;
+    if (!rule?.outboundTag && rule?.balancerTag) return `balancer:${rule.balancerTag}`;
     return `outbound:${rule?.outboundTag || 'proxy'}`;
   }
 

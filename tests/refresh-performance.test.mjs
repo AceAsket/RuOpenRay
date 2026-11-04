@@ -230,3 +230,138 @@ test('runtime full refresh blocks its polling requests until the complete snapsh
   await clock.tick(state.statusTimer);
   assert.equal(statusCalls, 2, 'polling resumes after the full refresh finishes');
 });
+
+function snapshotReply(path, marker = 'current') {
+  if (path === '/api/status') return { core: {}, service: {}, marker };
+  if (path === '/api/config') return { outbounds: [{ tag: marker, protocol: 'vless' }], routing: { rules: [] } };
+  if (path === '/api/profiles') return [{ name: marker }];
+  if (path === '/api/core/releases') return { releases: [] };
+  return {};
+}
+
+test('a slower previous full refresh cannot replace a newer status, config or profiles', async (t) => {
+  fakeIntervals(t);
+  const oldStatus = deferred();
+  let statusCalls = 0;
+  const { state, runtime } = runtimeFixture(async (path) => {
+    if (path === '/api/status' && ++statusCalls === 1) return oldStatus.promise;
+    return snapshotReply(path, 'newer');
+  }, async () => 'new logs');
+  const old = runtime.refresh({ renderAfter: false });
+  await flush();
+  await runtime.refresh({ renderAfter: false });
+  assert.equal(state.status.marker, 'newer');
+  oldStatus.resolve(snapshotReply('/api/status', 'stale'));
+  await old;
+  assert.equal(state.status.marker, 'newer');
+  assert.equal(state.config.outbounds[0].tag, 'newer');
+  assert.deepEqual(state.profiles, [{ name: 'newer' }]);
+});
+
+test('full refresh responses and errors from a previous login leave the current session untouched', async (t) => {
+  fakeIntervals(t);
+  for (const fail of [false, true]) {
+    const pendingStatus = deferred();
+    const { state, runtime } = runtimeFixture((path) => path === '/api/status' ? pendingStatus.promise : Promise.resolve(snapshotReply(path)), async () => 'old logs');
+    const previous = state.status;
+    const loading = runtime.refresh({ renderAfter: false });
+    await flush();
+    state.token = 'new-session';
+    state.message = 'new session message';
+    if (fail) pendingStatus.reject(new Error('Требуется авторизация'));
+    else pendingStatus.resolve(snapshotReply('/api/status', 'stale'));
+    await loading;
+    assert.equal(state.token, 'new-session');
+    assert.equal(state.status, previous);
+    assert.equal(state.message, 'new session message');
+  }
+});
+
+test('critical operations can require refresh success and cannot succeed after session replacement', async (t) => {
+  fakeIntervals(t);
+  const { runtime } = runtimeFixture(async () => { throw new Error('Router unavailable'); }, async () => '');
+  await assert.rejects(runtime.refresh({ renderAfter: false, throwOnError: true }), /Router unavailable/);
+  const pendingStatus = deferred();
+  const fixture = runtimeFixture((path) => path === '/api/status' ? pendingStatus.promise : Promise.resolve(snapshotReply(path)), async () => '');
+  const loading = fixture.runtime.refresh({ renderAfter: false, throwOnError: true });
+  const rejected = assert.rejects(loading, /Состояние панели изменилось/);
+  fixture.state.token = 'another-session';
+  pendingStatus.resolve(snapshotReply('/api/status'));
+  await rejected;
+});
+
+test('manual log filter requests keep the newest result even when replies arrive out of order', async (t) => {
+  const clock = fakeIntervals(t);
+  const first = deferred(), second = deferred();
+  let calls = 0;
+  const { state, runtime } = runtimeFixture(async () => ({}), () => ++calls === 1 ? first.promise : second.promise);
+  state.logQuery = 'first-filter';
+  const old = runtime.refreshLogs(true, true);
+  state.logQuery = 'second-filter';
+  const current = runtime.refreshLogs(true, true);
+  second.resolve('matching second filter');
+  await current;
+  first.resolve('matching first filter');
+  await old;
+  assert.equal(state.logs, 'matching second filter');
+  assert.equal(clock.consoleNode.textContent, 'matching second filter');
+});
+
+test('a log result or failure after a filter/session change is discarded without updating the console', async (t) => {
+  const clock = fakeIntervals(t);
+  for (const fail of [false, true]) {
+    const pending = deferred();
+    const { state, runtime } = runtimeFixture(async () => ({}), () => pending.promise);
+    state.logs = 'existing';
+    const loading = runtime.refreshLogs(true, true);
+    state.logQuery = 'new filter';
+    if (fail) pending.reject(new Error('old request failed'));
+    else pending.resolve('old result');
+    await loading;
+    assert.equal(state.logs, 'existing');
+    assert.equal(clock.consoleNode.textContent, 'previous logs');
+  }
+});
+
+test('a full refresh cannot replace logs returned by a newer manual request', async (t) => {
+  fakeIntervals(t);
+  const pendingStatus = deferred();
+  let logCalls = 0;
+  const { state, runtime } = runtimeFixture((path) => path === '/api/status' ? pendingStatus.promise : Promise.resolve(snapshotReply(path)), async () => ++logCalls === 1 ? 'snapshot logs' : 'manual logs');
+  const loading = runtime.refresh({ renderAfter: false });
+  await flush();
+  await runtime.refreshLogs(false);
+  pendingStatus.resolve(snapshotReply('/api/status'));
+  await loading;
+  assert.equal(state.logs, 'manual logs');
+});
+
+test('a status poll started before a full refresh cannot overwrite the refreshed status', async (t) => {
+  const clock = fakeIntervals(t);
+  const pendingStatus = deferred();
+  let calls = 0;
+  const { state, runtime } = runtimeFixture(async (path) => {
+    if (path === '/api/status' && ++calls === 1) return pendingStatus.promise;
+    return snapshotReply(path, 'fresh');
+  }, async () => 'logs');
+  state.tab = 'dashboard';
+  runtime.configureStatusTimer();
+  const polling = clock.tick(state.statusTimer);
+  await runtime.refresh({ renderAfter: false });
+  pendingStatus.resolve(snapshotReply('/api/status', 'old poll'));
+  await polling;
+  assert.equal(state.status.marker, 'fresh');
+});
+
+test('a domain-monitor reply arriving after Pause keeps the visible snapshot unchanged', async (t) => {
+  fakeIntervals(t);
+  const pending = deferred();
+  const { state, runtime } = runtimeFixture(() => pending.promise, async () => '');
+  const snapshot = { events: ['before pause'] };
+  state.domainMonitor = snapshot;
+  const loading = runtime.refreshDomainMonitor(false);
+  state.domainMonitorPaused = true;
+  pending.resolve({ events: ['after pause'] });
+  await loading;
+  assert.equal(state.domainMonitor, snapshot);
+});

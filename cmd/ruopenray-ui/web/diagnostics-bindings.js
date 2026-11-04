@@ -1,3 +1,5 @@
+import { isIpLiteral } from './dns-bootstrap.js';
+
 let delegatedDiagnosticsDeps = null;
 let delegatedDiagnosticsBound = false;
 
@@ -13,9 +15,9 @@ function openDeviceEvents(deps, ip) {
 
 function openDomainRouteDialog(deps, value) {
   const { state, render, activeProxyTag } = deps;
-  const cleanValue = String(value || '').trim();
+  const cleanValue = String(value || '').trim().replace(/^\[([^\]]+)\]$/, '$1');
   if (!cleanValue) return;
-  const ip = /^\d{1,3}(\.\d{1,3}){3}$/.test(cleanValue);
+  const ip = isIpLiteral(cleanValue);
   state.routeKind = ip ? 'ip' : 'domain';
   state.routeValue = ip ? cleanValue : `domain:${cleanValue}`;
   state.routeName = ip ? `IP ${cleanValue}` : cleanValue;
@@ -182,6 +184,8 @@ function handleDiagnosticsDelegatedKeydown(event) {
   if (!deps || !target?.closest || (event.key !== 'Enter' && event.key !== ' ')) return;
   const deviceCard = target.closest('[data-domain-device-card]');
   if (!deviceCard) return;
+  const interactive = target.closest('button, a, input, select, textarea, [role="button"]');
+  if (interactive && interactive !== deviceCard) return;
   event.preventDefault();
   openDeviceEvents(deps, deviceCard.dataset.domainDeviceCard || '');
 }
