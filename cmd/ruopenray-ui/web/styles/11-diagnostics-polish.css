@@ -1,0 +1,536 @@
+/* Diagnostics and utility pages use the same surfaces as the main router UI. */
+body[data-theme] :is(.main-diagnostics, .main-devices, .main-dns, .main-geo, .main-logs) > :is(section, details, .devices-layout, .dns-servers-layout) + :is(section, details, .devices-layout, .dns-servers-layout) {
+  margin-top: 16px;
+}
+
+/* There are seven diagnostic views. Let labels share a row and wrap together. */
+body[data-theme] .diagnostics-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body[data-theme] .diagnostics-tabs > button {
+  flex: 1 1 90px;
+  width: auto;
+  min-width: 0;
+  min-height: 36px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+body[data-theme] .chain-diagnostics > .diagnostics-details + .diagnostics-details {
+  margin-top: 12px;
+}
+
+body[data-theme] .devices-layout .panel > .lease-search + .lease-grid,
+body[data-theme] .main-diagnostics .panel > .settings-warning.compact + .domain-monitor-health-details {
+  margin-top: 12px;
+}
+
+body[data-theme] :is(.diagnostics-chain-attention, .access-log-table, .access-log-table > article, .device-row, .sni-row, .sni-proximity, .geo-source-list > article, .geo-list-saved > article, .geo-catalog-category, .geo-catalog-full) {
+  min-width: 0;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.geo-source-list > article.active, .geo-source-list > article.editing, .geo-list-saved > article.editing) {
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .sni-row.focused {
+  border-color: var(--accent);
+  background: var(--panel-2);
+  box-shadow: 0 0 0 2px var(--line);
+}
+
+body[data-theme] .sni-proximity strong {
+  color: var(--accent-strong);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+body[data-theme] :is(.sni-proximity span, .device-ip, .geo-source-list code, .geo-list-saved code, .geo-presets code, .geo-file-main code) {
+  color: var(--muted);
+}
+
+body[data-theme] :is(.lease-card, .mode-card):hover {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.lease-card, .mode-card):focus-visible,
+body[data-theme] :is(.geo-catalog-category:not(.readonly), .geo-catalog-full):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] :is(.geo-catalog-category:not(.readonly), .geo-catalog-full):hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+body[data-theme] .geo-catalog-category.readonly:is(:hover, :focus-visible) {
+  border-color: var(--line-soft);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .geo-catalog-full {
+  font-weight: 500;
+}
+
+body[data-theme] :is(.geo-coverage-badge, .geo-coverage-badge.ru, .geo-coverage-badge.system, .geo-coverage-badge.service, .geo-coverage-badge.other) {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 500;
+}
+
+/* The previous light layer marks these filenames important; keep both themes neutral. */
+body[data-theme="light"] :is(.geo-presets code, .geo-source-list code, .geo-list-saved code, .geo-file-main code) {
+  color: var(--muted) !important;
+}
+
+body[data-theme="light"] :is(.geo-warning, .geo-list-warning) {
+  color: var(--status-warn-text) !important;
+}
+
+/* Keep warning/error semantics in compact marks instead of saturated fills. */
+body[data-theme] :is(.diagnostics-chain-summary-icon, .chain-result-list > article > span, .dns-guard-overview-icon, .guard-item > span) {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] :is(.diagnostics-chain-summary.ok .diagnostics-chain-summary-icon, .chain-result-list > article.ok > span, .dns-guard-overview.ok .dns-guard-overview-icon, .guard-item.ok > span, .access-log-table b) {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] :is(.diagnostics-chain-summary.warn .diagnostics-chain-summary-icon, .chain-result-list > article.warn > span, .dns-guard-overview.warn .dns-guard-overview-icon, .guard-item.warn > span, .diagnostics-chain-section-head > b, .dns-guard-section-head > strong) {
+  border: 1px solid var(--status-warn-border);
+  border-radius: 4px;
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+  font-weight: 600;
+}
+
+body[data-theme] :is(.diagnostics-chain-summary.bad .diagnostics-chain-summary-icon, .chain-result-list > article.bad > span, .dns-guard-overview.bad .dns-guard-overview-icon, .guard-item.bad > span) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .guard-action {
+  max-width: 100%;
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel);
+  white-space: normal;
+}
+
+body[data-theme] .guard-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+body[data-theme] .guard-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .guard-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+body[data-theme] .access-log-table b {
+  border: 1px solid var(--status-good-border);
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+body[data-theme] .access-log-table code {
+  color: var(--text);
+}
+
+body[data-theme] .access-log-head {
+  font-weight: 600;
+  text-transform: none;
+}
+
+body[data-theme] .dns-presets > .preset {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .dns-presets > .preset:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+body[data-theme] .dns-presets > .preset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] :is(.dns-guard-overview-counts > span, .diagnostics-chain-counts > span) {
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel-2);
+}
+
+body[data-theme] .dns-guard-overview-counts > span.ok {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .dns-guard-overview-counts > span.warn {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .dns-guard-overview-counts > span.bad {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] :is(.geo-catalog-actions .btn.active, .geo-content-toggle.active) {
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .geo-content-toggle > span {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] .geo-content-toggle.active > span {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .geo-dat-edit-note {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+body[data-theme] .geo-dat-edit-note.warning {
+  border-color: var(--status-warn-border);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] :is(.domain-monitor-kind, .domain-monitor-chips > span, .domain-monitor-device-domains > span, .domain-monitor-mini-chips > b),
+body[data-theme] .domain-monitor-item.ip .domain-monitor-kind {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 500;
+}
+
+body[data-theme] .domain-monitor-device-domains b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+body[data-theme] :is(.domain-monitor-device-toggle, .domain-monitor-device-details) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .domain-monitor-device-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel);
+}
+
+body[data-theme] :is(.domain-monitor-device, .domain-monitor-device-toggle):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .domain-monitor-device-row {
+  border-color: var(--line-soft);
+}
+
+/* Nested grids must shrink inside panels instead of widening a scrollable panel. */
+body[data-theme] :is(.log-panel:not(.compact), .log-control-panel, .domain-monitor-scroll-window, .domain-monitor-device-table) {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] :is(.log-panel:not(.compact), .log-control-panel, .domain-monitor-toolbar, .domain-monitor-device, .domain-monitor-device-table, .geo-list-saved > article) > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .log-filters :is(.form-row, input:not([type="checkbox"]), select) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] :is(.domain-monitor-device-table-head, .domain-monitor-device-row) {
+  grid-template-columns: minmax(0, 1.4fr) 60px minmax(0, 0.8fr) minmax(0, 1.2fr) 75px 90px;
+}
+
+body[data-theme] :is(.domain-monitor-device-table-head, .domain-monitor-device-row) > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .geo-list-saved > article > .split-actions {
+  flex-wrap: wrap;
+}
+
+body[data-theme] .geo-list-saved > article > .split-actions > .btn {
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .geo-list-saved code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .guard-item > div {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 100%;
+}
+
+body[data-theme] .guard-item > div > :is(strong, small, .guard-action) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .tls-stability-panel :is(.form-grid, .table-scroll) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .tls-stability-panel .data-table :is(th, td) {
+  border-color: var(--line-soft);
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .tls-stability-panel .data-table th {
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] .tls-stability-panel .data-table :is(th, td):nth-child(2) {
+  min-width: 52px;
+  white-space: nowrap;
+}
+
+body[data-theme] .tls-stability-panel td > details {
+  margin-top: 8px;
+}
+
+body[data-theme] .tls-stability-panel td > details > summary {
+  color: var(--accent-strong);
+  cursor: pointer;
+}
+
+body[data-theme] .tls-stability-panel td > details > div {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Device forms sit in a two-panel layout, so they need flexible inner tracks. */
+body[data-theme] .devices-layout .device-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body[data-theme] .device-row {
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr) minmax(100px, 0.8fr) auto;
+}
+
+body[data-theme] :is(.device-form, .device-row) :is(input, select, .form-row) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 1200px) {
+  body[data-theme] .log-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body[data-theme] .domain-monitor-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] .domain-monitor-toolbar > .segmented {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body[data-theme] .domain-monitor-device {
+    grid-template-columns: 34px 60px minmax(0, 1.1fr) minmax(0, 1.4fr) 85px 100px;
+  }
+
+  body[data-theme] .main-dns .dns-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  body[data-theme] .main-dns .dns-hero > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .devices-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .main-dns .dns-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] .main-dns .dns-form > * {
+    min-width: 0;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  body[data-theme] .main-dns .dns-form > :is(.dns-address-field, .dns-auth-fields, .dns-auth-note) {
+    grid-column: 1 / -1;
+  }
+
+  body[data-theme] .main-dns .dns-auth-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] .main-dns .dns-add-button {
+    justify-self: start;
+  }
+
+  body[data-theme] .access-log-head,
+  body[data-theme] .access-log-table article {
+    grid-template-columns: 70px minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr) 65px;
+  }
+}
+
+@media (max-width: 720px) {
+  body[data-theme] .log-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] :is(.domain-monitor-toolbar, .domain-monitor-device, .domain-monitor-device-row, .geo-list-saved > article) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .domain-monitor-device-table-head {
+    display: none;
+  }
+
+  body[data-theme] .domain-monitor-device-row > :is(strong, span) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-theme] .domain-monitor-device-row > .btn {
+    width: 100%;
+  }
+
+  body[data-theme] .traffic-system-panel > .panel-title {
+    flex-wrap: wrap;
+    align-items: start;
+  }
+
+  body[data-theme] .traffic-system-panel > .panel-title > * {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-theme] .diagnostics-tabs > button {
+    flex-basis: calc(50% - 6px);
+    min-height: 40px;
+  }
+
+  body[data-theme] :is(.devices-layout .device-form, .device-row, .lease-grid, .device-modes, .main-dns .dns-form, .main-dns .dns-auth-fields) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .device-row > .btn {
+    justify-self: start;
+  }
+
+  body[data-theme] .access-log-head {
+    display: none;
+  }
+
+  body[data-theme] .access-log-table article {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+  }
+
+  body[data-theme] .access-log-table article :is(strong, code, em) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-theme] .access-log-table article > code {
+    grid-column: 1 / -1;
+  }
+
+  body[data-theme] :is(.access-log-summary, .diagnostics-chain-section-head, .dns-guard-section-head) {
+    flex-wrap: wrap;
+  }
+
+  body[data-theme] .sni-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  body[data-theme] .sni-main :is(strong, span) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 520px) {
+  body[data-theme] .log-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

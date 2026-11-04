@@ -132,6 +132,9 @@ body[data-theme="dark"] {
   --accent: #3fc1d9;
   --accent-2: #7bdaec;
   --accent-strong: #a1e5f2;
+  --green: #66c995;
+  --amber: #d6af69;
+  --red: #ee8b99;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --status-good-bg: #19382c;
   --status-good-border: #3c6b50;
@@ -149,6 +152,7 @@ body {
   font-family: "Segoe UI", Arial, sans-serif;
   line-height: 1.45;
 }
+
 
 .sidebar,
 body[data-theme="light"] .sidebar {
@@ -5179,4 +5183,59 @@ body[data-theme] .balancer-history-strip > span.bad {
   border-color: var(--status-bad-border);
   color: var(--status-bad-text);
   background: var(--status-bad-bg);
+}
+
+/* Shared controls also use the active palette in nested and legacy views. */
+body[data-theme] :is(.icon-btn, .route-actions .route-action-btn) {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.icon-btn, .route-actions .route-action-btn):hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel);
+}
+
+body[data-theme] :is(.icon-btn, .route-actions .route-action-btn):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] :is(.icon-btn.danger, .route-actions .route-action-btn.danger),
+body[data-theme] :is(.icon-btn.danger, .route-actions .route-action-btn.danger):hover:not(:disabled) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .toggle-row {
+  border-color: var(--line-soft);
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .server-protocol {
+  border-color: var(--line);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .server-protocol.doh {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .server-chip.muted {
+  border-color: var(--line-soft);
+  color: var(--muted);
+  background: var(--panel-2);
+}
+
+body[data-theme] .pending-risk-list .danger i {
+  background: var(--status-bad-text);
 }

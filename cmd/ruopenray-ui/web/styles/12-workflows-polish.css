@@ -1,0 +1,595 @@
+/* Settings, profiles, server workflows and their dialogs. Keep after 10-glinet. */
+body[data-theme] :is(.settings-section, .profile-page, .server-check-panel, .subscription-pool-row, .setup-page, .install-wizard, .core-dialog, .import-dialog, .server-edit-dialog, .profile-edit-dialog) {
+  min-width: 0;
+}
+
+body[data-theme] :is(.settings-section, .profile-page, .server-check-panel, .subscription-pool-row, .setup-page, .install-wizard, .core-dialog, .import-dialog, .server-edit-dialog, .profile-edit-dialog) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The theme preview spans both text rows; the description belongs beside it. */
+body[data-theme] .settings-theme-card {
+  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 6px 14px;
+  align-content: center;
+}
+
+body[data-theme] .settings-theme-card > .theme-preview {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: stretch;
+  min-height: 72px;
+}
+
+body[data-theme] .settings-theme-card > :is(strong, small) {
+  grid-column: 2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .settings-theme-card > strong {
+  align-self: end;
+}
+
+body[data-theme] .settings-theme-card > small {
+  align-self: start;
+}
+
+body[data-theme] .settings-theme-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+
+body[data-theme] .settings-theme-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* These miniature previews intentionally show both GL.iNet palettes at once. */
+body[data-theme] .settings-theme-card .theme-preview.dark {
+  color: #e9f0f6;
+  border-color: #354b5f;
+  background: #192a39;
+}
+
+body[data-theme] .settings-theme-card .theme-preview.light {
+  color: #27394b;
+  border-color: #d9e0e8;
+  background: #f7f9fb;
+}
+
+body[data-theme] .settings-theme-card .theme-preview i {
+  border-radius: 0;
+  background: #243e58;
+}
+
+body[data-theme] .settings-theme-card .theme-preview em {
+  border-color: currentColor;
+  border-radius: 4px;
+  background: transparent;
+  opacity: 0.35;
+}
+
+body[data-theme] .settings-section > label {
+  display: grid;
+  gap: 6px;
+}
+
+body[data-theme] .settings-section > :is(label, p) + .settings-info-grid {
+  margin-top: 14px;
+}
+
+body[data-theme] .settings-section :is(.settings-info-grid strong, .settings-storage-row small, .settings-storage-row span),
+body[data-theme] .settings-hero-status span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .local-proxy-form {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
+}
+
+body[data-theme] .local-proxy-card-head > *,
+body[data-theme] .local-proxy-card .settings-check > span {
+  min-width: 0;
+}
+
+body[data-theme] .local-proxy-card .settings-check :is(strong, em),
+body[data-theme] .settings-overview-card-state b {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Profile names, paths and actions must share the available card width. */
+body[data-theme] .profile-page :is(.profile-active-icon, .profile-config-icon) {
+  border-color: var(--line-soft);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .profile-create-inline {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
+body[data-theme] .profile-page :is(.profile-active-copy h2, .profile-config-main strong) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .profile-page :is(.profile-active-actions, .profile-config-actions) {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+body[data-theme] .profile-page .profile-more > summary {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+body[data-theme] .profile-page .profile-more-menu {
+  width: min(220px, calc(100vw - 64px));
+}
+
+body[data-theme] :is(.profile-edit-dialog, .server-edit-dialog, .import-dialog) textarea {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel-2);
+  resize: vertical;
+}
+
+body[data-theme] :is(.profile-edit-dialog, .server-edit-dialog) .form-row {
+  min-width: 0;
+}
+
+/* Import choices are independent form sections, rather than touching labels. */
+body[data-theme] .import-dialog > .settings-check + .settings-check,
+body[data-theme] .import-dialog > .subscription-auth-fields + .settings-check,
+body[data-theme] .import-dialog > .import-action-bar + .preview-box {
+  margin-top: 14px;
+}
+
+body[data-theme] .import-dialog .import-action-bar .btn {
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+body[data-theme] .import-dialog .preview-box :is(strong, span, small) {
+  overflow-wrap: anywhere;
+}
+
+/* Installation status tiles were still using the original near-black fill. */
+body[data-theme] .install-wizard :is(.install-steps article, .install-summary article) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .install-wizard :is(.install-steps, .install-summary) {
+  margin: 0;
+}
+
+body[data-theme] .install-wizard > :is(.install-summary, .install-command-card, .nand-plan, .settings-warning, .toolbar, .core-result) {
+  margin-top: 16px;
+}
+
+body[data-theme] .install-wizard :is(.install-steps strong, .install-steps small, .install-summary strong, .install-summary span) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .install-wizard .install-steps article.ok > span {
+  border: 1px solid var(--status-good-border);
+  border-radius: 6px;
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+  font-weight: 600;
+}
+
+body[data-theme] .install-wizard .install-steps article.warn > span {
+  border: 1px solid var(--status-warn-border);
+  border-radius: 6px;
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+  font-weight: 600;
+}
+
+body[data-theme] .install-command-card .console {
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .core-dialog .core-install-options {
+  min-width: 0;
+}
+
+body[data-theme] .core-dialog .core-filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .core-dialog .core-filters > button {
+  min-width: 0;
+  white-space: normal;
+}
+
+/* A version label is a bare text node beside the dot; ellipsis must belong to
+   the button itself rather than to an anonymous flex item. */
+body[data-theme] .app-version-pill {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-theme] .app-version-pill > .dot {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+body[data-theme] .dashboard-server-option .server-option-pick > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .subscription-pools-panel > .server-list {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+body[data-theme] .subscription-pool-row {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto;
+}
+
+body[data-theme] .subscription-pool-row > *,
+body[data-theme] .subscription-pool-row :is(.subscription-candidates, .subscription-candidate-list, .subscription-candidate-tools, .subscription-candidate) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .subscription-pool-row > .server-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+body[data-theme] .subscription-pool-row .subscription-candidate-tools {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+body[data-theme] .subscription-candidate-tools > span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .subscription-candidate > :is(.btn, .server-chip) {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .setup-guide-rail .setup-stepper {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .setup-stepper :is(strong, small) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .dashboard-technical-panel > summary,
+body[data-theme] .dashboard-log-details > summary {
+  border-color: var(--line-soft);
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .core-dialog .core-dialog-release :is(strong, span) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .check-badge.ok,
+body[data-theme] .dashboard-server-option.active .check-badge.ok {
+  border: 1px solid var(--status-good-border);
+  border-radius: 4px;
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+/* Step symbols retain their meaning without the original saturated fills. */
+body[data-theme] .setup-page :is(.setup-readiness, .setup-result-list) article.ok > span {
+  border: 1px solid var(--status-good-border);
+  border-radius: 6px;
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .setup-page :is(.setup-readiness, .setup-result-list) article.warn > span {
+  border: 1px solid var(--status-warn-border);
+  border-radius: 6px;
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .setup-page :is(.setup-readiness, .setup-result-list) article.bad > span {
+  border: 1px solid var(--status-bad-border);
+  border-radius: 6px;
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+/* Keep the custom subscription checkbox readable against either palette. */
+body[data-theme] .subscription-candidate .subscription-candidate-pick {
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .subscription-candidate-pick span {
+  border-color: var(--muted);
+}
+
+body[data-theme] .subscription-candidate-pick input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--panel-2);
+}
+
+body[data-theme] .subscription-candidate-pick:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .subscription-pool-row .subscription-missing-active {
+  border-color: var(--status-warn-border);
+  border-radius: 6px;
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .subscription-missing-active strong {
+  color: var(--status-warn-text);
+}
+
+body[data-theme] .subscription-pool-row .subscription-fallback-progress {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+body[data-theme] .subscription-fallback-progress i {
+  background: var(--line-soft);
+}
+
+body[data-theme] .server-edit-dialog :is(.server-edit-layout, .server-edit-form, .server-edit-section, .server-edit-fields) {
+  min-width: 0;
+}
+
+@media (min-width: 861px) {
+  body[data-theme] .dashboard-server-option .server-option-pick {
+    grid-template-columns: 84px minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 0.9fr);
+  }
+}
+
+@media (max-width: 1200px) {
+  body[data-theme] .subscription-pool-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  body[data-theme] .subscription-pool-row > .server-identity {
+    grid-column: 1;
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  body[data-theme] .subscription-pool-row > .server-health {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  body[data-theme] .subscription-pool-row > .server-actions {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  body[data-theme] .subscription-pool-row .subscription-candidate {
+    grid-template-columns: 28px 24px minmax(0, 1fr) auto auto;
+    gap: 8px 10px;
+  }
+
+  body[data-theme] .subscription-candidate > .subscription-candidate-pick {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body[data-theme] .subscription-candidate > .subscription-candidate-flag {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body[data-theme] .subscription-candidate > .subscription-candidate-main {
+    grid-column: 3 / -1;
+    grid-row: 1;
+  }
+
+  body[data-theme] .subscription-candidate > .subscription-check-status {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  body[data-theme] .subscription-candidate > .subscription-candidate-check {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  body[data-theme] .subscription-candidate > :last-child {
+    grid-column: 5;
+    grid-row: 2;
+  }
+
+  body[data-theme] .setup-guide-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  body[data-theme] .dashboard-server-option .server-option-pick {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "main" "state" "side" "traffic";
+  }
+
+  body[data-theme] .dashboard-server-option .server-option-side {
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+  }
+
+  body[data-theme] .dashboard-server-option :is(.server-option-main strong, .server-option-main small, .server-option-tech, .server-check-pill) {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 1100px) {
+  body[data-theme] .local-proxy-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .profile-page :is(.profile-active-overview, .profile-config-card) {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  body[data-theme] .profile-page :is(.profile-active-actions, .profile-config-actions) {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  body[data-theme] .import-dialog .import-action-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  body[data-theme] :is(.settings-theme-grid, .profile-create-inline, .server-edit-layout) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .settings-theme-card {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  body[data-theme] .core-dialog .modal-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  body[data-theme] .core-dialog .modal-actions .btn.warning {
+    min-width: 0;
+    width: 100%;
+  }
+
+  body[data-theme] .install-wizard :is(.install-summary, .nand-plan-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] .subscription-pool-row .subscription-candidate-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .subscription-candidate-tools > span {
+    white-space: normal;
+  }
+
+  body[data-theme] .subscription-pool-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .subscription-pool-row > :is(.server-identity, .server-health, .server-actions) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  body[data-theme] .subscription-pool-row > .server-identity {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  body[data-theme] .subscription-pool-row > .server-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  body[data-theme] .subscription-pool-row .subscription-candidate {
+    grid-template-columns: 28px 24px minmax(0, 1fr);
+  }
+
+  body[data-theme] .subscription-candidate > :is(.subscription-check-status, .subscription-candidate-check, :last-child) {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  body[data-theme] .config-panel > .panel-title {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .config-panel > .panel-title > .split-actions {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  body[data-theme] .settings-section .segmented.settings-log-levels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .settings-section .settings-log-levels > button {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  body[data-theme] :is(.local-proxy-form, .install-wizard .install-steps, .import-dialog .import-action-bar) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .profile-page .profile-more-menu {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body[data-theme] .server-edit-dialog .server-edit-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,446 @@
+/* Network pages: neutral theme surfaces, explicit status tones and compact forms. */
+body[data-theme] :is(.compat-page, .compat-tab-panel, .amnezia-page, .amnezia-profiles-stack, .amnezia-system-stack, .server-mode-panel) {
+  min-width: 0;
+  gap: 16px;
+}
+
+body[data-theme] :is(.amnezia-page, .server-mode-panel) > :not(.modal-backdrop),
+body[data-theme] .compat-tab-panel > :not(.modal-backdrop) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+body[data-theme] :is(.compat-secondary-details, .compat-service-details, .compat-service-summary > div:first-child, .compat-safety, .compat-safety.ok, .compat-safety.warn, .compat-safety.danger, .intercept-details-body > .panel, .route-values-drawer) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.compat-secondary-details, .compat-service-details) > summary {
+  min-width: 0;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border-radius: 5px;
+}
+
+body[data-theme] :is(.compat-secondary-details, .compat-service-details)[open] > summary {
+  border-radius: 5px 5px 0 0;
+}
+
+body[data-theme] :is(.compat-secondary-body, .compat-service-details-body) {
+  min-width: 0;
+  gap: 16px;
+  padding: 16px;
+}
+
+body[data-theme] .server-mode-panel > .section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+body[data-theme] .server-mode-panel > .section-head > div:first-child {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+body[data-theme] .server-mode-panel > .section-head h2 {
+  margin: 0;
+}
+
+body[data-theme] .server-mode-panel > .section-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+body[data-theme] .server-mode-panel > .section-head .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body[data-theme] :is(.compat-safety.warn, .compat-next-step.warn) {
+  border-left: 3px solid var(--status-warn-border);
+}
+
+body[data-theme] :is(.compat-safety.danger, .compat-next-step.danger) {
+  border-left: 3px solid var(--status-bad-border);
+}
+
+body[data-theme] .compat-safety.ok {
+  border-left: 3px solid var(--status-good-border);
+}
+
+body[data-theme] .compat-step-number,
+body[data-theme] .server-mode-steps article > span {
+  border: 1px solid var(--line);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] :is(.route-values-drawer, .compat-page, .amnezia-page, .server-mode-panel) :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] :is(.compat-page, .amnezia-page, .server-mode-panel) :is(.btn, .icon-btn) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] :is(.compat-page, .amnezia-page, .server-mode-panel) .btn {
+  height: auto;
+  min-height: 36px;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: center;
+}
+
+body[data-theme] :is(.compat-page, .amnezia-page, .server-mode-panel) :is(.split-actions, .form-actions, .server-mode-row-actions) {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body[data-theme] .adguard-section .form-actions {
+  display: flex;
+  align-items: center;
+}
+
+body[data-theme] :is(.adguard-upstreams, .adguard-dns-clients, .adguard-filter-lists) {
+  gap: 12px;
+  padding: 16px;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] :is(.adguard-upstreams, .adguard-filter-lists) .table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+body[data-theme] :is(.adguard-upstream-table, .adguard-filter-lists .data-table) {
+  border-collapse: collapse;
+  color: var(--text);
+}
+
+body[data-theme] :is(.adguard-upstream-table, .adguard-filter-lists .data-table) th {
+  color: var(--soft);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] .adguard-upstream-table :is(th, td) {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+body[data-theme] :is(.adguard-upstream-table, .adguard-filter-lists .data-table) tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+body[data-theme] .b4-api-panel {
+  gap: 16px;
+}
+
+body[data-theme] .b4-api-panel > *,
+body[data-theme] .b4-set > *,
+body[data-theme] .server-mode-panel :is(.server-mode-grid > *, .server-mode-hero > *, .server-mode-access > *, .server-mode-inbound-head > *, .server-mode-client-head > *),
+body[data-theme] :is(.compat-secondary-body, .compat-flow-step, .amnezia-connection-grid, .amnezia-field-grid) > * {
+  min-width: 0;
+}
+
+body[data-theme] .b4-set {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+body[data-theme] .b4-api-panel > :is(.panel-title, p),
+body[data-theme] .b4-set > :is(.panel-title, p) {
+  margin: 0;
+}
+
+body[data-theme] .b4-api-panel > details {
+  padding: 0;
+}
+
+body[data-theme] .b4-api-panel > details > summary {
+  padding: 14px 16px;
+  color: var(--text);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] .b4-api-panel > details[open] > summary {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+body[data-theme] .b4-api-panel .b4-connection-fields {
+  margin: 0;
+  padding: 16px;
+}
+
+body[data-theme] .b4-api-panel > details > .split-actions {
+  padding: 0 16px 16px;
+}
+
+body[data-theme] :is(.server-mode-policy-chip, .server-mode-export-warnings span, .server-mode-awg-plan-issues span) {
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 4px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .server-mode-policy-chip.ok {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] :is(.server-mode-policy-chip.warn, .server-mode-export-warnings span, .server-mode-awg-plan-issues span) {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] :is(.server-mode-policy-chip.bad, .server-mode-policy-chip.danger, .server-mode-awg-plan-issues span.error) {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .server-mode-lan-grid {
+  border-left-color: var(--line);
+}
+
+body[data-theme] .intercept-details > summary b,
+body[data-theme] .intercept-details[open] > summary b {
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+body[data-theme] .intercept-choice-list :is(strong, em) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .intercept-details-body > :is(.panel, .firewall-steps) {
+  min-width: 0;
+}
+
+body[data-theme] .scenario-source-fields {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .scenario-source-fields > *,
+body[data-theme] .scenario-source-fields input,
+body[data-theme] .intercept-setting-card > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .intercept-setting-card .intercept-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-theme] .intercept-setting-card .intercept-segmented.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body[data-theme] .intercept-setting-card .intercept-segmented > button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .apply-state-grid > article,
+body[data-theme] .apply-state-grid > article > :is(span, strong, small) {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .scenario-source-badge.source-github,
+body[data-theme] .amnezia-interface-card code,
+body[data-theme] .server-mode-issues code,
+body[data-theme] .route-values-list code {
+  border-color: var(--line);
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .server-mode-issues code {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .amnezia-profile-meta > span:not(.ok):not(.warn):not(.bad):not(.danger),
+body[data-theme] .amnezia-dashboard-state > span:not(.ok):not(.warn):not(.bad):not(.danger) {
+  border-color: var(--line-soft);
+  color: var(--soft);
+  background: var(--panel-2);
+}
+
+body[data-theme] .amnezia-profiles-panel > .amnezia-connection-grid + .amnezia-usage-mode,
+body[data-theme] .amnezia-preflight-panel > .settings-warning.amnezia-warning + .amnezia-advanced-panel.compact {
+  margin-top: 16px;
+}
+
+body[data-theme] .intercept-start-panel > .intercept-summary-grid + .settings-warning.compact,
+body[data-theme] .intercept-start-panel > .settings-warning.compact + .settings-warning.compact,
+body[data-theme] .intercept-command-panel > .settings-warning.compact + pre.console,
+body[data-theme] .amnezia-preflight-panel > .amnezia-check-grid + .settings-warning.amnezia-warning {
+  margin-top: 12px;
+}
+
+@media (max-width: 1100px) {
+  body[data-theme] .scenario-source-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .scenario-source-actions {
+    justify-content: flex-start;
+  }
+
+  body[data-theme] .compat-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] .compat-next-step {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .compat-next-step-action {
+    justify-content: flex-start;
+  }
+
+  body[data-theme] .server-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  body[data-theme] :is(.compat-page, .amnezia-page, .server-mode-panel) .btn {
+    min-height: 40px;
+  }
+
+  body[data-theme] :is(.compat-flow, .server-mode-grid, .server-mode-basic-grid, .b4-domain-add, .b4-domain-check) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .scenario-source-fields,
+  body[data-theme] .firewall-device-list.leak-device-list,
+  body[data-theme] .intercept-setting-card .intercept-segmented,
+  body[data-theme] .intercept-setting-card .intercept-segmented.three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .firewall-device-list.leak-device-list {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .intercept-details-body .settings-field > .segmented.settings-log-levels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .intercept-details-body .settings-field > .segmented.settings-log-levels > button {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 40px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-theme] .amnezia-profiles-panel > .panel-title {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  body[data-theme] .amnezia-profiles-panel > .panel-title > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .amnezia-profiles-panel > .panel-title > .split-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  body[data-theme] :is(.compat-page, .amnezia-page) .compat-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] :is(.server-mode-panel, .compat-page, .amnezia-page) :is(.console, .mini-console, .code-textarea) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-theme] .b4-api-panel .b4-connection-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] :is(.b4-domain-add, .b4-domain-check) > .btn,
+  body[data-theme] .adguard-section > .form-actions > .btn {
+    width: 100%;
+  }
+
+  body[data-theme] :is(.compat-secondary-body, .compat-service-details-body, .adguard-upstreams, .adguard-dns-clients, .adguard-filter-lists, .b4-set) {
+    padding: 12px;
+  }
+
+  body[data-theme] .intercept-choice-list button {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  body[data-theme] .server-mode-firewall-rules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-theme] .adguard-filter-lists .table-scroll {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+}
