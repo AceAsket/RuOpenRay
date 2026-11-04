@@ -230,6 +230,216 @@ body[data-theme] .core-dialog .core-filters > button {
   white-space: normal;
 }
 
+/* The core updater is a complete themed dialog, including its nested controls. */
+body[data-theme] .core-dialog {
+  border-color: var(--line);
+  color: var(--text);
+  background: var(--panel);
+}
+
+body[data-theme] .core-dialog > .modal-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+body[data-theme] .core-dialog > .modal-head > div {
+  min-width: 0;
+}
+
+body[data-theme] .core-dialog > .modal-head > .icon-btn {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .core-dialog > .modal-head > .icon-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel);
+}
+
+body[data-theme] .core-dialog :is(.icon-btn, .core-dialog-release):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .core-dialog :is(.core-update-banner, .core-update-banner.has-update, .core-arch-strip, .core-install-card, .core-dialog-release, .core-result),
+body[data-theme] .settings-update-section :is(.settings-info-grid > article, .settings-check, .settings-check.active, .core-result) {
+  min-width: 0;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .core-dialog :is(.core-arch-strip > strong, .core-update-banner > strong, .core-install-card strong, .core-result > strong),
+body[data-theme] .settings-update-section :is(.settings-info-grid strong, .settings-check strong, .core-result > strong) {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+body[data-theme] .core-dialog :is(.core-arch-strip > span, .core-update-banner > span, .core-install-options > p, .core-install-options > small, .core-install-card span, .core-result > span),
+body[data-theme] .settings-update-section :is(.settings-info-grid span, .settings-info-grid small, .settings-check em, .core-result > span) {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+body[data-theme] .core-dialog .core-arch-strip > span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .core-dialog .core-update-toolbar {
+  flex-wrap: wrap;
+}
+
+body[data-theme] .core-dialog .core-update-toolbar .form-error {
+  color: var(--status-bad-text);
+}
+
+body[data-theme] .core-dialog .core-dialog-release.is-pre {
+  border-left: 3px solid var(--status-warn-border);
+}
+
+body[data-theme] .core-dialog .core-dialog-release.active {
+  border-color: var(--line);
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+body[data-theme] .core-dialog .core-dialog-release:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+body[data-theme] .core-dialog .core-release-missing {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+body[data-theme] .core-dialog .core-install-options > .toggle-row {
+  min-width: 0;
+  height: auto;
+  padding: 10px 12px;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--soft);
+  background: var(--panel-2);
+  align-items: start;
+}
+
+body[data-theme] .core-dialog .core-install-options > .toggle-row > span {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .core-dialog #coreBackup,
+body[data-theme] .settings-update-section #appBackup {
+  appearance: auto;
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  max-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  box-shadow: none;
+}
+
+body[data-theme] .core-dialog .core-install-options > .toggle-row:has(input:disabled) {
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+body[data-theme] .core-dialog #coreBackup:focus-visible,
+body[data-theme] .settings-update-section #appBackup:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+body[data-theme] .settings-update-section > label {
+  display: grid;
+  gap: 8px;
+  color: var(--soft);
+  font-size: 13px;
+}
+
+body[data-theme] .settings-update-section .settings-maintenance {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-theme] .settings-update-section .settings-check {
+  align-items: start;
+}
+
+body[data-theme] .settings-update-section .settings-check :is(span, strong) {
+  margin-top: 0;
+}
+
+body[data-theme] :is(.core-dialog, .settings-update-section) .core-result pre {
+  min-width: 0;
+  max-width: 100%;
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  body[data-theme] .core-dialog :is(.core-update-banner, .core-arch-strip, .core-install-card) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  body[data-theme] .core-dialog > .modal-head span,
+  body[data-theme] .core-dialog :is(.core-update-banner, .core-install-card) > * {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-theme] .core-dialog .core-dialog-release {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  body[data-theme] .core-dialog .core-release-missing {
+    justify-self: start;
+  }
+}
+
 /* A version label is a bare text node beside the dot; ellipsis must belong to
    the button itself rather than to an anonymous flex item. */
 body[data-theme] .app-version-pill {

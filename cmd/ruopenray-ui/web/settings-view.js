@@ -297,7 +297,7 @@ function settingsPanel() {
       ? 'установленная версия'
       : '';
   const appUpdateSection = `
-    <section class="panel settings-section">
+    <section class="panel settings-section settings-update-section">
       <div class="panel-title">
         <div><h2>Обновление RuOpenRay UI</h2><span>Панель может обновить собственный бинарник из релизов GitHub с учетом архитектуры роутера.</span></div>
       </div>

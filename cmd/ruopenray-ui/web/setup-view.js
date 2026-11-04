@@ -765,7 +765,20 @@ function coreUpdateDialog() {
   const info = coreUpdateInfo();
   const missing = !state.status?.core?.available;
   const selectedInstalled = !missing && state.selectedCoreVersion && info.current === state.selectedCoreVersion;
-  const canInstallSelected = Boolean(!missing && state.selectedCoreVersion && !selectedInstalled);
+  const selectedRelease = state.coreReleases.find((release) => release.tag === state.selectedCoreVersion);
+  const canInstallSelected = Boolean(!missing && selectedRelease?.assetUrl && !selectedInstalled);
+  const bannerTitle = missing ? 'Xray не установлен'
+    : state.coreReleaseChecking ? 'Проверяю обновления Xray'
+      : state.coreReleasesError ? 'Не удалось проверить обновления'
+        : !info.target ? 'Нет доступного релиза для сравнения'
+          : !info.current ? 'Текущая версия Xray не определена'
+            : info.hasUpdate ? 'Есть обновление' : info.channel === 'stable' ? 'Стабильная версия актуальна' : 'Версия канала актуальна';
+  const bannerDetail = missing ? 'Сначала установите пакет xray-core через мастер OpenWrt. Он подготовит сервис и зависимости. После этого можно выбрать версию GitHub.'
+    : state.coreReleaseChecking ? 'Загружаю список релизов Xray.'
+      : state.coreReleasesError ? 'Повторите проверку списка релизов.'
+        : info.target ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${info.target.tag} · ${releaseDate(info.target)}`
+          : state.coreReleases.length ? 'Для этого канала или архитектуры нет подходящей сборки.'
+            : 'Нажмите «Проверить обновления», чтобы загрузить список релизов.';
   return `
     <div class="modal-backdrop" data-action="closeCoreDialog">
       <section class="modal core-dialog" role="dialog" aria-modal="true" aria-labelledby="coreDialogTitle" data-modal>
@@ -778,8 +791,8 @@ function coreUpdateDialog() {
         </div>
         ${modalNoticeView(state, escapeHtml, 'core')}
         <div class="core-update-banner ${info.hasUpdate ? 'has-update' : ''}">
-          <strong>${missing ? 'Xray не установлен' : info.hasUpdate ? 'Есть обновление' : 'Актуальная стабильная версия уже установлена'}</strong>
-          <span>${missing ? 'Сначала установите пакет xray-core через мастер OpenWrt. Он подготовит сервис и зависимости. После этого можно выбрать версию GitHub.' : info.target ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}` : 'Релизы пока не загружены'}</span>
+          <strong>${bannerTitle}</strong>
+          <span>${escapeHtml(bannerDetail)}</span>
         </div>
         <div class="core-arch-strip">
           <strong>Архитектура</strong>
@@ -800,10 +813,10 @@ function coreUpdateDialog() {
           ${[
             ['stable', 'Stable'],
             ['pre', 'Pre-release']
-          ].map(([value, label]) => `<button type="button" class="${state.coreReleaseFilter === value ? 'active' : ''}" data-core-filter="${value}">${label}</button>`).join('')}
+          ].map(([value, label]) => `<button type="button" class="${state.coreReleaseFilter === value ? 'active' : ''}" data-core-filter="${value}" ${state.coreUpdating ? 'disabled' : ''}>${label}</button>`).join('')}
         </div>
         <div class="core-dialog-list">
-          ${visibleReleases.map((release) => `<button type="button" class="core-dialog-release ${state.selectedCoreVersion === release.tag ? 'active' : ''} ${release.prerelease ? 'is-pre' : ''}" data-core-version="${escapeHtml(release.tag)}" ${release.assetUrl ? '' : 'disabled'}>
+          ${visibleReleases.map((release) => `<button type="button" class="core-dialog-release ${state.selectedCoreVersion === release.tag ? 'active' : ''} ${release.prerelease ? 'is-pre' : ''}" data-core-version="${escapeHtml(release.tag)}" ${state.coreUpdating || !release.assetUrl ? 'disabled' : ''}>
             <div>
               <strong>${escapeHtml(release.tag)}</strong>
               <span>${escapeHtml(release.name || release.tag)} · ${releaseDate(release)}</span>
@@ -816,7 +829,7 @@ function coreUpdateDialog() {
           <div class="core-install-options">
             <p class="muted">Pre-release версии могут быть нестабильными. После установки RuOpenRay перезапустит Xray.</p>
             <label class="toggle-row">
-              <input id="coreBackup" type="checkbox" ${state.coreBackup ? 'checked' : ''} />
+              <input id="coreBackup" type="checkbox" ${state.coreBackup ? 'checked' : ''} ${state.coreUpdating ? 'disabled' : ''} />
               <span>Хранить резервную копию Xray после обновления</span>
             </label>
             <small class="muted">Временная копия для отката создаётся всегда и занимает место примерно как бинарник Xray. Этот флажок оставляет её после успешной проверки.</small>
