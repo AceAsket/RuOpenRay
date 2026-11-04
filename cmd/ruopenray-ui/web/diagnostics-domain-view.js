@@ -1,4 +1,5 @@
 import { proxyDisplayName, proxyOptionLabel } from './proxy-label.js';
+import { outboundHost } from './server-location.js';
 
 export function createDiagnosticsDomainView(deps) {
   const {
@@ -49,6 +50,11 @@ export function createDiagnosticsDomainView(deps) {
     xrayStatsPanel,
     xrayStatsTotals,
   } = deps;
+
+function proxyName(tag) {
+  const outbound = proxyOutbounds().find((item) => item?.tag === tag);
+  return proxyDisplayName(outboundHost(outbound) || tag, state.serverMeta?.[tag]);
+}
 
 function domainMonitorStatusItems() {
   const monitor = (typeof currentDomainMonitor === 'function' ? currentDomainMonitor() : state.domainMonitor) || {};
@@ -201,7 +207,7 @@ function diagnosticsDomainView() {
         ${logRows.length ? logRows.map((item) => `<article class="diagnostic-row">
           <div>
             <strong>${escapeHtml(item.host)}</strong>
-            <span>${item.devices.size || 'нет'} устройств · ${[...item.protocols].join('/') || 'protocol ?'} · ${[...item.outbound].join(', ') || 'направление ?'}</span>
+            <span>${item.devices.size || 'нет'} устройств · ${[...item.protocols].join('/') || 'protocol ?'} · ${escapeHtml([...item.outbound].map(proxyName).join(', ') || 'направление ?')}</span>
           </div>
           <em>${item.hits} событий</em>
           <button class="btn secondary" data-domain-to-route="${escapeHtml(item.host)}">В правило</button>
@@ -230,9 +236,9 @@ function domainMonitorFilterBar() {
   ];
   return `
     <div class="domain-monitor-filters" role="group" aria-label="Фильтр событий монитора">
-      ${filters.map(([value, label, count]) => `<button type="button" class="${state.domainMonitorFilter === value ? 'active' : ''}" data-domain-filter="${value}">
-        <span>${label}</span>
-        <strong>${Number(count || 0).toLocaleString('ru-RU')}</strong>
+      ${filters.map(([value, label, count]) => `<button type="button" class="${state.domainMonitorFilter === value ? 'active' : ''}" data-domain-filter="${value}" aria-pressed="${state.domainMonitorFilter === value}">
+        <span class="domain-monitor-filter-label">${label}</span>
+        <strong class="domain-monitor-filter-count">${Number(count || 0).toLocaleString('ru-RU')}</strong>
       </button>`).join('')}
     </div>
   `;
@@ -250,7 +256,7 @@ function domainMonitorMetaChips(item = {}) {
   const protocols = domainMonitorProtocols(item);
   if (protocols.length) chips.push(...protocols.slice(0, 3));
   const outbounds = Array.isArray(item.outbounds) ? item.outbounds : [item.outbound].filter(Boolean);
-  if (outbounds.length) chips.push(...outbounds.slice(0, 2));
+  if (outbounds.length) chips.push(...outbounds.slice(0, 2).map(proxyName));
   if (item.destinationPort) chips.push(`:${item.destinationPort}`);
   return chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join('');
 }
@@ -321,13 +327,13 @@ function domainProbeDetailText(result) {
   if (!result) return '';
   if (result.ok === false) return result.stderr || result.error || 'не удалось проверить';
   const checks = result.checks || {};
-  const proxyName = proxyDisplayName(result.tag || 'proxy', state.serverMeta?.[result.tag]);
+  const name = proxyName(result.tag || 'proxy');
   return [
     domainProbeLine(checks.ping, 'ping с роутера').replace(/<[^>]+>/g, ''),
     domainProbeLine(checks.tcpDirect, 'tcp напрямую').replace(/<[^>]+>/g, ''),
-    domainProbeLine(checks.tcpProxy, `tcp через ${proxyName}`).replace(/<[^>]+>/g, ''),
+    domainProbeLine(checks.tcpProxy, `tcp через ${name}`).replace(/<[^>]+>/g, ''),
     domainProbeLine(checks.httpDirect || result.direct, 'http напрямую').replace(/<[^>]+>/g, ''),
-    domainProbeLine(checks.httpProxy || result.proxy, `http через ${proxyName}`).replace(/<[^>]+>/g, ''),
+    domainProbeLine(checks.httpProxy || result.proxy, `http через ${name}`).replace(/<[^>]+>/g, ''),
     result.verdict?.detail || ''
   ].filter(Boolean).join(' · ');
 }
@@ -356,14 +362,14 @@ function domainProbeTargetSelectHtml() {
       const address = outboundAddress(item);
       const check = checkForTag(tag);
       const status = check ? checkLabel(check) : 'не проверялся';
-      const name = proxyOptionLabel(item, state.serverMeta?.[tag] || {});
+      const name = proxyOptionLabel(item, { ...state.serverMeta?.[tag], label: proxyName(tag) });
       const label = [name, status, address, statusIcon(check)].filter(Boolean).join(' · ');
       return `<option value="${escapeHtml(tag)}" ${tag === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
   return `<label class="domain-probe-target">
     <span>Проверять через</span>
     <select id="domainProbeTag">
-      ${proxies || `<option value="">${escapeHtml(proxyDisplayName(activeProxyTag() || 'proxy', state.serverMeta?.[activeProxyTag()]))}</option>`}
+      ${proxies || `<option value="">${escapeHtml(proxyName(activeProxyTag() || 'proxy'))}</option>`}
     </select>
   </label>`;
 }
@@ -400,14 +406,14 @@ function domainProbeStatusHtml(host, { compact = false } = {}) {
   }
   const code = result.verdict?.code || '';
   const checks = result.checks || {};
-  const proxyName = proxyDisplayName(result.tag || 'proxy', state.serverMeta?.[result.tag]);
+  const name = proxyName(result.tag || 'proxy');
   return `<div class="domain-probe ${escapeHtml(code)}">
     <strong>${escapeHtml(result.verdict?.label || 'проверено')}</strong>
     ${domainProbeLine(checks.ping, 'ping с роутера')}
     ${domainProbeLine(checks.tcpDirect, 'tcp напрямую')}
-    ${domainProbeLine(checks.tcpProxy, `tcp через ${proxyName}`)}
+    ${domainProbeLine(checks.tcpProxy, `tcp через ${name}`)}
     ${domainProbeLine(checks.httpDirect || result.direct, 'http напрямую')}
-    ${domainProbeLine(checks.httpProxy || result.proxy, `http через ${proxyName}`)}
+    ${domainProbeLine(checks.httpProxy || result.proxy, `http через ${name}`)}
     <small>${escapeHtml(result.verdict?.detail || '')}</small>
     <button class="btn secondary compact" data-domain-probe="${escapeHtml(host)}">Повторить</button>
   </div>`;
@@ -456,7 +462,7 @@ function domainMonitorFlowText(item = {}) {
   const outbound = item.outbound || sample.outbound || (Array.isArray(item.outbounds) ? item.outbounds.find(Boolean) : '');
   if (source.includes('dnsmasq')) return 'DNS: устройство -> dnsmasq';
   if (source.includes('xray-dns')) return 'DNS: Xray -> dns-out';
-  if (outbound) return `${protocols || 'TCP'} -> ${outbound}`;
+  if (outbound) return `${protocols || 'TCP'} -> ${proxyName(outbound)}`;
   return `${protocols || 'TCP'} -> Xray`;
 }
 
@@ -526,7 +532,7 @@ function domainMonitorRowsHtml(monitored, fallbackRows, rows) {
   const domainHtml = monitored.length ? monitored.slice(0, 80).map((item) => domainMonitorItemHtml(item)).join('') : fallbackRows.length && state.domainMonitorFilter === 'all' ? fallbackRows.map((item) => `<article class="diagnostic-row">
     <div>
       <strong>${escapeHtml(item.host)}</strong>
-      <span>${item.devices.size || 'нет'} устройств · ${[...item.protocols].join('/') || 'protocol ?'} · ${[...item.outbound].join(', ') || 'направление ?'}</span>
+      <span>${item.devices.size || 'нет'} устройств · ${[...item.protocols].join('/') || 'protocol ?'} · ${escapeHtml([...item.outbound].map(proxyName).join(', ') || 'направление ?')}</span>
     </div>
     <em>${item.hits} событий</em>
     <button class="btn secondary" data-domain-to-route="${escapeHtml(item.host)}">В правило</button>

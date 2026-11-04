@@ -1,4 +1,21 @@
 import { ensureKnownDohBootstrapHosts } from './dns-bootstrap.js';
+import { isServiceOutbound } from './outbound-tags.js';
+
+export function setupSelectionSignature(state) {
+  const normalize = (value) => {
+    if (Array.isArray(value)) return value.map(normalize);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalize(value[key])]));
+  };
+  let draft = state.jsonDraft || state.config;
+  try { draft = JSON.parse(draft); } catch {}
+  const firewallKeys = ['firewallRouterMode', 'firewallBypassMode', 'firewallDeviceMode', 'firewallSelectedDevices',
+    'firewallKillSwitchDeviceMode', 'firewallKillSwitchSelectedDevices', 'firewallPortMode', 'firewallPorts',
+    'firewallBlockQuic', 'firewallDnsIntercept', 'firewallKillSwitchEnabled', 'firewallKillSwitchTargets', 'firewallKillSwitchDomainMode'];
+  return JSON.stringify(normalize({ config: state.config, draft, activeServerTag: state.activeServerTag,
+    fallbackMode: state.setupFallbackMode, dnsMode: state.setupLanDnsMode, dnsUpstream: state.setupLanDnsUpstream,
+    restartDnsmasq: state.setupRestartDnsmasq, firewall: Object.fromEntries(firewallKeys.map((key) => [key, state[key]])) }));
+}
 
 export function createSetupModel({
   state,
@@ -147,11 +164,11 @@ export function createSetupModel({
     return ['10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/3', '::1/128', 'fc00::/7', 'fe80::/10'];
   }
 
-  function isPrivateBypassRule(rule, ips, domains, sources, inbound) {
+  function isPrivateBypassRule(rule, ips, domains, sources, inbound, transparentTag) {
     const allowed = new Set(privateBypassCidrs());
     allowed.add('geoip:private');
     return rule?.outboundTag === 'direct' &&
-      inbound.includes('transparent_ipv4') &&
+      inbound.includes(transparentTag) &&
       ips.length > 0 &&
       !domains.length &&
       !sources.length &&
@@ -206,23 +223,35 @@ export function createSetupModel({
   }
 
   function firstProxyOutboundTag(config) {
-    const systemTags = new Set(['direct', 'block', 'dns-out']);
-    const systemProtocols = new Set(['freedom', 'blackhole', 'dns']);
     const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
     for (const outbound of outbounds) {
       const tag = String(outbound?.tag || '').trim();
-      const protocol = String(outbound?.protocol || '').trim();
-      if (!tag || systemTags.has(tag) || systemProtocols.has(protocol)) continue;
+      if (!tag || isServiceOutbound(outbound)) continue;
       return tag;
     }
     return '';
   }
 
+  function transparentInboundTag(config) {
+    const inbounds = Array.isArray(config?.inbounds) ? config.inbounds : [];
+    return inbounds.find((item) => item?.tag === 'transparent_ipv4' || item?.streamSettings?.sockopt?.tproxy)?.tag || 'transparent_ipv4';
+  }
+
+  function selectedProxyOutboundTag(config) {
+    const outbounds = Array.isArray(config?.outbounds) ? config.outbounds : [];
+    const tags = new Set(outbounds.filter((outbound) => !isServiceOutbound(outbound)).map((outbound) => outbound.tag).filter(Boolean));
+    const current = transparentCatchAllRoute(config).target;
+    if (tags.has(current)) return current;
+    if (tags.has(state.activeServerTag)) return state.activeServerTag;
+    return firstProxyOutboundTag(config);
+  }
+
   function transparentCatchAllRoute(config) {
     const rules = Array.isArray(config?.routing?.rules) ? config.routing.rules : [];
+    const transparentTag = transparentInboundTag(config);
     for (const rule of rules) {
       const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
-      if (!inbound.includes('transparent_ipv4')) continue;
+      if (!inbound.includes(transparentTag)) continue;
       const hasTargets = ['domain', 'ip', 'source'].some((key) => Array.isArray(rule?.[key]) && rule[key].length);
       if (hasTargets) continue;
       const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
@@ -241,21 +270,21 @@ export function createSetupModel({
     return target && proxyTags.has(target) ? 'proxy' : 'direct';
   }
 
-  function isSetupManagedRule(rule, bootstrapDomains = []) {
+  function isSetupManagedRule(rule, bootstrapDomains = [], transparentTag = transparentInboundTag(state.config)) {
     const inbound = Array.isArray(rule?.inboundTag) ? rule.inboundTag : [];
     const ips = Array.isArray(rule?.ip) ? rule.ip : [];
     const domains = Array.isArray(rule?.domain) ? rule.domain : [];
     const sources = Array.isArray(rule?.source) ? rule.source : [];
     const network = String(rule?.network || '').replace(/\s+/g, '').toLowerCase();
     const port = String(rule?.port || '').trim();
-    const transparentCatchAll = inbound.includes('transparent_ipv4') &&
+    const transparentCatchAll = inbound.includes(transparentTag) &&
       !ips.length &&
       !domains.length &&
       !sources.length &&
       (!network || network === 'tcp,udp' || network === 'udp,tcp') &&
       (!port || port === '0-65535');
     if (transparentCatchAll) return true;
-    if (isPrivateBypassRule(rule, ips, domains, sources, inbound)) return true;
+    if (isPrivateBypassRule(rule, ips, domains, sources, inbound, transparentTag)) return true;
     if (rule?.outboundTag === 'dns-out' && inbound.includes('ruopenray_dns_in')) return true;
     if (rule?.outboundTag === 'dns-out' && String(rule?.port || '') === '53') return true;
     if (rule?.outboundTag === 'direct' && domains.length && domains.every((item) => bootstrapDomains.includes(item))) return true;
@@ -267,21 +296,22 @@ export function createSetupModel({
     config.routing = config.routing && typeof config.routing === 'object' ? config.routing : {};
     const rules = Array.isArray(config.routing.rules) ? config.routing.rules : [];
     const bootstrapDomains = serverBootstrapDomains(config);
-    const defaultProxyTag = firstProxyOutboundTag(config);
+    const defaultProxyTag = selectedProxyOutboundTag(config);
+    const transparentTag = transparentInboundTag(config);
     const managedRules = [
-      { type: 'field', outboundTag: 'direct', inboundTag: ['transparent_ipv4'], ip: privateBypassCidrs() },
+      { type: 'field', outboundTag: 'direct', inboundTag: [transparentTag], ip: privateBypassCidrs() },
       ...(bootstrapDomains.length ? [{ type: 'field', outboundTag: 'direct', domain: bootstrapDomains }] : []),
       { type: 'field', inboundTag: ['ruopenray_dns_in'], outboundTag: 'dns-out' },
       { type: 'field', outboundTag: 'dns-out', port: '53' }
     ];
     const fallbackTag = state.setupFallbackMode === 'proxy' ? defaultProxyTag : 'direct';
     const catchAllRules = fallbackTag
-      ? [{ type: 'field', inboundTag: ['transparent_ipv4'], outboundTag: fallbackTag, network: 'tcp,udp' }]
+      ? [{ type: 'field', inboundTag: [transparentTag], outboundTag: fallbackTag, network: 'tcp,udp' }]
       : [];
     const seen = new Set();
     const keptRules = [];
     for (const rule of rules) {
-      if (isSetupManagedRule(rule, bootstrapDomains)) continue;
+      if (isSetupManagedRule(rule, bootstrapDomains, transparentTag)) continue;
       const signature = setupRuleSignature(rule);
       if (seen.has(signature)) continue;
       seen.add(signature);
@@ -314,6 +344,7 @@ export function createSetupModel({
         streamSettings: { sockopt: { tproxy: sockoptMode } }
       });
     } else {
+      if (!transparentInbound.tag) transparentInbound.tag = 'transparent_ipv4';
       transparentInbound.settings = transparentInbound.settings && typeof transparentInbound.settings === 'object' ? transparentInbound.settings : {};
       transparentInbound.settings.network = transparentNetwork;
       transparentInbound.settings.followRedirect = true;

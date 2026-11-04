@@ -1,6 +1,7 @@
 import { interfaceIcon } from './navigation-view.js';
 import { proxyDisplayName } from './proxy-label.js';
 import { applyOperationProgressView } from './apply-progress-view.js';
+import { isServiceOutbound } from './outbound-tags.js';
 
 export function createDashboardView(deps) {
   const {
@@ -515,9 +516,17 @@ function xrayStatsShare(item, outbounds, field) {
   return Math.max(0, Math.min(100, Math.round((numberValue(item?.[field]) / total) * 100)));
 }
 
-function xrayActiveGraph(active) {
+function xrayActiveGraph(active, displayName = '') {
   if (!active) return '';
   const outbound = xrayStatsOutboundConfig(active.tag);
+  const meta = state.serverMeta?.[active.tag] || {};
+  const name = outbound && !isServiceOutbound(outbound)
+    ? dashboardServerDisplayName(outbound)
+    : proxyDisplayName(active.tag, meta);
+  const address = outboundAddress(outbound);
+  const useAddress = !String(meta.label || '').trim() && name === proxyDisplayName(active.tag)
+    && address && !isServiceOutbound(outbound);
+  const label = displayName || (useAddress ? address : name);
   const samples = state.xrayTrafficHistory.filter((item) => item.tag === active.tag);
   const fallback = [{ downRate: numberValue(active.downRate), upRate: numberValue(active.upRate) }];
   const series = samples.length ? samples : fallback;
@@ -528,7 +537,7 @@ function xrayActiveGraph(active) {
     <article class="xray-active-graph">
       <div>
         <span>Активный сервер</span>
-        <strong>${escapeHtml(proxyDisplayName(active.tag, state.serverMeta?.[active.tag]))}</strong>
+        <strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong>
         <small>${escapeHtml(outboundAddress(outbound))}</small>
         <small>${escapeHtml(byteRate(active.downRate))} прием · ${escapeHtml(byteRate(active.upRate))} отдача</small>
       </div>
@@ -548,6 +557,15 @@ function xrayStatsPanel(stats = {}) {
   const outbounds = Array.isArray(stats.outbounds) ? stats.outbounds : [];
   const active = xrayActiveStats(stats);
   const totals = xrayStatsTotals(stats);
+  const serverName = (tag) => {
+    const outbound = xrayStatsOutboundConfig(tag);
+    const meta = state.serverMeta?.[tag] || {};
+    if (!outbound || isServiceOutbound(outbound)) return proxyDisplayName(tag || 'outbound', meta);
+    const name = dashboardServerDisplayName(outbound);
+    const address = outboundAddress(outbound);
+    return !String(meta.label || '').trim() && name === proxyDisplayName(tag) && address ? address : name;
+  };
+  const activeName = active?.tag ? serverName(active.tag) : 'не выбран';
   const warning = stats.ok === false ? `<p class="settings-warning compact"><strong>Xray API</strong><span>${escapeHtml(stats.stderr || 'Не удалось прочитать статистику Xray')}</span></p>` : '';
   if (!enabled) {
     return `
@@ -595,7 +613,7 @@ function xrayStatsPanel(stats = {}) {
         </article>
         <article>
           <span>Активный сервер</span>
-          <strong>${escapeHtml(proxyDisplayName(active?.tag || 'не выбран', state.serverMeta?.[active?.tag]))}</strong>
+          <strong title="${escapeHtml(activeName)}">${escapeHtml(activeName)}</strong>
           <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'нет данных')}</small>
         </article>
       </div>
@@ -609,14 +627,15 @@ function xrayStatsPanel(stats = {}) {
           </article>`;
         }).join('')}
       </div>
-      ${xrayActiveGraph(active)}
+      ${xrayActiveGraph(active, activeName)}
       <div class="xray-outbound-list">
         ${outbounds.length ? outbounds.map((item) => {
           const outbound = xrayStatsOutboundConfig(item.tag);
           const share = xrayStatsShare(item, outbounds, 'downlink');
+          const name = serverName(item.tag);
           return `<article class="${active?.tag === item.tag ? 'active' : ''}">
           <div>
-            <strong>${escapeHtml(proxyDisplayName(item.tag || 'outbound', state.serverMeta?.[item.tag]))}</strong>
+            <strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
             <span>${escapeHtml(outboundAddress(outbound))}</span>
             <small>${escapeHtml(item.protocol || item.kind || 'xray')} · ${escapeHtml(item.kind || 'proxy')}</small>
             <i class="xray-traffic-bar"><em style="width:${share}%"></em></i>

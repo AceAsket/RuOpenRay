@@ -1899,6 +1899,7 @@ function setupStepGate(step) {
     }
   }
   if (step === 'scenarios') {
+    if (!byKey.get('core')?.ok) return notice('bad', 'Сначала установите Xray', 'Вернитесь к подключению и установите Xray перед запуском.');
     if (proxyCount < 1) return notice('bad', 'Нет подключения', 'Вернитесь назад и добавьте сервер или подписку.');
     if (state.setupFallbackMode !== 'proxy' && readiness.proxyRuleCount < 1) {
       return notice('bad', 'Выберите, что направлять', 'Добавьте готовый сценарий, своё правило или выберите режим «Весь интернет».');

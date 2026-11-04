@@ -1,3 +1,5 @@
+import { setupSelectionSignature } from './setup-model.js';
+
 export function createSetupActions({
   state,
   request,
@@ -92,12 +94,12 @@ export function createSetupActions({
     }
     state.setupApplying = true;
     state.setupStepNotice = null;
-    state.setupResult = { ok: true, steps: [] };
+    state.setupResult = { ok: false, phase: 'running', steps: [] };
     render();
     const steps = [];
     const pushStep = (ok, title, detail = '') => {
       steps.push({ ok, title, detail });
-      state.setupResult = { ok: steps.every((step) => step.ok), steps };
+      state.setupResult = { ok: false, phase: 'running', steps };
       render();
     };
     try {
@@ -106,6 +108,7 @@ export function createSetupActions({
 
       prepareSetupDraft({ message: false, persist: false });
       const config = JSON.parse(state.jsonDraft);
+      const signature = setupSelectionSignature(state);
       const test = await request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) });
       pushStep(Boolean(test.ok), 'Проверка настроек', test.stdout || test.stderr || '');
       if (!test.ok) throw new Error(test.stderr || 'Конфигурация Xray не прошла проверку');
@@ -153,9 +156,9 @@ export function createSetupActions({
 
       state.message = 'Активный режим RuOpenRay включен';
       await refresh({ renderAfter: false });
-      state.setupResult = { ok: true, steps };
+      state.setupResult = { ok: true, phase: 'complete', signature, steps };
     } catch (error) {
-      state.setupResult = { ok: false, steps, error: error.message };
+      state.setupResult = { ok: false, phase: 'error', steps, error: error.message };
       state.message = error.message;
     } finally {
       state.setupApplying = false;
@@ -171,12 +174,13 @@ export function createSetupActions({
       return;
     }
     state.setupRollbacking = true;
-    state.setupRollbackResult = { ok: true, steps: [] };
+    state.setupResult = null;
+    state.setupRollbackResult = { ok: false, phase: 'running', steps: [] };
     render();
     const steps = [];
     const pushStep = (ok, title, detail = '') => {
       steps.push({ ok, title, detail });
-      state.setupRollbackResult = { ok: steps.every((step) => step.ok), steps };
+      state.setupRollbackResult = { ok: false, phase: 'running', steps };
       render();
     };
     try {
@@ -205,9 +209,9 @@ export function createSetupActions({
       clearSetupSnapshot();
       state.message = 'Откат мастера выполнен';
       await refresh({ renderAfter: false });
-      state.setupRollbackResult = { ok: true, steps };
+      state.setupRollbackResult = { ok: true, phase: 'complete', steps };
     } catch (error) {
-      state.setupRollbackResult = { ok: false, steps, error: error.message };
+      state.setupRollbackResult = { ok: false, phase: 'error', steps, error: error.message };
       state.message = error.message;
     } finally {
       state.setupRollbacking = false;

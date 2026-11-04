@@ -1,4 +1,5 @@
 import { proxyDisplayName, proxyOptionLabel } from './proxy-label.js';
+import { outboundHost } from './server-location.js';
 
 export function createDiagnosticsTrafficView(deps) {
   const {
@@ -44,6 +45,11 @@ export function createDiagnosticsTrafficView(deps) {
     xrayStatsTotals,
   } = deps;
 
+function proxyName(tag) {
+  const outbound = proxyOutbounds().find((item) => item?.tag === tag);
+  return proxyDisplayName(outboundHost(outbound) || tag, state.serverMeta?.[tag]);
+}
+
 function diagnosticsTrafficView() {
   const system = state.status?.system || {};
   const traffic = system.traffic || {};
@@ -51,13 +57,14 @@ function diagnosticsTrafficView() {
   const xrayStats = state.status?.xrayStats || {};
   const totals = xrayStatsTotals(xrayStats);
   const active = xrayActiveStats(xrayStats);
+  const activeName = active?.tag ? proxyName(active.tag) : xrayStats.enabled === true ? 'ожидаем данные' : 'статистика выключена';
   const totalConnections = conntrack.ok ? conntrack.total : ((system.tcp?.total || 0) + (conntrack.udp || 0));
   return `
     <section class="traffic-overview-panel">
       <article class="traffic-overview-main">
         <span>Активный сервер Xray</span>
-        <strong>${escapeHtml(proxyDisplayName(active?.tag || 'статистика выключена', state.serverMeta?.[active?.tag]))}</strong>
-        <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : 'включите статистику Xray, чтобы видеть трафик по серверам')}</small>
+        <strong title="${escapeHtml(activeName)}">${escapeHtml(activeName)}</strong>
+        <small>${escapeHtml(active ? `прием ${byteRate(active.downRate)} · отдача ${byteRate(active.upRate)}` : xrayStats.enabled === true ? 'счетчики появятся после первого трафика' : 'включите статистику Xray, чтобы видеть трафик по серверам')}</small>
       </article>
       <article>
         <span>Через proxy</span>
@@ -124,7 +131,7 @@ function clientTrafficTestView(embedded = false) {
       </div>
       ${result ? `<div class="setup-result ${result.ok ? 'ok' : 'bad'}">
         <strong>${result.ok ? 'Трафик идет через цепочку' : 'Рост счетчиков не найден'}</strong>
-        <span>nft +${byteSize(result.nftDelta)} · Xray stats +${byteSize(result.statsDelta)}${result.statsEnabled ? '' : ' · учет Xray stats выключен'}${result.activeTag ? ` · активный proxy: ${escapeHtml(proxyDisplayName(result.activeTag, state.serverMeta?.[result.activeTag]))}` : ''}</span>
+        <span>nft +${byteSize(result.nftDelta)} · Xray stats +${byteSize(result.statsDelta)}${result.statsEnabled ? '' : ' · учет Xray stats выключен'}${result.activeTag ? ` · активный proxy: ${escapeHtml(proxyName(result.activeTag))}` : ''}</span>
       </div>` : '<p class="muted">Для проверки нужен реальный LAN-клиент. Запрос с самого роутера может идти другим путем и не доказывает работу перехвата.</p>'}
     </section>
   `;
@@ -203,7 +210,7 @@ function dpiProxyOptions() {
     const tag = String(outbound?.tag || '');
     if (!tag) return;
     const address = outboundAddress(outbound);
-    const name = proxyOptionLabel(outbound, state.serverMeta?.[tag] || {});
+    const name = proxyOptionLabel(outbound, { ...state.serverMeta?.[tag], label: proxyName(tag) });
     const label = address && address !== tag ? `${name} · ${address}` : name;
     options.push(`<option value="${escapeHtml(tag)}" ${selected === tag ? 'selected' : ''}>${escapeHtml(label)}</option>`);
   });
@@ -241,7 +248,7 @@ function diagnosticsDpiView() {
           <strong>${escapeHtml(verdict.label || 'готово')}</strong>
           <small>${escapeHtml(verdict.detail || '')}</small>
         </div>
-        <code>${escapeHtml(result.tag ? `proxy: ${proxyDisplayName(result.tag, state.serverMeta?.[result.tag])}` : 'proxy не выбран')}</code>
+        <code>${escapeHtml(result.tag ? `proxy: ${proxyName(result.tag)}` : 'proxy не выбран')}</code>
       </div>` : result ? `<div class="setup-result bad"><strong>DPI-проверка не выполнена</strong><span>${escapeHtml(result.stderr || result.error || 'неизвестная ошибка')}</span></div>` : '<p class="muted">Введите домен или URL и нажмите проверку. Для HTTPS отдельно проверяются TLS 1.2 и TLS 1.3.</p>'}
       <div class="dpi-dns-grid">
         ${dpiCheckCard('UDP/QUIC 443', checks.udp443)}

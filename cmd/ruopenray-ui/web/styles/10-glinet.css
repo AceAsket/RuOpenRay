@@ -1623,6 +1623,13 @@ body[data-theme] .service-mode-stop:hover:not(:disabled) {
   }
 }
 
+body[data-theme] .domain-monitor-item.dns .domain-monitor-kind {
+  border-color: var(--status-warn-border);
+  border-radius: 4px;
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
 /* Keep the connection overview compact while retaining its status and actions. */
 .panel.connection-overview {
   padding: 14px 18px;
@@ -4194,6 +4201,323 @@ body[data-theme] .page-result-notice .notice-details-body > pre {
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+/* Filled traffic counters use the same compact surfaces as the rest of the panel. */
+body[data-theme] .xray-stats-panel {
+  min-width: 0;
+  gap: 12px;
+  padding: 16px;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+body[data-theme] :is(.xray-total-grid > article, .xray-group-grid > article, .xray-active-graph, .xray-outbound-list > article, .xray-outbound-list > article.active, .traffic-overview-panel > article, .traffic-overview-panel > .traffic-overview-main) {
+  min-width: 0;
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .traffic-overview-panel {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+body[data-theme] .traffic-overview-panel > article {
+  min-height: 84px;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+body[data-theme] .traffic-overview-panel strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] .traffic-overview-panel :is(strong, span, small) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .xray-stats-panel > .panel-title {
+  margin-bottom: 0;
+}
+
+body[data-theme] .xray-stats-panel > .panel-title h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+body[data-theme] .xray-stats-meta {
+  min-width: 0;
+  gap: 6px;
+}
+
+body[data-theme] .xray-stats-meta > span {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 7px;
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel-2);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .xray-stats-panel > .settings-warning {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+body[data-theme] :is(.xray-total-grid, .xray-group-grid) {
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+body[data-theme] :is(.xray-total-grid, .xray-group-grid) > article {
+  min-height: 76px;
+  align-content: start;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+body[data-theme] :is(.xray-total-grid, .xray-group-grid) strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] :is(.xray-total-grid, .xray-group-grid, .xray-active-graph, .xray-outbound-list) :is(strong, b, span, small) {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] :is(.xray-total-grid, .xray-group-grid, .xray-active-graph, .xray-outbound-list) :is(span, small) {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+body[data-theme] .xray-active-graph {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+body[data-theme] .xray-active-graph > div {
+  min-width: 0;
+  gap: 4px;
+}
+
+body[data-theme] .xray-active-graph strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] .xray-active-graph > svg {
+  width: 100%;
+  min-width: 0;
+  height: 64px;
+  min-height: 64px;
+  align-self: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+body[data-theme] .xray-active-graph .traffic-grid {
+  stroke: var(--line);
+}
+
+body[data-theme] .xray-outbound-list {
+  min-width: 0;
+  gap: 6px;
+}
+
+body[data-theme] .xray-outbound-list > article {
+  grid-template-columns: minmax(0, 1.6fr) minmax(96px, 0.7fr) minmax(96px, 0.7fr);
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+body[data-theme] .xray-outbound-list > article.active {
+  border-color: var(--accent);
+  border-left: 3px solid var(--accent);
+}
+
+body[data-theme] .xray-outbound-list :is(strong, b) {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+body[data-theme] .xray-stats-panel .xray-traffic-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+body[data-theme] .xray-stats-panel .xray-traffic-bar > em {
+  background: var(--accent);
+}
+
+/* Event kinds are navigation controls with inline counts, rather than large cards. */
+body[data-theme] .domain-monitor-filters {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+body[data-theme] .domain-monitor-filters > button {
+  min-width: 0;
+  max-width: 100%;
+  height: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+body[data-theme] .domain-monitor-filters > button > .domain-monitor-filter-label {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+body[data-theme] .domain-monitor-filters > button > .domain-monitor-filter-count {
+  min-width: 20px;
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+body[data-theme] .domain-monitor-filters > button:not(.active):hover {
+  border-color: var(--line);
+  color: var(--accent-strong);
+  background: var(--panel);
+}
+
+body[data-theme] .domain-monitor-filters > button.active {
+  border-color: transparent;
+  color: #fff;
+  background: #087f9a;
+}
+
+body[data-theme="dark"] .domain-monitor-filters > button.active {
+  border-color: #3fc1d9;
+  color: #e5fbff;
+  background: #176c81;
+}
+
+body[data-theme] .domain-monitor-filters > button.active > .domain-monitor-filter-count {
+  border-color: transparent;
+  color: var(--accent-strong);
+  background: var(--panel);
+}
+
+@media (max-width: 1100px) {
+  body[data-theme] .traffic-overview-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  body[data-theme] .xray-stats-panel {
+    padding: 12px;
+  }
+
+  body[data-theme] .xray-stats-panel > .panel-title,
+  body[data-theme] .xray-stats-panel > .panel-title > .split-actions {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  body[data-theme] .xray-stats-panel > .panel-title > .split-actions > .btn {
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 140px;
+    white-space: normal;
+  }
+
+  body[data-theme] :is(.xray-total-grid, .xray-group-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-theme] :is(.xray-total-grid, .xray-group-grid) > article:last-child {
+    grid-column: 1 / -1;
+    min-height: 64px;
+  }
+
+  body[data-theme] .xray-active-graph {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  body[data-theme] .xray-outbound-list > article {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    padding: 10px;
+  }
+
+  body[data-theme] .xray-outbound-list > article > div:first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Real apply stages replace the duplicate indeterminate apply indicators. */

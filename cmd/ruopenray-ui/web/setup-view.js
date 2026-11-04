@@ -1,6 +1,7 @@
 import { isServiceOutbound } from './outbound-tags.js';
 import { proxyDisplayName } from './proxy-label.js';
 import { modalNoticeView } from './notice-view.js';
+import { setupSelectionSignature } from './setup-model.js';
 
 export const setupWizardStepIds = Object.freeze(['connection', 'scenarios', 'launch']);
 
@@ -159,14 +160,14 @@ function githubInstallCommand(withXray = false) {
   return `${env.join(' ')} sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"`;
 }
 
-function setupWizardSteps(readiness) {
+function setupWizardSteps(readiness, result) {
   const xrayReady = Boolean(state.status?.core?.available);
   const proxyReady = proxyOutboundsSafe().length > 0;
   const scenariosReady = state.setupFallbackMode === 'proxy' || readiness.proxyRuleCount > 0;
   return [
     { id: setupWizardStepIds[0], title: 'Подключение', detail: 'Сервер или подписка', ok: xrayReady && proxyReady },
-    { id: setupWizardStepIds[1], title: 'Сценарии', detail: 'Что направлять', ok: proxyReady && scenariosReady },
-    { id: setupWizardStepIds[2], title: 'Запуск', detail: 'Всё остальное — автоматически', ok: Boolean(state.setupResult?.ok) }
+    { id: setupWizardStepIds[1], title: 'Сценарии', detail: 'Что направлять', ok: xrayReady && proxyReady && scenariosReady },
+    { id: setupWizardStepIds[2], title: 'Запуск', detail: 'Всё остальное — автоматически', ok: result?.phase === 'complete' && result.ok }
   ];
 }
 
@@ -188,7 +189,7 @@ function setupWizardStepper(steps) {
   return `<nav class="setup-stepper setup-step-rail" aria-label="Шаги мастера">
     ${steps.map((step, index) => {
       const stateClass = index === activeIndex ? 'active' : step.ok ? 'ok' : index < activeIndex ? 'warn' : 'pending';
-      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}"${index === activeIndex ? ' aria-current="step"' : ''}>
+      return `<button type="button" class="${stateClass}" data-setup-step="${escapeHtml(step.id)}"${index === activeIndex ? ' aria-current="step"' : ''}${state.setupApplying || state.setupRollbacking ? ' disabled' : ''}>
         <span>${step.ok ? '✓' : index + 1}</span>
         <strong>${escapeHtml(step.title)}</strong>
         <small>${escapeHtml(step.detail || '')}</small>
@@ -206,13 +207,13 @@ function setupWizardSummary(steps) {
   return `<section class="setup-step-summary">
     <div class="setup-step-summary-head">
       <div>
-      <span>${current?.ok ? 'Готово' : 'Осталось настроить'}</span>
+      <span>${current?.ok ? 'Шаг настроен' : state.setupApplying ? 'Выполняется запуск' : 'Осталось настроить'}</span>
       <strong>${escapeHtml(current?.title || 'Подключение')}</strong>
       </div>
-      <em>${done}/${steps.length}</em>
+      <em aria-label="Готово этапов: ${done} из ${steps.length}">${done}/${steps.length}</em>
     </div>
     <div class="setup-progress" aria-hidden="true"><span style="width: ${progress}%"></span></div>
-    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово ${done} из ${steps.length}.` : 'Можно запускать RuOpenRay.'}</p>
+    <p>Шаг ${activeIndex + 1} из ${steps.length}. ${left ? `Готово этапов: ${done} из ${steps.length}.` : 'Мастер завершён.'}</p>
   </section>`;
 }
 
@@ -494,12 +495,15 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
   }
   const allTraffic = state.setupFallbackMode === 'proxy';
   const launchReady = readiness.canApply && (allTraffic || readiness.proxyRuleCount > 0);
-  return `<section class="setup-step-panel setup-simple-step setup-launch-step ${result?.ok ? 'complete' : ''}">
+  const complete = result?.phase === 'complete' && result.ok;
+  const coreReady = Boolean(state.status?.core?.available);
+  return `<section class="setup-step-panel setup-simple-step setup-launch-step ${complete ? 'complete' : ''}">
     <div class="setup-simple-hero">
       <span class="setup-kicker">Шаг 3</span>
-      <h3>${result?.ok ? 'RuOpenRay запущен' : launchReady ? 'Всё готово к запуску' : 'Осталось завершить настройку'}</h3>
-      <p>${result?.ok ? 'Подключение работает, а настройки сохранены на роутере.' : launchReady ? 'Проверьте итог. После запуска мастер сам настроит Xray, DNS и перехват локальной сети.' : 'Вернитесь к предыдущим шагам: добавьте подключение и выберите сценарии либо весь интернет.'}</p>
+      <h3>${state.setupApplying ? 'Запускаю RuOpenRay' : complete ? 'RuOpenRay запущен' : launchReady ? 'Всё готово к запуску' : 'Осталось завершить настройку'}</h3>
+      <p>${state.setupApplying ? 'Проверяю настройки и последовательно включаю подключение, DNS и перехват.' : complete ? 'Подключение работает, а настройки сохранены на роутере.' : launchReady ? 'Проверьте итог. После запуска мастер сам настроит Xray, DNS и перехват локальной сети.' : 'Вернитесь к предыдущим шагам: добавьте подключение и выберите сценарии либо весь интернет.'}</p>
     </div>
+    ${coreReady ? '' : '<section class="setup-callout warn"><div><strong>Сначала установите Xray</strong><span>Без ядра Xray мастер не сможет запустить подключение.</span></div><button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button></section>'}
     <div class="setup-launch-summary">
       <article><span>Подключение</span><strong>${proxyCount ? 'Готово' : 'Не выбрано'}</strong><small>${proxyCount} доступных выходов</small></article>
       <article><span>Через подключение</span><strong>${allTraffic ? 'Весь интернет' : `${readiness.proxyRuleCount} правил`}</strong><small>${allTraffic ? 'Кроме локальной сети и служебных адресов' : 'Остальной интернет — напрямую'}</small></article>
@@ -552,8 +556,11 @@ function setupSnapshotBlock(snapshot) {
 }
 
 function resultBlock(result, rollback) {
-  return `${result ? `<div class="setup-result ${result.ok ? 'ok' : 'bad'}">
-    <strong>${result.ok ? 'Готово' : 'Нужна проверка'}</strong>
+  const running = result?.phase === 'running';
+  const stale = result?.phase === 'stale';
+  const rollbackRunning = rollback?.phase === 'running';
+  return `${result ? `<div class="setup-result ${running || stale ? '' : result.ok ? 'ok' : 'bad'}">
+    <strong>${running ? 'Выполняю запуск' : stale ? 'Текущие настройки требуют проверки' : result.ok ? 'Готово' : 'Нужна проверка'}</strong>
     ${result.error ? `<span>${escapeHtml(result.error)}</span>` : ''}
     <div class="setup-result-list">
       ${(result.steps || []).map((step) => `<article class="${step.ok ? 'ok' : 'bad'}">
@@ -562,8 +569,8 @@ function resultBlock(result, rollback) {
       </article>`).join('')}
     </div>
   </div>` : ''}
-  ${rollback ? `<div class="setup-result ${rollback.ok ? 'ok' : 'bad'}">
-    <strong>${rollback.ok ? 'Откат выполнен' : 'Откат требует внимания'}</strong>
+  ${rollback ? `<div class="setup-result ${rollbackRunning ? '' : rollback.ok ? 'ok' : 'bad'}">
+    <strong>${rollbackRunning ? 'Выполняю откат' : rollback.ok ? 'Откат выполнен' : 'Откат требует внимания'}</strong>
     ${rollback.error ? `<span>${escapeHtml(rollback.error)}</span>` : ''}
     <div class="setup-result-list">
       ${(rollback.steps || []).map((step) => `<article class="${step.ok ? 'ok' : 'bad'}">
@@ -604,18 +611,27 @@ function setupPage() {
     state.setupFallbackMode = readiness.defaultRouteTarget && proxyTags.has(readiness.defaultRouteTarget) ? 'proxy' : 'direct';
   }
   if (!setupWizardStepIds.includes(state.setupStep)) state.setupStep = setupWizardStepIds[0];
-  const result = state.setupResult;
+  const savedResult = state.setupResult;
+  const currentSuccess = savedResult?.phase === 'complete' && savedResult.ok
+    && !state.setupApplying && !state.setupRollbacking && readiness.canApply
+    && state.status?.service?.running === true
+    && readiness.items.some((item) => item.key === 'firewall' && item.ok)
+    && (state.setupLanDnsMode === 'keep' || (state.lanDnsStatus?.mode === state.setupLanDnsMode
+      && (state.setupLanDnsMode !== 'xray' || state.lanDnsStatus?.readiness?.ready)))
+    && savedResult.signature === setupSelectionSignature(state);
+  const result = savedResult?.phase === 'complete' && !currentSuccess
+    ? { ...savedResult, ok: false, phase: 'stale' } : savedResult;
   const rollback = state.setupRollbackResult;
   const snapshot = loadSetupSnapshot();
   const installPlan = state.installPlan;
   const diskFree = state.geoStatus?.disk?.free || state.status?.system?.disk?.free || installPlan?.disk?.free;
-  const steps = setupWizardSteps(readiness);
+  const steps = setupWizardSteps(readiness, result);
   const activeIndex = setupStepIndex(steps);
   const isLast = activeIndex >= steps.length - 1;
   const currentStep = steps[activeIndex] || steps[0];
   const primaryAction = isLast ? 'runSetupWizard' : 'setupStepNext';
   const launchReady = readiness.canApply && (state.setupFallbackMode === 'proxy' || readiness.proxyRuleCount > 0);
-  const primaryDisabled = state.setupApplying || (isLast && !launchReady);
+  const primaryDisabled = state.setupApplying || state.setupRollbacking || (isLast && !launchReady);
   return `
     <section class="setup-page">
       <div class="setup-page-head">
@@ -642,7 +658,7 @@ function setupPage() {
           ${setupStepNotice()}
           ${setupWizardStepBody(readiness, diskFree, snapshot, result, rollback)}
           <div class="setup-actions setup-step-actions">
-            <button class="btn secondary" type="button" data-action="setupStepBack" ${activeIndex <= 0 || state.setupApplying ? 'disabled' : ''}>Назад</button>
+            <button class="btn secondary" type="button" data-action="setupStepBack" ${activeIndex <= 0 || state.setupApplying || state.setupRollbacking ? 'disabled' : ''}>Назад</button>
             ${setupStepSecondaryAction(currentStep?.id)}
             <button class="btn warning" type="button" data-action="${primaryAction}" ${primaryDisabled ? 'disabled' : ''}>${setupStepPrimaryLabel(currentStep?.id, isLast)}</button>
           </div>
