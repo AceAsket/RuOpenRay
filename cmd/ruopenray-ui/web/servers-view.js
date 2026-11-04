@@ -1,6 +1,6 @@
 import { countryPickerView } from './server-location-view.js';
 import { modalNoticeView } from './notice-view.js';
-import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields } from './server-edit-model.js';
+import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, serverEditFields, serverFragmentCompatibility } from './server-edit-model.js';
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 import { proxyDisplayName } from './proxy-label.js';
@@ -329,10 +329,18 @@ function serverEditDialog() {
   const outbound = configOutbounds()[state.serverEditIndex] || {};
   const parsed = parseServerEditJson(state.serverEditJson || '{}');
   const editable = serverEditFields(parsed.outbound || outbound);
+  if (state.serverEditFragmentCustom && !editable.fragmentReadOnly && editable.fragmentSource !== 'none') editable.fragmentPreset = 'custom';
   const protocol = editable.protocol || 'vless';
   const streamSecurity = editable.security || 'none';
   const option = (value, label, selected = editable.protocol) => `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-  const fragmentPresetOption = (value, label) => `<option value="${escapeHtml(value)}" ${editable.fragmentPreset === value ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  const fragmentCompatibility = serverFragmentCompatibility(state.status?.core?.version);
+  const fragmentCustomEditable = editable.fragmentPreset === 'custom' && !editable.fragmentReadOnly && fragmentCompatibility.supported;
+  const fragmentHint = [
+    'Фрагментация задаётся в finalmask.tcp и применяется к TCP-соединению с прокси. Профили используют TLS ClientHello; для работы нужен Xray 26.3.27 или новее.',
+    editable.fragmentNotice,
+    !editable.fragmentReadOnly && fragmentCompatibility.notice
+  ].filter(Boolean).join(' ');
+  const fragmentPresetOption = (value, label) => `<option value="${escapeHtml(value)}" ${editable.fragmentPreset === value ? 'selected' : ''} ${value !== 'off' && !fragmentCompatibility.supported ? 'disabled' : ''}>${escapeHtml(label)}</option>`;
   const fingerprintOptions = browserFingerprintOptions.some((item) => item.value === editable.fingerprint)
     ? browserFingerprintOptions
     : [...browserFingerprintOptions, { value: editable.fingerprint, label: `Текущее: ${editable.fingerprint}` }];
@@ -408,25 +416,26 @@ function serverEditDialog() {
             </div>
             <div class="server-edit-section">
               <h3>Рукопожатие с прокси</h3>
-              <p class="server-edit-section-note">Фрагментация TLS ClientHello применяется к соединению Xray до proxy-сервера через sockopt.dialerProxy.</p>
+              <p id="serverEdit_fragmentHelp" class="server-edit-section-note">${escapeHtml(fragmentHint)}</p>
               <div class="server-edit-fields">
                 <div class="form-row">
                   <label for="serverEdit_fragmentPreset">Фрагментация</label>
-                  <select id="serverEdit_fragmentPreset" data-server-edit-field="fragmentPreset">
+                  <select id="serverEdit_fragmentPreset" data-server-edit-field="fragmentPreset" aria-describedby="serverEdit_fragmentHelp" ${editable.fragmentReadOnly ? 'disabled' : ''}>
+                    ${editable.fragmentReadOnly ? '<option value="unsupported" selected>Настроено в JSON</option>' : ''}
                     ${Object.entries(fragmentPresets).map(([value, preset]) => fragmentPresetOption(value, preset.label)).join('')}
                   </select>
                 </div>
-                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
+                <div class="form-row ${fragmentCustomEditable ? '' : 'muted-field'}">
                   <label for="serverEdit_fragmentPackets">Пакеты</label>
-                  <input id="serverEdit_fragmentPackets" data-server-edit-field="fragmentPackets" value="${escapeHtml(editable.fragmentPackets || 'tlshello')}" placeholder="tlshello, 1-2, 1-5" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                  <input id="serverEdit_fragmentPackets" data-server-edit-field="fragmentPackets" value="${escapeHtml(editable.fragmentPackets ?? '')}" placeholder="tlshello, 1-2; пусто — все" ${fragmentCustomEditable ? '' : 'disabled'} />
                 </div>
-                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
+                <div class="form-row ${fragmentCustomEditable ? '' : 'muted-field'}">
                   <label for="serverEdit_fragmentLength">Длина фрагмента</label>
-                  <input id="serverEdit_fragmentLength" data-server-edit-field="fragmentLength" value="${escapeHtml(editable.fragmentLength || '100-200')}" placeholder="100-200" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                  <input id="serverEdit_fragmentLength" data-server-edit-field="fragmentLength" value="${escapeHtml(editable.fragmentLength ?? '')}" placeholder="100-200" ${fragmentCustomEditable ? '' : 'disabled'} />
                 </div>
-                <div class="form-row ${editable.fragmentPreset === 'custom' ? '' : 'muted-field'}">
-                  <label for="serverEdit_fragmentInterval">Интервал, мс</label>
-                  <input id="serverEdit_fragmentInterval" data-server-edit-field="fragmentInterval" value="${escapeHtml(editable.fragmentInterval || '10-20')}" placeholder="10-20" ${editable.fragmentPreset === 'custom' ? '' : 'disabled'} />
+                <div class="form-row ${fragmentCustomEditable ? '' : 'muted-field'}">
+                  <label for="serverEdit_fragmentInterval">Задержка, мс</label>
+                  <input id="serverEdit_fragmentInterval" data-server-edit-field="fragmentInterval" value="${escapeHtml(editable.fragmentInterval ?? '')}" placeholder="10-20" ${fragmentCustomEditable ? '' : 'disabled'} />
                 </div>
               </div>
             </div>

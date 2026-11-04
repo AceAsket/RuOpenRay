@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	rproxy "github.com/AceAsket/RuOpenRay/internal/proxy"
 )
 
 func tlsStabilityError(err error, phase string) (string, string) {
@@ -129,26 +131,47 @@ func withoutTLSFragment(outbound map[string]any) (map[string]any, bool) {
 	stream := mapValue(clone["streamSettings"])
 	sockopt := mapValue(stream["sockopt"])
 	changed := false
-	if tag, ok := sockopt["dialerProxy"].(string); ok && strings.HasPrefix(tag, "ruopenray-fragment-") {
+	if _, generated := rproxy.FragmentOutboundFromTag(fragmentDialerProxy(clone)); generated {
 		delete(sockopt, "dialerProxy")
+		if len(sockopt) == 0 {
+			delete(stream, "sockopt")
+		}
 		changed = true
 	}
 	mask := mapValue(stream["finalmask"])
-	if items, ok := mask["tcp"]; ok {
+	if items, ok := mask["tcp"].([]any); ok {
 		kept := []any{}
-		for _, item := range anySlice(items) {
+		removed := false
+		for _, item := range items {
 			if mapValue(item)["type"] == "fragment" {
-				changed = true
+				removed = true
 			} else {
 				kept = append(kept, item)
 			}
 		}
-		mask["tcp"] = kept
+		if removed {
+			changed = true
+			if len(kept) == 0 {
+				delete(mask, "tcp")
+			} else {
+				mask["tcp"] = kept
+			}
+			if len(mask) == 0 {
+				delete(stream, "finalmask")
+			}
+		}
+	}
+	if changed && len(stream) == 0 {
+		delete(clone, "streamSettings")
 	}
 	return clone, changed
 }
 
-func (s *serverState) tlsStabilityOutbound(ctx context.Context, outbound map[string]any, task func(*url.URL) []map[string]any) []map[string]any {
+func (s *serverState) tlsStabilityOutbound(ctx context.Context, outbound map[string]any, all []any, task func(*url.URL) []map[string]any) []map[string]any {
+	outs, err := runtimeProbeOutbounds(outbound, all)
+	if err != nil {
+		return []map[string]any{{"ok": false, "code": "setup", "error": err.Error()}}
+	}
 	port, err := freeLocalPort()
 	if err != nil {
 		return []map[string]any{{"ok": false, "code": "setup", "error": "Нет свободного локального порта"}}
@@ -163,7 +186,7 @@ func (s *serverState) tlsStabilityOutbound(ctx context.Context, outbound map[str
 	}
 	defer os.Remove(file.Name())
 	config := map[string]any{"log": map[string]any{"loglevel": "warning"}, "inbounds": []any{map[string]any{
-		"tag": "tls-probe", "listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": false}}}, "outbounds": ensureFragmentOutbounds([]any{outbound})}
+		"tag": "tls-probe", "listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": map[string]any{"auth": "noauth", "udp": false}}}, "outbounds": outs}
 	err = json.NewEncoder(file).Encode(config)
 	closeErr := file.Close()
 	if err != nil || closeErr != nil {
@@ -262,7 +285,7 @@ func (s *serverState) tlsStabilityProbe(parent context.Context, payload map[stri
 			if outbound == nil {
 				results[index] = task(nil)
 			} else {
-				results[index] = s.tlsStabilityOutbound(ctx, outbound, task)
+				results[index] = s.tlsStabilityOutbound(ctx, outbound, anySlice(config["outbounds"]), task)
 				for _, row := range results[index] {
 					row["variant"] = name
 				}

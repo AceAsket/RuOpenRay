@@ -797,15 +797,17 @@ const fragmentEditCustomFields = serverEditFields(fragmentEditOutbound);
 fragmentEditOutbound = patchServerEditField(fragmentEditOutbound, 'fragmentPreset', 'off');
 const fragmentEditOffFields = serverEditFields(fragmentEditOutbound);
 const serverEditFragmentWorks = fragmentEditNormalFields.fragmentPreset === 'normal'
+  && fragmentEditNormalFields.fragmentSource === 'native'
   && fragmentEditNormalFields.fragmentLength === '100-200'
-  && fragmentEditCustomPresetFields.fragmentPreset === 'custom'
-  && fragmentEditCustomPresetFields.fragmentLength === '80-180'
+  && fragmentEditCustomPresetFields.fragmentPreset === 'normal'
+  && fragmentEditCustomPresetFields.fragmentLength === '100-200'
   && fragmentEditCustomFields.fragmentPreset === 'custom'
   && fragmentEditCustomFields.fragmentPackets === '1-2'
   && fragmentEditCustomFields.fragmentLength === '33-77'
   && fragmentEditCustomFields.fragmentInterval === '5-9'
   && fragmentEditOffFields.fragmentPreset === 'off'
-  && !fragmentEditOutbound.streamSettings?.sockopt?.dialerProxy;
+  && !fragmentEditOutbound.streamSettings?.sockopt?.dialerProxy
+  && !fragmentEditOutbound.streamSettings?.finalmask;
 
 const observatoryState = {
   config: {},

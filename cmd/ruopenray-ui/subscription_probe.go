@@ -116,8 +116,16 @@ func runSubscriptionProbes(targets []string, probe func(string) (int64, bool, er
 }
 
 func (s *serverState) subscriptionTrafficProbe(outbound map[string]any, preferred string, timeoutMs, attempts int) (int64, bool, []subscriptionProbeAttempt, error) {
+	all, err := s.isolatedProbeOutbounds(outbound)
+	if err != nil {
+		return 0, false, nil, err
+	}
+	return s.subscriptionTrafficProbeWithConfig(outbound, all, preferred, timeoutMs, attempts)
+}
+
+func (s *serverState) subscriptionTrafficProbeWithConfig(outbound map[string]any, all []any, preferred string, timeoutMs, attempts int) (int64, bool, []subscriptionProbeAttempt, error) {
 	return runSubscriptionProbes(subscriptionProbeTargets(preferred), func(target string) (int64, bool, error) {
-		return s.httpOutboundProbeStatus(outbound, target, timeoutMs, attempts, true)
+		return s.httpOutboundProbeStatusWithConfig(outbound, all, target, timeoutMs, attempts, true)
 	})
 }
 

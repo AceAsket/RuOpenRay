@@ -127,7 +127,8 @@ func (s *serverState) selectSubscriptionCandidate(w http.ResponseWriter, r *http
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[selected], pool.Tag, activeOutboundDialerProxy(asArray(cfg["outbounds"]), pool.Tag)))
+	outbounds := asArray(cfg["outbounds"])
+	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, cloneSubscriptionOutbound(pool.Candidates[selected], activeOutboundByTag(outbounds, pool.Tag), pool.Tag))
 	test := s.validateConfig(cfg)
 	if test["ok"] != true {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Xray отклонил конфигурацию выбранного сервера", "test": test})
@@ -181,6 +182,8 @@ type subscriptionCandidateCheckOptions struct {
 	robust    bool
 }
 
+type subscriptionCandidateProbe func(int, map[string]any, []any, subscriptionCandidateCheckOptions) map[string]any
+
 func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscriptionCandidateCheckOptions {
 	checkMode := strings.ToLower(firstNonEmpty(fmt.Sprint(payload["mode"]), "http"))
 	if checkMode != "endpoint" && checkMode != "http" {
@@ -217,7 +220,7 @@ func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscrip
 	}
 }
 
-func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[string]any, options subscriptionCandidateCheckOptions) map[string]any {
+func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[string]any, all []any, options subscriptionCandidateCheckOptions) map[string]any {
 	summary := rproxy.OutboundSummary(candidate)
 	result := map[string]any{
 		"index":     index,
@@ -269,7 +272,7 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 		if endpointErr != nil {
 			result["endpointError"] = endpointErr.Error()
 		}
-		latency, httpOK, probeResults, httpErr := s.subscriptionTrafficProbe(candidate, options.probeURL, options.timeoutMs, options.attempts)
+		latency, httpOK, probeResults, httpErr := s.subscriptionTrafficProbeWithConfig(candidate, all, options.probeURL, options.timeoutMs, options.attempts)
 		result["probeResults"] = probeResults
 		if httpErr != nil {
 			result["errorCode"] = subscriptionProbeCode(httpErr)
@@ -290,6 +293,10 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 }
 
 func (s *serverState) checkSubscriptionCandidate(w http.ResponseWriter, r *http.Request) {
+	s.checkSubscriptionCandidateWithProbe(w, r, s.checkSubscriptionCandidateResult)
+}
+
+func (s *serverState) checkSubscriptionCandidateWithProbe(w http.ResponseWriter, r *http.Request, probe subscriptionCandidateProbe) {
 	payload, _ := readJSON(w, r)
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	index := number(payload["index"], -1)
@@ -304,7 +311,14 @@ func (s *serverState) checkSubscriptionCandidate(w http.ResponseWriter, r *http.
 		writeJSON(w, 400, map[string]any{"ok": false, "error": "Сервер подписки не найден"})
 		return
 	}
-	result := s.checkSubscriptionCandidateResult(index, pool.Candidates[index], normalizeSubscriptionCandidateCheckOptions(payload))
+	cfg, err := s.readActiveConfig()
+	if err != nil && !os.IsNotExist(err) {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": "Не удалось прочитать активную конфигурацию"})
+		return
+	}
+	outbounds := asArray(cfg["outbounds"])
+	candidate := cloneSubscriptionOutbound(pool.Candidates[index], activeOutboundByTag(outbounds, pool.Tag), fmt.Sprint(pool.Candidates[index]["tag"]))
+	result := probe(index, candidate, outbounds, normalizeSubscriptionCandidateCheckOptions(payload))
 	saveError := ""
 	if err := s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result}); err != nil {
 		saveError = err.Error()
@@ -471,7 +485,7 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 			skipped++
 			continue
 		}
-		candidate := rproxy.CloneOutboundWithTagAndDialerProxy(pool.Candidates[pool.Active], pool.Tag, activeOutboundDialerProxy(outbounds, pool.Tag))
+		candidate := cloneSubscriptionOutbound(pool.Candidates[pool.Active], activeOutboundByTag(outbounds, pool.Tag), pool.Tag)
 		next := rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, candidate)
 		oldJSON, _ := json.Marshal(outbounds)
 		newJSON, _ := json.Marshal(next)
@@ -480,7 +494,7 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 			continue
 		}
 		if checkTraffic {
-			if _, ok, probes, probeErr := s.subscriptionTrafficProbe(candidate, "", 5000, 1); !ok {
+			if _, ok, probes, probeErr := s.subscriptionTrafficProbeWithConfig(candidate, outbounds, "", 5000, 1); !ok {
 				return map[string]any{"ok": false, "error": "Рабочая конфигурация сохранена. " + probeErr.Error(), "errorCode": subscriptionProbeCode(probeErr), "probeResults": probes}
 			}
 		}
@@ -516,14 +530,7 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 }
 
 func activeOutboundDialerProxy(outbounds []any, tag string) string {
-	for _, item := range outbounds {
-		outbound, ok := item.(map[string]any)
-		if !ok || fmt.Sprint(outbound["tag"]) != tag {
-			continue
-		}
-		return fragmentDialerProxy(outbound)
-	}
-	return ""
+	return fragmentDialerProxy(activeOutboundByTag(outbounds, tag))
 }
 
 func (s *serverState) refreshSubscriptionPool(w http.ResponseWriter, r *http.Request) {
@@ -640,6 +647,10 @@ func (s *serverState) subscriptionFallbackProgress(tag string) map[string]any {
 }
 
 func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Request) {
+	s.fallbackSubscriptionWithProbe(w, r, s.checkSubscriptionCandidateResult)
+}
+
+func (s *serverState) fallbackSubscriptionWithProbe(w http.ResponseWriter, r *http.Request, probe subscriptionCandidateProbe) {
 	payload, _ := readJSON(w, r)
 	payload["robust"] = true
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
@@ -655,6 +666,13 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	options := normalizeSubscriptionCandidateCheckOptions(payload)
+	cfg, err := s.readActiveConfig()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	outbounds := asArray(cfg["outbounds"])
+	current := activeOutboundByTag(outbounds, pool.Tag)
 
 	results := []map[string]any{}
 	selected := -1
@@ -669,14 +687,14 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 		default:
 		}
 		index := (pool.Active + step) % len(pool.Candidates)
-		candidate := pool.Candidates[index]
+		candidate := cloneSubscriptionOutbound(pool.Candidates[index], current, fmt.Sprint(pool.Candidates[index]["tag"]))
 		summary := rproxy.OutboundSummary(candidate)
 		s.setSubscriptionFallbackProgress(map[string]any{
 			"tag": tag, "total": len(pool.Candidates), "checked": len(results),
 			"currentStep": step, "currentIndex": index, "currentTag": summary["tag"],
 			"currentAddress": summary["address"], "currentPort": summary["port"],
 		})
-		result := s.checkSubscriptionCandidateResult(index, candidate, options)
+		result := probe(index, candidate, outbounds, options)
 		ok := result["ok"] == true
 		results = append(results, result)
 		_ = s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result})
@@ -700,12 +718,7 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	cfg, err := s.readActiveConfig()
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "results": results})
-		return
-	}
-	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(asArray(cfg["outbounds"]), pool.Tag, rproxy.CloneOutboundWithTag(pool.Candidates[selected], pool.Tag))
+	cfg["outbounds"] = rproxy.ReplaceOutboundByTag(outbounds, pool.Tag, cloneSubscriptionOutbound(pool.Candidates[selected], current, pool.Tag))
 	backup, _ := s.backupActive("subscription-fallback")
 	if err := s.writeActiveConfig(cfg); err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "results": results})

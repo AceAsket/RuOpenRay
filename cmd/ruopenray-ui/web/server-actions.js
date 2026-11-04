@@ -1,4 +1,4 @@
-import { parseServerEditJson, patchServerEditField, stringifyServerEditOutbound } from './server-edit-model.js';
+import { parseServerEditJson, patchServerEditField, serverFragmentCompatibility, stringifyServerEditOutbound, validateServerEditFragment } from './server-edit-model.js';
 import { inferredCountryForOutbound } from './server-location.js';
 import { proxyDisplayName } from './proxy-label.js';
 
@@ -114,6 +114,7 @@ export function createServerActions({
     state.serverEditCountry = state.serverMeta?.[outbound.tag]?.country || '';
     state.serverEditCountrySearch = '';
     state.serverEditError = '';
+    state.serverEditFragmentCustom = false;
     state.serverEditScrollTop = 0;
     render();
   }
@@ -125,6 +126,7 @@ export function createServerActions({
     state.serverEditCountry = '';
     state.serverEditCountrySearch = '';
     state.serverEditError = '';
+    state.serverEditFragmentCustom = false;
     state.serverEditScrollTop = 0;
     render();
   }
@@ -142,9 +144,20 @@ export function createServerActions({
       if (rerender) renderServerEdit({ preserveScroll: true });
       return;
     }
-    const outbound = patchServerEditField(parsed.outbound, field, value);
-    state.serverEditJson = stringifyServerEditOutbound(outbound);
-    state.serverEditError = '';
+    try {
+      if (['fragmentPreset', 'fragmentLength', 'fragmentInterval', 'fragmentPackets'].includes(field) && !(field === 'fragmentPreset' && value === 'off')) {
+        const compatibility = serverFragmentCompatibility(state.status?.core?.version);
+        if (!compatibility.supported) throw new Error(compatibility.notice);
+      }
+      const outbound = patchServerEditField(parsed.outbound, field, value);
+      state.serverEditJson = stringifyServerEditOutbound(outbound);
+      if (field === 'fragmentPreset') state.serverEditFragmentCustom = value === 'custom';
+      state.serverEditError = '';
+    } catch (error) {
+      state.serverEditError = error.message;
+      renderServerEdit({ preserveScroll: true });
+      return;
+    }
     if (rerender) renderServerEdit({ preserveScroll: true });
   }
 
@@ -198,6 +211,12 @@ export function createServerActions({
       return;
     }
     outbound = parsed.outbound;
+    const fragmentError = validateServerEditFragment(outbound);
+    if (fragmentError) {
+      state.serverEditError = fragmentError;
+      render();
+      return;
+    }
     const oldTag = String(current.tag || '').trim();
     const oldName = serverName(oldTag);
     const newTag = String(outbound.tag || '').trim();

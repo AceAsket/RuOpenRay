@@ -24,7 +24,19 @@ func (s *serverState) httpOutboundProbe(outbound map[string]any, probeURL string
 }
 
 func (s *serverState) httpOutboundProbeStatus(outbound map[string]any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
-	return s.httpOutboundProbeStatusWithConfig(outbound, nil, probeURL, timeoutMs, attempts, strict)
+	all, err := s.isolatedProbeOutbounds(outbound)
+	if err != nil {
+		return 0, false, err
+	}
+	return s.httpOutboundProbeStatusWithConfig(outbound, all, probeURL, timeoutMs, attempts, strict)
+}
+
+// Default diagnostics resolve the selected outbound's dependencies against the
+// active config. Callers with a captured config use runtimeProbeOutbounds
+// directly so their snapshot takes priority over later active-config changes.
+func (s *serverState) isolatedProbeOutbounds(outbound map[string]any) ([]any, error) {
+	cfg, _ := s.readActiveConfig()
+	return runtimeProbeOutbounds(outbound, asArray(cfg["outbounds"]))
 }
 
 func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any, all []any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
@@ -175,6 +187,10 @@ func (s *serverState) httpOutboundReadProbe(outbound map[string]any, probeURL st
 	if readLimit < 1 {
 		readLimit = dpiLargeReadBytes
 	}
+	outs, err := s.isolatedProbeOutbounds(outbound)
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
+	}
 	port, err := freeLocalPort()
 	if err != nil {
 		return dpiAnnotate("http", map[string]any{"ok": false, "targetBytes": readLimit, "error": err.Error()})
@@ -184,7 +200,7 @@ func (s *serverState) httpOutboundReadProbe(outbound map[string]any, probeURL st
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
 		}},
-		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+		"outbounds": outs,
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -273,6 +289,10 @@ func (s *serverState) withOutboundHTTPProbeClient(outbound map[string]any, timeo
 	if timeoutMs > 15000 {
 		timeoutMs = 15000
 	}
+	outs, err := s.isolatedProbeOutbounds(outbound)
+	if err != nil {
+		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
+	}
 	port, err := freeLocalPort()
 	if err != nil {
 		return dpiAnnotate("http", map[string]any{"ok": false, "error": err.Error()})
@@ -282,7 +302,7 @@ func (s *serverState) withOutboundHTTPProbeClient(outbound map[string]any, timeo
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
 		}},
-		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+		"outbounds": outs,
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -379,6 +399,10 @@ func newProbeHTTPRequest(rawURL string) (*http.Request, error) {
 }
 
 func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, targetPort string, timeoutMs int, attempts int) (int64, bool, error) {
+	outs, err := s.isolatedProbeOutbounds(outbound)
+	if err != nil {
+		return 0, false, err
+	}
 	port, err := freeLocalPort()
 	if err != nil {
 		return 0, false, err
@@ -388,7 +412,7 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 		"inbounds": []any{map[string]any{
 			"tag": "ruopenray-probe", "listen": "127.0.0.1", "port": port, "protocol": "http", "settings": map[string]any{},
 		}},
-		"outbounds": ensureFragmentOutbounds([]any{outbound}),
+		"outbounds": outs,
 	}
 	dir := filepath.Join(s.cfg.DataDir, "checks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

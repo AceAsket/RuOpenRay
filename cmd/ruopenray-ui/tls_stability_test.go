@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -108,5 +109,40 @@ func TestTLSStabilityFragmentVariantDoesNotMutateOriginal(t *testing.T) {
 	stream := mapValue(clone["streamSettings"])
 	if mapValue(stream["sockopt"])["dialerProxy"] != nil || mapValue(stream["sockopt"])["mark"] == nil || len(anySlice(mapValue(stream["finalmask"])["tcp"])) != 1 {
 		t.Fatal("variant removed unrelated socket settings or masks")
+	}
+}
+
+func TestTLSStabilityRemovesOnlyFragmentAndEmptyKnownContainers(t *testing.T) {
+	for _, tc := range []struct {
+		name, original, want string
+		changed              bool
+	}{
+		{"native only", `{"tag":"proxy","streamSettings":{"finalmask":{"tcp":[{"type":"fragment","settings":{"length":"100-200"}}]}}}`, `{"tag":"proxy"}`, true},
+		{"legacy only", `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"ruopenray-fragment-test"}}}`, `{"tag":"proxy"}`, true},
+		{"custom chain and other masks", `{"tag":"proxy","streamSettings":{"network":"tcp","sockopt":{"dialerProxy":"custom-hop","mark":128},"finalmask":{"tcp":[{"type":"fragment"},{"type":"custom","settings":{"x":1}},{"type":"fragment"}],"udp":[{"type":"noise"}],"future":{"x":2}}}}`, `{"tag":"proxy","streamSettings":{"network":"tcp","sockopt":{"dialerProxy":"custom-hop","mark":128},"finalmask":{"tcp":[{"type":"custom","settings":{"x":1}}],"udp":[{"type":"noise"}],"future":{"x":2}}}}`, true},
+		{"both with socket options", `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"ruopenray-fragment-test","mark":128},"finalmask":{"tcp":[{"type":"fragment"}],"udp":[{"type":"noise"}]}}}`, `{"tag":"proxy","streamSettings":{"sockopt":{"mark":128},"finalmask":{"udp":[{"type":"noise"}]}}}`, true},
+		{"custom only", `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"custom-hop"},"finalmask":{"tcp":[{"type":"custom"}]}}}`, `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"custom-hop"},"finalmask":{"tcp":[{"type":"custom"}]}}}`, false},
+		{"custom invalid reserved suffix", `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"ruopenray-fragment-!"},"finalmask":{"tcp":[{"type":"fragment"}],"udp":[{"type":"custom"}]}}}`, `{"tag":"proxy","streamSettings":{"sockopt":{"dialerProxy":"ruopenray-fragment-!"},"finalmask":{"udp":[{"type":"custom"}]}}}`, true},
+		{"unknown tcp shape", `{"tag":"proxy","streamSettings":{"finalmask":{"tcp":{"future":true}}}}`, `{"tag":"proxy","streamSettings":{"finalmask":{"tcp":{"future":true}}}}`, false},
+		{"existing empty containers", `{"tag":"proxy","streamSettings":{"sockopt":{},"finalmask":{"tcp":[]}}}`, `{"tag":"proxy","streamSettings":{"sockopt":{},"finalmask":{"tcp":[]}}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var original, want map[string]any
+			if err := json.Unmarshal([]byte(tc.original), &original); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal([]byte(tc.want), &want); err != nil {
+				t.Fatal(err)
+			}
+			before := transportJSON(original)
+			clone, changed := withoutTLSFragment(original)
+			if changed != tc.changed || transportJSON(clone) != transportJSON(want) {
+				t.Fatalf("variant=%s changed=%t, want %s changed=%t", transportJSON(clone), changed, transportJSON(want), tc.changed)
+			}
+			mapValue(clone["streamSettings"])["mutated-clone"] = true
+			if transportJSON(original) != before {
+				t.Fatal("diagnostic clone changed the active outbound")
+			}
+		})
 	}
 }
