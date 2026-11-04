@@ -7,7 +7,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/AceAsket/RuOpenRay.git
-PKG_SOURCE_VERSION:=979cbc9460f50617371dcbac15188bbd9dc88cff
+PKG_SOURCE_VERSION:=ac67420295fdc7984d39f7190c9871c0f2b97fd7
 # OpenWrt otherwise reuses name-version.tar.zst when only the Git ref changes.
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION)
 PKG_SOURCE:=$(PKG_SOURCE_SUBDIR).tar.zst
