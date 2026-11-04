@@ -1172,8 +1172,6 @@ body[data-theme="light"] .geo-presets code,
 body[data-theme="light"] .geo-source-list code,
 body[data-theme="light"] .geo-list-saved code,
 body[data-theme="light"] .geo-file-main code,
-body[data-theme="light"] .geo-audit-list code,
-body[data-theme="light"] .geo-audit-list .geo-audit-advice,
 body[data-theme="light"] .geo-warning,
 body[data-theme="light"] .geo-list-warning {
   color: #8a5a0d !important;

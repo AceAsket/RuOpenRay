@@ -4,9 +4,9 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-Версия ветки `dev` — [0.5.2](docs/releases/v0.5.2.md): новый интерфейс в стиле GL.iNet, светлая и тёмная темы, мобильная компоновка и более экономный опрос состояния роутера.
+Версия ветки `dev` — [0.5.3](docs/releases/v0.5.3.md): исправления логики интерфейса, безопасной установки и обновления, сохранение точки отката мастера и единое оформление DNS и Geo.
 
-Стабильная версия: `v0.4.0`. Предварительный релиз: [v0.5.1-rc5](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.1-rc5) — массовые действия с правилами, исправленные SVG-иконки и восстановление прерванных операций firewall, geo и обновления панели. [Приёмка и ограничения](docs/recovery-and-ui-acceptance-2026-10-29.md), [аудит и очередь работ](docs/reliability-implementation-plan.md).
+Стабильная версия: [v0.5.3](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.3). [Приёмка исправлений](docs/ui-install-update-fixes-2026-11-04.md), [аудит и очередь работ](docs/reliability-implementation-plan.md).
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 

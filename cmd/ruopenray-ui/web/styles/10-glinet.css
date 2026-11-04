@@ -3987,6 +3987,135 @@ body[data-theme] :is(.geo-nand-files > summary > span, .firewall-preflight-list 
   }
 }
 
+/* Geo Doctor rows and the native DAT picker use the same surfaces as settings. */
+body[data-theme] .geo-audit-list > article,
+body[data-theme] .geo-audit-list > article:is(.ok, .warn, .danger) {
+  border-color: var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: none;
+}
+
+body[data-theme] .geo-audit-list > article.danger,
+body[data-theme] .geo-doctor-grid > article.danger {
+  border-color: var(--status-bad-border);
+  background: var(--panel-2);
+}
+
+body[data-theme] .geo-audit-list > article > div {
+  min-width: 0;
+}
+
+body[data-theme] .geo-audit-kind,
+body[data-theme] .geo-audit-list > article > em {
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+body[data-theme] .geo-audit-list > article.ok > em {
+  border-color: var(--status-good-border);
+  color: var(--status-good-text);
+  background: var(--status-good-bg);
+}
+
+body[data-theme] .geo-audit-list > article.warn > em {
+  border-color: var(--status-warn-border);
+  color: var(--status-warn-text);
+  background: var(--status-warn-bg);
+}
+
+body[data-theme] .geo-audit-list > article.danger > em {
+  border-color: var(--status-bad-border);
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .geo-audit-list :is(small, code, .geo-audit-advice) {
+  color: var(--muted);
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+body[data-theme] .geo-audit-tech pre {
+  border-color: var(--line-soft);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel);
+}
+
+body[data-theme] .geo-upload-grid input[type="file"] {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 4px 6px;
+  border-color: var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+body[data-theme] .geo-upload-grid input[type="file"]::file-selector-button {
+  min-height: 30px;
+  margin-inline-end: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--soft);
+  background: var(--panel);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+body[data-theme] .geo-upload-grid input[type="file"]:hover:not(:disabled)::file-selector-button {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--panel-2);
+}
+
+body[data-theme] .geo-upload-grid input[type="file"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .geo-upload-grid input[type="file"]:disabled::file-selector-button {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  body[data-theme] .geo-audit-list > article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+  }
+
+  body[data-theme] .geo-audit-list > article > .geo-audit-kind {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  body[data-theme] .geo-audit-list > article > em {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  body[data-theme] .geo-audit-list > article > div {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Actual 320px audit: source rows, routing choices, geodata and live-log controls. */
 @media (max-width: 860px) {
   /* routing-view.js: scenario-source-list article has toggle, title, update, delete. */
