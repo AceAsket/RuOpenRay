@@ -401,8 +401,8 @@ function dnsServersSection(dns) {
             return `<article class="dns-server-row">
               <div class="dns-order-controls">
                 <span class="dns-order-number">${index + 1}</span>
-                <button class="icon-btn route-action-btn move-up" type="button" data-dns-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять DNS выше">↑</button>
-                <button class="icon-btn route-action-btn move-down" type="button" data-dns-move="${index}" data-direction="1" ${index >= dns.servers.length - 1 ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить DNS ниже">↓</button>
+                <button class="icon-btn dns-order-btn move-up" type="button" data-dns-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''} title="Поднять выше" aria-label="Поднять DNS выше"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 14 6-6 6 6" /></svg></button>
+                <button class="icon-btn dns-order-btn move-down" type="button" data-dns-move="${index}" data-direction="1" ${index >= dns.servers.length - 1 ? 'disabled' : ''} title="Опустить ниже" aria-label="Опустить DNS ниже"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 10 6 6 6-6" /></svg></button>
               </div>
               <div class="server-protocol ${doh ? 'doh' : ''}">${doh ? 'DoH' : 'DNS'}</div>
               <div class="server-main">

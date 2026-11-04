@@ -323,6 +323,7 @@ export function createXrayDraftActions({
     inbounds = upsertLocalProxyInbound(inbounds, http);
     next.inbounds = inbounds;
     syncConfig(next);
+    state.localProxyForm = null;
     const enabled = [socks, http].filter((item) => item.enabled).map((item) => `${item.protocol === 'socks' ? 'SOCKS5' : 'HTTP'} ${item.listen}:${item.port}`);
     state.message = enabled.length
       ? `Локальные прокси обновлены в черновике: ${enabled.join(', ')}. Проверьте конфигурацию и примените изменения.`

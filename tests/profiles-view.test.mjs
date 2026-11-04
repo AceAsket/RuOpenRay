@@ -42,7 +42,7 @@ test('Profiles show the active configuration and keep secondary actions compact'
   assert.match(html, /id="profileCreateName"/);
   assert.match(html, /data-action="createProfileFromCurrent"/);
   assert.match(html, /class="profile-config-card"/);
-  assert.match(html, /data-profile="work">Выбрать/);
+  assert.match(html, /data-profile="work"[^>]*>Применить профиль/);
   assert.match(html, /data-details-key="profile-more-work"/);
   assert.match(html, /data-details-key="profile-backups"/);
   assert.doesNotMatch(html, /class="table profile-table"/);
@@ -70,7 +70,7 @@ test('Creating a profile snapshots the current configuration without exposing JS
     refresh: async () => { refreshed = true; },
   });
   await actions.createProfileFromCurrent();
-  assert.deepEqual(payload, { name: 'home-copy' });
+  assert.deepEqual(payload, { name: 'home-copy', createOnly: true });
   assert.equal(state.profileCreateName, '');
   assert.equal(refreshed, true);
   assert.match(state.message, /home-copy/);

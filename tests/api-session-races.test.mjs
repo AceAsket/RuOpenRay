@@ -33,3 +33,11 @@ for (const method of ['request', 'text', 'upload']) {
     assert.equal(unauthorized, 1);
   });
 }
+
+test('API errors retain HTTP status so an unstarted operation can be distinguished from lost transport', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Выполняется другая операция' }), { status: 409, headers: { 'content-type': 'application/json' } });
+  const api = createApiClient();
+  await assert.rejects(api.request('/api/app/update', { method: 'POST' }), (error) => error.status === 409 && /другая операция/.test(error.message));
+});

@@ -27,6 +27,7 @@ type serverState struct {
 	cfg                appConfig
 	sessionsMu         sync.RWMutex
 	draftMu            sync.Mutex
+	setupSnapshotMu    sync.Mutex
 	geoStaging         bool
 	sessions           map[string]bool
 	sessionUntil       map[string]time.Time

@@ -141,6 +141,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	switch {
+	case path == "/setup/snapshot" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
+		s.setupSnapshotAPI(w, r)
 	case path == "/logout" && r.Method == http.MethodPost:
 		if err := s.revokeSession(requestSessionToken(r)); err != nil {
 			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
@@ -426,8 +428,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			err = json.Unmarshal(body, &result)
 		}
-		if pending, e := readAppUpdatePlan(s.appUpdatePlanPath()); e == nil && result["expectedSHA"] != pending.ExpectedSHA {
-			writeJSON(w, 200, map[string]any{"ok": true, "state": "pending"})
+		if pending, e := readAppUpdatePlan(s.appUpdatePlanPath()); e == nil && (result["expectedSHA"] != pending.ExpectedSHA || pending.UpdateID != "" && result["updateId"] != pending.UpdateID) {
+			writeJSON(w, 200, map[string]any{"ok": true, "state": "pending", "expectedSHA": pending.ExpectedSHA, "targetVersion": pending.TargetVersion, "updateId": pending.UpdateID})
 			return
 		}
 		if os.IsNotExist(err) {
@@ -437,7 +439,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 	case path == "/app/update" && r.Method == http.MethodPost:
 		payload, _ := readJSON(w, r)
-		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false), fmt.Sprint(payload["channel"])))
+		writeJSON(w, 200, s.updateApp(strings.TrimSpace(fmt.Sprint(payload["version"])), boolPayload(payload, "backup", false), fmt.Sprint(payload["channel"]), fmt.Sprint(payload["updateId"])))
 	case path == "/diagnostics" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.diagnostics())
 	case path == "/diagnostics/package" && r.Method == http.MethodGet:

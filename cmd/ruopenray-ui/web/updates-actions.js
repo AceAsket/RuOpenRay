@@ -1,12 +1,29 @@
+import { createAppUpdateMonitor } from './app-update-monitor.js';
+
 export function createUpdatesActions({
   state,
   request,
   upload = null,
   render,
   refresh,
-  geoSelectedPresetIds
+  geoSelectedPresetIds,
+  canReloadApp,
+  reloadApp,
+  confirmReload,
+  updateMonitorOptions = {}
 }) {
+  const appMonitor = createAppUpdateMonitor({ state, request, render, canReloadApp, reloadApp, confirmReload, ...updateMonitorOptions });
+
   async function updateCore() {
+    if (state.status?.core?.available === false) {
+      state.coreDialogOpen = false;
+      state.installWizardOpen = true;
+      state.installStep = 'plan';
+      state.message = 'Сначала установите Xray через пакетный мастер OpenWrt. Выбор релиза GitHub доступен после установки пакета.';
+      state.installPlan = await request('/api/install/plan');
+      render();
+      return;
+    }
     const version = state.selectedCoreVersion || '';
     if (!version) {
       state.message = 'Сначала выберите версию Xray-core';
@@ -31,31 +48,39 @@ export function createUpdatesActions({
   }
 
   async function updateApp() {
+    if (state.appUpdating) return;
     const target = state.appRelease?.tag || '';
     if (!target) {
       state.message = 'Не удалось получить последний релиз RuOpenRay UI';
       render();
       return;
     }
-    state.appUpdating = true;
+    const digest = String(state.appRelease?.assetDigest || '');
+    const attempt = appMonitor.prepare(target, /^sha256:[a-f\d]{64}$/i.test(digest) ? digest.slice(7).toLowerCase() : '');
     state.message = `Обновляю RuOpenRay UI до ${target}...`;
     render();
     try {
       const result = await request('/api/app/update', {
         method: 'POST',
-        body: JSON.stringify({ version: target, backup: state.appBackup, channel: state.appChannel || 'stable' })
+        body: JSON.stringify({ version: target, backup: state.appBackup, channel: state.appChannel || 'stable', updateId: attempt.updateId })
       });
-      state.appUpdate = result;
-      state.message = result.ok
-        ? result.stdout || `Установлен ${result.version || target}. Ожидается проверка новой панели.`
-        : result.stderr || 'Не удалось обновить RuOpenRay UI';
       if (result.ok) {
-        setTimeout(() => refresh().catch(() => {}), 2500);
+        appMonitor.track(result);
       } else {
-        await refresh();
+        appMonitor.stop();
+        state.appUpdate = result;
+        state.message = result.stderr || 'Не удалось обновить RuOpenRay UI';
+      }
+    } catch (error) {
+      if (error?.status) {
+        appMonitor.stop();
+        state.appUpdate = { ok: false, stderr: error.message || 'Сервер отклонил обновление' };
+        state.message = state.appUpdate.stderr;
+      } else {
+        state.message = 'Связь прервалась во время обновления. Проверяю окончательный результат после перезапуска панели.';
+        appMonitor.resume();
       }
     } finally {
-      state.appUpdating = false;
       render();
     }
   }
@@ -632,6 +657,8 @@ export function createUpdatesActions({
   return {
     updateCore,
     updateApp,
+    resumeAppUpdate: appMonitor.resume,
+    reloadUpdatedApp: appMonitor.reloadUpdatedApp,
     checkAppUpdate,
     appVersionClick,
     updateGeo,

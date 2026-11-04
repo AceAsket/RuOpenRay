@@ -23,6 +23,27 @@ func TestCoreDigest(t *testing.T) {
 	}
 }
 
+func TestGithubCoreUpdateRequiresPackageInstallation(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "xray")
+	init := filepath.Join(dir, "init-xray")
+	if err := requireInstalledCore(target, init); err == nil || !strings.Contains(err.Error(), "мастер") {
+		t.Fatalf("missing core must direct to package wizard: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("installed core"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireInstalledCore(target, init); err == nil || !strings.Contains(err.Error(), "сервис") {
+		t.Fatalf("unmanaged standalone binary must not pretend to be a supported installation: %v", err)
+	}
+	if err := os.WriteFile(init, []byte("init script"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireInstalledCore(target, init); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCoreReplacementTransaction(t *testing.T) {
 	for _, scenario := range []string{"success", "no-retention", "prepare-fails", "activation-fails", "rollback-fails", "rename-fails"} {
 		t.Run(scenario, func(t *testing.T) {

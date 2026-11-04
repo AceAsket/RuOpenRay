@@ -248,7 +248,7 @@ function redactConfigValue(value, tagMap, key = '', parentKey = '') {
   }
   const out = {};
   for (const [rawKey, rawValue] of Object.entries(value)) {
-    if (isSensitiveKey(rawKey, parentKey)) {
+    if (isSensitiveKey(rawKey, key)) {
       out[rawKey] = maskedValue(rawValue, rawKey);
     } else {
       out[rawKey] = redactConfigValue(rawValue, tagMap, rawKey, key);
@@ -263,15 +263,34 @@ function redactString(value, key, parentKey, tagMap) {
   if (key === 'fallbackTag' && tagMap.has(value)) return tagMap.get(value);
   if (key === 'outboundTag' && tagMap.has(value)) return tagMap.get(value);
   if (key === 'tag' && parentKey === 'outbounds' && tagMap.has(value)) return tagMap.get(value);
+  // DNS servers can be plain URL strings, including Basic Auth credentials.
+  // Redact URLs wherever they occur, independently of the containing key.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      url.username = '';
+      url.password = '';
+      for (const name of new Set(url.searchParams.keys())) {
+        if (isSensitiveKey(name, 'url') || /^(key|auth|credentials?|session|sig|signature)$/i.test(name)) {
+          url.searchParams.set(name, '[masked]');
+        }
+      }
+      return url.toString();
+    } catch {
+      return '[masked:url]';
+    }
+  }
   return value;
 }
 
 function isSensitiveKey(key, parentKey) {
-  const normalized = String(key || '').toLowerCase();
-  if (['password', 'pass', 'secret', 'token', 'privatekey', 'shortid', 'spiderx', 'path'].includes(normalized)) return true;
+  const normalized = String(key || '').toLowerCase().replace(/[-_]/g, '');
+  if (['password', 'pass', 'secret', 'token', 'privatekey', 'shortid', 'spiderx', 'path',
+    'apikey', 'accesskey', 'accesskeyid', 'secretaccesskey', 'accesstoken', 'refreshtoken', 'clientsecret'].includes(normalized)) return true;
   if (['id', 'uuid', 'alterid'].includes(normalized)) return true;
   if (['address', 'server', 'servername', 'sni', 'host', 'dest'].includes(normalized)) return true;
-  if (parentKey === 'headers' && ['host'].includes(normalized)) return true;
+  if (String(parentKey).toLowerCase() === 'headers'
+    && ['host', 'authorization', 'proxyauthorization', 'cookie', 'setcookie', 'xapikey', 'xauthtoken'].includes(normalized)) return true;
   return false;
 }
 

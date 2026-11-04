@@ -26,6 +26,21 @@ APPLY_DELAY="${RUOPENRAY_APPLY_DELAY:-0}"
 DOWNLOAD_MIRROR="${RUOPENRAY_DOWNLOAD_MIRROR:-direct}"
 MIRROR_PREFIX="${RUOPENRAY_MIRROR_PREFIX:-}"
 KEEP_BINARY_BACKUPS="${RUOPENRAY_KEEP_BINARY_BACKUPS:-2}"
+ENABLED=1
+GO_MEMLIMIT=48MiB
+GO_GC=60
+EXISTING_INSTALL=0
+INSTALL_TRANSACTION=""
+INSTALL_TRANSACTION_ACTIVE=0
+INSTALL_COMMITTED=0
+PANEL_WAS_RUNNING=0
+ENABLE_ATTEMPTED=0
+OPERATION_LOCKED=0
+RETAINED_BINARY_BACKUP=""
+tmp=""
+digest_tmp=""
+selfcheck_tmp=""
+ready_tmp=""
 
 log() {
 	printf '%s\n' "$*"
@@ -51,10 +66,59 @@ current_panel_password() {
 	uci -q get ruopenray-ui.main.password 2>/dev/null || true
 }
 
+# An installer rerun is an upgrade. Only explicitly supplied environment values
+# override existing UCI options; unknown options and other UCI sections survive.
+installation_setting() {
+	option="$1"; fallback="$2"; supplied="$3"; override="$4"
+	if [ "$supplied" = x ]; then
+		printf '%s' "$override"
+	elif saved="$(uci -q get "ruopenray-ui.main.$option" 2>/dev/null)"; then
+		printf '%s' "$saved"
+	else
+		printf '%s' "$fallback"
+	fi
+}
+
+load_installation_settings() {
+	command -v uci >/dev/null 2>&1 || die "нужен UCI для безопасного сохранения настроек"
+	[ -z "$(uci -q changes ruopenray-ui 2>/dev/null)" ] || die "сначала сохраните или отмените незафиксированные UCI-изменения панели"
+	EXISTING_INSTALL=0
+	[ ! -s /etc/config/ruopenray-ui ] || EXISTING_INSTALL=1
+	DATA_DIR="$(installation_setting data_dir "$DATA_DIR" "${RUOPENRAY_DATA_DIR+x}" "${RUOPENRAY_DATA_DIR-}")"
+	BACKUP_DIR="$(installation_setting backup_dir "$DATA_DIR/backups" "${RUOPENRAY_BACKUP_DIR+x}" "${RUOPENRAY_BACKUP_DIR-}")"
+	GEO_DIR="$(installation_setting geo_dir "$GEO_DIR" "${RUOPENRAY_GEO_DIR+x}" "${RUOPENRAY_GEO_DIR-}")"
+	HOST="$(installation_setting host "$HOST" "${RUOPENRAY_HOST+x}" "${RUOPENRAY_HOST-}")"
+	PORT="$(installation_setting port "$PORT" "${RUOPENRAY_PORT+x}" "${RUOPENRAY_PORT-}")"
+	PASSWORD="$(installation_setting password "$PASSWORD" "${RUOPENRAY_PASSWORD+x}" "${RUOPENRAY_PASSWORD-}")"
+	[ -z "$PASSWORD" ] || [ "${RUOPENRAY_PASSWORD+x}" = x ] || PASSWORD_REUSED=1
+	ACTIVE_CONFIG="$(installation_setting active_config "$ACTIVE_CONFIG" "${RUOPENRAY_ACTIVE_CONFIG+x}" "${RUOPENRAY_ACTIVE_CONFIG-}")"
+	XRAY_SERVICE="$(installation_setting xray_service "$XRAY_SERVICE" "${RUOPENRAY_XRAY_SERVICE+x}" "${RUOPENRAY_XRAY_SERVICE-}")"
+	START_DELAY="$(installation_setting start_delay "$START_DELAY" "${RUOPENRAY_START_DELAY+x}" "${RUOPENRAY_START_DELAY-}")"
+	APPLY_DELAY="$(installation_setting apply_delay "$APPLY_DELAY" "${RUOPENRAY_APPLY_DELAY+x}" "${RUOPENRAY_APPLY_DELAY-}")"
+	DOWNLOAD_MIRROR="$(installation_setting download_mirror "$DOWNLOAD_MIRROR" "${RUOPENRAY_DOWNLOAD_MIRROR+x}" "${RUOPENRAY_DOWNLOAD_MIRROR-}")"
+	MIRROR_PREFIX="$(installation_setting mirror_prefix "$MIRROR_PREFIX" "${RUOPENRAY_MIRROR_PREFIX+x}" "${RUOPENRAY_MIRROR_PREFIX-}")"
+	ENABLED="$(installation_setting enabled 1 '' '')"
+	GO_MEMLIMIT="$(installation_setting go_memlimit 48MiB '' '')"
+	GO_GC="$(installation_setting go_gc 60 '' '')"
+	# Rerunning the installer must not re-add or reconfigure a source the user
+	# disabled. Existing installs can opt in explicitly.
+	if [ "$EXISTING_INSTALL" = 1 ] && [ "${RUOPENRAY_INSTALL_SCENARIOS+x}" != x ]; then INSTALL_SCENARIOS=0; fi
+	case "$PORT" in ''|*[!0-9]*) die "порт должен быть числом от 1 до 65535";; esac
+	[ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || die "порт должен быть числом от 1 до 65535"
+	[ -n "$HOST" ] || die "адрес панели не должен быть пустым"
+	case "$ENABLED" in 0|1) ;; *) die "некорректный UCI enabled";; esac
+	for path in "$DATA_DIR" "$BACKUP_DIR" "$GEO_DIR" "$ACTIVE_CONFIG"; do
+		case "$path" in /*) ;; *) die "каталоги и active_config должны быть абсолютными";; esac
+		case "$path" in *'
+'*) die "пути не должны содержать перевод строки";; esac
+	done
+	[ ! -f "$DATA_DIR/app-update-pending.json" ] || die "сначала завершите текущее обновление панели"
+}
+
 ensure_password() {
 	if [ -z "$PASSWORD" ]; then
 		existing_password="$(current_panel_password)"
-		if [ -n "$existing_password" ] && [ "$existing_password" != "admin" ]; then
+		if [ -n "$existing_password" ]; then
 			PASSWORD="$existing_password"
 			PASSWORD_REUSED=1
 		else
@@ -64,7 +128,8 @@ ensure_password() {
 	fi
 	[ -n "$PASSWORD" ] || die "не удалось сгенерировать пароль"
 	case "$PASSWORD" in
-		*"'"*) die "RUOPENRAY_PASSWORD не должен содержать одинарную кавычку" ;;
+		*'
+'*) die "RUOPENRAY_PASSWORD не должен содержать перевод строки" ;;
 	esac
 }
 
@@ -173,6 +238,9 @@ install_dependencies() {
 	if ! command -v jsonfilter >/dev/null 2>&1; then
 		pkg_install jsonfilter || die "нужен jsonfilter для восстановления обновления панели"
 	fi
+	if ! command -v flock >/dev/null 2>&1; then
+		pkg_install flock || die "нужен flock для согласования установки с операциями панели"
+	fi
 	if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
 		pkg_install_oneof curl wget-ssl wget || die "нужен curl или wget для скачивания RuOpenRay UI"
 	fi
@@ -183,33 +251,57 @@ install_dependencies() {
 	fi
 }
 
+url_query_escape() {
+	LC_ALL=C awk 'BEGIN { for (i=1;i<256;i++) ord[sprintf("%c",i)]=i } { for (i=1;i<=length($0);i++) { c=substr($0,i,1); if (c ~ /[A-Za-z0-9_.~-]/) printf "%s",c; else printf "%%%02X",ord[c] } }'
+}
+
+mirror_url() {
+	if [ "$DOWNLOAD_MIRROR" != custom ] || [ -z "$MIRROR_PREFIX" ]; then printf '%s' "$1"; return; fi
+	case "$MIRROR_PREFIX" in http://*|https://*) ;; *) die "зеркало должно использовать http:// или https://";; esac
+	case "$MIRROR_PREFIX" in
+		*'{url}'*)
+			encoded="$(printf '%s' "$1" | url_query_escape)"
+			remaining="$MIRROR_PREFIX"
+			while case "$remaining" in *'{url}'*) true;; *) false;; esac; do
+				printf '%s%s' "${remaining%%\{url\}*}" "$encoded"
+				remaining="${remaining#*\{url\}}"
+			done
+			printf '%s' "$remaining"
+			;;
+		*) printf '%s%s' "$MIRROR_PREFIX" "$1";;
+	esac
+}
+
+download_file() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fL --connect-timeout 15 --max-time "$3" -o "$2" "$1"
+	else
+		wget -T "$3" -O "$2" "$1"
+	fi
+}
+
 download_binary() {
 	mkdir -p "$INSTALL_DIR"
 	tmp="${INSTALL_DIR}/.${APP_NAME}.new.$$"
 	digest_tmp="${tmp}.sha256"
-	trap 'rm -f "$tmp" "$digest_tmp"' EXIT HUP INT TERM
+	selfcheck_tmp="${tmp}.selfcheck"
+	ready_tmp="${tmp}.ready"
 	if [ -n "${RUOPENRAY_BINARY_URL:-}" ]; then
 		url="$RUOPENRAY_BINARY_URL"
 	else
 		url="${RELEASE_BASE_URL}/${ASSET_NAME}"
 	fi
-	log "Скачиваю RuOpenRay UI: $url"
-	if command -v curl >/dev/null 2>&1; then
-		curl -fL --connect-timeout 15 --max-time 180 -o "$tmp" "$url"
-	elif command -v wget >/dev/null 2>&1; then
-		wget -O "$tmp" "$url"
-	else
-		die "нужен curl или wget для скачивания бинарника"
-	fi
+	download_url="$(mirror_url "$url")"
+	log "Скачиваю RuOpenRay UI: $download_url"
+	download_file "$download_url" "$tmp" 180
 	[ -s "$tmp" ] || die "скачанный файл пустой"
 	command -v sha256sum >/dev/null 2>&1 || die "для проверки бинарника нужен sha256sum"
 	expected_sha="${RUOPENRAY_SHA256:-}"
 	if [ -z "$expected_sha" ]; then
-		if command -v curl >/dev/null 2>&1; then
-			curl -fL --connect-timeout 15 --max-time 30 -o "$digest_tmp" "${url}.sha256"
-		else
-			wget -O "$digest_tmp" "${url}.sha256"
-		fi
+		# A mirror supplies bytes, never its own authority for those bytes. Even
+		# RUOPENRAY_BINARY_URL uses the configured release's checksum unless the
+		# operator explicitly supplied RUOPENRAY_SHA256.
+		download_file "${RELEASE_BASE_URL}/${ASSET_NAME}.sha256" "$digest_tmp" 30
 		expected_sha="$(awk 'NR==1 {print $1}' "$digest_tmp")"
 	fi
 	[ "${#expected_sha}" = "64" ] || die "некорректный ожидаемый SHA-256"
@@ -217,13 +309,142 @@ download_binary() {
 	expected_sha="$(printf '%s' "$expected_sha" | tr 'A-F' 'a-f')"
 	actual_sha="$(sha256sum "$tmp" | awk '{print $1}')"
 	[ "$actual_sha" = "$expected_sha" ] || die "SHA-256 бинарника не совпадает; текущая панель сохранена"
-	if [ -f "$INSTALL_DIR/$APP_NAME" ]; then
-		cp "$INSTALL_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME.backup-$(date +%Y%m%d-%H%M%S)-$$" || die "не удалось создать обязательную копию панели"
-	fi
 	chmod 0755 "$tmp"
-	mv "$tmp" "$INSTALL_DIR/$APP_NAME"
-	rm -f "$digest_tmp"
+	"$tmp" --self-check 8>&- >"$selfcheck_tmp" || die "новая панель не прошла самопроверку; текущая установка сохранена"
+	[ "$(jsonfilter -i "$selfcheck_tmp" -e '@.ok')" = true ] || die "некорректная самопроверка панели"
+	CANDIDATE_VERSION="$(jsonfilter -i "$selfcheck_tmp" -e '@.version')"
+	[ -n "$CANDIDATE_VERSION" ] || die "самопроверка не вернула версию панели"
+}
+
+acquire_installer_lock() {
+	[ ! -L /tmp/ruopenray-installer.lock ] || die "небезопасный lock установщика"
+	exec 8>/tmp/ruopenray-installer.lock
+	flock -n 8 || die "другой установщик уже работает"
+}
+
+acquire_operation_lock() {
+	[ "$OPERATION_LOCKED" != 1 ] || return 0
+	[ ! -L /tmp/ruopenray-operation.lock ] || return 1
+	exec 9>/tmp/ruopenray-operation.lock
+	if ! flock -n 9; then exec 9>&-; return 1; fi
+	OPERATION_LOCKED=1
+}
+
+release_operation_lock() {
+	[ "$OPERATION_LOCKED" = 1 ] || return 0
+	flock -u 9
+	exec 9>&-
+	OPERATION_LOCKED=0
+}
+
+save_install_file() {
+	path="$1"
+	[ ! -L "$path" ] || die "небезопасная символьная ссылка: $path"
+	INSTALL_FILE_COUNT=$((INSTALL_FILE_COUNT + 1))
+	if [ -e "$path" ]; then
+		[ -f "$path" ] || die "ожидался обычный файл: $path"
+		cp -p "$path" "$INSTALL_TRANSACTION/$INSTALL_FILE_COUNT"
+	else
+		: >"$INSTALL_TRANSACTION/$INSTALL_FILE_COUNT.absent"
+	fi
+	printf '%s\n' "$path" >>"$INSTALL_TRANSACTION/paths"
+}
+
+begin_install_transaction() {
+	INSTALL_TRANSACTION="$(umask 077; mktemp -d "$INSTALL_DIR/.ruopenray-install.XXXXXX")"
+	INSTALL_FILE_COUNT=0
+	: >"$INSTALL_TRANSACTION/paths"
+	save_install_file "$INSTALL_DIR/$APP_NAME"
+	save_install_file /etc/config/ruopenray-ui
+	save_install_file "/etc/init.d/$SERVICE_NAME"
+	save_install_file /usr/libexec/ruopenray-recover-app
+	save_install_file /usr/share/luci/menu.d/luci-app-ruopenray.json
+	save_install_file /usr/share/rpcd/acl.d/luci-app-ruopenray.json
+	save_install_file /usr/share/ucode/luci/template/ruopenray/dashboard.ut
+	save_install_file /www/luci-static/resources/view/ruopenray/dashboard.js
+	# Existing Xray configurations are never written; a fresh install's new
+	# starter config is removed again if panel startup fails.
+	if [ ! -s "$ACTIVE_CONFIG" ]; then save_install_file "$ACTIVE_CONFIG"; fi
+	if pidof "$APP_NAME" >/dev/null 2>&1; then PANEL_WAS_RUNNING=1; fi
+	INSTALL_TRANSACTION_ACTIVE=1
+}
+
+rollback_installation() {
+	log "Установка не завершена. Восстанавливаю прежнюю панель и служебные файлы."
+	if ! acquire_operation_lock; then
+		log "Панель выполняет другую операцию. Откат не начат, копии сохранены: $INSTALL_TRANSACTION" >&2
+		return 1
+	fi
+	if [ -f "$DATA_DIR/app-update-pending.json" ]; then
+		log "Началось отдельное обновление панели. Откат установщика не начат, копии сохранены: $INSTALL_TRANSACTION" >&2
+		return 1
+	fi
+	if [ -x "/etc/init.d/$SERVICE_NAME" ]; then
+		/etc/init.d/$SERVICE_NAME stop 8>&- 9>&- >/dev/null 2>&1 || true
+		if [ "$ENABLE_ATTEMPTED" = 1 ]; then /etc/init.d/$SERVICE_NAME disable >/dev/null 2>&1 || true; fi
+	fi
+	index=0
+	rollback_ok=1
+	# UCI keeps uncommitted set operations in a separate delta file. Restoring
+	# /etc/config alone would leave a failed install's options overlaid on it.
+	uci -q revert ruopenray-ui >/dev/null 2>&1 || rollback_ok=0
+	while IFS= read -r path; do
+		index=$((index + 1))
+		if [ -f "$INSTALL_TRANSACTION/$index.absent" ]; then
+			rm -f "$path" || rollback_ok=0
+		elif [ "$index" = 1 ]; then
+			binary_backup="$INSTALL_TRANSACTION/1"
+			[ -f "$binary_backup" ] || binary_backup="$RETAINED_BINARY_BACKUP"
+			# The binary backup is on the target filesystem. Rename instead of
+			# allocating another large copy when installation failed with ENOSPC.
+			mv -f "$binary_backup" "$path" || rollback_ok=0
+		else
+			# Copy into the target filesystem before atomic replacement; retain
+			# the recovery copy when restoring a file fails.
+			cp -p "$INSTALL_TRANSACTION/$index" "$path.install-restore.$$" && mv -f "$path.install-restore.$$" "$path" || rollback_ok=0
+		fi
+	done <"$INSTALL_TRANSACTION/paths"
+	release_operation_lock
+	if [ "$PANEL_WAS_RUNNING" = 1 ]; then
+		/etc/init.d/$SERVICE_NAME start 8>&- >/dev/null 2>&1 || rollback_ok=0
+	fi
+	[ ! -x /etc/init.d/rpcd ] || /etc/init.d/rpcd reload >/dev/null 2>&1 || true
+	if [ "$rollback_ok" != 1 ]; then
+		log "Не удалось полностью восстановить установку. Копии сохранены: $INSTALL_TRANSACTION" >&2
+		return 1
+	fi
+	INSTALL_TRANSACTION_ACTIVE=0
+}
+
+finish_installation() {
+	status="$1"
 	trap - EXIT HUP INT TERM
+	set +e
+	if [ "$INSTALL_TRANSACTION_ACTIVE" = 1 ] && [ "$INSTALL_COMMITTED" != 1 ]; then
+		rollback_installation || { status=1; INSTALL_TRANSACTION=""; }
+	fi
+	release_operation_lock
+	for staged in "$tmp" "$digest_tmp" "$selfcheck_tmp" "$ready_tmp"; do [ -z "$staged" ] || rm -f "$staged"; done
+	if [ -n "$INSTALL_TRANSACTION" ]; then
+		# mktemp created this exact directory under INSTALL_DIR. No recursive
+		# removal and no user-provided path is passed to a cleanup command.
+		rm -f "$INSTALL_TRANSACTION"/*
+		rmdir "$INSTALL_TRANSACTION"
+	fi
+	exit "$status"
+}
+
+commit_installation() {
+	if [ -f "$INSTALL_TRANSACTION/1" ]; then
+		RETAINED_BINARY_BACKUP="$INSTALL_DIR/$APP_NAME.backup-$(date +%Y%m%d-%H%M%S)-$$"
+		mv "$INSTALL_TRANSACTION/1" "$RETAINED_BINARY_BACKUP"
+	fi
+	if [ "$EXISTING_INSTALL" != 1 ] && [ "$ENABLED" = 1 ]; then
+		ENABLE_ATTEMPTED=1
+		/etc/init.d/$SERVICE_NAME enable 8>&-
+	fi
+	sync
+	INSTALL_COMMITTED=1
 	prune_binary_backups
 }
 
@@ -236,34 +457,12 @@ prune_binary_backups() {
 	done
 }
 
-write_uci_file() {
-	mkdir -p /etc/config
-	cat > /etc/config/ruopenray-ui <<EOF
-config ruopenray-ui 'main'
-	option enabled '1'
-	option host '$HOST'
-	option port '$PORT'
-	option password '$PASSWORD'
-	option data_dir '$DATA_DIR'
-	option backup_dir '$BACKUP_DIR'
-	option geo_dir '$GEO_DIR'
-	option active_config '$ACTIVE_CONFIG'
-	option xray_service '$XRAY_SERVICE'
-	option start_delay '$START_DELAY'
-	option apply_delay '$APPLY_DELAY'
-	option go_memlimit '48MiB'
-	option go_gc '60'
-	option download_mirror '$DOWNLOAD_MIRROR'
-	option mirror_prefix '$MIRROR_PREFIX'
-EOF
-}
-
 write_uci_via_cli() {
 	mkdir -p /etc/config
 	touch /etc/config/ruopenray-ui
-	uci -q delete ruopenray-ui.main 2>/dev/null || true
+	chmod 0600 /etc/config/ruopenray-ui
 	uci -q set ruopenray-ui.main=ruopenray-ui
-	uci -q set ruopenray-ui.main.enabled=1
+	uci -q set "ruopenray-ui.main.enabled=$ENABLED"
 	uci -q set "ruopenray-ui.main.host=$HOST"
 	uci -q set "ruopenray-ui.main.port=$PORT"
 	uci -q set "ruopenray-ui.main.password=$PASSWORD"
@@ -274,8 +473,8 @@ write_uci_via_cli() {
 	uci -q set "ruopenray-ui.main.xray_service=$XRAY_SERVICE"
 	uci -q set "ruopenray-ui.main.start_delay=$START_DELAY"
 	uci -q set "ruopenray-ui.main.apply_delay=$APPLY_DELAY"
-	uci -q set ruopenray-ui.main.go_memlimit=48MiB
-	uci -q set ruopenray-ui.main.go_gc=60
+	uci -q set "ruopenray-ui.main.go_memlimit=$GO_MEMLIMIT"
+	uci -q set "ruopenray-ui.main.go_gc=$GO_GC"
 	uci -q set "ruopenray-ui.main.download_mirror=$DOWNLOAD_MIRROR"
 	uci -q set "ruopenray-ui.main.mirror_prefix=$MIRROR_PREFIX"
 	uci -q commit ruopenray-ui
@@ -283,22 +482,10 @@ write_uci_via_cli() {
 
 write_uci() {
 	mkdir -p "$DATA_DIR/profiles" "$BACKUP_DIR" "$GEO_DIR" "$(dirname "$ACTIVE_CONFIG")"
-	if command -v uci >/dev/null 2>&1; then
-		if ! write_uci_via_cli; then
-			log "Предупреждение: UCI не принял настройки через CLI, записываю /etc/config/ruopenray-ui напрямую."
-			write_uci_file
-		fi
-	else
-		write_uci_file
-	fi
+	write_uci_via_cli
 	saved_password="$(current_panel_password)"
 	if [ "$saved_password" != "$PASSWORD" ]; then
-		log "Предупреждение: пароль не читается через UCI после записи, пересоздаю /etc/config/ruopenray-ui."
-		write_uci_file
-		saved_password="$(current_panel_password)"
-	fi
-	if [ "$saved_password" != "$PASSWORD" ]; then
-		die "пароль панели не записался в UCI. Ожидался новый пароль, в конфиге осталось: ${saved_password:-пусто}"
+		die "пароль панели не записался в UCI; прежняя установка будет восстановлена"
 	fi
 }
 
@@ -320,6 +507,8 @@ expected="$(field ExpectedSHA)"
 previous="$(field PreviousSHA)"
 saved_boot="$(field BootID || true)"
 watchdog="$(field WatchdogPID || true)"
+update_id="$(field UpdateID || true)"
+case "$update_id" in *[!A-Za-z0-9_-]*) exit 1;; esac
 [ "$saved_target" = "$target" ] || { echo 'RuOpenRay: update target changed' >&2; exit 1; }
 [ "$(dirname "$backup")" = "$(dirname "$target")" ] || exit 1
 case "$(basename "$backup")" in .xray-update-*) ;; *) exit 1;; esac
@@ -353,7 +542,7 @@ if [ "$current" != "$previous" ]; then
  mv -f "$backup" "$target"
  sync
 fi
-printf '{"ok":true,"state":"interrupted_rollback","sha256":"%s","expectedSHA":"%s"}\n' "$previous" "$expected" >"$result.next"
+printf '{"ok":true,"state":"interrupted_rollback","sha256":"%s","expectedSHA":"%s","updateId":"%s"}\n' "$previous" "$expected" "$update_id" >"$result.next"
 chmod 600 "$result.next"
 sync
 mv -f "$result.next" "$result"
@@ -503,7 +692,9 @@ EOF
 
 <script>
 	(function() {
-		var url = window.location.protocol + '//' + window.location.hostname + ':9090/';
+		var host = window.location.hostname;
+		if (host.indexOf(':') >= 0 && host.charAt(0) !== '[') host = '[' + host + ']';
+		var url = 'http://' + host + ':9090/';
 		var link = document.getElementById('ruopenray-link');
 		var button = document.getElementById('ruopenray-open');
 		if (link) {
@@ -556,7 +747,7 @@ function urlHost(host) {
 }
 
 function panelUrl(host, port) {
-	return `${window.location.protocol}//${urlHost(host)}:${normalizePort(port) || '9090'}/`;
+	return `http://${urlHost(host)}:${normalizePort(port) || '9090'}/`;
 }
 
 return view.extend({
@@ -711,53 +902,62 @@ install_route_scenarios() {
 		auto_arg="--auto-update"
 	fi
 	log "РџРѕРґРєР»СЋС‡Р°СЋ СЃС†РµРЅР°СЂРёРё RuOpenRay: $SCENARIOS_URL"
-	if ! RUOPENRAY_DATA_DIR="$DATA_DIR" RUOPENRAY_GEO_DIR="$GEO_DIR" RUOPENRAY_BACKUP_DIR="$BACKUP_DIR" RUOPENRAY_XRAY_SERVICE="$XRAY_SERVICE" "$INSTALL_DIR/$APP_NAME" route-presets add-source "$SCENARIOS_URL" --name "$SCENARIOS_NAME" "$auto_arg" >/tmp/ruopenray-scenarios-install.log 2>&1; then
+	if ! RUOPENRAY_DATA_DIR="$DATA_DIR" RUOPENRAY_GEO_DIR="$GEO_DIR" RUOPENRAY_BACKUP_DIR="$BACKUP_DIR" RUOPENRAY_XRAY_SERVICE="$XRAY_SERVICE" "$INSTALL_DIR/$APP_NAME" route-presets add-source "$SCENARIOS_URL" --name "$SCENARIOS_NAME" "$auto_arg" 8>&- >/tmp/ruopenray-scenarios-install.log 2>&1; then
 		log "РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ: РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃС†РµРЅР°СЂРёРё. РС… РјРѕР¶РЅРѕ РїРѕРґРєР»СЋС‡РёС‚СЊ РїРѕР·Р¶Рµ РІ РІРµР±-РїР°РЅРµР»Рё. Р›РѕРі: /tmp/ruopenray-scenarios-install.log"
 	fi
 }
 
-enable_xray_service_config() {
-	command -v xray >/dev/null 2>&1 || return 0
-	[ -x "/etc/init.d/$XRAY_SERVICE" ] || return 0
-	if command -v uci >/dev/null 2>&1 && uci -q get xray.enabled >/dev/null 2>&1; then
-		uci -q set xray.config=xray || true
-		uci -q set xray.enabled.enabled='1' || true
-		uci -q set xray.config.conffiles="$ACTIVE_CONFIG" || true
-		uci -q delete xray.config.confdir || true
-		uci -q set xray.config.datadir="$GEO_DIR" || true
-		uci -q set xray.config.format='json' || true
-		uci -q commit xray || true
-	fi
-	"/etc/init.d/$XRAY_SERVICE" enable >/dev/null 2>&1 || true
-}
-
 start_service() {
-	/etc/init.d/$SERVICE_NAME enable >/dev/null 2>&1 || true
-	/etc/init.d/$SERVICE_NAME restart >/dev/null 2>&1 || /etc/init.d/$SERVICE_NAME start >/dev/null 2>&1 || true
-	validate_service_password
+	[ "$ENABLED" = 1 ] || { log "Панель отключена в UCI: бинарник проверен, служба не запускается."; return 0; }
+	/etc/init.d/$SERVICE_NAME start 8>&-
+	validate_service_readiness
 }
 
-service_env_value() {
-	key="$1"
+candidate_panel_pid() {
 	pids="$(pidof "$APP_NAME" 2>/dev/null || true)"
-	set -- $pids
-	[ "$#" -gt 0 ] || return 1
-	[ -r "/proc/$1/environ" ] || return 1
-	tr '\0' '\n' < "/proc/$1/environ" | sed -n "s/^${key}=//p" | tail -n1
+	for panel_pid in $pids; do
+		[ -r "/proc/$panel_pid/environ" ] || continue
+		running_sha="$(sha256sum "/proc/$panel_pid/exe" 2>/dev/null | awk '{print $1}')"
+		[ "$running_sha" = "$expected_sha" ] || continue
+		running_password="$(tr '\0' '\n' <"/proc/$panel_pid/environ" | sed -n 's/^RUOPENRAY_PASSWORD=//p' | tail -n1)"
+		[ "$running_password" = "$PASSWORD" ] || continue
+		printf '%s' "$panel_pid"
+		return 0
+	done
+	return 1
 }
 
-validate_service_password() {
+validate_service_readiness() {
+	probe_host="${HOST#[}"
+	probe_host="${probe_host%]}"
+	case "$probe_host" in 0.0.0.0) probe_host=127.0.0.1;; '::') probe_host='::1';; esac
+	case "$probe_host" in *:*) probe_host="[$probe_host]";; esac
+	ready_url="http://$probe_host:$PORT/api/version"
 	i=0
-	while [ "$i" -lt 10 ]; do
-		running_password="$(service_env_value RUOPENRAY_PASSWORD || true)"
-		if [ "$running_password" = "$PASSWORD" ]; then
-			return 0
+	stable=0
+	last_pid=""
+	while [ "$i" -lt 30 ]; do
+		panel_pid="$(candidate_panel_pid || true)"
+		response_ok=0
+		if [ -n "$panel_pid" ]; then
+			if command -v curl >/dev/null 2>&1; then
+				curl -fsS --noproxy '*' --connect-timeout 2 --max-time 3 -o "$ready_tmp" "$ready_url" 2>/dev/null && response_ok=1
+			else
+				http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= wget -q -T 3 -O "$ready_tmp" "$ready_url" 2>/dev/null && response_ok=1
+			fi
+		fi
+		if [ "$response_ok" = 1 ] && [ "$(jsonfilter -i "$ready_tmp" -e '@.ok' 2>/dev/null)" = true ] && [ "$(jsonfilter -i "$ready_tmp" -e '@.appVersion' 2>/dev/null)" = "$CANDIDATE_VERSION" ]; then
+			if [ "$panel_pid" = "$last_pid" ]; then stable=$((stable + 1)); else stable=1; fi
+			[ "$stable" -lt 2 ] || return 0
+			last_pid="$panel_pid"
+		else
+			stable=0
+			last_pid=""
 		fi
 		sleep 1
 		i=$((i + 1))
 	done
-	saved_password="$(current_panel_password)"
-	die "сервис запустился не с ожидаемым паролем. Проверьте UCI и окружение процесса; значения паролей скрыты."
+	die "новая панель не подтвердила готовность HTTP, SHA-256 процесса и пароль; прежняя установка будет восстановлена"
 }
 
 print_summary() {
@@ -788,16 +988,32 @@ need_root
 detect_openwrt
 detect_manager
 detect_arch
+load_installation_settings
 ensure_password
 check_space
 install_dependencies
+trap 'finish_installation $?' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+acquire_installer_lock
 download_binary
+acquire_operation_lock || die "выполняется другая операция панели; повторите установку после её завершения"
+# Downloading can take minutes while the old panel remains usable. Re-read the
+# latest UCI values and pending update plan under the same lock as the API/CLI.
+load_installation_settings
+ensure_password
+begin_install_transaction
+if [ -x "/etc/init.d/$SERVICE_NAME" ]; then /etc/init.d/$SERVICE_NAME stop 8>&- 9>&-; fi
+mv "$tmp" "$INSTALL_DIR/$APP_NAME"
 write_uci
-chmod 0600 /etc/config/ruopenray-ui
 write_init
 write_luci_launcher
 write_first_config
-install_route_scenarios
-enable_xray_service_config
+# Both new and restored panels acquire operation.lock during startup. Close the
+# descriptor before procd starts them; retain the separate installer lock.
+release_operation_lock
 start_service
+commit_installation
+install_route_scenarios
 print_summary

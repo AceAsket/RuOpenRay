@@ -152,7 +152,7 @@ function settingsPanel() {
     const accounts = Array.isArray(inbound?.settings?.accounts) ? inbound.settings.accounts : [];
     const account = accounts[0] || {};
     const auth = inbound?.settings?.auth === 'password' || Boolean(account.user || account.pass);
-    return {
+    const saved = {
       ...defaults,
       enabled: Boolean(inbound),
       listen: inbound?.listen || '127.0.0.1',
@@ -162,6 +162,9 @@ function settingsPanel() {
       pass: account.pass || '',
       udp: inbound?.settings?.udp !== false
     };
+    const form = state.localProxyForm?.[kind] || {};
+    const formDirty = Object.entries(form).some(([key, value]) => String(value) !== String(saved[key]));
+    return { ...saved, ...form, formDirty };
   };
   const proxyCard = (kind) => {
     const info = localProxyInfo(kind);
@@ -175,7 +178,7 @@ function settingsPanel() {
             <input id="localProxy${name}Enabled" type="checkbox" ${info.enabled ? 'checked' : ''} />
             <span><strong>${escapeHtml(info.label)}</strong><em>${info.enabled ? `${escapeHtml(info.listen)}:${escapeHtml(String(info.port))}` : 'не включен'}</em></span>
           </label>
-          <span class="local-proxy-status ${info.enabled ? 'ok' : ''}">${info.enabled ? 'в черновике' : 'выключен'}</span>
+          <span class="local-proxy-status ${info.formDirty ? '' : info.enabled ? 'ok' : ''}">${info.formDirty ? 'не добавлено в черновик' : info.enabled ? 'в черновике' : 'выключен'}</span>
         </div>
         <div class="local-proxy-form">
           <div class="settings-field">
@@ -274,6 +277,10 @@ function settingsPanel() {
   const appInfo = state.status?.app || {};
   const appRelease = state.appRelease || {};
   const appHasUpdate = Boolean(appRelease.update && appRelease.assetUrl);
+  const appUpdateTitle = state.appUpdate?.state === 'pending' ? 'Проверяю обновление'
+    : state.appUpdate?.state === 'verification_required' ? 'Требуется проверка'
+      : ['rolled_back', 'interrupted_rollback'].includes(state.appUpdate?.state) ? 'Выполнен откат'
+      : state.appUpdate?.state === 'healthy' || state.appUpdate?.ok && !state.appUpdate?.state ? 'Готово' : 'Ошибка';
   const appVersion = appInfo.version || 'dev';
   const appTarget = appRelease.tag || 'не загружен';
   const appAsset = appRelease.asset || appInfo.asset || '';
@@ -310,7 +317,7 @@ function settingsPanel() {
       <div class="settings-maintenance">
         <label class="settings-check compact ${state.appBackup ? 'active' : ''}">
           <input id="appBackup" type="checkbox" ${state.appBackup ? 'checked' : ''} />
-          <span><strong>Сохранить резервную копию бинарника</strong><em>Выключайте на роутерах с малым NAND, если свободного места мало.</em></span>
+          <span><strong>Хранить резервную копию после обновления</strong><em>Для безопасного обновления временная копия создаётся всегда. Эта настройка сохраняет её после успешной проверки.</em></span>
         </label>
       </div>
       <div class="toolbar">
@@ -318,9 +325,10 @@ function settingsPanel() {
         <button class="btn warning" data-action="updateApp" data-busy-inline="0" ${state.appUpdating || !appHasUpdate ? 'disabled' : ''}>${appHasUpdate ? 'Обновить панель' : 'Нет обновления'}</button>
       </div>
       ${state.appUpdate ? `<div class="core-result">
-        <strong>${state.appUpdate.ok ? 'Готово' : 'Ошибка'}</strong>
+        <strong>${appUpdateTitle}</strong>
         <span>${escapeHtml(state.appUpdate.stdout || state.appUpdate.stderr || '')}</span>
       </div>` : ''}
+      ${state.appReloadRequired ? '<p>Чтобы загрузить новый интерфейс, сохраните изменения в формах и перезагрузите страницу.</p><button class="btn secondary" data-action="reloadUpdatedApp">Перезагрузить интерфейс</button>' : ''}
     </section>
   `;
   const enabledLogCount = [state.loggingAccessLog, state.loggingErrorLog, state.loggingDnsLog].filter(Boolean).length;

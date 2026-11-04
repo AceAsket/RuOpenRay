@@ -85,7 +85,7 @@ sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scr
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
 ```
 
-Если `RUOPENRAY_PASSWORD` не указан, установщик сгенерирует пароль и покажет его в конце установки. Лучше сразу задать свой:
+При первой установке без `RUOPENRAY_PASSWORD` установщик сгенерирует пароль и покажет его в конце. При повторном запуске сохраняется существующий пароль. Чтобы сразу задать свой:
 
 ```sh
 RUOPENRAY_PASSWORD='change-me' sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
@@ -101,11 +101,13 @@ http://192.168.1.1:9090/
 
 - определяет OpenWrt, пакетный менеджер `opkg`/`apk` и архитектуру роутера;
 - ставит зависимости для transparent proxy;
-- скачивает подходящий бинарник RuOpenRay UI из последнего GitHub Release;
-- создает UCI-конфиг и init-скрипт;
+- скачивает подходящий бинарник RuOpenRay UI из последнего GitHub Release, проверяет SHA-256 и самопроверку кандидата до остановки прежней панели;
+- создает UCI-конфиг и init-скрипт; при повторном запуске сохраняет существующие параметры и дополнительные UCI-опции;
 - добавляет ссылку в LuCI;
-- по умолчанию подключает внешний каталог сценариев из `AceAsket/RuOpenRay-scenarios`;
-- запускает сервис панели.
+- при первой установке подключает внешний каталог сценариев из `AceAsket/RuOpenRay-scenarios`;
+- запускает сервис панели и проверяет HTTP-ответ, версию, SHA-256 процесса и пароль; при ошибке восстанавливает прежний бинарник, UCI и служебные файлы.
+
+Повторная установка не меняет схему запуска или конфигурацию существующего Xray. Панель, отключённая через UCI `enabled=0`, после обновления остаётся отключённой. Кнопка LuCI ведёт на HTTP-порт панели, в том числе если сама LuCI открыта через HTTPS.
 
 Поддерживаемые бинарники:
 
@@ -347,11 +349,13 @@ uci commit ruopenray-ui
 ruopenray-ui update --backup
 ```
 
-Или переустановить последнюю версию через install-скрипт:
+Или переустановить последнюю версию через install-скрипт. Существующие адрес, порт, пароль, пути, параметры памяти и дополнительные UCI-опции сохраняются. Для изменения отдельного параметра явно передайте соответствующую переменную `RUOPENRAY_*`:
 
 ```sh
 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
 ```
+
+До замены выполняются проверка SHA-256 и `--self-check`. Если новая панель не запускается или не подтверждает готовность, установщик возвращает прежний бинарник и затронутые служебные файлы. Если откат блокирует новая операция панели или отдельное обновление, установщик сохраняет копии и выводит путь для восстановления. Резервные копии бинарника остаются в `/usr/bin/ruopenray-ui.backup-*`. Откат установщика рассчитан на обнаруженную ошибку или обычный сигнал завершения; защита от отключения питания предоставляется штатным обновлением панели через `ruopenray-ui update` и интерфейс.
 
 Обновить Xray core можно из панели в разделе `Настройки -> Обновление`.
 
@@ -394,6 +398,8 @@ RUOPENRAY_MIRROR_PREFIX='https://gh-proxy.example/?url={url}' \
 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
 ```
 
+Зеркало используется для скачивания бинарника; `{url}` заменяется URL исходного файла в кодировке query-параметра. SHA-256 скачивается напрямую с настроенного `RUOPENRAY_RELEASE_BASE_URL`, независимо от зеркала. Если этот источник недоступен, передайте заранее проверенный `RUOPENRAY_SHA256`. Для собственного `RUOPENRAY_BINARY_URL` также используется checksum настроенного релиза или явно заданный SHA-256. Сам install-скрипт в примере загружается напрямую; при недоступном GitHub его нужно предварительно перенести на роутер.
+
 Основные переменные:
 
 | Переменная | По умолчанию | Назначение |
@@ -404,7 +410,7 @@ sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scr
 | `RUOPENRAY_DATA_DIR` | `/etc/ruopenray-ui` на OpenWrt, `./data` локально | данные панели |
 | `RUOPENRAY_ACTIVE_CONFIG` | `/etc/xray/config.json` на OpenWrt, `./data/config.json` локально | активный config Xray |
 | `RUOPENRAY_XRAY_SERVICE` | `xray` | имя сервиса Xray |
-| `RUOPENRAY_INSTALL_SCENARIOS` | `1` | подключить дефолтный источник сценариев |
+| `RUOPENRAY_INSTALL_SCENARIOS` | `1` при первой установке, `0` при повторной | подключить дефолтный источник сценариев |
 | `RUOPENRAY_SCENARIOS_URL` | `https://raw.githubusercontent.com/AceAsket/RuOpenRay-scenarios/main/scenarios.json` | URL каталога сценариев |
 | `RUOPENRAY_SCENARIOS_NAME` | `RuOpenRay scenarios` | название дефолтного источника |
 | `RUOPENRAY_SCENARIOS_AUTO_UPDATE` | `0` | включить ежедневное автообновление сценариев |

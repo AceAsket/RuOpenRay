@@ -1,4 +1,4 @@
-import { setupSelectionSignature, validateSetupSnapshot } from './setup-model.js';
+import { setupSelectionSignature, setupTrafficTarget, validateSetupSnapshot } from './setup-model.js';
 
 export function createSetupActions({
   state,
@@ -9,6 +9,8 @@ export function createSetupActions({
   lanDnsModeLabel,
   setupReadiness,
   loadSetupSnapshot,
+  restoreSetupSnapshot,
+  persistSetupSnapshot,
   captureSetupSnapshot,
   clearSetupSnapshot,
   lanDnsRestorePayload,
@@ -31,6 +33,7 @@ export function createSetupActions({
   }
 
   async function openInstallWizard() {
+    state.coreDialogOpen = false;
     state.installWizardOpen = true;
     state.installStep = 'plan';
     state.message = '';
@@ -60,8 +63,12 @@ export function createSetupActions({
       state.setupFallbackMode = typeof setupFallbackModeFromConfig === 'function' ? setupFallbackModeFromConfig() : 'direct';
     }
     state.setupStepNotice = null;
-    loadSetupSnapshot();
     state.message = '';
+    try {
+      await restoreSetupSnapshot();
+    } catch (error) {
+      state.message = error.message;
+    }
     if (!state.installPlan) {
       fetchInstallPlan().catch(() => {});
     }
@@ -151,10 +158,16 @@ export function createSetupActions({
       if (!test.ok) throw new Error(test.stderr || 'Конфигурация Xray не прошла проверку');
 
       snapshot.recoveryPending = true;
+      await persistSetupSnapshot(snapshot);
+      ensureCurrent();
       const apply = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config, expectedConfigRevision, expectedDraftRevision }) });
       if (state.token !== token) throw new Error('Сессия изменилась. Запустите мастер заново.');
       pushStep(Boolean(apply.ok), 'Запуск подключения', apply.restart?.stdout || apply.test?.stdout || '');
       if (!apply.ok) throw new Error(apply.restart?.stderr || apply.test?.stderr || 'Не удалось применить конфигурацию Xray');
+      const health = apply.restart?.health;
+      const target = setupTrafficTarget(state, config);
+      const connectionVerified = target?.kind === 'outbound' && health?.state === 'healthy'
+        && health.after?.checks?.[`vpn:${target.tag}`]?.ok === true;
       const appliedRevision = apply.draft?.activeRevision;
       if (typeof appliedRevision === 'string') state.activeConfigRevision = appliedRevision;
       ensureCurrent();
@@ -166,6 +179,8 @@ export function createSetupActions({
           throw new Error('DNS inbound Xray еще не готов');
         }
         snapshot.dnsMutationAttempted = true;
+        await persistSetupSnapshot(snapshot);
+        ensureCurrent();
         const lanDns = await request('/api/dns/lan-upstream', {
           method: 'POST',
           body: JSON.stringify(dns)
@@ -207,7 +222,10 @@ export function createSetupActions({
       }
       ensureCurrent();
       snapshot.recoveryPending = false;
-      state.setupResult = { ok: true, phase: 'complete', signature, steps };
+      await persistSetupSnapshot(snapshot);
+      ensureCurrent();
+      state.setupResult = { ok: true, phase: 'complete', signature, steps, connectionVerified };
+      if (!connectionVerified) state.message = 'Настройки применены. Работоспособность подключения ещё не подтверждена; запустите проверку соединения.';
     } catch (error) {
       if (state.token === token) {
         state.setupResult = { ok: false, phase: 'error', steps, error: error.message };
@@ -224,12 +242,6 @@ export function createSetupActions({
     const expectedConfigRevision = state.activeConfigRevision || '';
     const token = state.token;
     const ensureCurrent = () => { if (state.token !== token) throw new Error('Сессия изменилась. Повторите откат после входа.'); };
-    const snapshot = loadSetupSnapshot();
-    if (!snapshot?.config) {
-      state.setupRollbackResult = { ok: false, steps: [{ ok: false, title: 'Нет снимка', detail: 'Мастер еще не сохранял состояние до применения.' }] };
-      render();
-      return;
-    }
     state.setupRollbacking = true;
     state.setupResult = null;
     state.setupRollbackResult = { ok: false, phase: 'running', steps: [] };
@@ -241,6 +253,9 @@ export function createSetupActions({
       render();
     };
     try {
+      const snapshot = await restoreSetupSnapshot();
+      ensureCurrent();
+      if (!snapshot?.config) throw new Error('Нет сохранённой точки отката мастера.');
       validateSetupSnapshot(snapshot);
       const restoreDns = snapshot.dnsMutationAttempted !== false;
       const dnsPayload = restoreDns ? lanDnsRestorePayload(snapshot.lanDns) : null;
@@ -274,7 +289,7 @@ export function createSetupActions({
       state.message = 'Откат мастера выполнен';
       await refresh({ renderAfter: false, throwOnError: true });
       ensureCurrent();
-      clearSetupSnapshot({ force: true });
+      await clearSetupSnapshot({ force: true });
       state.setupRollbackResult = { ok: true, phase: 'complete', steps };
     } catch (error) {
       if (state.token === token) {

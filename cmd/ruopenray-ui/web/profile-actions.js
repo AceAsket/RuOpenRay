@@ -7,9 +7,32 @@ export function createProfileActions({
   refresh
 }) {
   async function activateProfile(name) {
-    await request('/api/profiles/activate', { method: 'POST', body: JSON.stringify({ name }) });
-    state.message = `Активирован профиль ${name}`;
+    const payload = { name, restart: true };
+    if (state.activeConfigRevision) payload.expectedConfigRevision = state.activeConfigRevision;
+    const result = await request('/api/profiles/activate', { method: 'POST', body: JSON.stringify(payload) });
+    state.lastApplyBackup = result.backup || state.lastApplyBackup;
+    if (result.ok !== true) {
+      let message = result.error || result.restart?.stderr || 'Не удалось применить профиль';
+      if (result.restart?.rollback?.ok === false || result.restart?.profileRollbackError) {
+        message += ' Откат не завершён; проверьте состояние Xray.';
+      }
+      state.messageDetails = { forMessage: message, summary: 'Подробности применения профиля', technical: JSON.stringify(result, null, 2) };
+      throw new Error(message);
+    }
+    if (typeof result.activeRevision === 'string') {
+      state.activeConfigRevision = result.activeRevision;
+      state.activeConfigConflict = false;
+    }
+    state.messageDetails = null;
+    const applied = result.restart?.ok === true && result.restartRequired !== true;
+    state.message = applied
+      ? `Профиль ${name} применён, Xray перезапущен.`
+      : `Профиль ${name} записан. Для применения перезапустите Xray.`;
     await refresh();
+    if (applied && state.jsonDraft && state.appliedConfigText && state.jsonDraft !== state.appliedConfigText) {
+      state.message += ' Ваш черновик сохранён и остаётся неприменённым.';
+      render();
+    }
   }
 
   async function loadProfileConfig(name) {
@@ -21,6 +44,7 @@ export function createProfileActions({
     state.profileEditorOpen = true;
     state.profileEditName = result.name || name;
     state.profileEditOriginalName = result.name || name;
+    state.profileEditRevision = result.revision || '';
     state.profileEditDraft = JSON.stringify(result.config || {}, null, 2);
     render();
   }
@@ -29,6 +53,7 @@ export function createProfileActions({
     state.profileEditorOpen = false;
     state.profileEditName = '';
     state.profileEditOriginalName = '';
+    state.profileEditRevision = '';
     state.profileEditDraft = '';
     render();
   }
@@ -48,18 +73,16 @@ export function createProfileActions({
       render();
       return;
     }
-    await request('/api/profiles', {
-      method: 'POST',
-      body: JSON.stringify({ name, config })
-    });
-    const oldName = String(state.profileEditOriginalName || '').trim();
-    if (oldName && oldName !== name) {
-      await request('/api/profiles/delete', {
-        method: 'POST',
-        body: JSON.stringify({ name: oldName })
-      }).catch(() => null);
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      state.message = 'Конфигурация профиля должна быть JSON-объектом';
+      render();
+      return;
     }
-    state.message = `Профиль ${name} сохранен`;
+    const result = await request('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ name, config, originalName: state.profileEditOriginalName, expectedRevision: state.profileEditRevision || '' })
+    });
+    state.message = `Профиль ${result.profile || name} сохранен`;
     closeProfileEditor();
     await refresh();
   }
@@ -110,7 +133,7 @@ export function createProfileActions({
     }
     const result = await request('/api/profiles', {
       method: 'POST',
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, createOnly: true })
     });
     const savedName = result.profile || name;
     state.profileCreateName = '';
@@ -123,7 +146,7 @@ export function createProfileActions({
     if (!name) return;
     await request('/api/profiles', {
       method: 'POST',
-      body: JSON.stringify({ name, config: JSON.parse(state.jsonDraft) })
+      body: JSON.stringify({ name, config: JSON.parse(state.jsonDraft), createOnly: true })
     });
     state.message = `Профиль ${name} сохранен`;
     await refresh();

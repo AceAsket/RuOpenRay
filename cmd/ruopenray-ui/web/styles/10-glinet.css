@@ -31,6 +31,57 @@ body[data-theme] .route-drag-handle:focus-visible {
   outline-offset: 2px;
 }
 
+body[data-theme] .dns-order-controls .dns-order-btn {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--soft);
+  box-shadow: none;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+body[data-theme] .dns-order-btn svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+body[data-theme] .dns-order-controls .dns-order-btn:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--accent-strong);
+}
+
+body[data-theme] .dns-order-controls .dns-order-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body[data-theme] .dns-order-controls .dns-order-btn:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  body[data-theme] .dns-order-controls .dns-order-btn {
+    width: 40px;
+    height: 40px;
+  }
+}
+
 :root {
   --sidebar-width: 228px;
   --header-height: 60px;

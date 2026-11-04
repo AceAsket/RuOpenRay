@@ -79,6 +79,8 @@ func (s *serverState) runGeoTransaction(keep, restart bool, prepare func(*server
 }
 
 func (s *serverState) runGeoTransactionWithRename(keep, restart bool, prepare func(*serverState) map[string]any, promote func(string, string) error) map[string]any {
+	geoTransactionMu.Lock()
+	defer geoTransactionMu.Unlock()
 	fail := func(err error) map[string]any { return map[string]any{"ok": false, "stderr": err.Error()} }
 	if err := os.MkdirAll(s.cfg.GeoDir, 0755); err != nil {
 		return fail(err)
@@ -227,6 +229,12 @@ func (s *serverState) runGeoTransactionWithRename(keep, restart bool, prepare fu
 	}
 	if err := commitTransactionRecovery(journalDir); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "rollbackError": fmt.Sprint(rollback()), "rollbackBackup": backup}
+	}
+	if keep {
+		if err := completeGeoBackup(backup); err != nil {
+			result["backupWarning"] = "Резервная копия сохранена, но не отмечена для автоматической очистки: " + err.Error()
+			result["stdout"] = fmt.Sprint(result["stdout"]) + "\n" + fmt.Sprint(result["backupWarning"])
+		}
 	}
 	cleanupRecovery()
 	if !keep {

@@ -174,6 +174,7 @@ function busyLabelFor(button, action) {
 
 function shouldShowBusy(button, action) {
   if (!action || button.dataset.busy === '0' || button.classList.contains('modal-backdrop')) return false;
+  if (button.dataset.busy === '1') return true;
   if (busyLabels[action]) return true;
   if (passiveActionPattern.test(action)) return false;
   return activeActionPattern.test(action);
@@ -203,8 +204,8 @@ function userFacingError(error, label) {
   return message;
 }
 
-export function bindActionControls({ state, render, handlers }) {
-  document.querySelectorAll('[data-action]').forEach((button) => {
+export function bindActionControls({ state, render, handlers, buttons = document.querySelectorAll('[data-action]') }) {
+  buttons.forEach((button) => {
     button.addEventListener('click', async (event) => {
       const action = button.dataset.action;
       let busyStarted = false;

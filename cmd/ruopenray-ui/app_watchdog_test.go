@@ -11,6 +11,30 @@ import (
 	"testing/fstest"
 )
 
+func TestAppUpdateStatusDoesNotConfuseRetriesOfSameBinary(t *testing.T) {
+	s := &serverState{cfg: appConfig{DataDir: t.TempDir()}, sessions: map[string]bool{"test-token": true}}
+	p := appUpdatePlan{ExpectedSHA: "same-candidate-sha", TargetVersion: "v0.6.0", UpdateID: "current-attempt"}
+	plan, _ := json.Marshal(p)
+	if err := os.WriteFile(s.appUpdatePlanPath(), plan, 0600); err != nil {
+		t.Fatal(err)
+	}
+	result := []byte(`{"ok":false,"state":"rolled_back","expectedSHA":"same-candidate-sha","targetVersion":"v0.6.0","updateId":"previous-attempt"}`)
+	if err := os.WriteFile(filepath.Join(s.cfg.DataDir, "app-update-result.json"), result, 0600); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/app/update-status", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	s.handleAPI(rec, req)
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 200 || payload["state"] != "pending" || payload["updateId"] != "current-attempt" || payload["expectedSHA"] != p.ExpectedSHA {
+		t.Fatal(rec.Code, payload)
+	}
+}
+
 func TestUnarmedReplacementFailurePreservesBackupUnlessRestored(t *testing.T) {
 	for _, mode := range []string{"replaced", "manual", "corrupt-backup"} {
 		t.Run(mode, func(t *testing.T) {

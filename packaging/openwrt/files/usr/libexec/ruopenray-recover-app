@@ -13,6 +13,8 @@ expected="$(field ExpectedSHA)"
 previous="$(field PreviousSHA)"
 saved_boot="$(field BootID || true)"
 watchdog="$(field WatchdogPID || true)"
+update_id="$(field UpdateID || true)"
+case "$update_id" in *[!A-Za-z0-9_-]*) exit 1;; esac
 [ "$saved_target" = "$target" ] || { echo 'RuOpenRay: update target changed' >&2; exit 1; }
 [ "$(dirname "$backup")" = "$(dirname "$target")" ] || exit 1
 case "$(basename "$backup")" in .xray-update-*) ;; *) exit 1;; esac
@@ -46,7 +48,7 @@ if [ "$current" != "$previous" ]; then
  mv -f "$backup" "$target"
  sync
 fi
-printf '{"ok":true,"state":"interrupted_rollback","sha256":"%s","expectedSHA":"%s"}\n' "$previous" "$expected" >"$result.next"
+printf '{"ok":true,"state":"interrupted_rollback","sha256":"%s","expectedSHA":"%s","updateId":"%s"}\n' "$previous" "$expected" "$update_id" >"$result.next"
 chmod 600 "$result.next"
 sync
 mv -f "$result.next" "$result"

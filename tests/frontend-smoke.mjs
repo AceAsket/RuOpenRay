@@ -1,4 +1,5 @@
 import { createAuxPanelsView } from '../cmd/ruopenray-ui/web/aux-panels-view.js';
+import { createSetupSnapshotStore } from './fixtures/setup-snapshot-store.mjs';
 import { createAmneziaView } from '../cmd/ruopenray-ui/web/amnezia-view.js';
 import { setAmneziaConfigField, setAmneziaConfigExtra } from '../cmd/ruopenray-ui/web/amnezia-config-editor.js';
 import { bindActionControls } from '../cmd/ruopenray-ui/web/action-bindings.js';
@@ -363,13 +364,15 @@ const setupState = {
   setupLanDnsMode: 'keep',
   setupFallbackMode: 'proxy',
 };
+const setupSnapshotStore = createSetupSnapshotStore();
 const setupModel = createSetupModel({
   state: setupState,
   byteSize: formatByteSize,
   firewallInfo: () => ({ ready: true, transparent: [{}], transparentPort: 52345 }),
   proxyOutbounds: () => setupConfig.outbounds,
   setupSnapshotStorageKey: 'ruopenray:test:setup-snapshot',
-  request: async (path) => {
+  request: async (path, options = {}) => {
+    if (path === '/api/setup/snapshot') return setupSnapshotStore.request({ path, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : undefined });
     if (path === '/api/install/plan') return { ok: true, steps: [] };
     if (path === '/api/config') return setupState.config;
     if (path === '/api/firewall/snapshot') return { ok: true, status: { active: false }, nftBody: '', hotplugBody: '' };
@@ -482,6 +485,8 @@ const setupActions = createSetupActions({
   lanDnsModeLabel: (mode) => mode,
   setupReadiness: setupModel.setupReadiness,
   loadSetupSnapshot: setupModel.loadSetupSnapshot,
+  restoreSetupSnapshot: setupModel.restoreSetupSnapshot,
+  persistSetupSnapshot: setupModel.persistSetupSnapshot,
   captureSetupSnapshot: setupModel.captureSetupSnapshot,
   clearSetupSnapshot: setupModel.clearSetupSnapshot,
   lanDnsRestorePayload: setupModel.lanDnsRestorePayload,

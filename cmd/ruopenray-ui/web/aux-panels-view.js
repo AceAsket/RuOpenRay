@@ -147,7 +147,7 @@ function profilesPanel(compact = false) {
           <label for="profileCreateName">Сохранить текущую конфигурацию как новый профиль</label>
           <div>
             <input id="profileCreateName" value="${escapeHtml(state.profileCreateName || '')}" placeholder="Например: дом, работа, тест" />
-            <button class="btn primary" data-action="createProfileFromCurrent">Сохранить</button>
+            <button class="btn primary" data-action="createProfileFromCurrent" data-busy="1" data-busy-label="Сохраняю новый профиль" ${state.busyAction ? 'disabled' : ''}>Сохранить</button>
           </div>
         </div>
       </section>
@@ -164,7 +164,7 @@ function profilesPanel(compact = false) {
               <span>Обновлён ${escapeHtml(formatUpdated(profile.updatedAt))} · ${escapeHtml(formatSize(profile.size))}</span>
             </div>
             <div class="profile-config-actions">
-              <button class="btn primary" data-profile="${escapeHtml(profile.name)}">Выбрать</button>
+              <button class="btn primary" data-profile="${escapeHtml(profile.name)}" ${state.busyAction ? 'disabled' : ''}>Применить профиль</button>
               <button class="btn secondary" data-profile-edit="${escapeHtml(profile.name)}">JSON</button>
               ${moreActions(profile)}
             </div>

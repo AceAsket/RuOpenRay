@@ -34,7 +34,7 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
       const message = typeof payload === 'string'
         ? payload
         : payload.error || payload.message || response.statusText;
-      throw new Error(message);
+      throw Object.assign(new Error(message), { status: response.status });
     }
     return payload;
   }
@@ -53,7 +53,7 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
       const message = typeof payload === 'string'
         ? payload
         : payload.error || payload.message || response.statusText;
-      throw new Error(message);
+      throw Object.assign(new Error(message), { status: response.status });
     }
     return payload;
   }

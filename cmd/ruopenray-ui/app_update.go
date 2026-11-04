@@ -257,13 +257,18 @@ func (s *serverState) updateApp(version string, keepBackup bool, channels ...str
 	if err = check.Run(); err != nil {
 		return map[string]any{"ok": false, "stderr": "Новый бинарник не прошёл автономную проверку запуска"}
 	}
-	restart, err := s.scheduleAppUpdate(tmp, exe, expectedSHA, keepBackup)
+	updateID := ""
+	if len(channels) > 1 {
+		updateID = channels[1]
+	}
+	restart, err := s.scheduleAppUpdate(tmp, exe, expectedSHA, keepBackup, fmt.Sprint(release["tag"]), updateID)
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "release": release}
 	}
 	return map[string]any{
 		"ok": true, "version": release["tag"], "previous": appVersion, "release": release,
 		"backup": restart["backup"], "backupEnabled": true, "keepBackup": keepBackup, "sha256": expectedSHA, "size": size, "target": exe, "restart": restart,
-		"state": "pending", "stdout": fmt.Sprintf("Установлен %s. Независимый watchdog перезапустит панель и проверит готовность; при отказе восстановит прежний бинарник.", release["tag"]),
+		"updateId": restart["updateId"],
+		"state":    "pending", "stdout": fmt.Sprintf("Установлен %s. Независимый watchdog перезапустит панель и проверит готовность; при отказе восстановит прежний бинарник.", release["tag"]),
 	}
 }

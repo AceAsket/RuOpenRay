@@ -89,6 +89,19 @@ test('DNS landing page shows current state without duplicate statistics', () => 
   assert.match(html, /class="panel dns-add-panel"/);
 });
 
+test('DNS reorder buttons keep accessible names and disable movement beyond the list boundaries', () => {
+  const html = renderDns();
+  const buttons = [...html.matchAll(/<button\b[^>]*data-dns-move="(\d+)"[^>]*>[\s\S]*?<\/button>/g)];
+  assert.equal(buttons.length, 6);
+  for (const [markup, index] of buttons) {
+    const up = markup.includes('data-direction="-1"');
+    assert.match(markup, /type="button"/);
+    assert.ok(markup.includes(up ? 'aria-label="Поднять DNS выше"' : 'aria-label="Опустить DNS ниже"'));
+    assert.match(markup, /<svg\b[^>]*aria-hidden="true"[^>]*focusable="false"/);
+    assert.equal(/\sdisabled(?:\s|>)/.test(markup), up ? index === '0' : index === '2');
+  }
+});
+
 test('DNS custom fields stay collapsed until requested', () => {
   const collapsed = renderDns();
   const expanded = renderDns({ dnsCustomAddOpen: true });

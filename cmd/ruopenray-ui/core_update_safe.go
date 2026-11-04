@@ -21,6 +21,19 @@ import (
 
 var coreUpdateMu sync.Mutex
 
+func requireInstalledCore(target, initScript string) error {
+	if _, err := os.Stat(target); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("Сначала установите пакет xray-core через мастер установки OpenWrt. Обновление из GitHub доступно после установки пакета")
+		}
+		return err
+	}
+	if _, err := os.Stat(initScript); err != nil {
+		return fmt.Errorf("Для обновления из GitHub нужен управляемый сервис Xray. Установите пакет xray-core через мастер OpenWrt")
+	}
+	return nil
+}
+
 func boundedDownload(address string, limit int64) ([]byte, error) {
 	return boundedDownloadWithTimeout(address, limit, 90*time.Second)
 }
@@ -138,6 +151,10 @@ func (s *serverState) installCoreRelease(version string, keepBackup bool) map[st
 	if runtime.GOOS != "linux" {
 		return fail(fmt.Errorf("обновление ядра доступно только на Linux"))
 	}
+	const target = "/usr/bin/xray"
+	if err := requireInstalledCore(target, "/etc/init.d/xray"); err != nil {
+		return fail(err)
+	}
 	status := s.xrayServiceStatus()
 	running := status["running"] == true
 	if running && (status["managed"] != true || s.cfg.ServiceName != "xray") {
@@ -182,7 +199,6 @@ func (s *serverState) installCoreRelease(version string, keepBackup bool) map[st
 	if len(binary) == 0 || len(binary) > 256<<20 {
 		return fail(fmt.Errorf("недопустимый бинарник в архиве Xray"))
 	}
-	const target = "/usr/bin/xray"
 	staged, err := stageExecutable(target, binary)
 	if err != nil {
 		return fail(err)

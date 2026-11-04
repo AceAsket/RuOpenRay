@@ -21,6 +21,8 @@ import (
 
 type appUpdatePlan struct {
 	Target, Backup, ExpectedSHA, PreviousSHA, ProbeToken, ReadyURL, ServiceScript string
+	TargetVersion                                                                 string
+	UpdateID                                                                      string
 	KeepBackup                                                                    bool
 	TimeoutSeconds                                                                int
 	BootID                                                                        string
@@ -176,6 +178,8 @@ func runAppUpdateWatchdog(path string) int {
 	}
 	result := executeAppWatchdog(p, restart, func(expected string) bool { return waitAppWatchdog(p, expected, appWatchdogProbe) })
 	result["expectedSHA"] = p.ExpectedSHA
+	result["targetVersion"] = p.TargetVersion
+	result["updateId"] = p.UpdateID
 	b, _ := json.Marshal(result)
 	recorded := writeFileAtomic(filepath.Join(filepath.Dir(path), "app-update-result.json"), b, 0600) == nil
 	if recorded && (result["state"] == "healthy" || result["rollbackOK"] == true) {
@@ -191,8 +195,8 @@ func runAppUpdateWatchdog(path string) int {
 	return 1
 }
 
-func (s *serverState) scheduleAppUpdate(staged, target, expected string, keep bool) (map[string]any, error) {
-	return s.scheduleAppUpdateWithScript(staged, target, expected, keep, "/etc/init.d/"+appServiceName)
+func (s *serverState) scheduleAppUpdate(staged, target, expected string, keep bool, versions ...string) (map[string]any, error) {
+	return s.scheduleAppUpdateWithScript(staged, target, expected, keep, "/etc/init.d/"+appServiceName, versions...)
 }
 
 func restoreUnarmedAppReplacement(p appUpdatePlan, cause error) (bool, error) {
@@ -213,7 +217,7 @@ func restoreUnarmedAppReplacement(p appUpdatePlan, cause error) (bool, error) {
 	return true, cause
 }
 
-func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected string, keep bool, script string) (map[string]any, error) {
+func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected string, keep bool, script string, versions ...string) (map[string]any, error) {
 	if runtime.GOOS != "linux" {
 		return nil, fmt.Errorf("безопасное самообновление доступно только на Linux")
 	}
@@ -254,6 +258,15 @@ func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected strin
 		return nil, err
 	}
 	p := appUpdatePlan{Target: target, Backup: backup, ExpectedSHA: expected, PreviousSHA: hex.EncodeToString(sha[:]), ProbeToken: randomToken(), ReadyURL: "http://" + net.JoinHostPort(host, s.cfg.Port) + "/api/app/update-ready", ServiceScript: script, KeepBackup: keep, TimeoutSeconds: 45, BootID: strings.TrimSpace(string(bootID))}
+	if len(versions) > 0 {
+		p.TargetVersion = versions[0]
+	}
+	p.UpdateID = randomToken()
+	if len(versions) > 1 && len(versions[1]) > 0 && len(versions[1]) <= 128 && strings.IndexFunc(versions[1], func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_')
+	}) == -1 {
+		p.UpdateID = versions[1]
+	}
 	b, _ := json.Marshal(p)
 	if err = writeFileAtomic(path, b, 0600); err != nil {
 		return nil, err
@@ -298,5 +311,5 @@ func (s *serverState) scheduleAppUpdateWithScript(staged, target, expected strin
 		return nil, failure
 	}
 	cleanup = false
-	return map[string]any{"ok": true, "watchdogPID": cmd.Process.Pid, "backup": backup, "readinessTimeoutSeconds": 45, "state": "pending"}, nil
+	return map[string]any{"ok": true, "watchdogPID": cmd.Process.Pid, "backup": backup, "readinessTimeoutSeconds": 45, "state": "pending", "updateId": p.UpdateID}, nil
 }

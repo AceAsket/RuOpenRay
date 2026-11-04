@@ -78,6 +78,8 @@ export function createSetupModel({
   syncConfig,
   ensureDnsServer
 }) {
+  let snapshotLoadFlight = null;
+  let snapshotLoadToken;
   function setupReadiness() {
     const status = state.status || {};
     const geo = state.geoStatus || {};
@@ -184,19 +186,66 @@ export function createSetupModel({
     state.setupSnapshot = snapshot;
   }
 
-  function clearSetupSnapshot({ force = false } = {}) {
+  function restoreSetupSnapshot() {
+    const token = state.token;
+    if (snapshotLoadFlight && snapshotLoadToken === token) return snapshotLoadFlight;
+    snapshotLoadToken = token;
+    const flight = (async () => {
+      const result = await request('/api/setup/snapshot');
+      if (token !== state.token) throw new Error('Сессия изменилась. Откройте мастер заново.');
+      if (result.ok !== true) throw new Error(result.error || 'Не удалось загрузить точку отката мастера.');
+      if (result.exists) validateSetupSnapshot(result.snapshot);
+      state.setupSnapshotRevision = result.revision || '';
+      state.setupSnapshotLoaded = true;
+      state.setupSnapshotToken = token;
+      state.setupSnapshot = result.exists ? result.snapshot : null;
+      return state.setupSnapshot;
+    })();
+    snapshotLoadFlight = flight;
+    flight.finally(() => { if (snapshotLoadFlight === flight) snapshotLoadFlight = null; }).catch(() => {});
+    return flight;
+  }
+
+  async function persistSetupSnapshot(snapshot) {
+    validateSetupSnapshot(snapshot);
+    const token = state.token;
+    const result = await request('/api/setup/snapshot', {
+      method: 'POST', body: JSON.stringify({ snapshot, expectedRevision: state.setupSnapshotRevision || '' })
+    });
+    if (token !== state.token) throw new Error('Сессия изменилась. Точка отката сохранена на роутере.');
+    if (result.ok !== true) throw new Error(result.error || 'Не удалось сохранить точку отката. Настройки не применены.');
+    state.setupSnapshotRevision = result.revision;
+    state.setupSnapshotLoaded = true;
+    state.setupSnapshotToken = token;
+    Object.assign(snapshot, result.snapshot);
+    saveSetupSnapshot(snapshot);
+    return snapshot;
+  }
+
+  async function clearSetupSnapshot({ force = false } = {}) {
     if (!force && (state.setupApplying || state.setupRollbacking)) return;
+    if (!state.setupSnapshotLoaded || state.setupSnapshotToken !== state.token) await restoreSetupSnapshot();
+    const token = state.token;
+    const result = await request('/api/setup/snapshot', {
+      method: 'DELETE', body: JSON.stringify({ expectedRevision: state.setupSnapshotRevision || '' })
+    });
+    if (token !== state.token) throw new Error('Сессия изменилась. Откройте мастер заново.');
+    if (result.ok !== true) throw new Error(result.error || 'Не удалось удалить точку отката.');
     state.setupSnapshot = null;
+    state.setupSnapshotRevision = '';
     state.setupRollbackResult = null;
   }
 
   async function captureSetupSnapshot() {
+    if (!state.setupSnapshotLoaded || state.setupSnapshotToken !== state.token) await restoreSetupSnapshot();
     if (state.setupSnapshot?.recoveryPending) return state.setupSnapshot;
+    const token = state.token;
     const [config, firewall, lanDns] = await Promise.all([
       request('/api/config'),
       request('/api/firewall/snapshot'),
       request('/api/dns/lan-upstream')
     ]);
+    if (token !== state.token) throw new Error('Сессия изменилась. Запустите мастер заново.');
     const snapshot = {
       createdAt: new Date().toISOString(),
       config,
@@ -207,8 +256,7 @@ export function createSetupModel({
     };
     validateSetupSnapshot(snapshot);
     if (state.setupLanDnsMode !== 'keep') lanDnsRestorePayload(lanDns);
-    saveSetupSnapshot(snapshot);
-    return snapshot;
+    return await persistSetupSnapshot(snapshot);
   }
 
   function lanDnsRestorePayload(lanDns) {
@@ -409,6 +457,8 @@ export function createSetupModel({
     setupReadiness,
     loadSetupSnapshot,
     saveSetupSnapshot,
+    restoreSetupSnapshot,
+    persistSetupSnapshot,
     clearSetupSnapshot,
     captureSetupSnapshot,
     lanDnsRestorePayload,

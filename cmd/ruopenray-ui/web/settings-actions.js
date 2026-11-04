@@ -68,6 +68,11 @@ export function createSettingsActions({
   async function logout() {
     await request('/api/logout', { method: 'POST', body: '{}' });
     state.token = '';
+    state.setupSnapshot = null;
+    state.setupSnapshotRevision = '';
+    state.setupSnapshotLoaded = false;
+    state.localProxyForm = null;
+    state.interfaceFormEdited = false;
     state.rememberPassword = false;
     clearAuthToken();
     state.message = '';

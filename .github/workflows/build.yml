@@ -25,6 +25,7 @@ jobs:
         run: go test -race ./... -count=1 -timeout=180s
       - run: go vet ./...
       - run: npm run test:frontend
+      - run: npm run test:installer
   xray:
     uses: ./.github/workflows/xray-compatibility.yml
   go:

@@ -35,7 +35,7 @@ function urlHost(host) {
 }
 
 function panelUrl(host, port) {
-	return `${window.location.protocol}//${urlHost(host)}:${normalizePort(port) || '9090'}/`;
+	return `http://${urlHost(host)}:${normalizePort(port) || '9090'}/`;
 }
 
 return view.extend({

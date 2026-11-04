@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,7 +58,7 @@ func (s *serverState) writeActiveProfileName(name string) error {
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(s.activeProfilePath(), []byte(clean+"\n"), 0o600)
+	return writeFileAtomic(s.activeProfilePath(), []byte(clean+"\n"), 0o600)
 }
 
 func (s *serverState) listProfiles() ([]profileInfo, error) {
@@ -98,7 +99,7 @@ func (s *serverState) listProfiles() ([]profileInfo, error) {
 }
 
 func cleanProfileName(name string) string {
-	re := regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+	re := regexp.MustCompile(`[^\p{L}\p{M}\p{N}._-]+`)
 	base := filepath.Base(strings.TrimSpace(name))
 	if base == "." {
 		base = ""
@@ -222,14 +223,89 @@ func (s *serverState) saveProfile(w http.ResponseWriter, r *http.Request) {
 	name := fmt.Sprint(payload["name"])
 	cfg, ok := payload["config"].(map[string]any)
 	if !ok {
+		if _, supplied := payload["config"]; supplied {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Конфигурация профиля должна быть JSON-объектом"})
+			return
+		}
 		cfg, _ = s.readActiveConfig()
 	}
-	savedName, err := s.saveProfileConfig(name, cfg)
+	var savedName string
+	var err error
+	if original, editing := payload["originalName"].(string); editing && strings.TrimSpace(original) != "" {
+		expected, _ := payload["expectedRevision"].(string)
+		savedName, err = s.saveEditedProfile(original, name, cfg, expected)
+	} else if createOnly, _ := payload["createOnly"].(bool); createOnly {
+		if _, statErr := os.Lstat(s.profilePath(name)); statErr == nil {
+			err = fmt.Errorf("%w: профиль с таким именем уже существует. Выберите другое имя", errProfileConflict)
+		} else if !os.IsNotExist(statErr) {
+			err = statErr
+		} else {
+			savedName, err = s.saveProfileConfig(name, cfg)
+		}
+	} else {
+		// Existing import clients use this endpoint as an upsert. New-profile
+		// controls explicitly send createOnly; internal saveProfileConfig callers
+		// continue to update the current profile without changing that contract.
+		savedName, err = s.saveProfileConfig(name, cfg)
+	}
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+		code := http.StatusInternalServerError
+		if errors.Is(err, errProfileConflict) {
+			code = http.StatusConflict
+		} else if os.IsNotExist(err) {
+			code = http.StatusNotFound
+		}
+		writeJSON(w, code, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "profile": savedName})
+}
+
+var errProfileConflict = errors.New("Изменения профиля не сохранены")
+
+// handleAPI holds the mutation lock across the revision/target checks and all
+// writes. Publish the new file before removing the original, so interruption
+// can leave a duplicate but cannot discard the only saved copy.
+func (s *serverState) saveEditedProfile(original, name string, cfg map[string]any, expected string) (string, error) {
+	oldPath, newPath := s.profilePath(original), s.profilePath(name)
+	previous, err := os.ReadFile(oldPath)
+	if err != nil {
+		return "", err
+	}
+	if expected != "" && expected != draftRevision(previous) {
+		return "", fmt.Errorf("%w: профиль изменился в другой вкладке. Откройте его заново перед сохранением", errProfileConflict)
+	}
+	if oldPath == newPath {
+		return s.saveProfileConfig(name, cfg)
+	}
+	if _, err := os.Lstat(newPath); err == nil {
+		return "", fmt.Errorf("%w: профиль с новым именем уже существует. Выберите другое имя", errProfileConflict)
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	active := s.readActiveProfileName() == s.normalizeProfileID(original)
+	savedName, err := s.saveProfileConfig(name, cfg)
+	if err != nil {
+		return "", err
+	}
+	if active {
+		err = s.writeActiveProfileName(savedName)
+	}
+	if err == nil {
+		err = os.Remove(oldPath)
+	}
+	if err != nil {
+		var rollbackErr error
+		if active {
+			rollbackErr = s.writeActiveProfileName(original)
+		}
+		removeErr := os.Remove(newPath)
+		if rollbackErr != nil || removeErr != nil {
+			return "", fmt.Errorf("%w; исходный профиль сохранён; откат имени: %v; удаление новой копии: %v", err, rollbackErr, removeErr)
+		}
+		return "", err
+	}
+	return savedName, nil
 }
 
 func (s *serverState) getProfile(w http.ResponseWriter, r *http.Request) {
@@ -245,10 +321,11 @@ func (s *serverState) getProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{
-		"ok":      true,
-		"name":    strings.TrimSuffix(cleanProfileName(name), ".json"),
-		"config":  cfg,
-		"updated": time.Now().Format(time.RFC3339),
+		"ok":       true,
+		"name":     strings.TrimSuffix(cleanProfileName(name), ".json"),
+		"config":   cfg,
+		"updated":  time.Now().Format(time.RFC3339),
+		"revision": draftRevision(body),
 	})
 }
 
@@ -268,7 +345,15 @@ func (s *serverState) deleteProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
+	s.activateProfileWithRestart(w, r, s.restartSubscriptionWithRollback)
+}
+
+func (s *serverState) activateProfileWithRestart(w http.ResponseWriter, r *http.Request, restart func(string) map[string]any) {
 	payload, _ := readJSON(w, r)
+	if expected, supplied := payload["expectedConfigRevision"]; supplied && expected != s.activeConfigRevision() {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "Активная конфигурация изменилась. Обновите состояние перед выбором профиля; ваш черновик сохранён."})
+		return
+	}
 	body, err := os.ReadFile(s.profilePath(fmt.Sprint(payload["name"])))
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
@@ -289,6 +374,21 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 422, map[string]any{"ok": false, "test": test, "error": "Профиль не прошёл проверку Xray"})
 		return
 	}
+	marker, markerErr := os.ReadFile(s.activeProfilePath())
+	markerExisted := markerErr == nil
+	if markerErr != nil && !os.IsNotExist(markerErr) {
+		respond(w, nil, markerErr)
+		return
+	}
+	restoreMarker := func() error {
+		if markerExisted {
+			return writeFileAtomic(s.activeProfilePath(), marker, 0o600)
+		}
+		if err := os.Remove(s.activeProfilePath()); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
 	backup, err := s.backupActive("config-before-profile")
 	if err == nil {
 		err = s.writeActiveConfig(cfg)
@@ -299,10 +399,25 @@ func (s *serverState) activateProfile(w http.ResponseWriter, r *http.Request) {
 			if restoreErr := s.restoreSubscriptionConfig(backup); restoreErr != nil {
 				err = fmt.Errorf("%w; откат: %v", err, restoreErr)
 			}
+			if restoreErr := restoreMarker(); restoreErr != nil {
+				err = fmt.Errorf("%w; откат имени профиля: %v", err, restoreErr)
+			}
 		}
 	}
 	if err != nil {
 		respond(w, nil, err)
+		return
+	}
+	if apply, _ := payload["restart"].(bool); apply {
+		result := restart(backup)
+		if result["ok"] != true {
+			if err := restoreMarker(); err != nil {
+				result["profileRollbackError"] = err.Error()
+			}
+		}
+		// A saved draft belongs to its editor and is never cleared by profile
+		// selection. The frontend keeps local edits and shows them as pending.
+		writeJSON(w, 200, map[string]any{"ok": result["ok"], "active": s.readActiveProfileName(), "backup": backup, "restart": result, "restartRequired": false, "activeRevision": s.activeConfigRevision()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "active": s.normalizeProfileID(fmt.Sprint(payload["name"])), "backup": backup, "restartRequired": true})

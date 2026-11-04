@@ -15,7 +15,8 @@ export function createRuntimeController({
   syncLanDnsStatus,
   syncLoggingSettings,
   syncServiceSettings,
-  clearAuth
+  clearAuth,
+  afterRefresh = () => {}
 }) {
   let activeRefreshes = 0;
   let refreshGeneration = 0;
@@ -412,6 +413,7 @@ export function createRuntimeController({
         if (background) backgroundRender();
         else render();
       }
+      if (isCurrent()) afterRefresh();
     } catch (error) {
       if (!isCurrent()) {
         if (options.throwOnError) throw error;

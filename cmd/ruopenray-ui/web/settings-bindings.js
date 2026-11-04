@@ -5,6 +5,16 @@ export function bindSettingsControls({
   installPasswordStorageKey,
   githubInstallCommand,
 }) {
+  for (const [kind, prefix] of [['socks', 'Socks'], ['http', 'Http']]) {
+    for (const [suffix, key] of Object.entries({ Enabled: 'enabled', Listen: 'listen', Port: 'port', Auth: 'auth', User: 'user', Pass: 'pass' })) {
+      const checkbox = suffix === 'Enabled' || suffix === 'Auth';
+      document.querySelector(`#localProxy${prefix}${suffix}`)?.addEventListener(checkbox ? 'change' : 'input', (event) => {
+        state.localProxyForm = state.localProxyForm || {};
+        state.localProxyForm[kind] = { ...state.localProxyForm[kind], [key]: checkbox ? event.target.checked : event.target.value };
+        if (checkbox) render();
+      });
+    }
+  }
   document.querySelector('#fullBackupPath')?.addEventListener('input', (event) => {
     state.fullBackupPath = event.target.value;
     state.fullBackupResult = null;

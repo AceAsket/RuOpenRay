@@ -54,7 +54,9 @@
 
 <script>
 	(function() {
-		var url = window.location.protocol + '//' + window.location.hostname + ':9090/';
+		var host = window.location.hostname;
+		if (host.indexOf(':') >= 0 && host.charAt(0) !== '[') host = '[' + host + ']';
+		var url = 'http://' + host + ':9090/';
 		var link = document.getElementById('ruopenray-link');
 		var button = document.getElementById('ruopenray-open');
 

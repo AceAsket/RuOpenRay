@@ -95,6 +95,10 @@ applyUiTheme();
 
 function clearAuth() {
   state.token = '';
+  state.setupSnapshot = null;
+  state.setupSnapshotRevision = '';
+  state.setupSnapshotLoaded = false;
+  state.localProxyForm = null;
   clearAuthToken({ preserveRemember: true });
   state.message = 'Сессия устарела. Войдите заново.';
   render();
@@ -665,7 +669,8 @@ const runtimeController = createRuntimeController({
   syncLanDnsStatus,
   syncLoggingSettings,
   syncServiceSettings,
-  clearAuth
+  clearAuth,
+  afterRefresh: () => updatesActions.resumeAppUpdate()
 });
 const {
   logsUrl,
@@ -786,6 +791,8 @@ const {
   setupReadiness,
   loadSetupSnapshot,
   saveSetupSnapshot,
+  restoreSetupSnapshot,
+  persistSetupSnapshot,
   clearSetupSnapshot,
   captureSetupSnapshot,
   lanDnsRestorePayload,
@@ -809,6 +816,8 @@ const setupActions = createSetupActions({
   lanDnsModeLabel,
   setupReadiness,
   loadSetupSnapshot,
+  restoreSetupSnapshot,
+  persistSetupSnapshot,
   captureSetupSnapshot,
   clearSetupSnapshot,
   lanDnsRestorePayload,
@@ -867,11 +876,17 @@ const updatesActions = createUpdatesActions({
   upload,
   render,
   refresh,
+  canReloadApp: () => !state.interfaceFormEdited && !configHasUnappliedChanges() && !firewallHasUnappliedChanges()
+    && !state.setupApplying && !state.setupRollbacking
+    && (!state.busyAction || state.busyAction === 'updateApp')
+    && !document.querySelector('[role="dialog"], [data-modal]'),
+  reloadApp: () => location.reload(),
   geoSelectedPresetIds: (...args) => geoSelectedPresetIds(...args)
 });
 const {
   updateCore,
   updateApp,
+  reloadUpdatedApp,
   checkAppUpdate,
   appVersionClick,
   updateGeo,
@@ -1012,6 +1027,7 @@ async function discardPendingChanges() {
   state.serverDraftRevision = '';
   state.serverDraftConflict = false;
   state.applySteps = [];
+  state.localProxyForm = null;
   await refresh({ renderAfter: false });
   state.message = 'Черновик удалён. Показана действующая конфигурация роутера.';
   render();
@@ -1024,6 +1040,7 @@ async function reloadServerDraft() {
   const draft = await request('/api/config/draft');
   const activeConfig = draft.activeConfig || await request('/api/config');
   syncConfig(draft.exists ? draft.config : activeConfig, { activeConfig, fromServer: true, forceDraft: true, serverDraft: draft });
+  state.localProxyForm = null;
   state.serverDraftConflict = false;
   state.activeConfigConflict = false;
   state.message = 'Загружен актуальный черновик роутера.';
@@ -2347,6 +2364,7 @@ function bind() {
       ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
     ])
       : tab === 'serverMode' ? ensureServerModeLoaded()
+      : tab === 'setup' ? openSetupWizard()
       : tab === 'dns' && state.dnsView === 'adguard' ? adguardActions.adguardRefresh() : null;
     pending?.catch((error) => { state.message = error.message; render(); });
   } });
@@ -2372,6 +2390,7 @@ function bind() {
       appVersionClick,
       checkAppUpdate,
       updateApp,
+      reloadUpdatedApp,
       test: testConfig,
       apply: applyConfigAndFirewall,
       discardPendingChanges,
@@ -2524,8 +2543,8 @@ function bind() {
       setupPrepareDraft,
       runSetupWizard,
       rollbackSetupWizard,
-      clearSetupSnapshot: () => {
-        clearSetupSnapshot();
+      clearSetupSnapshot: async () => {
+        await clearSetupSnapshot();
         render();
       },
       refreshInstallPlan: async () => {
@@ -2776,7 +2795,7 @@ function bind() {
     configureLogTimer,
     scrollLogsToBottom,
   });
-  bindProfileControls({ state, activateProfile, openProfileEditor, deleteProfile, downloadProfile });
+  bindProfileControls({ state, render, activateProfile, openProfileEditor, deleteProfile, downloadProfile });
   bindConfigControls({ state, scheduleServerDraftSave });
   bindImportControls({ state, render });
   bindB4Controls({ state });
@@ -2859,6 +2878,12 @@ function bind() {
     });
   });
 
+}
+
+for (const eventName of ['input', 'change']) {
+  app.addEventListener(eventName, (event) => {
+    if (state.token && event.target?.matches?.('input, select, textarea')) state.interfaceFormEdited = true;
+  });
 }
 
 render();

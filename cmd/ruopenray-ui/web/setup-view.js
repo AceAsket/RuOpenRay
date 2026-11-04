@@ -496,13 +496,15 @@ function setupWizardStepBody(readiness, diskFree, snapshot, result, rollback) {
   const allTraffic = state.setupFallbackMode === 'proxy';
   const launchReady = readiness.canApply && (allTraffic || readiness.proxyRuleCount > 0);
   const complete = result?.phase === 'complete' && result.ok;
+  const connectionVerified = complete && result.connectionVerified === true;
   const coreReady = Boolean(state.status?.core?.available);
   return `<section class="setup-step-panel setup-simple-step setup-launch-step ${complete ? 'complete' : ''}">
     <div class="setup-simple-hero">
       <span class="setup-kicker">Шаг 3</span>
       <h3>${state.setupApplying ? 'Запускаю RuOpenRay' : complete ? 'RuOpenRay запущен' : launchReady ? 'Всё готово к запуску' : 'Осталось завершить настройку'}</h3>
-      <p>${state.setupApplying ? 'Проверяю настройки и последовательно включаю подключение, DNS и перехват.' : complete ? 'Подключение работает, а настройки сохранены на роутере.' : launchReady ? 'Проверьте итог. После запуска мастер сам настроит Xray, DNS и перехват локальной сети.' : 'Вернитесь к предыдущим шагам: добавьте подключение и выберите сценарии либо весь интернет.'}</p>
+      <p>${state.setupApplying ? 'Проверяю настройки и последовательно включаю подключение, DNS и перехват.' : connectionVerified ? 'Проверка подключения пройдена, настройки сохранены на роутере.' : complete ? 'Настройки применены. Работоспособность подключения ещё не подтверждена.' : launchReady ? 'Проверьте итог. После запуска мастер сам настроит Xray, DNS и перехват локальной сети.' : 'Вернитесь к предыдущим шагам: добавьте подключение и выберите сценарии либо весь интернет.'}</p>
     </div>
+    ${complete && !connectionVerified ? '<section class="setup-callout warn"><div><strong>Проверьте соединение</strong><span>Успешное применение настроек не подтверждает доступность VPN. Откройте панель и запустите проверку соединения.</span></div><button class="btn secondary" type="button" data-tab-jump="dashboard">Открыть панель</button></section>' : ''}
     ${coreReady ? '' : '<section class="setup-callout warn"><div><strong>Сначала установите Xray</strong><span>Без ядра Xray мастер не сможет запустить подключение.</span></div><button class="btn warning" type="button" data-action="openInstallWizard">Установить Xray</button></section>'}
     <div class="setup-launch-summary">
       <article><span>Подключение</span><strong>${proxyCount ? escapeHtml(activeProxyName()) : 'Не выбрано'}</strong><small>${setupTrafficTarget(state)?.kind === 'balancer' ? 'Группа серверов' : 'Сервер'} · ${proxyCount} доступных выходов</small></article>
@@ -547,7 +549,7 @@ function setupSnapshotBlock(snapshot) {
   return `<section class="setup-snapshot in-step">
     <div>
       <h3>Откат мастера</h3>
-      <p>${snapshot?.createdAt ? `Есть снимок от ${escapeHtml(new Date(snapshot.createdAt).toLocaleString('ru-RU'))}: конфигурация Xray, LAN DNS и nftables.` : 'Перед включением активного режима мастер сохранит снимок текущего состояния.'}</p>
+      <p>${snapshot?.createdAt ? `На роутере сохранён снимок от ${escapeHtml(new Date(snapshot.createdAt).toLocaleString('ru-RU'))}: конфигурация Xray, LAN DNS и nftables. Он доступен после обновления страницы и повторного входа.` : 'Перед включением активного режима мастер сохранит точку отката на роутере.'}</p>
     </div>
     <div class="split-actions">
       <button class="btn secondary" type="button" data-action="rollbackSetupWizard" ${snapshot && !state.setupApplying && !state.setupRollbacking ? '' : 'disabled'}>${state.setupRollbacking ? 'Откатываю...' : 'Откатить изменения'}</button>
@@ -763,7 +765,7 @@ function coreUpdateDialog() {
   const info = coreUpdateInfo();
   const missing = !state.status?.core?.available;
   const selectedInstalled = !missing && state.selectedCoreVersion && info.current === state.selectedCoreVersion;
-  const canInstallSelected = Boolean(state.selectedCoreVersion && !selectedInstalled);
+  const canInstallSelected = Boolean(!missing && state.selectedCoreVersion && !selectedInstalled);
   return `
     <div class="modal-backdrop" data-action="closeCoreDialog">
       <section class="modal core-dialog" role="dialog" aria-modal="true" aria-labelledby="coreDialogTitle" data-modal>
@@ -777,7 +779,7 @@ function coreUpdateDialog() {
         ${modalNoticeView(state, escapeHtml, 'core')}
         <div class="core-update-banner ${info.hasUpdate ? 'has-update' : ''}">
           <strong>${missing ? 'Xray не установлен' : info.hasUpdate ? 'Есть обновление' : 'Актуальная стабильная версия уже установлена'}</strong>
-          <span>${missing ? 'Для OpenWrt проще начать с пакета xray-core из репозитория, а версии из GitHub оставить для ручного выбора.' : info.target ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}` : 'Релизы пока не загружены'}</span>
+          <span>${missing ? 'Сначала установите пакет xray-core через мастер OpenWrt. Он подготовит сервис и зависимости. После этого можно выбрать версию GitHub.' : info.target ? `${info.target.prerelease ? 'Последний pre-release' : 'Последний stable'}: ${escapeHtml(info.target.tag)} · ${releaseDate(info.target)}` : 'Релизы пока не загружены'}</span>
         </div>
         <div class="core-arch-strip">
           <strong>Архитектура</strong>
@@ -815,11 +817,11 @@ function coreUpdateDialog() {
             <p class="muted">Pre-release версии могут быть нестабильными. После установки RuOpenRay перезапустит Xray.</p>
             <label class="toggle-row">
               <input id="coreBackup" type="checkbox" ${state.coreBackup ? 'checked' : ''} />
-              <span>Сохранить резервную копию текущего бинарника Xray перед заменой</span>
+              <span>Хранить резервную копию Xray после обновления</span>
             </label>
-            <small class="muted">Резервная копия занимает место примерно как сам бинарник Xray. На маленьком NAND лучше включать только перед рискованной установкой.</small>
+            <small class="muted">Временная копия для отката создаётся всегда и занимает место примерно как бинарник Xray. Этот флажок оставляет её после успешной проверки.</small>
           </div>
-          <button class="btn warning ${state.coreUpdating ? 'is-busy' : ''}" type="button" data-action="updateCore" ${state.coreUpdating || !canInstallSelected ? 'disabled' : ''}>${state.coreUpdating ? 'Устанавливаю...' : selectedInstalled ? 'Установлено' : 'Установить'}</button>
+          ${missing ? '' : `<button class="btn warning ${state.coreUpdating ? 'is-busy' : ''}" type="button" data-action="updateCore" ${state.coreUpdating || !canInstallSelected ? 'disabled' : ''}>${state.coreUpdating ? 'Устанавливаю...' : selectedInstalled ? 'Установлено' : 'Установить'}</button>`}
         </div>
         ${state.coreUpdate ? `<div class="core-result">
           <strong>${state.coreUpdate.ok ? 'Готово' : 'Ошибка'} · ${escapeHtml(state.coreUpdate.packageManager || 'пакетный менеджер')}</strong>

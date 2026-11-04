@@ -7,6 +7,7 @@ import { createSetupView, setupWizardStepIds } from '../cmd/ruopenray-ui/web/set
 import { escapeHtml } from '../cmd/ruopenray-ui/web/formatters.js';
 import { createSetupNavigation } from '../cmd/ruopenray-ui/web/setup-navigation.js';
 import { createConfigStateHelpers } from '../cmd/ruopenray-ui/web/config-state.js';
+import { createSetupSnapshotStore } from './fixtures/setup-snapshot-store.mjs';
 
 const selectedTag = '????de_example_selected';
 const firstTag = 'example-first';
@@ -25,7 +26,7 @@ const sampleConfig = () => ({
   dns: { servers: ['9.9.9.9'] },
 });
 
-function fixture({ fallback = 'direct', requestHook, firewallResult, firewallHook, refreshHook } = {}) {
+function fixture({ fallback = 'direct', requestHook, firewallResult, firewallHook, refreshHook, snapshotStore = createSetupSnapshotStore() } = {}) {
   const state = {
     tab: 'setup', setupStep: 'launch', setupFallbackMode: fallback, setupLanDnsMode: 'keep',
     setupRestartDnsmasq: true, setupApplying: false, setupResult: null, setupRollbackResult: null,
@@ -45,9 +46,10 @@ function fixture({ fallback = 'direct', requestHook, firewallResult, firewallHoo
   let refreshes = 0;
   const request = async (path, options = {}) => {
     const call = { path, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : undefined };
-    calls.push(call);
+    if (path !== '/api/setup/snapshot') calls.push(call);
     const override = requestHook?.(call);
     if (override !== undefined) return await override;
+    if (path === '/api/setup/snapshot') return snapshotStore.request(call);
     if (path === '/api/config' && call.method === 'GET') return structuredClone(backendConfig);
     if (path === '/api/firewall/snapshot') return { ok: true, status: { active: false }, nftBody: '', hotplugBody: '' };
     if (path === '/api/dns/lan-upstream') return { ok: true, mode: call.body?.mode || 'system', readiness: { ready: true } };
@@ -72,7 +74,7 @@ function fixture({ fallback = 'direct', requestHook, firewallResult, firewallHoo
     },
   });
   const view = createSetupView({ state, escapeHtml, byteSize: String, shellQuote: String, ...model, firewallReadyStatus, firewallPorts: () => [80, 443] });
-  return { state, model, actions, view, calls, syncs, backendConfig, proxyOutbounds, counters: () => ({ renders, refreshes }) };
+  return { state, model, actions, view, calls, syncs, backendConfig, proxyOutbounds, snapshotStore, counters: () => ({ renders, refreshes }) };
 }
 
 const appSource = readFileSync(new URL('../cmd/ruopenray-ui/web/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -80,6 +82,86 @@ const gateStart = appSource.indexOf('function setupStepGate(');
 const gateSource = appSource.slice(gateStart, appSource.indexOf('\n}\n', gateStart) + 3);
 const navigation = (f) => createSetupNavigation({ state: f.state, render() {}, stepIds: setupWizardStepIds,
   stepGate: new Function('state', 'setupReadiness', 'proxyOutbounds', `${gateSource}\nreturn setupStepGate;`)(f.state, f.model.setupReadiness, f.proxyOutbounds) });
+
+test('a router snapshot survives a new browser state and supports rollback after partial failure', async () => {
+  const first = fixture({ firewallResult: { ok: false, error: 'firewall failure', status: {} } });
+  first.state.setupLanDnsMode = 'xray';
+  await first.actions.runSetupWizard();
+  assert.equal(first.state.setupResult.ok, false);
+  const original = structuredClone(first.state.setupSnapshot);
+  assert.equal(original.dnsMutationAttempted, true);
+  assert.equal(original.recoveryPending, true);
+  const second = fixture({ snapshotStore: first.snapshotStore });
+  await second.actions.openSetupWizard();
+  assert.deepEqual(second.state.setupSnapshot, original);
+  assert.match(second.view.setupPage(), /доступен после обновления страницы/);
+  await second.actions.rollbackSetupWizard();
+  assert.equal(second.state.setupRollbackResult.ok, true);
+  assert.deepEqual(second.calls.find((call) => call.path === '/api/config/apply').body.config, original.config);
+  assert.equal(second.state.setupSnapshot, null);
+  assert.equal(first.snapshotStore.request({ method: 'GET' }).exists, false);
+});
+
+test('opening the package installer closes the core release dialog', async () => {
+  const f = fixture({ requestHook: ({ path }) => path === '/api/install/plan' ? { ok: true, steps: [] } : undefined });
+  f.state.coreDialogOpen = true;
+  await f.actions.openInstallWizard();
+  assert.equal(f.state.coreDialogOpen, false);
+  assert.equal(f.state.installWizardOpen, true);
+});
+
+test('recovery storage errors stop before the next network settings mutation', async () => {
+  for (const failAt of [1, 2, 3]) {
+    let writes = 0;
+    const f = fixture({ requestHook: ({ path, method }) => {
+      if (path === '/api/setup/snapshot' && method === 'POST' && ++writes === failAt) throw new Error('snapshot storage failure');
+    } });
+    f.state.setupLanDnsMode = 'xray';
+    await f.actions.runSetupWizard();
+    assert.equal(f.state.setupResult.ok, false);
+    assert.match(f.state.message, /snapshot storage failure/);
+    if (failAt < 3) assert.equal(f.calls.some((call) => call.path === '/api/config/apply'), false);
+    assert.equal(f.calls.some((call) => call.path === '/api/dns/lan-upstream' && call.method === 'POST'), false);
+    assert.equal(f.calls.some((call) => call.path === 'firewall-with-retry'), false);
+  }
+});
+
+test('inconclusive or unrelated VPN checks never claim the chosen connection works', async () => {
+  for (const [health, verified] of [
+    [{ ok: true, state: 'inconclusive', after: { checks: { [`vpn:${selectedTag}`]: { ok: false } } } }, false],
+    [{ ok: true, state: 'healthy', after: { checks: { [`vpn:${firstTag}`]: { ok: true } } } }, false],
+    [{ ok: true, state: 'healthy', after: { checks: { [`vpn:${selectedTag}`]: { ok: true } } } }, true],
+  ]) {
+    const f = fixture({ requestHook: ({ path }) => path === '/api/config/apply'
+      ? { ok: true, restart: { ok: true, health } } : undefined });
+    await f.actions.runSetupWizard();
+    assert.equal(f.state.setupResult.ok, true);
+    assert.equal(f.state.setupResult.connectionVerified, verified);
+    const html = f.view.setupPage();
+    assert.doesNotMatch(html, /Подключение работает/);
+    if (!verified) assert.match(html, /Работоспособность подключения ещё не подтверждена/);
+    else assert.match(html, /Проверка подключения пройдена/);
+  }
+});
+
+test('stale deletion and a delayed previous session cannot replace or forget a recovery point', async () => {
+  const f = fixture();
+  await f.actions.runSetupWizard();
+  const original = structuredClone(f.state.setupSnapshot);
+  const newer = fixture({ snapshotStore: f.snapshotStore });
+  await newer.actions.openSetupWizard();
+  await newer.model.persistSetupSnapshot({ ...newer.state.setupSnapshot, recoveryPending: true });
+  await assert.rejects(f.model.clearSetupSnapshot(), /другой вкладке/);
+  assert.deepEqual(f.state.setupSnapshot, original);
+  let resolveLoad;
+  const delayed = fixture({ requestHook: ({ path }) => path === '/api/setup/snapshot'
+    ? new Promise((resolve) => { resolveLoad = resolve; }) : undefined });
+  const load = delayed.model.restoreSetupSnapshot();
+  delayed.state.token = 'new-session';
+  resolveLoad({ ok: true, exists: true, snapshot: original, revision: 'old-session' });
+  await assert.rejects(load, /Сессия изменилась/);
+  assert.equal(delayed.state.setupSnapshot, undefined);
+});
 
 test('three wizard steps, back and reentry preserve the exact config, draft, selected server and traffic choice', async () => {
   const f = fixture({ fallback: 'proxy' });
@@ -337,7 +419,7 @@ test('incomplete recovery snapshots stop before any configuration, DNS or firewa
     await f.actions.runSetupWizard();
     assert.equal(f.state.setupResult.ok, false, target);
     assert.equal(f.calls.some((call) => call.method === 'POST' || call.path === 'firewall-with-retry'), false, target);
-    assert.equal(f.state.setupSnapshot, undefined);
+    assert.equal(f.state.setupSnapshot, null);
   }
 });
 
@@ -397,7 +479,7 @@ test('refresh failure cannot produce completion or discard the rollback recovery
   const snapshot = f.state.setupSnapshot;
   await f.actions.rollbackSetupWizard();
   assert.equal(f.state.setupRollbackResult.phase, 'error');
-  assert.equal(f.state.setupSnapshot, snapshot);
+  assert.deepEqual(f.state.setupSnapshot, snapshot);
 });
 
 test('a selected balancer stays a balancer through inferred mode, preparation and summary display', () => {

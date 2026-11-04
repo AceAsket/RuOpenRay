@@ -268,6 +268,12 @@ func (s *serverState) updateGeoLegacy(payload map[string]any) map[string]any {
 }
 
 func (s *serverState) cleanupGeoBackups() map[string]any {
+	geoTransactionMu.Lock()
+	defer geoTransactionMu.Unlock()
+	pending, err := s.hasPendingGeoJournal()
+	if err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
 	entries, err := os.ReadDir(s.cfg.BackupDir)
 	if err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error()}
@@ -295,8 +301,27 @@ func (s *serverState) cleanupGeoBackups() map[string]any {
 		}
 	}
 	deleted := 0
+	skipped := 0
+	skippedBackups := []map[string]string{}
+	var cleanupErrors []string
 	var freed int64
 	for _, entry := range entries {
+		if geoBackupDirPattern.MatchString(entry.Name()) {
+			if pending {
+				skipped++
+				skippedBackups = append(skippedBackups, map[string]string{"name": entry.Name(), "reason": "есть незавершённый журнал geo"})
+				continue
+			}
+			bytes, err := removeCompletedGeoBackup(s.cfg.BackupDir, filepath.Join(s.cfg.BackupDir, entry.Name()))
+			if err != nil {
+				skipped++
+				skippedBackups = append(skippedBackups, map[string]string{"name": entry.Name(), "reason": err.Error()})
+				continue
+			}
+			freed += bytes
+			deleted++
+			continue
+		}
 		if entry.IsDir() {
 			continue
 		}
@@ -313,14 +338,23 @@ func (s *serverState) cleanupGeoBackups() map[string]any {
 		}
 		path := filepath.Join(s.cfg.BackupDir, name)
 		info, err := entry.Info()
-		if err == nil {
-			freed += info.Size()
+		if err != nil || !info.Mode().IsRegular() || entry.Type()&os.ModeSymlink != 0 {
+			skipped++
+			skippedBackups = append(skippedBackups, map[string]string{"name": entry.Name(), "reason": "необычный файл; требуется ручная проверка"})
+			continue
 		}
-		if err := os.Remove(path); err == nil {
+		if err := os.Remove(path); err != nil {
+			cleanupErrors = append(cleanupErrors, name+": "+err.Error())
+		} else {
+			freed += info.Size()
 			deleted++
 		}
 	}
-	return map[string]any{"ok": true, "deleted": deleted, "freed": freed, "status": s.geoStatus(), "stdout": fmt.Sprintf("Удалено резервных копий geo: %d, освобождено %.1f MB", deleted, float64(freed)/1024/1024)}
+	stdout := fmt.Sprintf("Удалено резервных копий geo: %d, освобождено %.1f MB", deleted, float64(freed)/1024/1024)
+	if skipped > 0 {
+		stdout += fmt.Sprintf(". Сохранено неподтверждённых или незавершённых копий: %d; для них нужна ручная проверка", skipped)
+	}
+	return map[string]any{"ok": len(cleanupErrors) == 0, "deleted": deleted, "freed": freed, "skipped": skipped, "skippedBackups": skippedBackups, "errors": cleanupErrors, "stderr": strings.Join(cleanupErrors, "\n"), "status": s.geoStatus(), "stdout": stdout}
 }
 
 func (s *serverState) deleteGeoFiles(payload map[string]any) map[string]any {
