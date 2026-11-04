@@ -5,6 +5,7 @@ import { analyzeRuleImport } from './routing-insights.js';
 import { isDefaultRoute, orderRoutingRules, saveRouteDefaultLast } from './routing-order.js';
 import { projectRoutingItems, routeDisplayLeaves, routeDisplayRestricted } from './routing-display.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { interfaceIcon } from './navigation-view.js';
 import {
   expandRoutePresetRules,
   routeRuleConditionKey
@@ -1571,7 +1572,7 @@ export function createRoutingActions({
           <input type="checkbox" data-route-select="${index}" ${selectedForGroup ? 'checked' : ''} ${selectableForGroup ? '' : 'disabled'} />
           <span></span>
         </label>
-        <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : '⋮⋮'}</button>
+        <button class="route-drag-handle" type="button" ${dragLocked ? 'disabled' : ''} title="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить внутри подборки' : 'Перетащить правило'}" aria-label="${managed ? 'Служебное правило управляется настройками RuOpenRay' : nested ? 'Перетащить правило внутри подборки' : 'Перетащить правило'}">${managed ? '•' : interfaceIcon('grip')}</button>
         <span>${displayOrder}</span>
       </div>
       <div class="route-kind-stack">
@@ -1637,7 +1638,7 @@ export function createRoutingActions({
       <summary>
         <div class="route-preset-group-order">
           <input class="route-group-select" type="checkbox" data-route-select-group="${selectionIndexes.join(',')}" ${selectionCount === selectionIndexes.length && selectionCount ? 'checked' : ''} ${selectionCount && selectionCount < selectionIndexes.length ? 'data-indeterminate' : ''} aria-label="Выбрать правила группы ${escapeHtml(item.title)}" ${selectionIndexes.length ? '' : 'disabled'} />
-          <button class="route-drag-handle" type="button" ${displayLocked ? 'disabled' : ''} title="Перетащить подборку" aria-label="Перетащить подборку">⋮⋮</button>
+          <button class="route-drag-handle" type="button" ${displayLocked ? 'disabled' : ''} title="Перетащить подборку" aria-label="Перетащить подборку">${interfaceIcon('grip')}</button>
           <span>${displayStart === displayEnd ? displayStart : `${displayStart}–${displayEnd}`}</span>
         </div>
         ${icon}

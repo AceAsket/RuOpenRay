@@ -16,6 +16,7 @@ export function interfaceIcon(name, className = '') {
     router: '<rect x="3" y="11" width="18" height="9" rx="2"/><path d="M7 11V4M17 11V4M7 16h.01M11 16h.01M16 16h2"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
     moon: '<path d="M20.5 13A9 9 0 0 1 11 3.5 9 9 0 1 0 20.5 13Z"/>',
+    grip: '<g fill="currentColor" stroke="none"><circle cx="8" cy="5" r="1.4"/><circle cx="16" cy="5" r="1.4"/><circle cx="8" cy="12" r="1.4"/><circle cx="16" cy="12" r="1.4"/><circle cx="8" cy="19" r="1.4"/><circle cx="16" cy="19" r="1.4"/></g>',
   };
   return `<svg class="${className}" width="24" height="24" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.servers}</svg>`;
 }
