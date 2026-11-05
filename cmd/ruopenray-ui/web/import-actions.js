@@ -97,46 +97,60 @@ export function createImportActions({
   function isCatchAllRoute(rule) {
     if (!rule) return false;
     const hasTarget = Boolean(rule.outboundTag || rule.balancerTag);
-    const hasConditions = Boolean(rule.domain?.length || rule.ip?.length || rule.source?.length || rule.inboundTag?.length || rule.network || (rule.port && rule.port !== '0-65535'));
-    return hasTarget && !hasConditions;
+    if (!hasTarget) return false;
+    const metadata = new Set(['type', 'ruleTag', 'domainMatcher', 'outboundTag', 'balancerTag', 'network', 'port']);
+    const conditions = new Set(['domain', 'ip', 'source', 'inboundTag', 'protocol', 'user', 'attrs', 'sourcePort']);
+    const hasValue = (value) => Array.isArray(value) ? value.length > 0
+      : value && typeof value === 'object' ? Object.keys(value).length > 0
+      : value !== undefined && value !== null && String(value).trim() !== '';
+    for (const [key, value] of Object.entries(rule)) {
+      if (conditions.has(key)) {
+        if (hasValue(value)) return false;
+      } else if (!metadata.has(key)) {
+        // An unfamiliar matching field must not become an unrestricted route.
+        return false;
+      }
+    }
+    const network = typeof rule.network === 'string' ? rule.network.trim().toLowerCase().replaceAll(' ', '') : rule.network;
+    if (network !== undefined && network !== null && network !== '' && network !== 'tcp,udp' && network !== 'udp,tcp') return false;
+    const port = String(rule.port ?? '').trim();
+    return port === '' || port === '0-65535';
   }
 
   function isTransparentMainProxyRoute(rule) {
     if (!rule || !rule.outboundTag || rule.balancerTag) return false;
     const inbound = Array.isArray(rule.inboundTag) ? rule.inboundTag : (rule.inboundTag ? [rule.inboundTag] : []);
-    if (!inbound.includes('transparent_ipv4')) return false;
-    return !rule.domain?.length
-      && !rule.ip?.length
-      && !rule.source?.length
-      && !rule.network
-      && !(rule.port && rule.port !== '0-65535');
+    if (!inbound.length || !inbound.every((tag) => tag === 'transparent_ipv4')) return false;
+    const withoutInbound = { ...rule };
+    delete withoutInbound.inboundTag;
+    return isCatchAllRoute(withoutInbound);
   }
 
   function setActiveProxyDraft(tag) {
-    const defaultRule = { type: 'field', outboundTag: tag };
+    const defaultRule = { type: 'field', network: 'tcp,udp', outboundTag: tag };
     const rules = routeRules();
+    let changedExisting = 0;
+    let addedCatchAll = 0;
     if (!rules.length) {
       setRoutingDraft([defaultRule]);
+      addedCatchAll = 1;
     } else {
-      let changed = 0;
+      let matched = 0;
       const nextRules = rules.map((rule) => {
-        if (isCatchAllRoute(rule)) {
-          changed += 1;
-          return defaultRule;
-        }
-        if (isTransparentMainProxyRoute(rule)) {
-          changed += 1;
-          return { ...rule, outboundTag: tag };
-        }
-        if (rule?.outboundTag === 'proxy') {
-          changed += 1;
-          return { ...rule, outboundTag: tag };
+        if (isCatchAllRoute(rule) || isTransparentMainProxyRoute(rule) || rule?.outboundTag === 'proxy') {
+          matched += 1;
+          if (rule.outboundTag !== tag || rule.balancerTag) changedExisting += 1;
+          const next = { ...rule, outboundTag: tag };
+          delete next.balancerTag;
+          return next;
         }
         return rule;
       });
-      setRoutingDraft(changed ? nextRules : [...rules, defaultRule]);
+      addedCatchAll = matched ? 0 : 1;
+      setRoutingDraft(matched ? nextRules : [...rules, defaultRule]);
     }
     setActiveServerTag(tag);
+    return { changedExisting, addedCatchAll };
   }
 
   function setActiveProxyBalancerDraft(tag) {

@@ -89,6 +89,22 @@ func (s *serverState) serviceAction(action string) map[string]any {
 }
 
 func (s *serverState) serviceActionWithHealth(action string, baseline *runtimeHealth) map[string]any {
+	return s.serviceActionWithHealthProgress(action, baseline, nil)
+}
+
+func (s *serverState) serviceActionWithHealthProgress(action string, baseline *runtimeHealth, progress configApplyReporter) (result map[string]any) {
+	stage := "restart"
+	reportStage := func(value string) {
+		stage = value
+		reportConfigApply(progress, stage, "running")
+	}
+	defer func() {
+		status := "failed"
+		if result["ok"] == true {
+			status = "done"
+		}
+		reportConfigApply(progress, stage, status)
+	}()
 	switch action {
 	case "start", "stop", "restart", "enable", "disable":
 	default:
@@ -96,9 +112,11 @@ func (s *serverState) serviceActionWithHealth(action string, baseline *runtimeHe
 	}
 	healthEnabled := runtime.GOOS == "linux" && s.cfg.ServiceName == "xray" && (action == "start" || action == "restart")
 	if healthEnabled && baseline == nil {
+		reportStage("baseline")
 		before := s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig))
 		baseline = &before
 	}
+	reportStage("restart")
 	var logMaintenance map[string]any
 	var xrayEnable map[string]any
 	var dnsPortGuard map[string]any
@@ -128,7 +146,7 @@ func (s *serverState) serviceActionWithHealth(action string, baseline *runtimeHe
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: был бы выполнен сервис " + s.cfg.ServiceName + " " + action, "logMaintenance": logMaintenance, "delay": delay}
 	}
-	result := runTimeout(30*time.Second, "/etc/init.d/"+s.cfg.ServiceName, action)
+	result = runTimeout(30*time.Second, "/etc/init.d/"+s.cfg.ServiceName, action)
 	if logMaintenance != nil {
 		result["logMaintenance"] = logMaintenance
 	}
@@ -145,12 +163,14 @@ func (s *serverState) serviceActionWithHealth(action string, baseline *runtimeHe
 		result["stdout"] = concatCommandOutput(delay, result)
 	}
 	if result["ok"] == true && healthEnabled {
+		reportStage("readiness")
 		ready := s.waitXrayReady()
 		result["readiness"] = ready
 		if ready["ok"] != true {
 			result["ok"] = false
 			result["stderr"] = ready["stderr"]
 		} else {
+			reportStage("health")
 			health := compareRuntimeHealth(*baseline, s.captureRuntimeHealth(s.runtimeHealthConfig(s.cfg.ActiveConfig)))
 			result["health"] = health
 			if health["state"] == "inconclusive" {
@@ -233,24 +253,58 @@ func (s *serverState) enableXrayServiceConfig() map[string]any {
 }
 
 func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
-	s.applyConfigWithRestart(w, r, s.restartSubscriptionWithRollback)
+	s.applyConfigWithProgress(w, r, s.restartSubscriptionWithRollbackProgress)
 }
 
 func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Request, activate func(string) map[string]any) {
-	draftBefore := s.readConfigDraft()
-	draftVersion, _ := draftBefore["revision"].(string)
+	s.applyConfigWithProgress(w, r, func(backup string, progress configApplyReporter) map[string]any {
+		reportConfigApply(progress, "restart", "running")
+		result := activate(backup)
+		status := "failed"
+		if result["ok"] == true {
+			status = "done"
+		}
+		reportConfigApply(progress, "restart", status)
+		return result
+	})
+}
+
+func (s *serverState) applyConfigWithProgress(w http.ResponseWriter, r *http.Request, activate func(string, configApplyReporter) map[string]any) {
 	payload, err := readJSON(w, r)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
+	operationID, err := configApplyID(payload)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	progress, created := s.beginConfigApplyProgress(operationID)
+	if !created {
+		writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "duplicate": true, "operationId": operationID, "error": "Этот operationId уже использован; проверьте результат операции"})
+		return
+	}
+	// Also terminate progress if an unexpected panic reaches handleAPI's guard.
+	defer s.finishConfigApplyProgress(operationID, false, "failed")
+	respondApply := func(code int, response map[string]any) {
+		outcome := s.configApplyOutcome(operationID, response)
+		s.finishConfigApplyProgress(operationID, response["ok"] == true, outcome)
+		response["operationId"] = operationID
+		if snapshot, found := s.configApplyProgressSnapshot(operationID); found {
+			response["progress"] = snapshot
+		}
+		writeJSON(w, code, response)
+	}
+	draftBefore := s.readConfigDraft()
+	draftVersion, _ := draftBefore["revision"].(string)
 	if cfg, valid := payload["config"].(map[string]any); !valid || cfg == nil {
-		writeJSON(w, 400, map[string]any{"ok": false, "error": "config должен быть объектом; для перезапуска используйте /api/service"})
+		respondApply(400, map[string]any{"ok": false, "error": "config должен быть объектом; для перезапуска используйте /api/service"})
 		return
 	}
 	if cfg, ok := payload["config"].(map[string]any); ok {
 		if expected, supplied := payload["expectedConfigRevision"]; supplied && expected != s.activeConfigRevision() {
-			writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "conflict": true, "error": "Активная конфигурация изменилась. Загрузите изменения перед применением; ваш черновик сохранён."})
+			respondApply(http.StatusConflict, map[string]any{"ok": false, "conflict": true, "error": "Активная конфигурация изменилась. Загрузите изменения перед применением; ваш черновик сохранён."})
 			return
 		}
 		expectedDraftVersion, _ := payload["expectedDraftRevision"].(string)
@@ -262,24 +316,32 @@ func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Requ
 			analysis = s.analyzeConfig(cfg)
 		}
 		if test["ok"] != true {
-			writeJSON(w, 422, map[string]any{"ok": false, "test": test, "analysis": analysis})
+			respondApply(422, map[string]any{"ok": false, "test": test, "analysis": analysis})
 			return
 		}
+		reportConfigApply(progress, "backup", "running")
 		backup, err := s.backupActive("config-before-apply")
 		if err != nil {
-			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "test": test, "analysis": analysis})
+			respondApply(500, map[string]any{"ok": false, "error": err.Error(), "test": test, "analysis": analysis})
 			return
 		}
-		profileName, restoreProfile, err := s.writeCandidateProfile(cfg, backup)
+		reportConfigApply(progress, "write", "running")
+		profileName, restoreProfile, err := s.writeCandidateProfileProgress(cfg, backup, progress)
 		if err != nil {
-			writeJSON(w, 500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
+			respondApply(500, map[string]any{"ok": false, "error": err.Error(), "backup": backup, "test": test, "analysis": analysis})
 			return
 		}
-		restart := activate(backup)
+		restart := activate(backup, progress)
 		if restart["ok"] != true {
+			reportConfigApply(progress, "rollback", "running")
 			if err := restoreProfile(); err != nil {
 				restart["profileRollbackError"] = err.Error()
 			}
+			rollbackState := "failed"
+			if mapValue(restart["rollback"])["ok"] == true && restart["profileRollbackError"] == nil {
+				rollbackState = "done"
+			}
+			reportConfigApply(progress, "rollback", rollbackState)
 		}
 		var draft map[string]any
 		if restart["ok"] == true {
@@ -291,19 +353,19 @@ func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Requ
 			}
 			draft["activeRevision"] = s.activeConfigRevision()
 		}
-		writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName, "draft": draft})
+		respondApply(200, map[string]any{"ok": restart["ok"], "test": test, "analysis": analysis, "restart": restart, "backup": backup, "profile": profileName, "draft": draft})
 		return
 	}
 	test := s.validateConfig(nil)
 	if test["ok"] != true {
-		writeJSON(w, 422, map[string]any{"ok": false, "test": test})
+		respondApply(422, map[string]any{"ok": false, "test": test})
 		return
 	}
 	restart := s.serviceAction("restart")
 	if restart["ok"] == true {
 		_ = s.clearConfigDraftRevision(&draftVersion)
 	}
-	writeJSON(w, 200, map[string]any{"ok": restart["ok"], "test": test, "restart": restart})
+	respondApply(200, map[string]any{"ok": restart["ok"], "test": test, "restart": restart})
 }
 
 func (s *serverState) backupActive(prefixes ...string) (string, error) {

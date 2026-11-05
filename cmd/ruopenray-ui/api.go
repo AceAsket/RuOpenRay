@@ -117,6 +117,7 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 401, map[string]any{"ok": false, "error": "Требуется авторизация"})
 		return
 	}
+	applyOperationID := ""
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if path != "/geo/upload" {
 			payload, err := readJSON(w, r)
@@ -130,11 +131,20 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			body, _ := json.Marshal(payload)
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			if path == "/config/apply" {
+				if id, ok := payload["operationId"].(string); ok && configApplyOperationID.MatchString(id) {
+					applyOperationID = id
+				}
+			}
 		}
 		if apiMutatesState(path) {
 			unlock, err := s.beginMutation()
 			if err != nil {
-				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "busy": true, "retryable": true, "error": err.Error()})
+				response := map[string]any{"ok": false, "busy": true, "retryable": true, "error": err.Error()}
+				if applyOperationID != "" {
+					response["operationId"] = applyOperationID
+				}
+				writeJSON(w, http.StatusConflict, response)
 				return
 			}
 			defer unlock()
@@ -207,6 +217,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.analyzeConfig(cfg))
 	case path == "/config/apply" && r.Method == http.MethodPost:
 		s.applyConfig(w, r)
+	case path == "/config/apply-progress" && r.Method == http.MethodGet:
+		s.configApplyProgressAPI(w, r)
 	case path == "/routing/disabled" && r.Method == http.MethodGet:
 		writeJSON(w, 200, map[string]any{"ok": true, "rules": s.disabledRouteRules()})
 	case path == "/routing/disabled" && r.Method == http.MethodPost:

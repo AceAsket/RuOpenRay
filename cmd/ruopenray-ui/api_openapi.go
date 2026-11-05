@@ -121,7 +121,8 @@ func apiEndpoints() []apiEndpoint {
 		{"delete", "/config/draft", "Config", "Clear config draft", "Requires JSON expectedRevision. A stale delete returns 409 and preserves the newer draft.", "GenericObject", "OkResponse"},
 		{"post", "/config/test", "Config", "Validate config", "Runs Xray config validation and RuOpenRay geo/routing checks.", "ConfigRequest", "Object"},
 		{"post", "/config/analyze", "Config", "Analyze config", "Returns a UI-oriented analysis of routes, outbounds, DNS and inbounds.", "ConfigRequest", "Object"},
-		{"post", "/config/apply", "Config", "Apply config", "Writes active Xray config and restarts/reloads according to service settings.", "ConfigRequest", "Object"},
+		{"post", "/config/apply", "Config", "Apply config", "One synchronous transaction validates, backs up, writes and restarts Xray. Optional unique operationId correlates read-only progress; reusing a retained ID returns 409 with duplicate=true. Responses include operationId and the final progress snapshot.", "ConfigApplyRequest", "Object"},
+		{"get", "/config/apply-progress", "Config", "Get apply progress", "Authenticated read-only progress; remains available while the single apply POST holds the mutation lock. Unknown operations return 404; terminal records are retained for up to 30 minutes, with a maximum of 16 records.", "", "ConfigApplyProgress"},
 
 		{"get", "/firewall/status", "Firewall", "Get interception status", "Current RuOpenRay nftables/firewall, policy routing and LAN interception state.", "", "Object"},
 		{"get", "/firewall/snapshot", "Firewall", "Get rollback snapshot", "Captures enough firewall/DNS state for setup rollback.", "", "Object"},
@@ -284,6 +285,9 @@ func addOpenAPIEndpoint(paths map[string]any, endpoint apiEndpoint) {
 	if endpoint.path == "/backup/full/download" {
 		operation["parameters"] = []map[string]any{{"name": "path", "in": "query", "required": true, "schema": map[string]string{"type": "string"}}}
 	}
+	if endpoint.path == "/config/apply-progress" {
+		operation["parameters"] = []map[string]any{{"name": "operationId", "in": "query", "required": true, "schema": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,96}$"}}}
+	}
 	item[endpoint.method] = operation
 }
 
@@ -320,6 +324,33 @@ func openAPISchemas() map[string]any {
 		"ConfigRequest": map[string]any{
 			"type":       "object",
 			"properties": map[string]any{"config": map[string]string{"type": "object"}},
+		},
+		"ConfigApplyRequest": map[string]any{
+			"type": "object", "required": []string{"config"},
+			"properties": map[string]any{
+				"config":                 map[string]string{"type": "object"},
+				"expectedConfigRevision": map[string]string{"type": "string"},
+				"expectedDraftRevision":  map[string]string{"type": "string"},
+				"operationId":            map[string]string{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,96}$"},
+			},
+		},
+		"ConfigApplyProgress": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ok":          map[string]string{"type": "boolean"},
+				"operationId": map[string]string{"type": "string"},
+				"active":      map[string]string{"type": "boolean"},
+				"terminal":    map[string]string{"type": "boolean"},
+				"stage":       map[string]any{"type": "string", "enum": append(append([]string{}, configApplyStages...), "complete", "failed")},
+				"outcome":     map[string]any{"type": "string", "enum": []string{"", "healthy", "inconclusive", "rolled_back", "rollback_failed", "failed"}},
+				"sequence":    map[string]string{"type": "integer"},
+				"startedAt":   map[string]string{"type": "string", "format": "date-time"},
+				"updatedAt":   map[string]string{"type": "string", "format": "date-time"},
+				"stages": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{
+					"id":     map[string]any{"type": "string", "enum": configApplyStages},
+					"status": map[string]any{"type": "string", "enum": []string{"pending", "running", "done", "failed", "skipped"}},
+				}}},
+			},
 		},
 		"GenericObject": map[string]string{"type": "object"},
 		"Object":        map[string]string{"type": "object"},

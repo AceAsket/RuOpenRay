@@ -62,6 +62,9 @@ type serverState struct {
 	b4LoginAfter       time.Time
 	b4LoginKey         string
 	fallbackProgress   map[string]any
+	applyProgressMu    sync.Mutex
+	applyProgress      map[string]*configApplyOperation
+	applyProgressOrder uint64
 }
 
 func (s *serverState) addSession(token string) {

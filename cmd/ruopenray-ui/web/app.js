@@ -9,6 +9,7 @@ import { createCompatActions } from './compat-actions.js';
 import { createCompatView } from './compat-view.js';
 import { bindB4Controls } from './b4-bindings.js';
 import { createConfigActions } from './config-actions.js';
+import { configApplyProgressStages } from './config-apply-progress.js';
 import { bindConfigControls } from './config-bindings.js';
 import { createConfigStateHelpers } from './config-state.js';
 import { bindCoreControls } from './core-bindings.js';
@@ -970,12 +971,16 @@ async function applyConfigAndFirewall() {
     firewallDirty ? { id: 'apply-firewall', label: 'Применяю nftables без перезапуска Xray', status: 'pending' } : null,
     { id: 'refresh', label: 'Обновляю состояние панели', status: 'pending' }
   ].filter(Boolean);
-  const setStep = (id, status, label = '') => {
-    state.applySteps = (state.applySteps.length ? state.applySteps : steps).map((step) => step.id === id ? { ...step, status, label: label || step.label } : step);
+  const setSteps = (updates) => {
+    state.applySteps = (state.applySteps.length ? state.applySteps : steps).map((step) => {
+      const update = updates.find((item) => item.id === step.id);
+      return update ? { ...step, ...update, label: update.label || step.label } : step;
+    });
     const current = state.applySteps.find((step) => step.status === 'running') || state.applySteps.find((step) => step.status === 'pending');
     state.busyLabel = current?.label || 'Применяю изменения';
     render();
   };
+  const setStep = (id, status, label = '') => setSteps([{ id, status, label }]);
   state.applySteps = steps;
   state.applyAttemptDraftText = state.jsonDraft;
   state.busyAction = 'apply';
@@ -985,6 +990,8 @@ async function applyConfigAndFirewall() {
     if (configDirty) {
       setStep('check-xray', 'running');
       await applyConfig({
+        refreshAfter: false,
+        onProgress: (snapshot) => setSteps(configApplyProgressStages(snapshot)),
         progressMessage: firewallDirty
           ? 'Проверяю конфигурацию, перезапускаю Xray, затем обновлю firewall...'
           : 'Проверяю конфигурацию и перезапускаю Xray...',
@@ -998,19 +1005,32 @@ async function applyConfigAndFirewall() {
 
     if (firewallDirty || firewallHasUnappliedChanges()) {
       setStep('apply-firewall', 'running');
-      await applyFirewall({
+      const result = await applyFirewall({
         busyAction: 'apply',
         busyLabel: configDirty ? 'Применяю firewall без перезапуска Xray' : '',
         successMessage: configDirty
           ? 'Xray и firewall применены'
           : 'Firewall-правила применены и сохранены для автозагрузки'
       });
+      if (!state.busyAction) state.busyAction = 'apply';
+      if (result?.needsConfirmation) {
+        setStep('apply-firewall', 'pending', 'Требуется подтверждение правил firewall');
+        return result;
+      }
+      if (result?.ok !== true || !firewallReadyStatus(result.status || state.firewallStatus)) {
+        throw new Error(result?.error || state.message || 'Firewall не подтвердил применение правил');
+      }
       setStep('apply-firewall', 'done', 'Firewall применен');
     }
+    setStep('refresh', 'running', 'Обновляю состояние панели');
+    await refresh({ renderAfter: false });
     setStep('refresh', 'done', 'Состояние обновлено');
   } catch (error) {
-    const current = state.applySteps.find((step) => step.status === 'running') || state.applySteps.find((step) => step.status === 'pending');
-    if (current) setStep(current.id, 'error', `${current.label}: ошибка`);
+    if (!state.applySteps.some((step) => step.status === 'error')) {
+      if (error?.payload?.test?.ok === true) setStep('check-xray', 'done', 'Черновик Xray проверен');
+      const current = state.applySteps.find((step) => step.status === 'running') || state.applySteps.find((step) => step.status === 'pending');
+      if (current) setStep(current.id, 'error', `${current.label}: ошибка`);
+    }
     throw error;
   } finally {
     if (state.busyAction === 'apply') state.busyAction = '';

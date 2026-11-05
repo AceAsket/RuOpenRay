@@ -1,5 +1,6 @@
 import { configTestFailureDetails } from './xray-error-details.js';
 import { recordServerValidation } from './server-validation-state.js';
+import { createApplyOperationId, watchConfigApplyProgress } from './config-apply-progress.js';
 
 export function createConfigActions({
   state,
@@ -12,6 +13,9 @@ export function createConfigActions({
   cancelServerDraftSave,
   activeProxyTag
 }) {
+  let applyGeneration = 0;
+  let activeApplyProgress = null;
+
   async function testConfig() {
     const startedAt = Date.now();
     state.configTesting = true;
@@ -56,6 +60,9 @@ export function createConfigActions({
   async function applyConfig(options = {}) {
     const startedAt = Date.now();
     const expectedDraftRevision = state.serverDraftRevision || '';
+    const generation = ++applyGeneration;
+    activeApplyProgress?.stop();
+    let progress = null;
     state.configApplying = true;
     state.messageDetails = null;
     state.configTestLog = null;
@@ -65,14 +72,25 @@ export function createConfigActions({
       const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
       if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
       const checkedCoreVersion = String(state.status?.core?.version || '').trim();
+      const sessionToken = String(state.token || '');
+      const operationId = typeof options.onProgress === 'function' ? createApplyOperationId() : '';
       let result;
       try {
-        result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision, expectedDraftRevision }) });
+        const pending = request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision, expectedDraftRevision, ...(operationId ? { operationId } : {}) }) });
+        if (operationId) {
+          progress = watchConfigApplyProgress({ operationId, request, onProgress: options.onProgress,
+            isCurrent: () => generation === applyGeneration && String(state.token || '') === sessionToken
+              && String(state.status?.core?.version || '').trim() === checkedCoreVersion });
+          activeApplyProgress = progress;
+        }
+        result = await pending;
+        progress?.observe(result?.progress);
         if (result?.ok !== true) {
           throw Object.assign(new Error(result?.error || result?.restart?.stderr || result?.restart?.message || 'Не удалось применить конфигурацию. Черновик сохранён.'), { payload: result });
         }
       } catch (error) {
         const payload = error.payload;
+        progress?.observe(payload?.progress);
         if (error.status === 409 && payload?.conflict === true) state.activeConfigConflict = true;
         if (payload?.test && typeof payload.test === 'object') recordServerValidation(state, payload.test, parsed, checkedCoreVersion);
         const failure = configApplyFailure(error);
@@ -97,9 +115,11 @@ export function createConfigActions({
       state.lastApplyBackup = result.backup || state.lastApplyBackup;
       state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
       state.messageDetails = null;
-      await refresh({ renderAfter: false });
-      await keepOperationVisible(startedAt, 900);
+      if (options.refreshAfter !== false) await refresh({ renderAfter: false });
+      if (typeof options.onProgress !== 'function') await keepOperationVisible(startedAt, 900);
     } finally {
+      progress?.stop();
+      if (activeApplyProgress === progress) activeApplyProgress = null;
       state.configApplying = false;
       render();
     }

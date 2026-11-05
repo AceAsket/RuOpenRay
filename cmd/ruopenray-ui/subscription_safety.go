@@ -9,6 +9,10 @@ import (
 // Preserve the exact saved profile and marker, including a pre-existing drift
 // from active config. Callers restore this snapshot if activation fails.
 func (s *serverState) writeCandidateProfile(cfg map[string]any, backup string) (string, func() error, error) {
+	return s.writeCandidateProfileProgress(cfg, backup, nil)
+}
+
+func (s *serverState) writeCandidateProfileProgress(cfg map[string]any, backup string, progress configApplyReporter) (string, func() error, error) {
 	name := s.currentProfileName()
 	paths := []string{s.profilePath(name), s.activeProfilePath()}
 	previous := make([][]byte, len(paths))
@@ -49,9 +53,14 @@ func (s *serverState) writeCandidateProfile(cfg map[string]any, backup string) (
 		err = s.writeActiveProfileName(name)
 	}
 	if err != nil {
+		reportConfigApply(progress, "write", "failed")
+		reportConfigApply(progress, "rollback", "running")
 		configErr, profileErr := s.restoreSubscriptionConfig(backup), restore()
 		if configErr != nil || profileErr != nil {
+			reportConfigApply(progress, "rollback", "failed")
 			err = fmt.Errorf("%w; откат config: %v; %v", err, configErr, profileErr)
+		} else {
+			reportConfigApply(progress, "rollback", "done")
 		}
 		return name, nil, err
 	}
@@ -91,16 +100,28 @@ func (s *serverState) restoreSubscriptionConfig(backup string) error {
 }
 
 func (s *serverState) restartSubscriptionWithRollback(backup string) map[string]any {
+	return s.restartSubscriptionWithRollbackProgress(backup, nil)
+}
+
+func (s *serverState) restartSubscriptionWithRollbackProgress(backup string, progress configApplyReporter) map[string]any {
+	reportConfigApply(progress, "baseline", "running")
 	before := s.captureRuntimeHealth(s.runtimeHealthConfig(backup))
-	result := s.serviceActionWithHealth("restart", &before)
+	result := s.serviceActionWithHealthProgress("restart", &before, progress)
 	if result["ok"] == true {
 		return result
 	}
+	reportConfigApply(progress, "rollback", "running")
 	err := s.restoreSubscriptionConfig(backup)
 	if err != nil {
+		reportConfigApply(progress, "rollback", "failed")
 		result["rollback"] = map[string]any{"ok": false, "error": err.Error()}
 		return result
 	}
 	result["rollback"] = s.serviceActionWithHealth("restart", &before)
+	rollbackState := "failed"
+	if mapValue(result["rollback"])["ok"] == true {
+		rollbackState = "done"
+	}
+	reportConfigApply(progress, "rollback", rollbackState)
 	return result
 }

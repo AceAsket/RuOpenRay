@@ -275,17 +275,20 @@ export function createServerActions({
   async function routeAllToOutbound(tag, { apply = true } = {}) {
     if (state.configApplying) return;
     const name = serverName(tag);
-    const before = proxyRuleStrategyStats();
+    const beforeTargets = (state.config?.routing?.rules || []).map((rule) => ({ outboundTag: rule?.outboundTag, balancerTag: rule?.balancerTag }));
     state.pendingServerTag = tag;
     state.message = `Подключаю ${name}: меняю основное proxy-направление...`;
     render();
-    setActiveProxyDraft(tag);
+    const change = setActiveProxyDraft(tag);
     const after = proxyRuleStrategyStats(tag);
-    const switched = Math.max(before.primary, after.primary);
+    const nextRules = state.config?.routing?.rules || [];
+    const switched = change?.changedExisting ?? beforeTargets.filter((rule, index) => rule.outboundTag !== nextRules[index]?.outboundTag || rule.balancerTag !== nextRules[index]?.balancerTag).length;
+    const added = change?.addedCatchAll ?? Math.max(0, nextRules.length - beforeTargets.length);
+    const counts = `Переключено существующих правил: ${switched}; добавлено правил по умолчанию: ${added}`;
     const pinned = after.pinned ? `, закрепленных на других серверах не тронуто: ${after.pinned}` : '';
     if (!apply) {
       state.pendingServerTag = '';
-      state.message = `Основное proxy-направление теперь ведет в ${name}. Переключено правил: ${switched}${pinned}`;
+      state.message = `Основное proxy-направление теперь ведет в ${name}. ${counts}${pinned}`;
       render();
       return;
     }
@@ -293,7 +296,7 @@ export function createServerActions({
     render();
     try {
       await applyConfig({
-        successMessage: `Подключен ${name}. Переключено правил: ${switched}${pinned}`
+        successMessage: `Подключен ${name}. ${counts}${pinned}`
       });
     } finally {
       state.pendingServerTag = '';
