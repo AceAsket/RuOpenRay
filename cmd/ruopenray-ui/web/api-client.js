@@ -1,3 +1,12 @@
+export class APIError extends Error {
+  constructor(message, { status, payload } = {}) {
+    super(message);
+    this.name = 'APIError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 export function createApiClient({ getToken = () => '', onUnauthorized = () => {} } = {}) {
   function authHeaders(extra = {}, token = getToken()) {
     return {
@@ -33,8 +42,8 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
       if (response.status === 401 && token === getToken()) onUnauthorized();
       const message = typeof payload === 'string'
         ? payload
-        : payload.error || payload.message || response.statusText;
-      throw Object.assign(new Error(message), { status: response.status });
+        : payload?.error || payload?.message || response.statusText || `HTTP ${response.status}`;
+      throw new APIError(message, { status: response.status, payload });
     }
     return payload;
   }
@@ -52,8 +61,8 @@ export function createApiClient({ getToken = () => '', onUnauthorized = () => {}
       if (response.status === 401 && token === getToken()) onUnauthorized();
       const message = typeof payload === 'string'
         ? payload
-        : payload.error || payload.message || response.statusText;
-      throw Object.assign(new Error(message), { status: response.status });
+        : payload?.error || payload?.message || response.statusText || `HTTP ${response.status}`;
+      throw new APIError(message, { status: response.status, payload });
     }
     return payload;
   }

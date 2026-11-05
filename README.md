@@ -6,6 +6,8 @@ RuOpenRay UI работает как отдельный сервис через 
 
 Версия ветки `dev` — [0.5.6](docs/releases/v0.5.6.md): единое оформление обновлений, точные состояния доступности релизов и все исправления нативной фрагментации Xray из 0.5.5.
 
+Дополнительное исправление: [причины отказа применения и отметки серверов](docs/xray-apply-validation-fix-2026-11-05.md).
+
 Стабильная версия: [v0.5.6](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.6). [Проверка окна обновления](docs/updater-theme-fix-2026-11-05.md), [проверка фрагментации](docs/native-fragmentation-2026-11-05.md), [проверка тем и отступов](docs/ui-theme-spacing-audit-2026-11-05.md).
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)

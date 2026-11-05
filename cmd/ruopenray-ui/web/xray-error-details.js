@@ -1,3 +1,5 @@
+import { humanServerValidationReason } from './server-validation-state.js';
+
 export function configTestFailureDetails(result = {}, analysis = {}, forMessage = '') {
   if (result.ok) return null;
   const technical = uniqueTextBlocks([result.stdout, result.stderr, result.message]).join('\n').trim();
@@ -62,6 +64,12 @@ function uniqueTextBlocks(values = []) {
 function explainConfigError(line = '', technical = '') {
   const source = `${line}\n${technical}`;
   const clean = humanizeXrayLine(line || technical);
+  if (/vless without TLS or other encryption is prohibited/i.test(source)) {
+    return {
+      title: 'Xray отклонил сервер без шифрования',
+      body: humanServerValidationReason(line || technical)
+    };
+  }
   const portMatch = source.match(/listen\s+(tcp|udp)\s+([^\s:]+|\[[^\]]+\]):(\d+):\s*bind:\s*address already in use/i)
     || source.match(/address already in use.*?(\d+)/i);
   if (portMatch) {

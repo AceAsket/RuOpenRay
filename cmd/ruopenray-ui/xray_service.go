@@ -68,6 +68,10 @@ func (s *serverState) xrayEnv() []string {
 func (s *serverState) runXray(args ...string) map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	return s.runXrayContext(ctx, args...)
+}
+
+func (s *serverState) runXrayContext(ctx context.Context, args ...string) map[string]any {
 	cmd := exec.CommandContext(ctx, "xray", args...)
 	cmd.Env = s.xrayEnv()
 	out, err := cmd.CombinedOutput()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,13 +25,32 @@ func (s *serverState) validateConfig(cfg map[string]any) map[string]any {
 	if runtime.GOOS == "windows" {
 		return map[string]any{"ok": true, "stdout": "dev-mode: JSON корректен; бинарник xray на Windows не проверялся"}
 	}
-	body, _ := json.MarshalIndent(cfg, "", "  ")
-	tmp := filepath.Join(s.cfg.DataDir, fmt.Sprintf(".test-%d.json", time.Now().UnixNano()))
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return s.testXrayConfig(ctx, cfg)
+}
+
+func (s *serverState) testXrayConfig(ctx context.Context, cfg map[string]any) map[string]any {
+	if err := ctx.Err(); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error()}
 	}
-	defer os.Remove(tmp)
-	return s.runXray("run", "-test", "-config", tmp)
+	body, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	file, err := os.CreateTemp(s.cfg.DataDir, ".test-*.json")
+	if err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(body); err != nil {
+		_ = file.Close()
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	if err := file.Close(); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error()}
+	}
+	return s.runXrayContext(ctx, "run", "-test", "-config", file.Name())
 }
 
 func (s *serverState) validateConfigWithGeoAudit(cfg map[string]any) map[string]any {
@@ -42,6 +62,7 @@ func (s *serverState) validateConfigWithGeoAudit(cfg map[string]any) map[string]
 			return result
 		}
 	}
+	s.attachXrayOutboundErrors(cfg, result)
 	analysis := s.analyzeConfig(cfg)
 	result["analysis"] = analysis
 	if errors := stringSlice(analysis["errors"]); len(errors) > 0 {

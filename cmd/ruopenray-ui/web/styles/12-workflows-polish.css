@@ -230,6 +230,27 @@ body[data-theme] .core-dialog .core-filters > button {
   white-space: normal;
 }
 
+.apply-stage-error {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--status-bad-border);
+  border-radius: 6px;
+  color: var(--status-bad-text);
+  background: var(--status-bad-bg);
+  overflow-wrap: anywhere;
+}
+
+.apply-stage-error p {
+  margin: 6px 0;
+}
+
+.apply-stage-error pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
 /* The core updater is a complete themed dialog, including its nested controls. */
 body[data-theme] .core-dialog {
   border-color: var(--line);

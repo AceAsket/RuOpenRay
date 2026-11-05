@@ -4,6 +4,7 @@ import { browserFingerprintOptions, fragmentPresets, parseServerEditJson, server
 import { countryFlagMarkup, countryNames, serverLocation } from './server-location.js';
 import { fragmentOutboundDetail, isFragmentOutboundTag, serviceOutboundLabel } from './outbound-tags.js';
 import { proxyDisplayName } from './proxy-label.js';
+import { humanServerValidationReason, serverValidationIssue } from './server-validation-state.js';
 
 export function createServersView(deps) {
   const {
@@ -36,7 +37,7 @@ function serverActionButton({ label, icon, tone = 'secondary', attrs = '', busy 
     active: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
     delete: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>',
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.1 6.6"/><path d="M3 12A9 9 0 0 1 18.1 5.4"/><path d="M3 18v-5h5"/><path d="M21 6v5h-5"/></svg>',
+    refresh: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.36 6.36L3 16M3 21v-5h5"/></svg>',
     stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>',
   };
   const safeLabel = escapeHtml(label);
@@ -118,13 +119,18 @@ function serverCard(outbound, index, activeTag) {
   const connecting = state.pendingServerTag === tag;
   const checking = state.serverChecking && (!state.serverCheckingTags.length || state.serverCheckingTags.includes(tag));
   const meta = serverMetaChips(outbound, usage, check);
-  return `<article class="server-row server-card ${active ? 'is-active' : ''}">
+  const validationIssue = serverValidationIssue(state, outbound);
+  return `<article class="server-row server-card ${active ? 'is-active' : ''} ${validationIssue ? 'has-xray-error' : ''}">
     <div class="server-identity">
       <span class="server-protocol">${escapeHtml(outbound?.protocol || 'unknown')}</span>
       <div class="server-main">
         <strong title="${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}">${serverLocationChip(outbound)}${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(outboundAddress(outbound))}</span>
         ${meta}
+        ${validationIssue ? `<div class="server-config-rejection" role="status">
+          <span class="server-chip bad"><i></i>Xray не принимает</span>
+          <small title="${escapeHtml(validationIssue.message)}">${escapeHtml(humanServerValidationReason(validationIssue.message))}</small>
+        </div>` : ''}
       </div>
     </div>
     ${serverTrafficView(tag)}
@@ -511,11 +517,13 @@ function serversPanel() {
     <section class="panel">
       <div class="panel-title">
         <div><h2>Прокси</h2><span>Адреса, транспорт${state.status?.xrayStats?.enabled ? ', трафик по outbound' : ''}, ручная проверка и выбор активного proxy-направления.</span></div>
-        <div class="split-actions">
+        <div class="split-actions server-validation-actions">
+          <button type="button" class="btn secondary" data-action="test" ${state.configTesting || state.configApplying ? 'disabled' : ''}>${state.configTesting ? 'Проверяю Xray...' : 'Проверить конфигурацию серверов'}</button>
           <button class="btn secondary" data-action="checkServers" data-busy="0" ${state.serverChecking ? 'disabled' : ''}>Проверить все</button>
           <button class="btn" data-import-dialog="choose">Добавить прокси</button>
         </div>
       </div>
+      <p class="server-config-validation-note">Проверка конфигурации выполняется установленным Xray без применения изменений. Доступность в сети проверяется отдельно кнопкой «Проверить все».</p>
       <div class="server-list">
         ${state.serverChecking ? operationProgressView() : ''}
         ${serverEntries

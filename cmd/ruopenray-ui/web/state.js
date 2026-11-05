@@ -136,6 +136,7 @@ export function createInitialState() {
   geoUpdating: false,
   geoUpdate: null,
   serverChecks: {},
+  serverValidation: null,
   serverCheckHistoryByTag: {},
   serverCheckHistoryLimit: '24',
   serverCheckHistoryRetentionHours: '168',

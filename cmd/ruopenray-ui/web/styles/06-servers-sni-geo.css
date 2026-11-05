@@ -755,6 +755,12 @@
   stroke-linejoin: round;
 }
 
+.subscription-pool-row .server-action-icon[data-subscription-refresh] > svg {
+  display: block;
+  flex: 0 0 auto;
+  stroke-width: 2;
+}
+
 .server-action-icon:hover:not(:disabled) {
   border-color: rgba(126, 230, 216, 0.52);
   color: var(--accent-2);
@@ -2374,5 +2380,62 @@
   .geo-upload-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.server-card .server-config-rejection,
+.dashboard-server-option > .server-config-rejection {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+body[data-theme] .server-row.server-card.has-xray-error,
+body[data-theme] .dashboard-server-switch .dashboard-server-option.has-xray-error {
+  border-color: var(--status-bad-border);
+  background: var(--status-bad-bg);
+}
+
+.dashboard-server-option > .server-config-rejection {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+body[data-theme] .server-config-rejection > .server-chip.bad {
+  display: inline-flex;
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--status-bad-text);
+  border-color: var(--status-bad-border);
+  background: var(--status-bad-bg);
+}
+
+body[data-theme] .server-config-rejection > small {
+  display: block;
+  min-width: 0;
+  color: var(--status-bad-text);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.server-validation-actions {
+  flex-wrap: wrap;
+}
+
+.server-validation-actions > [data-action="test"] {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.server-config-validation-note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 

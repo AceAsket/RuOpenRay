@@ -9,11 +9,12 @@ export function applyStageProgressVisible(state) {
   const steps = Array.isArray(state.applySteps) ? state.applySteps : [];
   if (!steps.length) return false;
   if (state.busyAction === 'apply') return true;
+  if (typeof state.applyAttemptDraftText === 'string' && state.applyAttemptDraftText !== state.jsonDraft) return false;
   return !state.busyAction && !state.configApplying && !state.firewallSaving
     && steps.some((step) => step?.status === 'error');
 }
 
-export function applyStageProgressView(steps, escapeHtml, { live = true } = {}) {
+export function applyStageProgressView(steps, escapeHtml, { live = true, failure = null } = {}) {
   if (!Array.isArray(steps) || !steps.length) return '';
   const stages = steps.map((step, index) => ({
     title: stageTitles[step?.id] || String(step?.label || `Этап ${index + 1}`),
@@ -46,6 +47,11 @@ export function applyStageProgressView(steps, escapeHtml, { live = true } = {}) 
         <div class="apply-stage-copy"><strong class="apply-stage-label">${escapeHtml(step.title)}</strong></div>
       </li>`).join('')}
     </ol>
+    ${phase === 'error' && failure ? `<div class="apply-stage-error">
+      ${failure.title ? `<strong>${escapeHtml(failure.title)}</strong>` : ''}
+      ${failure.body ? `<p>${escapeHtml(failure.body)}</p>` : ''}
+      ${failure.technical ? `<details><summary>Технические подробности</summary><pre>${escapeHtml(failure.technical)}</pre></details>` : ''}
+    </div>` : ''}
   </div>`;
 }
 

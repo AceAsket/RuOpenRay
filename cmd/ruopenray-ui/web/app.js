@@ -977,6 +977,7 @@ async function applyConfigAndFirewall() {
     render();
   };
   state.applySteps = steps;
+  state.applyAttemptDraftText = state.jsonDraft;
   state.busyAction = 'apply';
   state.busyLabel = steps[0]?.label || 'Применяю изменения';
   render();
@@ -1887,7 +1888,7 @@ function pendingChangesBanner() {
         <button class="btn secondary ${state.busyAction === 'discardPendingChanges' ? 'is-busy' : ''}" data-action="discardPendingChanges" ${applying || state.configTesting ? 'disabled' : ''}>Отменить</button>
         <button class="btn ${risks.length ? 'warning' : ''} ${applying ? 'is-busy' : ''}" data-action="apply" ${applying || state.configTesting ? 'disabled' : ''}>${applyLabel}</button>
       </div>
-      ${applyStageProgressView(applySteps, escapeHtml, { live: applying || !state.message })}
+      ${applyStageProgressView(applySteps, escapeHtml, { live: applying || !state.message, failure: state.messageDetails?.forMessage === state.message ? state.messageDetails : null })}
     </section>
   `;
 }

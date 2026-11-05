@@ -225,7 +225,12 @@ export function bindActionControls({ state, render, handlers, buttons = document
         state.configApplying = false;
         state.serverChecking = false;
         state.serverCheckingTags = [];
-        state.message = userFacingError(error, state.busyLabel);
+        const rawMessage = String(error?.message || error || 'Неизвестная ошибка');
+        const message = userFacingError(error, state.busyLabel);
+        if (state.messageDetails?.forMessage === rawMessage && message !== rawMessage) {
+          state.messageDetails = { ...state.messageDetails, forMessage: message };
+        }
+        state.message = message;
         render();
       } finally {
         endBusy(state, render, action, busyStarted);

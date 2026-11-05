@@ -1,3 +1,5 @@
+import { pruneServerValidation } from './server-validation-state.js';
+
 export function createConfigStateHelpers(state, { onDraftChange } = {}) {
   function hasSelectedAmneziaProfile() {
     const profiles = state.amneziaStatus?.clientConfig?.profiles || {};
@@ -31,6 +33,7 @@ export function createConfigStateHelpers(state, { onDraftChange } = {}) {
         : state.appliedConfigText || nextText;
     const replaceDraft = !options.fromServer || draftWasClean || options.forceDraft;
     if (replaceDraft) { state.config = config; state.jsonDraft = nextText; }
+    pruneServerValidation(state);
     state.appliedConfigText = activeText;
     if (options.serverDraft && options.serverDraft.ok !== false) {
       if (replaceDraft || !state.activeConfigRevision) {

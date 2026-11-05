@@ -2,6 +2,7 @@ import { interfaceIcon } from './navigation-view.js';
 import { proxyDisplayName } from './proxy-label.js';
 import { applyOperationProgressView } from './apply-progress-view.js';
 import { isServiceOutbound } from './outbound-tags.js';
+import { humanServerValidationReason, serverValidationIssue } from './server-validation-state.js';
 
 export function createDashboardView(deps) {
   const {
@@ -964,12 +965,13 @@ function dashboardServerSwitch(servers, options = {}) {
           const selectedServer = state.dashboardSelectedServerTag === tag && !activeServer;
           const check = checkForTag(tag);
           const checkSummary = dashboardCheckSummary(check);
+          const validationIssue = serverValidationIssue(state, outbound);
           const connecting = state.pendingServerTag === tag;
           const stateLabel = activeServer ? (direction?.rules ? rulesCountLabel(direction.rules) : 'Текущий') : selectedServer ? 'Выбран' : 'Сервер';
           const action = activeServer
             ? dashboardServerActionState(summary.outbounds.size > 1 || summary.balancers.size ? 'В маршрутах' : 'Активный сервер')
             : dashboardServerActionButton({ label: connecting ? 'Подключаю сервер' : 'Подключиться', icon: 'connect', tone: 'warning', attrs: `data-dashboard-connect="${escapeHtml(tag)}"`, busy: connecting, disabled: connecting });
-          return `<article class="dashboard-server-option ${activeServer ? 'active' : ''} ${selectedServer ? 'selected' : ''}">
+          return `<article class="dashboard-server-option ${activeServer ? 'active' : ''} ${selectedServer ? 'selected' : ''} ${validationIssue ? 'has-xray-error' : ''}">
             <button type="button" class="server-option-pick" title="${escapeHtml(proxyDisplayName(tag, state.serverMeta?.[tag]))}" ${activeServer || connecting ? 'disabled' : `data-dashboard-select="${escapeHtml(tag)}"`}>
               <span class="server-option-state ${activeServer ? 'active' : selectedServer ? 'selected' : ''}">${stateLabel}</span>
               <span class="server-option-main">
@@ -986,6 +988,10 @@ function dashboardServerSwitch(servers, options = {}) {
               ${serverCheckButton(tag, 'compact-action')}
               ${action}
             </span>
+            ${validationIssue ? `<div class="server-config-rejection" role="status">
+              <span class="server-chip bad"><i></i>Xray не принимает</span>
+              <small title="${escapeHtml(validationIssue.message)}">${escapeHtml(humanServerValidationReason(validationIssue.message))}</small>
+            </div>` : ''}
           </article>`;
         }).join('')}
       </div>

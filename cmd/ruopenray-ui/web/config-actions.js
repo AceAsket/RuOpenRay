@@ -1,4 +1,5 @@
 import { configTestFailureDetails } from './xray-error-details.js';
+import { recordServerValidation } from './server-validation-state.js';
 
 export function createConfigActions({
   state,
@@ -20,10 +21,12 @@ export function createConfigActions({
     render();
     try {
       const config = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
+      const checkedCoreVersion = String(state.status?.core?.version || '').trim();
       const [result, analysis] = await Promise.all([
         request('/api/config/test', { method: 'POST', body: JSON.stringify({ config }) }),
         request('/api/config/analyze', { method: 'POST', body: JSON.stringify({ config }) })
       ]);
+      recordServerValidation(state, result, config, checkedCoreVersion);
       state.configAnalysis = analysis;
       if (result.geoStatus) {
         state.geoStatus = result.geoStatus;
@@ -55,18 +58,35 @@ export function createConfigActions({
     const expectedDraftRevision = state.serverDraftRevision || '';
     state.configApplying = true;
     state.messageDetails = null;
+    state.configTestLog = null;
     state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
     render();
     try {
       const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
       if (typeof cancelServerDraftSave === 'function') cancelServerDraftSave();
-      const result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision, expectedDraftRevision }) });
-      if (result.ok !== true) {
-        state.lastApplyBackup = result.backup || state.lastApplyBackup;
-        state.message = result.error || result.restart?.stderr || result.restart?.message || 'Не удалось применить конфигурацию. Черновик сохранён.';
-        state.messageDetails = result;
-        throw new Error(state.message);
+      const checkedCoreVersion = String(state.status?.core?.version || '').trim();
+      let result;
+      try {
+        result = await request('/api/config/apply', { method: 'POST', body: JSON.stringify({ config: parsed, expectedConfigRevision: state.activeConfigRevision, expectedDraftRevision }) });
+        if (result?.ok !== true) {
+          throw Object.assign(new Error(result?.error || result?.restart?.stderr || result?.restart?.message || 'Не удалось применить конфигурацию. Черновик сохранён.'), { payload: result });
+        }
+      } catch (error) {
+        const payload = error.payload;
+        if (error.status === 409 && payload?.conflict === true) state.activeConfigConflict = true;
+        if (payload?.test && typeof payload.test === 'object') recordServerValidation(state, payload.test, parsed, checkedCoreVersion);
+        const failure = configApplyFailure(error);
+        state.message = failure.message;
+        state.messageDetails = failure.details;
+        state.lastApplyBackup = payload?.backup || state.lastApplyBackup;
+        if (payload?.test && typeof payload.test === 'object') {
+          state.configTestLog = { ...payload.test, at: new Date().toISOString() };
+          state.configAnalysis = payload.analysis || payload.test.analysis || null;
+        }
+        error.message = state.message;
+        throw error;
       }
+      if (result.test && typeof result.test === 'object') recordServerValidation(state, result.test, parsed, checkedCoreVersion);
       state.appliedConfigText = JSON.stringify(parsed, null, 2);
       state.jsonDraft = state.appliedConfigText;
       state.serverDraftExists = Boolean(result.draft?.exists);
@@ -209,6 +229,38 @@ function configTestSummary(result = {}, analysis = {}) {
   }
   if (errors > 0) return `Конфигурация не прошла проверку: ошибок ${errors}`;
   return 'Конфигурация не прошла проверку. Подробности сохранены в техническом выводе.';
+}
+
+function configApplyFailure(error) {
+  const payload = error?.payload;
+  if (payload?.test && payload.test.ok !== true) {
+    const analysis = payload.analysis || payload.test.analysis || {};
+    const message = `${configTestSummary(payload.test, analysis)} Применение остановлено; черновик сохранён.`;
+    return { message, details: configTestFailureDetails(payload.test, analysis, message) };
+  }
+  if (payload?.restart && payload.restart.ok !== true) {
+    const reason = payload.error || payload.restart.stderr || payload.restart.message || 'Сервис не подтвердил запуск';
+    const message = `Не удалось перезапустить Xray: ${reason}. Черновик сохранён.`;
+    return { message, details: {
+      forMessage: message,
+      summary: 'Показать причину',
+      title: 'Ошибка перезапуска Xray',
+      body: 'Перезапуск не завершён. Ниже приведены результат запуска и сведения об откате, если он выполнялся.',
+      technical: JSON.stringify(payload.restart, null, 2)
+    } };
+  }
+  const hasResponse = typeof error?.status === 'number' || payload !== undefined;
+  const reason = String(payload?.error || error?.message || 'Неизвестная ошибка');
+  const message = hasResponse ? reason : `Не получен результат применения: ${reason}. Черновик сохранён.`;
+  return { message, details: {
+    forMessage: message,
+    summary: 'Подробности применения',
+    title: hasResponse ? 'Применение не завершено' : 'Не получен результат применения',
+    body: hasResponse
+      ? 'Черновик сохранён в панели. Ниже приведён ответ сервера.'
+      : 'Черновик сохранён в панели. Проверьте состояние Xray перед повторной попыткой: запрос мог выполниться на роутере.',
+    technical: payload === undefined ? reason : typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2)
+  } };
 }
 
 function dateTimeStamp(date = new Date()) {

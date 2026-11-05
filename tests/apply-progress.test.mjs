@@ -61,6 +61,30 @@ test('pending, complete and failed stage displays follow recorded statuses and e
   assert.equal(count(html, /class="apply-stage is-error"/g), 1);
 });
 
+test('a failed apply shows the escaped cause next to retry controls and hides it outside error states', () => {
+  const stages = steps();
+  stages[0].status = 'error';
+  const failure = { title: 'Xray отклонил сервер', body: 'Сервер <unsafe> без TLS', technical: 'failed <script>alert(1)</script>' };
+  const html = applyStageProgressView(stages, escapeHtml, { failure });
+  assert.match(html, /apply-stage-error/);
+  assert.match(html, /Сервер &lt;unsafe&gt; без TLS/);
+  assert.match(html, /Технические подробности/);
+  assert.match(html, /failed &lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>|<unsafe>/);
+  stages[0].status = 'running';
+  assert.doesNotMatch(applyStageProgressView(stages, escapeHtml, { failure }), /apply-stage-error/);
+});
+
+test('a failed apply rail belongs to the checked draft and disappears after editing it', () => {
+  const state = { applySteps: [{ status: 'error' }], busyAction: '', jsonDraft: 'after', applyAttemptDraftText: 'before' };
+  assert.equal(applyStageProgressVisible(state), false);
+  state.jsonDraft = 'before';
+  assert.equal(applyStageProgressVisible(state), true);
+  state.jsonDraft = 'after';
+  state.busyAction = 'apply';
+  assert.equal(applyStageProgressVisible(state), true);
+});
+
 test('the main pending banner owns one announcer and suppresses the duplicate local apply animation', () => {
   const f = fixture();
   f.state.applySteps[0].status = 'running';

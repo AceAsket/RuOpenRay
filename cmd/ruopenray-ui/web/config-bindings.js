@@ -1,3 +1,5 @@
+import { pruneServerValidation } from './server-validation-state.js';
+
 export function bindConfigControls({ state, scheduleServerDraftSave }) {
   const jsonDraftNode = document.querySelector('#jsonDraft');
   jsonDraftNode?.addEventListener('input', (event) => {
@@ -5,6 +7,7 @@ export function bindConfigControls({ state, scheduleServerDraftSave }) {
     state.configScrollTop = event.target.scrollTop;
     try {
       state.config = JSON.parse(event.target.value);
+      pruneServerValidation(state);
       if (typeof scheduleServerDraftSave === 'function') scheduleServerDraftSave(state.config);
     } catch {
       // Keep the draft text editable until the user fixes JSON.

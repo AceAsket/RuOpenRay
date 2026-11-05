@@ -1,4 +1,3 @@
-import { configTestLogDetails } from './xray-error-details.js';
 import { proxyDisplayText } from './proxy-label.js';
 
 export function noticeDialogOwner(state) {
@@ -29,7 +28,7 @@ export function noticeView(state, escapeHtml, { className = '', style = '', live
   if (!state.message) return '';
   const details = state.messageDetails?.forMessage === state.message
     ? state.messageDetails
-    : configTestLogDetails(state.configTestLog, state.message);
+    : null;
   const classes = ['notice', className].filter(Boolean).join(' ');
   const styleAttr = style ? ` style="${escapeHtml(style)}"` : '';
   const liveAttrs = live ? ' role="status" aria-live="polite" aria-atomic="true"' : '';
