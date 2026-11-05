@@ -1,9 +1,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=ruopenray-ui
-PKG_VERSION:=0.5.6
-APP_VERSION:=0.5.6+fix.validation.105a201
-PKG_RELEASE:=2
+PKG_VERSION:=0.5.7
+APP_VERSION:=0.5.7
+PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/AceAsket/RuOpenRay.git
