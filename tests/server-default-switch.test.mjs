@@ -85,6 +85,27 @@ test('default balancer replacement preserves group definitions and unrelated bal
   assert.deepEqual(state.config.routing.rules[1], { type: 'field', network: 'tcp,udp', outboundTag: 'new-provider', ruleTag: 'main-group' });
 });
 
+test('selecting a balancer preserves normalized default metadata and removes only the old target', () => {
+  const groups = [{ tag: 'vpn-group', selector: ['new-provider'] }, { tag: 'secondary-group', selector: ['secondary'] }];
+  const rules = [
+    { type: 'field', network: 'tcp,udp', outboundTag: 'direct', port: '0-65535', ruleTag: 'default-outbound', domainMatcher: 'hybrid' },
+    { type: 'field', ip: ['192.0.2.4/32'], outboundTag: 'direct', ruleTag: 'pinned-direct' },
+    { type: 'field', domain: ['domain:secondary.example.test'], balancerTag: 'secondary-group', ruleTag: 'pinned-group' },
+    { type: 'field', network: 'udp,tcp', balancerTag: 'secondary-group', port: '0-65535', ruleTag: 'default-balancer', domainMatcher: 'linear' },
+  ];
+  const { state, imports } = fixture(rules, groups);
+  imports.setActiveProxyBalancerDraft('vpn-group');
+  assert.equal(state.config.routing.rules.length, rules.length);
+  assert.deepEqual(state.config.routing.rules[0], { type: 'field', network: 'tcp,udp', balancerTag: 'vpn-group', port: '0-65535', ruleTag: 'default-outbound', domainMatcher: 'hybrid' });
+  assert.deepEqual(state.config.routing.rules[1], rules[1]);
+  assert.deepEqual(state.config.routing.rules[2], rules[2]);
+  assert.deepEqual(state.config.routing.rules[3], { ...rules[3], balancerTag: 'vpn-group' });
+  assert.deepEqual(state.config.routing.balancers, groups);
+  const after = structuredClone(state.config);
+  imports.setActiveProxyBalancerDraft('vpn-group');
+  assert.deepEqual(state.config, after);
+});
+
 test('transparent main and proxy aliases retain their conditions and metadata', () => {
   const rules = [
     { type: 'field', network: 'tcp,udp', inboundTag: ['transparent_ipv4'], outboundTag: 'old-main', ruleTag: 'transparent-main' },

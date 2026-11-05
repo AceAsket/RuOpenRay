@@ -23,18 +23,24 @@ export function createApplyOperationId(crypto = globalThis.crypto) {
 
 // Observing progress never retries the mutation or changes its result.
 export function watchConfigApplyProgress({ operationId, request, onProgress, isCurrent = () => true,
-  interval = 500, schedule = setTimeout, cancelSchedule = clearTimeout }) {
-  const abort = new AbortController();
+  interval = 500, requestTimeout = 4000, schedule = setTimeout, cancelSchedule = clearTimeout }) {
   let stopped = false;
   let terminal = false;
   let sequence = -1;
   let timer = null;
+  let activeRequest = null;
   const current = () => !stopped && isCurrent();
+  const abortRequest = () => {
+    if (!activeRequest) return;
+    if (activeRequest.deadline !== null) cancelSchedule(activeRequest.deadline);
+    activeRequest.deadline = null;
+    activeRequest.controller.abort();
+  };
   const stop = () => {
     stopped = true;
     if (timer !== null) cancelSchedule(timer);
     timer = null;
-    abort.abort();
+    abortRequest();
   };
   const observe = (snapshot) => {
     if (!current() || snapshot?.operationId !== operationId || !Number.isSafeInteger(snapshot.sequence)
@@ -44,7 +50,7 @@ export function watchConfigApplyProgress({ operationId, request, onProgress, isC
     if (terminal) {
       if (timer !== null) cancelSchedule(timer);
       timer = null;
-      abort.abort();
+      abortRequest();
     }
     // A renderer failure must not turn a confirmed server apply into a retry.
     try { onProgress(snapshot); } catch { /* the final result owns operation errors */ }
@@ -53,13 +59,28 @@ export function watchConfigApplyProgress({ operationId, request, onProgress, isC
   const poll = async () => {
     timer = null;
     if (!current() || terminal) return;
+    const pending = { controller: new AbortController(), deadline: null };
+    activeRequest = pending;
+    let onAbort;
+    const aborted = new Promise((_resolve, reject) => {
+      onAbort = () => reject(Object.assign(new Error('Progress observation aborted'), { name: 'AbortError' }));
+      pending.controller.signal.addEventListener('abort', onAbort, { once: true });
+    });
+    pending.deadline = schedule(() => pending.controller.abort(), requestTimeout);
     try {
-      const snapshot = await request(`/api/config/apply-progress?operationId=${encodeURIComponent(operationId)}`, { signal: abort.signal });
+      const snapshot = await Promise.race([
+        request(`/api/config/apply-progress?operationId=${encodeURIComponent(operationId)}`, { signal: pending.controller.signal }),
+        aborted
+      ]);
       observe(snapshot);
     } catch (error) {
       if (error?.status === 401 || error?.status === 403) stop();
       // A first 404 can precede POST registration; transport failures also do
       // not establish that the server-side operation has failed.
+    } finally {
+      if (pending.deadline !== null) cancelSchedule(pending.deadline);
+      pending.controller.signal.removeEventListener('abort', onAbort);
+      if (activeRequest === pending) activeRequest = null;
     }
     if (current() && !terminal) timer = schedule(poll, interval);
   };

@@ -165,7 +165,9 @@ export function createImportActions({
       const nextRules = rules.map((rule) => {
         if (isCatchAllRoute(rule)) {
           changed += 1;
-          return defaultRule;
+          const next = { ...rule, balancerTag: tag };
+          delete next.outboundTag;
+          return next;
         }
         if (rule?.balancerTag === tag) return rule;
         if (rule?.outboundTag && switchable.has(rule.outboundTag)) {

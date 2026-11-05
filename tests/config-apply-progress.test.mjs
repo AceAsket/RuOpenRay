@@ -38,7 +38,8 @@ test('progress polling is nonoverlapping, ID/sequence bound and stops at a termi
   const watcher = watchConfigApplyProgress({ operationId: 'current-id', ...clock, onProgress: (value) => observed.push(value),
     request(path, options) { const reply = deferred(); calls.push({ path, options, reply }); return reply.promise; } });
   assert.equal(calls.length, 1);
-  assert.equal(clock.jobs.size, 0, 'no timer starts another GET while the first one is pending');
+  assert.equal(clock.jobs.size, 1, 'only the request deadline exists while the first GET is pending');
+  assert.equal([...clock.jobs.values()][0].milliseconds, 4000);
   calls[0].reply.resolve(snapshot('current-id', 1));
   await flush();
   assert.equal(observed.length, 1);
@@ -120,6 +121,40 @@ test('an unauthorized progress response ends observation without changing the mu
   assert.equal(signal.aborted, true);
 });
 
+test('a hanging GET is aborted at its deadline and the next poll proceeds without waiting for its late response', async () => {
+  const clock = scheduler();
+  const calls = [], observed = [];
+  const watcher = watchConfigApplyProgress({ operationId: 'id', ...clock, onProgress: (value) => observed.push(value),
+    request(_path, options) { const reply = deferred(); calls.push({ signal: options.signal, reply }); return reply.promise; } });
+  assert.equal(calls.length, 1);
+  assert.equal([...clock.jobs.values()][0].milliseconds, 4000);
+  clock.next();
+  await flush();
+  assert.equal(calls[0].signal.aborted, true);
+  assert.equal(calls.length, 1, 'the deadline aborts observation rather than retrying the POST');
+  assert.equal([...clock.jobs.values()][0].milliseconds, 500);
+  clock.next();
+  calls[1].reply.resolve(snapshot('id', 2, 'readiness'));
+  await flush();
+  calls[0].reply.resolve(snapshot('id', 1, 'validation'));
+  await flush();
+  assert.deepEqual(observed.map(({ sequence }) => sequence), [2]);
+  watcher.stop();
+  assert.equal(clock.jobs.size, 0);
+});
+
+test('disposing a pending observer cancels its GET deadline and schedules no later poll', async () => {
+  const clock = scheduler();
+  let signal;
+  const watcher = watchConfigApplyProgress({ operationId: 'id', ...clock, onProgress() { assert.fail('disposed observer'); },
+    request(_path, options) { signal = options.signal; return new Promise(() => {}); } });
+  assert.equal(clock.jobs.size, 1);
+  watcher.stop();
+  await flush();
+  assert.equal(signal.aborted, true);
+  assert.equal(clock.jobs.size, 0);
+});
+
 test('real stage histories drive validation/restart/rollback without claiming success from polling', () => {
   assert.deepEqual(configApplyProgressStages(snapshot('id', 1)).map(({ status }) => status), ['running', 'pending']);
   const checkingHealth = configApplyProgressStages(snapshot('id', 2, 'readiness'));
@@ -163,7 +198,7 @@ test('apply observes real progress while POST is pending, accepts final POST his
   assert.equal(f.observed.length, 2);
   assert.equal(f.refreshes(), 0);
   assert.equal(f.minimumWaits(), 0);
-  assert.equal(f.calls[1].options.signal.aborted, true);
+  assert.equal(f.state.configApplying, false);
   assert.equal(f.state.serverDraftRevision, 'next');
   assert.equal(f.calls.filter(({ path }) => path === '/api/config/apply').length, 1);
 });
@@ -180,7 +215,7 @@ for (const change of ['session', 'core']) {
     post.resolve({ ok: true, progress: snapshot(operationId, 2, 'complete', { terminal: true }) });
     await applying;
     assert.deepEqual(f.observed, []);
-    assert.equal(f.calls[1].options.signal.aborted, true);
+    assert.equal(f.state.configApplying, false);
   });
 }
 
