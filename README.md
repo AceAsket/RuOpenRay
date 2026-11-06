@@ -4,9 +4,9 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-Версия ветки `dev` — [0.5.8](docs/releases/v0.5.8.md): реальные этапы применения Xray, исправленный выбор выхода по умолчанию и сохранение меток правил при выборе балансировщика.
+Версия ветки `dev` — [0.5.9](docs/releases/v0.5.9.md): пагинация подключений на Панели с сохранением страницы при обновлении статистики.
 
-Стабильная версия: [v0.5.8](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.8). [Проверка этапов применения и выбора выхода](docs/apply-routing-fix-2026-11-06.md), [проверка применения и серверов](docs/xray-apply-validation-fix-2026-11-05.md), [проверка фрагментации](docs/native-fragmentation-2026-11-05.md).
+Стабильная версия: [v0.5.9](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.5.9). [Проверка пагинации](docs/dashboard-pagination-fix-2026-11-06.md), [проверка этапов применения и выбора выхода](docs/apply-routing-fix-2026-11-06.md), [проверка фрагментации](docs/native-fragmentation-2026-11-05.md).
 
 ![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
 
