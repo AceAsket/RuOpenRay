@@ -5,7 +5,7 @@ export function interfaceIcon(name, className = '') {
     setup: '<path d="m14 3 7 7-11 11-7-7L14 3Z"/><path d="m11 6 7 7M4 3v4M2 5h4M19 17v4M17 19h4"/>',
     servers: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18Z"/>',
     serverMode: '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/>',
-    routing: '<path d="M7 3v12a4 4 0 0 0 4 4h9M3 7l4-4 4 4M16 15l4 4-4 4M7 11h7a4 4 0 0 0 4-4V3"/>',
+    routing: '<circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><path d="M7 12h4M11 5h6M11 19h6M11 5v14"/>',
     dns: '<path d="M12 3 3 7l9 4 9-4-9-4ZM3 12l9 4 9-4M3 17l9 4 9-4"/>',
     diagnostics: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     profiles: '<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M8 4V2M16 4V2M8 10h8M8 15h5"/>',
