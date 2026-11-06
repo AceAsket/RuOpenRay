@@ -29,6 +29,8 @@ import { createDnsView } from './dns-view.js';
 import { createGeoView } from './geo-view.js';
 import { createFirewallActions } from './firewall-actions.js';
 import { createFirewallModel } from './firewall-model.js';
+import { createFirewallMapController } from './firewall-map-actions.js';
+import { firewallMapPanel } from './firewall-map-view.js';
 import { byteRate, byteSize, escapeHtml, fmtUptime, formatDuration, formatDurationCompact, numberValue } from './formatters.js';
 import { createImportDialogView } from './import-dialog-view.js';
 import { bindGeoControls } from './geo-bindings.js';
@@ -633,6 +635,7 @@ const firewallActions = createFirewallActions({
   firewallSafetyCheck,
   firewallReadyStatus
 });
+const firewallMapController = createFirewallMapController({ state, request, render });
 const {
   applyFirewallWithRetry,
   applyFirewall,
@@ -1621,6 +1624,7 @@ const {
 } = diagnosticsView;
 const routingView = createRoutingView({
   state,
+  firewallMapPanel: () => firewallMapPanel(state, escapeHtml),
   escapeHtml,
   operationProgressView,
   stat,
@@ -2379,7 +2383,9 @@ async function loadCoreReleases({ force = false } = {}) {
 }
 
 function bind() {
-  bindNavigationControls({ state, render, configureLogTimer, onSetupStepChange: setupNavigation.selectSetupStep, onTabChange: (tab) => {
+  bindNavigationControls({ state, render, configureLogTimer, onSetupStepChange: setupNavigation.selectSetupStep,
+    onRoutingViewChange: (view) => { if (view === 'map') void firewallMapController.load(); }, onTabChange: (tab) => {
+    if (tab === 'routing' && state.routingView === 'map') void firewallMapController.load();
     const pending = tab === 'compat' ? Promise.all([
       refreshCompatibility({ silent: true }),
       ...(state.compatView === 'amnezia' ? [refreshAmnezia({ silent: true })] : [])
@@ -2821,6 +2827,7 @@ function bind() {
   bindImportControls({ state, render });
   bindB4Controls({ state });
   bindServerCheckControls({ state, render });
+  firewallMapController.bind();
   document.querySelectorAll('[data-server-mode-field]').forEach((input) => {
     input.addEventListener('input', () => updateServerModeField(input));
     input.addEventListener('change', () => {

@@ -125,6 +125,7 @@ func apiEndpoints() []apiEndpoint {
 		{"get", "/config/apply-progress", "Config", "Get apply progress", "Authenticated read-only progress; remains available while the single apply POST holds the mutation lock. Unknown operations return 404; terminal records are retained for up to 30 minutes, with a maximum of 16 records.", "", "ConfigApplyProgress"},
 
 		{"get", "/firewall/status", "Firewall", "Get interception status", "Current RuOpenRay nftables/firewall, policy routing and LAN interception state.", "", "Object"},
+		{"get", "/firewall/map", "Firewall", "Get nftables map", "Authenticated read-only nftables JSON snapshot: chains, priorities, ordered rules, counters and jump/goto targets. Set contents are omitted. Cached for 3 seconds; bounded to 8 MiB and 6 seconds. This is not a live packet trace or a verdict simulator.", "", "Object"},
 		{"get", "/firewall/snapshot", "Firewall", "Get rollback snapshot", "Captures enough firewall/DNS state for setup rollback.", "", "Object"},
 		{"post", "/firewall/preview", "Firewall", "Preview interception changes", "Returns commands and warnings without changing firewall.", "GenericObject", "Object"},
 		{"post", "/firewall/apply", "Firewall", "Apply interception", "Applies RuOpenRay transparent proxy/firewall mode after compatibility preflight.", "GenericObject", "Object"},

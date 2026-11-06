@@ -50,6 +50,7 @@ export function createRoutingView(deps) {
     firewallCommands,
     geoEditorPanel,
     geoPanel,
+    firewallMapPanel = () => '',
   } = deps;
 
 function amneziaPolicyRuleItems() {
@@ -523,6 +524,7 @@ function routingPanel() {
     ['rules', 'Правила'],
     ['scenarios', 'Сценарии'],
     ['intercept', 'Перехват'],
+    ['map', 'Карта firewall'],
     ['leaks', 'Защита от утечек'],
     ['geo', 'Geo'],
     ['geo-editor', 'Редактор geo']
@@ -532,6 +534,7 @@ function routingPanel() {
     rules: routingRulesPanel,
     scenarios: routingScenariosPanel,
     intercept: firewallPanel,
+    map: firewallMapPanel,
     leaks: leakProtectionPanel,
     geo: geoPanel,
     'geo-editor': geoEditorPanel

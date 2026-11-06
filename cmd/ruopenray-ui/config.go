@@ -65,6 +65,9 @@ type serverState struct {
 	applyProgressMu    sync.Mutex
 	applyProgress      map[string]*configApplyOperation
 	applyProgressOrder uint64
+	firewallMapMu      sync.Mutex
+	firewallMapCache   *firewallMapSnapshot
+	firewallMapAt      time.Time
 }
 
 func (s *serverState) addSession(token string) {

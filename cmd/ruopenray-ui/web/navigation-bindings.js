@@ -1,4 +1,4 @@
-export function bindNavigationControls({ state, render, configureLogTimer, onTabChange, onSetupStepChange }) {
+export function bindNavigationControls({ state, render, configureLogTimer, onTabChange, onSetupStepChange, onRoutingViewChange }) {
   function finishNavigation() {
     render();
     if (typeof configureLogTimer === 'function') configureLogTimer();
@@ -93,6 +93,7 @@ export function bindNavigationControls({ state, render, configureLogTimer, onTab
       state.routingView = button.dataset.routingView;
       state.message = '';
       render();
+      onRoutingViewChange?.(state.routingView);
     });
   });
   document.querySelectorAll('[data-dns-view]').forEach((button) => {

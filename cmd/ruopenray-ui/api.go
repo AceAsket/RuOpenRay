@@ -117,6 +117,11 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 401, map[string]any{"ok": false, "error": "Требуется авторизация"})
 		return
 	}
+	if path == "/firewall/map" && r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"ok": false, "error": "Карта firewall доступна только для чтения"})
+		return
+	}
 	applyOperationID := ""
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if path != "/geo/upload" {
@@ -403,6 +408,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, rsystem.SetTCPFastOpen(boolPayload(payload, "enabled", true)))
 	case path == "/firewall/status" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallStatus())
+	case path == "/firewall/map" && r.Method == http.MethodGet:
+		writeJSON(w, 200, s.firewallMap())
 	case path == "/firewall/snapshot" && r.Method == http.MethodGet:
 		writeJSON(w, 200, s.firewallSnapshot())
 	case path == "/firewall/preview" && r.Method == http.MethodPost:
