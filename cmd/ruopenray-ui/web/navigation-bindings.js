@@ -16,6 +16,20 @@ export function bindNavigationControls({ state, render, configureLogTimer, onTab
     state.firewallPreflightPrompt = null;
   }
 
+  document.querySelectorAll('[data-dashboard-server-page]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const page = Number(button.dataset.dashboardServerPage);
+      if (button.disabled || !Number.isSafeInteger(page) || page < 1 || page === state.dashboardServerPage) return;
+      const direction = button.dataset.dashboardPageDirection === 'previous' ? 'previous' : 'next';
+      state.dashboardServerPage = page;
+      render();
+      const navigation = document.querySelector('.dashboard-server-pagination');
+      const nextFocus = navigation?.querySelector(`[data-dashboard-page-direction="${direction}"]:not(:disabled)`)
+        || navigation?.querySelector('[data-dashboard-server-page]:not(:disabled)');
+      nextFocus?.focus({ preventScroll: true });
+    });
+  });
+
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       state.tab = button.dataset.tab;

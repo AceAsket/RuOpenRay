@@ -1034,6 +1034,26 @@
   gap: 8px;
 }
 
+.dashboard-server-pagination,
+.dashboard-server-pagination-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-server-pagination {
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dashboard-server-pagination-actions > span {
+  white-space: nowrap;
+}
+
 .dashboard-proxy-directions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));

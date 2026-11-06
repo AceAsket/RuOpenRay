@@ -165,6 +165,7 @@ export function createInitialState() {
   configTestLog: null,
   activeServerTag: globalThis.sessionStorage?.getItem('ruopenray_active_server') || '',
   dashboardSelectedServerTag: '',
+  dashboardServerPage: 1,
   pendingServerTag: '',
   serverCheckTimeout: '5000',
   serverCheckAttempts: '3',

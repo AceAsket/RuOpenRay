@@ -921,6 +921,12 @@ function proxyFailureWarning(activeTag) {
 function dashboardServerSwitch(servers, options = {}) {
   const active = activeProxyTag();
   const summary = proxyDirectionSummary();
+  const pageSize = 5;
+  const pageCount = Math.max(1, Math.ceil(servers.length / pageSize));
+  const requestedPage = Number(state.dashboardServerPage);
+  const page = Number.isSafeInteger(requestedPage) ? Math.max(1, Math.min(requestedPage, pageCount)) : 1;
+  if ('dashboardServerPage' in state) state.dashboardServerPage = page;
+  const start = (page - 1) * pageSize;
   if (!servers.length) {
     if (options.loading) {
       return `
@@ -958,7 +964,7 @@ function dashboardServerSwitch(servers, options = {}) {
       </div>
       ${proxyFailureWarning(active)}
       <div class="dashboard-server-switch">
-        ${servers.slice(0, 5).map((outbound) => {
+        ${servers.slice(start, start + pageSize).map((outbound) => {
           const tag = outbound?.tag || '';
           const direction = summary.outbounds.get(tag);
           const activeServer = Boolean(direction) || (!summary.outbounds.size && !summary.balancers.size && tag === active);
@@ -995,6 +1001,14 @@ function dashboardServerSwitch(servers, options = {}) {
           </article>`;
         }).join('')}
       </div>
+      ${pageCount > 1 ? `<nav class="dashboard-server-pagination" aria-label="Страницы серверов">
+        <span aria-live="polite">Показано ${start + 1}–${Math.min(start + pageSize, servers.length)} из ${servers.length}</span>
+        <div class="dashboard-server-pagination-actions">
+          <button type="button" class="btn secondary compact" data-dashboard-server-page="${page - 1}" data-dashboard-page-direction="previous" aria-label="Предыдущая страница серверов" ${page === 1 ? 'disabled' : ''}>Назад</button>
+          <span>Страница ${page} из ${pageCount}</span>
+          <button type="button" class="btn secondary compact" data-dashboard-server-page="${page + 1}" data-dashboard-page-direction="next" aria-label="Следующая страница серверов" ${page === pageCount ? 'disabled' : ''}>Вперёд</button>
+        </div>
+      </nav>` : ''}
     </div>
   `;
 }
