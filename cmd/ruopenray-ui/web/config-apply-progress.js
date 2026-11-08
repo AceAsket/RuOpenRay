@@ -4,6 +4,7 @@ const serverStageLabels = {
   write: 'Записываю конфигурацию Xray',
   baseline: 'Проверяю исходное состояние Xray',
   restart: 'Перезапускаю Xray',
+  'hot-routing': 'Применяю правила без перезапуска Xray',
   readiness: 'Ожидаю запуска Xray',
   health: 'Проверяю работу Xray',
   rollback: 'Восстанавливаю предыдущую конфигурацию Xray'

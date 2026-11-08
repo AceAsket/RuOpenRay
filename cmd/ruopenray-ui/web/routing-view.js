@@ -6,6 +6,7 @@ import { isFailoverBalancer } from './balancer-policy.js';
 import { proxyDisplayName } from './proxy-label.js';
 import { routeDisplayLeaves, routeDisplayMatches, routeDisplayRestricted, routeKindFilters, routeOriginFilters, normalizeRouteDisplay } from './routing-display.js';
 import { routeGroupId } from './routing-group-identity.js';
+import { hotRoutingPanel } from './routing-hot.js';
 
 export function createRoutingView(deps) {
   const {
@@ -130,6 +131,7 @@ function routingRulesPanel() {
         </div>
       </div>
       ${operationProgressView()}
+      ${hotRoutingPanel(state, escapeHtml)}
       ${routingAuditView(state, escapeHtml, { describeRouteRule, routeRuleName })}
       ${amneziaPolicyCount ? `<div class="settings-warning compact"><strong>AWG policy routing</strong><span>${amneziaPolicyCount} правил в этом разделе хранятся мимо Xray.</span></div>` : ''}
       <div class="routing-summary">

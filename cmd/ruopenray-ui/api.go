@@ -222,6 +222,8 @@ func (s *serverState) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.analyzeConfig(cfg))
 	case path == "/config/apply" && r.Method == http.MethodPost:
 		s.applyConfig(w, r)
+	case path == "/config/routing-api" && r.Method == http.MethodPost:
+		s.prepareRoutingAPIRequest(w, r)
 	case path == "/config/apply-progress" && r.Method == http.MethodGet:
 		s.configApplyProgressAPI(w, r)
 	case path == "/routing/disabled" && r.Method == http.MethodGet:

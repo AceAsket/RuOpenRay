@@ -31,6 +31,7 @@ import { createFirewallActions } from './firewall-actions.js';
 import { createFirewallModel } from './firewall-model.js';
 import { createFirewallMapController } from './firewall-map-actions.js';
 import { firewallMapPanel } from './firewall-map-view.js';
+import { hotRoutingChangeLabel } from './routing-hot.js';
 import { byteRate, byteSize, escapeHtml, fmtUptime, formatDuration, formatDurationCompact, numberValue } from './formatters.js';
 import { createImportDialogView } from './import-dialog-view.js';
 import { bindGeoControls } from './geo-bindings.js';
@@ -946,9 +947,12 @@ const configActions = createConfigActions({
   recordXrayStatsSample,
   xrayStatsResetAtStorageKey,
   cancelServerDraftSave,
+  scheduleServerDraftSave,
+  syncConfig,
   activeProxyTag
 });
 const {
+  enableHotRouting,
   testConfig,
   applyConfig,
   setXrayStats,
@@ -969,8 +973,8 @@ async function applyConfigAndFirewall() {
   }
 
   const steps = [
-    configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray перед перезапуском', status: 'pending' } : null,
-    configDirty ? { id: 'apply-xray', label: 'Записываю конфигурацию и перезапускаю Xray', status: 'pending' } : null,
+    configDirty ? { id: 'check-xray', label: 'Проверяю черновик Xray перед применением', status: 'pending' } : null,
+    configDirty ? { id: 'apply-xray', label: 'Применяю конфигурацию Xray', status: 'pending' } : null,
     firewallDirty ? { id: 'apply-firewall', label: 'Применяю nftables без перезапуска Xray', status: 'pending' } : null,
     { id: 'refresh', label: 'Обновляю состояние панели', status: 'pending' }
   ].filter(Boolean);
@@ -992,18 +996,18 @@ async function applyConfigAndFirewall() {
   try {
     if (configDirty) {
       setStep('check-xray', 'running');
-      await applyConfig({
+      const applied = await applyConfig({
         refreshAfter: false,
         onProgress: (snapshot) => setSteps(configApplyProgressStages(snapshot)),
         progressMessage: firewallDirty
-          ? 'Проверяю конфигурацию, перезапускаю Xray, затем обновлю firewall...'
-          : 'Проверяю конфигурацию и перезапускаю Xray...',
+          ? 'Проверяю и применяю конфигурацию Xray, затем обновлю firewall...'
+          : 'Проверяю и применяю конфигурацию Xray...',
         successMessage: firewallDirty
           ? 'Xray применен, применяю firewall...'
           : 'Конфигурация Xray применена'
       });
       setStep('check-xray', 'done', 'Черновик Xray проверен');
-      setStep('apply-xray', 'done', 'Xray перезапущен с новой конфигурацией');
+      setStep('apply-xray', 'done', applied?.restart?.mode === 'hot-routing' ? 'Правила применены без перезапуска Xray' : 'Xray перезапущен с новой конфигурацией');
     }
 
     if (firewallDirty || firewallHasUnappliedChanges()) {
@@ -1873,7 +1877,7 @@ function pendingChangesBanner() {
   const xrayReasons = pendingXrayChangeItems();
   const visibleXrayReasons = xrayReasons.slice(0, 5);
   const changeItems = [
-    configDirty ? 'Xray: будет проверена конфигурация и выполнен перезапуск сервиса' : '',
+    configDirty ? hotRoutingChangeLabel(parseConfigText(state.appliedConfigText), parseConfigText(state.jsonDraft)) : '',
     firewallDirty ? 'Firewall: nftables и policy routing применятся без перезапуска Xray' : '',
     ...visibleXrayReasons,
     firewallDirty ? `Firewall: ${visibleFirewallReasons.join(' · ') || 'выбранные настройки перехвата будут применены в nftables'}` : '',
@@ -2419,6 +2423,7 @@ function bind() {
       updateApp,
       reloadUpdatedApp,
       test: testConfig,
+      enableHotRouting,
       apply: applyConfigAndFirewall,
       discardPendingChanges,
       reloadServerDraft,

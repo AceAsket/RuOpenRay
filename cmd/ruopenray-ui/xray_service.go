@@ -253,7 +253,7 @@ func (s *serverState) enableXrayServiceConfig() map[string]any {
 }
 
 func (s *serverState) applyConfig(w http.ResponseWriter, r *http.Request) {
-	s.applyConfigWithProgress(w, r, s.restartSubscriptionWithRollbackProgress)
+	s.applyConfigWithProgress(w, r, s.activateConfigWithRoutingProgress)
 }
 
 func (s *serverState) applyConfigWithRestart(w http.ResponseWriter, r *http.Request, activate func(string) map[string]any) {

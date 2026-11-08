@@ -37,6 +37,14 @@ remember — до 30 дней. Смена пароля делает прежни
 `POST /api/config/apply` требует объект `config`; пустой запрос и `config:null`
 не перезапускают службу. Для явного перезапуска используйте `/api/service`.
 
+Для изменения только списка правил доступно [горячее применение](hot-routing.md).
+`POST /api/config/routing-api` с `{config:...}` возвращает подготовленный config
+с локальным RoutingService, не записывая его и не перезапуская Xray. Активация
+проходит через обычный черновик и `/config/apply`. В ответе применения поле
+`restart.mode` равно `hot-routing` либо `restart`. На горячем пути
+`restart.restarted:false`; этап `hot-routing` заменяет перезапуск. При отказе
+предварительной проверки обычный путь содержит `hotRoutingReason`.
+
 Для наблюдения за применением передайте в POST уникальный `operationId`
 (1–96 ASCII букв, цифр, дефисов или подчёркиваний). Пока POST выполняется,
 авторизованный `GET /api/config/apply-progress?operationId=...` возвращает

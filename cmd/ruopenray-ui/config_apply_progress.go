@@ -11,7 +11,7 @@ const configApplyProgressLimit = 16
 const configApplyProgressTTL = 30 * time.Minute
 
 var configApplyOperationID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,96}$`)
-var configApplyStages = []string{"validation", "backup", "write", "baseline", "restart", "readiness", "health", "rollback"}
+var configApplyStages = []string{"validation", "backup", "write", "baseline", "restart", "hot-routing", "readiness", "health", "rollback"}
 
 type configApplyStage struct {
 	ID     string `json:"id"`

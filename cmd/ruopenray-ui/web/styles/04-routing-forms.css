@@ -150,6 +150,22 @@
   margin-bottom: 16px;
 }
 
+.routing-hot-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 13px;
+}
+.routing-hot-status > span { flex: 1 1 300px; min-width: 0; color: var(--muted); line-height: 1.6; }
+.routing-hot-status > .btn { max-width: 100%; white-space: normal; }
+
 .routing-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

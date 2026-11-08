@@ -11,6 +11,8 @@ export function createConfigActions({
   recordXrayStatsSample,
   xrayStatsResetAtStorageKey,
   cancelServerDraftSave,
+  scheduleServerDraftSave,
+  syncConfig,
   activeProxyTag
 }) {
   let applyGeneration = 0;
@@ -66,7 +68,7 @@ export function createConfigActions({
     state.configApplying = true;
     state.messageDetails = null;
     state.configTestLog = null;
-    state.message = options.progressMessage || state.message || 'Применяю конфигурацию: проверка, запись config.json и перезапуск Xray...';
+    state.message = options.progressMessage || state.message || 'Проверяю и применяю конфигурацию Xray...';
     render();
     try {
       const parsed = materializeProxyAliases(JSON.parse(state.jsonDraft), activeProxyTag);
@@ -113,10 +115,12 @@ export function createConfigActions({
       state.serverDraftError = '';
       state.configAnalysis = result.analysis || null;
       state.lastApplyBackup = result.backup || state.lastApplyBackup;
-      state.message = options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
+      state.message = result.restart?.mode === 'hot-routing' ? result.restart.stdout
+        : options.successMessage || result.restart?.stdout || result.test?.stdout || 'Конфигурация применена';
       state.messageDetails = null;
       if (options.refreshAfter !== false) await refresh({ renderAfter: false });
       if (typeof options.onProgress !== 'function') await keepOperationVisible(startedAt, 900);
+      return result;
     } finally {
       progress?.stop();
       if (activeApplyProgress === progress) activeApplyProgress = null;
@@ -186,7 +190,24 @@ export function createConfigActions({
     render();
   }
 
+  async function enableHotRouting() {
+    const original = state.jsonDraft;
+    const token = state.token;
+    const result = await request('/api/config/routing-api', { method: 'POST', body: JSON.stringify({ config: JSON.parse(original) }) });
+    if (state.jsonDraft !== original || state.token !== token) throw new Error('Черновик изменился во время подготовки API. Повторите действие.');
+    if (!result?.ok || !result.config) throw new Error(result?.error || 'Не удалось подготовить локальный API');
+    if (typeof syncConfig === 'function') syncConfig(result.config);
+    else {
+      state.config = result.config;
+      state.jsonDraft = JSON.stringify(result.config, null, 2);
+      scheduleServerDraftSave?.(result.config);
+    }
+    state.message = 'Локальный API подготовлен в черновике. Примените изменения один раз с перезапуском Xray.';
+    render();
+  }
+
   return {
+    enableHotRouting,
     testConfig,
     applyConfig,
     setXrayStats,
@@ -264,8 +285,8 @@ function configApplyFailure(error) {
     return { message, details: {
       forMessage: message,
       summary: 'Показать причину',
-      title: 'Ошибка перезапуска Xray',
-      body: 'Перезапуск не завершён. Ниже приведены результат запуска и сведения об откате, если он выполнялся.',
+      title: payload.restart.mode === 'hot-routing' ? 'Ошибка горячего применения правил' : 'Ошибка перезапуска Xray',
+      body: 'Применение не завершено. Ниже приведены результат и сведения об откате, если он выполнялся.',
       technical: JSON.stringify(payload.restart, null, 2)
     } };
   }

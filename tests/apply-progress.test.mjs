@@ -4,6 +4,7 @@ import test from 'node:test';
 import { applyOperationProgressView, applyStageProgressView, applyStageProgressVisible } from '../cmd/ruopenray-ui/web/apply-progress-view.js';
 import { createDashboardView } from '../cmd/ruopenray-ui/web/dashboard-view.js';
 import { escapeHtml } from '../cmd/ruopenray-ui/web/formatters.js';
+import { hotRoutingChangeLabel } from '../cmd/ruopenray-ui/web/routing-hot.js';
 
 const steps = () => [
   { id: 'check-xray', label: 'Проверяю черновик Xray перед перезапуском', status: 'pending' },
@@ -14,11 +15,11 @@ const steps = () => [
 const count = (html, pattern) => [...html.matchAll(pattern)].length;
 const appSource = readFileSync(new URL('../cmd/ruopenray-ui/web/app.js', import.meta.url), 'utf8');
 const pendingSource = appSource.slice(appSource.indexOf('function pendingApplyProgressVisible() {'), appSource.indexOf('function setupStepOrder() {'));
-const createPendingView = new Function('state', 'configHasUnappliedChanges', 'firewallHasUnappliedChanges', 'firewallPendingReasons', 'pendingXrayChangeItems', 'pendingApplyRisks', 'escapeHtml', 'applyStageProgressView', 'applyStageProgressVisible', `${pendingSource}\nreturn { pendingChangesBanner, pendingApplyProgressVisible, mainApplyFallbackVisible };`);
+const createPendingView = new Function('state', 'configHasUnappliedChanges', 'firewallHasUnappliedChanges', 'firewallPendingReasons', 'pendingXrayChangeItems', 'pendingApplyRisks', 'escapeHtml', 'applyStageProgressView', 'applyStageProgressVisible', 'hotRoutingChangeLabel', 'parseConfigText', `${pendingSource}\nreturn { pendingChangesBanner, pendingApplyProgressVisible, mainApplyFallbackVisible };`);
 
 function fixture(overrides = {}, dirty = { config: true, firewall: true }) {
   const state = { tab: 'routing', busyAction: 'apply', configApplying: true, applySteps: steps(), ...overrides };
-  const view = createPendingView(state, () => dirty.config, () => dirty.firewall, () => ['Изменена область перехвата'], () => ['Изменено правило'], () => [], escapeHtml, applyStageProgressView, applyStageProgressVisible);
+  const view = createPendingView(state, () => dirty.config, () => dirty.firewall, () => ['Изменена область перехвата'], () => ['Изменено правило'], () => [], escapeHtml, applyStageProgressView, applyStageProgressVisible, hotRoutingChangeLabel, text => JSON.parse(text || '{}'));
   const dashboard = createDashboardView({ state, escapeHtml, proxyOutbounds: () => [], pendingApplyProgressVisible: view.pendingApplyProgressVisible, mainApplyFallbackVisible: view.mainApplyFallbackVisible });
   return { state, dirty, ...view, operationProgressView: dashboard.operationProgressView };
 }

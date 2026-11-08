@@ -1,6 +1,6 @@
 const stageTitles = {
   'check-xray': 'Проверка Xray',
-  'apply-xray': 'Перезапуск Xray',
+  'apply-xray': 'Применение Xray',
   'apply-firewall': 'Firewall',
   refresh: 'Обновление статуса'
 };

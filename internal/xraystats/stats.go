@@ -30,19 +30,23 @@ func APIInfo(cfg map[string]any) map[string]any {
 	if value := strings.TrimSpace(fmt.Sprint(api["tag"])); value != "" && value != "<nil>" {
 		tag = value
 	}
-	for _, item := range asArray(cfg["inbounds"]) {
-		inbound, ok := item.(map[string]any)
-		if !ok || strings.TrimSpace(fmt.Sprint(inbound["tag"])) != tag {
-			continue
+	if listen, _ := api["listen"].(string); strings.TrimSpace(listen) != "" {
+		server = strings.TrimSpace(listen)
+	} else {
+		for _, item := range asArray(cfg["inbounds"]) {
+			inbound, ok := item.(map[string]any)
+			if !ok || strings.TrimSpace(fmt.Sprint(inbound["tag"])) != tag {
+				continue
+			}
+			listen := strings.TrimSpace(fmt.Sprint(inbound["listen"]))
+			if listen == "" || listen == "<nil>" || listen == "0.0.0.0" || listen == "::" {
+				listen = "127.0.0.1"
+			}
+			if port := number(inbound["port"], APIPort); port > 0 {
+				server = fmt.Sprintf("%s:%d", listen, port)
+			}
+			break
 		}
-		listen := strings.TrimSpace(fmt.Sprint(inbound["listen"]))
-		if listen == "" || listen == "<nil>" || listen == "0.0.0.0" || listen == "::" {
-			listen = "127.0.0.1"
-		}
-		if port := number(inbound["port"], APIPort); port > 0 {
-			server = fmt.Sprintf("%s:%d", listen, port)
-		}
-		break
 	}
 	policy, _ := cfg["policy"].(map[string]any)
 	system, _ := policy["system"].(map[string]any)
@@ -59,6 +63,7 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 		return
 	}
 	if !enabled {
+		keepAPI := false
 		delete(cfg, "stats")
 		if policy, ok := cfg["policy"].(map[string]any); ok {
 			if system, ok := policy["system"].(map[string]any); ok {
@@ -88,7 +93,12 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 		}
 		if api, ok := cfg["api"].(map[string]any); ok {
 			tag := strings.TrimSpace(fmt.Sprint(api["tag"]))
-			if tag == APITag || tag == "" || tag == "<nil>" {
+			for _, service := range Services(api) {
+				if service != "StatsService" {
+					keepAPI = true
+				}
+			}
+			if !keepAPI && (tag == APITag || tag == "" || tag == "<nil>") {
 				delete(cfg, "api")
 			} else {
 				services := []any{}
@@ -102,7 +112,7 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 		}
 		inbounds := []any{}
 		for _, item := range asArray(cfg["inbounds"]) {
-			if inbound, ok := item.(map[string]any); ok && strings.TrimSpace(fmt.Sprint(inbound["tag"])) == APITag {
+			if inbound, ok := item.(map[string]any); ok && !keepAPI && strings.TrimSpace(fmt.Sprint(inbound["tag"])) == APITag {
 				continue
 			}
 			inbounds = append(inbounds, item)
@@ -112,7 +122,7 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 			rules := []any{}
 			for _, item := range asArray(routing["rules"]) {
 				rule, ok := item.(map[string]any)
-				if ok && strings.TrimSpace(fmt.Sprint(rule["outboundTag"])) == APITag && containsStringList(rule["inboundTag"], APITag) {
+				if ok && !keepAPI && strings.TrimSpace(fmt.Sprint(rule["outboundTag"])) == APITag && containsStringList(rule["inboundTag"], APITag) {
 					continue
 				}
 				rules = append(rules, item)
@@ -169,6 +179,11 @@ func EnsureConfig(cfg map[string]any, enabled bool) {
 		serviceList = append(serviceList, service)
 	}
 	api["services"] = serviceList
+	// The simplified API already has its own listener; do not add a second
+	// legacy transport or change the port when enabling traffic counters.
+	if listen, _ := api["listen"].(string); strings.TrimSpace(listen) != "" {
+		return
+	}
 
 	inbounds := asArray(cfg["inbounds"])
 	hasInbound := false
