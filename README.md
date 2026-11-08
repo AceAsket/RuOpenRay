@@ -4,18 +4,25 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-Версия ветки `dev` — [0.6.0](docs/releases/v0.6.0.md): горячее применение правил Xray и пробная карта действующих цепочек nftables.
+**Стабильный выпуск — [v0.6.0](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.0).**
+[Что нового](docs/releases/v0.6.0.md) · [Установка](#быстрая-установка) · [Обновление](#обновление) · [API](docs/api.md).
 
-Стабильная версия: [v0.6.0](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.0). [Горячие правила](docs/hot-routing.md), [карта firewall](docs/firewall-map.md), [проверка пагинации](docs/dashboard-pagination-fix-2026-11-06.md).
+В 0.6.0 появились горячее применение правил через локальный API Xray и пробная карта
+действующих цепочек nftables. На Панели все подключения доступны через пагинацию.
+Изменения конфигурации Xray сохраняются в черновик; кнопка «Применить изменения» проверяет и активирует его.
 
-![RuOpenRay UI icon](cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png)
+<img src="cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png" width="96" height="96" alt="RuOpenRay UI">
 
 ## Оглавление
 
-- [Скриншоты](#скриншоты)
 - [Быстрая установка](#быстрая-установка)
+- [Первый запуск](#первый-запуск)
 - [Что делает установщик](#что-делает-установщик)
+- [Скачивание и архитектуры](#скачивание-и-архитектуры)
 - [Возможности](#возможности)
+- [Горячее применение правил](#горячее-применение-правил)
+- [Карта firewall](#карта-firewall)
+- [Скриншоты](#скриншоты)
 - [Сценарии маршрутизации](#сценарии-маршрутизации)
 - [Серверный режим](#серверный-режим)
 - [DNS](#dns)
@@ -31,6 +38,182 @@ RuOpenRay UI работает как отдельный сервис через 
 - [Локальный запуск](#локальный-запуск)
 - [Проверки](#проверки)
 - [Структура проекта](#структура-проекта)
+- [Пакет OpenWrt SDK](#пакет-openwrt-sdk)
+
+## Быстрая установка
+
+Выполните по SSH на роутере от `root`. Установщик выберет архитектуру
+и скачает последний стабильный выпуск из GitHub Releases:
+
+```sh
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+sh /tmp/ruopenray-install.sh
+```
+
+Если вместо `wget` доступен только `curl`:
+
+```sh
+curl -fL -o /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+sh /tmp/ruopenray-install.sh
+```
+
+При первой установке без `RUOPENRAY_PASSWORD` установщик сгенерирует пароль и покажет его в конце. При повторном запуске сохраняется существующий пароль. Чтобы сразу задать свой:
+
+```sh
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+RUOPENRAY_PASSWORD='change-me' sh /tmp/ruopenray-install.sh
+```
+
+Установщик покажет адрес панели и пароль. При стандартном адресе LAN это:
+
+```text
+http://192.168.1.1:9090/
+```
+
+### Установка конкретной версии
+
+Чтобы установить именно 0.6.0, укажите тег и для установщика, и для бинарника:
+
+```sh
+release_tag='v0.6.0'
+wget -O /tmp/ruopenray-install.sh \
+  "https://raw.githubusercontent.com/AceAsket/RuOpenRay/${release_tag}/scripts/install-openwrt.sh" &&
+RUOPENRAY_RELEASE_BASE_URL="https://github.com/AceAsket/RuOpenRay/releases/download/${release_tag}" \
+sh /tmp/ruopenray-install.sh
+```
+
+Для опубликованного RC используйте его точный тег из [списка релизов](https://github.com/AceAsket/RuOpenRay/releases).
+Адрес скрипта определяет версию установщика; `RUOPENRAY_RELEASE_BASE_URL` выбирает
+релиз с бинарником и SHA-256.
+
+## Первый запуск
+
+1. Откройте адрес из вывода установщика и войдите с указанным паролем.
+2. В «Быстрый запуск» проверьте наличие Xray и установите ядро, если его нет.
+3. В «Подключения» добавьте сервер или подписку и проверьте нужный выход.
+4. В «Сценарии и правила» выберите направления для сайтов и устройств,
+   проверьте черновик и нажмите «Применить изменения».
+5. Для настройки DNS и перехвата откройте «Быстрый запуск». После применения
+   проверьте доступ к сайту с LAN-устройства и DNS в «Диагностика».
+
+Если Xray ещё не установлен, установите его из панели или передайте
+`RUOPENRAY_INSTALL_XRAY=1` установщику.
+
+## Что делает установщик
+
+- определяет OpenWrt, пакетный менеджер `opkg`/`apk` и архитектуру роутера;
+- ставит зависимости для transparent proxy;
+- скачивает подходящий бинарник RuOpenRay UI из последнего стабильного GitHub Release, проверяет SHA-256 и самопроверку кандидата до остановки прежней панели;
+- создает UCI-конфиг и init-скрипт; при повторном запуске сохраняет существующие параметры и дополнительные UCI-опции;
+- добавляет ссылку в LuCI;
+- при первой установке подключает внешний каталог сценариев из `AceAsket/RuOpenRay-scenarios`;
+- запускает сервис панели и проверяет HTTP-ответ, версию, SHA-256 процесса и пароль; при ошибке восстанавливает прежний бинарник, UCI и служебные файлы.
+
+Повторная установка не меняет схему запуска или конфигурацию существующего Xray. Панель, отключённая через UCI `enabled=0`, после обновления остаётся отключённой. Кнопка LuCI ведёт на HTTP-порт панели, в том числе если сама LuCI открыта через HTTPS.
+
+Для transparent proxy установщик ставит:
+
+```text
+kmod-nf-tproxy
+kmod-nft-tproxy
+kmod-nft-socket
+```
+
+Xray не заменяется, если он уже установлен. Если Xray нет, можно поставить его через панель или сразу при установке:
+
+```sh
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+RUOPENRAY_INSTALL_XRAY=1 sh /tmp/ruopenray-install.sh
+```
+
+## Скачивание и архитектуры
+
+Для установки через скрипт вручную выбирать бинарник не требуется.
+В [публичном v0.6.0](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.0) доступны:
+
+| Архитектура | Бинарник | Контрольная сумма |
+| --- | --- | --- |
+| x86_64 / amd64 | [Linux amd64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-amd64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-amd64.sha256) |
+| ARM64 / aarch64 | [Linux arm64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-arm64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-arm64.sha256) |
+| ARMv7 | [Linux armv7](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-armv7) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-armv7.sha256) |
+| MIPS, softfloat | [Linux mips](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mips-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mips-softfloat.sha256) |
+| MIPS little-endian, softfloat | [Linux mipsle](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mipsle-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mipsle-softfloat.sha256) |
+
+Отдельно опубликован **APK 0.6.0-r1 только для OpenWrt 25.12.4 x86/64**:
+[пакет](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-0.6.0-r1-x86_64-openwrt25.12.4.apk)
+и [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-0.6.0-r1-x86_64-openwrt25.12.4.apk.sha256).
+Сборка пакета описана в [разделе SDK](#пакет-openwrt-sdk).
+
+## Возможности
+
+- импорт одиночных серверов и subscription URL;
+- Basic Auth для подписок и DoH-серверов;
+- ежедневное автообновление подписок с настраиваемым временем;
+- группы серверов, балансировщики и быстрый выбор активного proxy-направления;
+- массовая замена outbound в правилах;
+- маршрутизация доменов, IP/подсетей, LAN-устройств, портов и inbound;
+- горячая замена только списка правил через локальный RoutingService без перезапуска Xray;
+- внешние сценарии маршрутизации из Git/raw JSON без пересборки бинарника;
+- ручные multi-rule правила и группировка выбранных правил в интерфейсе;
+- DNS Xray, hosts, LAN DNS через dnsmasq, совместимость с Pi-hole/AdGuard Home, защита от DNS-утечек;
+- TPROXY/REDIRECT, policy routing и проверка firewall;
+- пробная карта nftables: этапы Netfilter, приоритеты, счётчики и переходы между цепочками;
+- настройка Reality/VLESS, fingerprint Xray и параметры фрагментации рукопожатия с proxy;
+- DPI-проверки: direct/proxy сравнение, redirect-анализ, UDP/QUIC 443 и fat probes;
+- Live-Xray, проверка цепочки, SNI-карта, traffic test и мониторинг доменов;
+- архив диагностики для передачи в поддержку;
+- обновление Xray core, geo-файлов и самой панели;
+- профили конфигураций: скачать, скачать обезличенно, редактировать, активировать и удалить;
+- обслуживание логов с ротацией без перезапуска Xray.
+
+## Горячее применение правил
+
+Начиная с 0.6.0 обычная кнопка «Применить изменения» может заменить правила
+через локальный `RoutingService`, сохранив процесс Xray и его счётчики.
+
+Для включения:
+
+1. Откройте «Сценарии и правила → Правила».
+2. Нажмите «Подготовить локальный API». Настройки сохранятся в черновик.
+3. Один раз нажмите «Применить изменения» — Xray перезапустится с RoutingService.
+
+Существующий локальный API статистики используется повторно. Если API нет,
+подготавливается `127.0.0.1:10086`. Для горячего пути нужен Xray **26.10.21 или новее**,
+один процесс с одним config-файлом и профиль без балансировщиков или routing script.
+
+| Изменение | Способ применения |
+| --- | --- |
+| Только правила: домены, IP, устройства, порты, порядок и выбор существующего выхода | Горячая замена при подтверждённом локальном API |
+| Состав и параметры серверов, DNS, inbounds/outbounds, стратегия разрешения доменов | Проверка конфигурации и обычный перезапуск Xray |
+| Правила в профиле с балансировщиками или routing script | Обычный перезапуск Xray |
+| Настройки перехвата nftables | Отдельное применение firewall без перезапуска Xray |
+| Обновление самой панели | Перезапуск панели; Xray и AdGuard Home продолжают работать |
+
+После горячей замены новые соединения используют новые правила, уже открытые
+сохраняют прежний маршрут. При недоступной предварительной проверке используется
+обычный перезапуск. Ошибка начатого RPC запускает восстановление прежних правил
+и config; если API-откат не подтверждён, панель выполняет перезапуск с предыдущей конфигурацией.
+Подробности и границы проверки: [горячее применение правил](docs/hot-routing.md).
+
+## Карта firewall
+
+Раздел «Сценарии и правила → Карта firewall» показывает действующий снимок nftables.
+Это пробный инструмент диагностики только для чтения.
+
+- Пять этапов Netfilter: PREROUTING, INPUT, FORWARD, OUTPUT и POSTROUTING.
+- Сценарии LAN → Интернет, LAN → роутер и роутер → Интернет.
+- IPv4/IPv6, все семейства, поиск цепочек, числовые приоритеты и счётчики.
+- Правила в порядке ядра, переходы `jump`/`goto` с возвратом и раскрытие выражений.
+- Длинные цепочки показываются порциями по 200 правил.
+
+Подсветка показывает схему выбранного сценария, а не трассу конкретного пакета.
+Счётчики `inet` общие для IPv4/IPv6; ускоренные flowtable-потоки могут проходить
+мимо них. Новый снимок запрашивается кнопкой «Обновить карту».
+Отдельного сборщика iptables пока нет. [Описание карты и ограничений](docs/firewall-map.md).
 
 ## Скриншоты
 
@@ -71,102 +254,7 @@ RuOpenRay UI работает как отдельный сервис через 
   </tr>
 </table>
 
-## Быстрая установка
-
-Выполните на роутере:
-
-```sh
-sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-```
-
-Если вместо `wget` доступен только `curl`:
-
-```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-```
-
-При первой установке без `RUOPENRAY_PASSWORD` установщик сгенерирует пароль и покажет его в конце. При повторном запуске сохраняется существующий пароль. Чтобы сразу задать свой:
-
-```sh
-RUOPENRAY_PASSWORD='change-me' sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-```
-
-После установки панель обычно доступна по адресу:
-
-```text
-http://192.168.1.1:9090/
-```
-
-## Что делает установщик
-
-- определяет OpenWrt, пакетный менеджер `opkg`/`apk` и архитектуру роутера;
-- ставит зависимости для transparent proxy;
-- скачивает подходящий бинарник RuOpenRay UI из последнего GitHub Release, проверяет SHA-256 и самопроверку кандидата до остановки прежней панели;
-- создает UCI-конфиг и init-скрипт; при повторном запуске сохраняет существующие параметры и дополнительные UCI-опции;
-- добавляет ссылку в LuCI;
-- при первой установке подключает внешний каталог сценариев из `AceAsket/RuOpenRay-scenarios`;
-- запускает сервис панели и проверяет HTTP-ответ, версию, SHA-256 процесса и пароль; при ошибке восстанавливает прежний бинарник, UCI и служебные файлы.
-
-Повторная установка не меняет схему запуска или конфигурацию существующего Xray. Панель, отключённая через UCI `enabled=0`, после обновления остаётся отключённой. Кнопка LuCI ведёт на HTTP-порт панели, в том числе если сама LuCI открыта через HTTPS.
-
-Поддерживаемые бинарники:
-
-```text
-ruopenray-ui-linux-amd64
-ruopenray-ui-linux-arm64
-ruopenray-ui-linux-armv7
-ruopenray-ui-linux-mips-softfloat
-ruopenray-ui-linux-mipsle-softfloat
-```
-
-Для transparent proxy установщик ставит:
-
-```text
-kmod-nf-tproxy
-kmod-nft-tproxy
-kmod-nft-socket
-```
-
-Xray не заменяется, если он уже установлен. Если Xray нет, можно поставить его через панель или сразу при установке:
-
-```sh
-RUOPENRAY_INSTALL_XRAY=1 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-```
-
-## Возможности
-
-- импорт одиночных серверов и subscription URL;
-- Basic Auth для подписок и DoH-серверов;
-- ежедневное автообновление подписок с настраиваемым временем;
-- группы серверов, балансировщики и быстрый выбор активного proxy-направления;
-- массовая замена outbound в правилах;
-- маршрутизация доменов, IP/подсетей, LAN-устройств, портов и inbound;
-- горячая замена только списка правил через локальный RoutingService без перезапуска Xray;
-- внешние сценарии маршрутизации из Git/raw JSON без пересборки бинарника;
-- ручные multi-rule правила и группировка выбранных правил в интерфейсе;
-- DNS Xray, hosts, LAN DNS через dnsmasq, совместимость с Pi-hole/AdGuard Home, защита от DNS-утечек;
-- TPROXY/REDIRECT, policy routing и проверка firewall;
-- пробная карта nftables: этапы Netfilter, приоритеты, счётчики и переходы между цепочками;
-- настройка Reality/VLESS, fingerprint Xray и параметры фрагментации рукопожатия с proxy;
-- DPI-проверки: direct/proxy сравнение, redirect-анализ, UDP/QUIC 443 и fat probes;
-- Live-Xray, проверка цепочки, SNI-карта, traffic test и мониторинг доменов;
-- архив диагностики для передачи в поддержку;
-- обновление Xray core, geo-файлов и самой панели;
-- профили конфигураций: скачать, скачать обезличенно, редактировать, активировать и удалить;
-- обслуживание логов с ротацией без перезапуска Xray.
-
 ## Сценарии маршрутизации
-
-Для [горячего применения правил](docs/hot-routing.md) откройте «Сценарии и правила → Правила»,
-нажмите «Подготовить локальный API» и один раз примените черновик с перезапуском.
-Затем изменения только `routing.rules` могут применяться без перезапуска на Xray
-26.10.21 или новее. Уже открытые соединения сохраняют прежний маршрут.
-Профили с балансировщиками/routing script и изменения остальных параметров
-используют обычное применение. Недоступный API также оставляет обычный путь.
-
-[Карта firewall](docs/firewall-map.md) показывает действующий снимок nftables.
-Подсветка — схема сценария, а не трасса конкретного пакета. Раздел только читает
-цепочки и правила, не включает nftrace и не меняет перехват.
 
 Встроенных сценариев в бинарнике нет. По умолчанию установщик добавляет внешний источник:
 
@@ -339,7 +427,7 @@ ruopenray-ui version
 ruopenray-ui diagnostics
 ruopenray-ui backup
 ruopenray-ui update --backup
-ruopenray-ui route-presets add-source <url> --name "My scenarios"
+ruopenray-ui route-presets add-source 'https://example.com/scenarios.json' --name "My scenarios"
 ruopenray-ui route-presets update
 ruopenray-ui uninstall
 ```
@@ -356,7 +444,8 @@ uci commit ruopenray-ui
 
 ## Обновление
 
-Обновить панель:
+Нажмите на версию RuOpenRay в верхней части панели, проверьте обновления
+и выберите «Обновить панель». Либо выполните по SSH:
 
 ```sh
 ruopenray-ui update --backup
@@ -365,12 +454,18 @@ ruopenray-ui update --backup
 Или переустановить последнюю версию через install-скрипт. Существующие адрес, порт, пароль, пути, параметры памяти и дополнительные UCI-опции сохраняются. Для изменения отдельного параметра явно передайте соответствующую переменную `RUOPENRAY_*`:
 
 ```sh
-sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+sh /tmp/ruopenray-install.sh
 ```
+
+Обновление панели сохраняет конфигурации, черновик, профили, подписки и включённый
+RoutingService. Xray и AdGuard Home продолжают работать; перезапускается только панель.
 
 До замены выполняются проверка SHA-256 и `--self-check`. Если новая панель не запускается или не подтверждает готовность, установщик возвращает прежний бинарник и затронутые служебные файлы. Если откат блокирует новая операция панели или отдельное обновление, установщик сохраняет копии и выводит путь для восстановления. Резервные копии бинарника остаются в `/usr/bin/ruopenray-ui.backup-*`. Откат установщика рассчитан на обнаруженную ошибку или обычный сигнал завершения; защита от отключения питания предоставляется штатным обновлением панели через `ruopenray-ui update` и интерфейс.
 
-Обновить Xray core можно из панели в разделе `Настройки -> Обновление`.
+Ядро Xray обновляется отдельно: нажмите на его версию в верхней части панели
+и выберите выпуск в диалоге обновления. Установка нового ядра перезапускает Xray.
 
 ## Удаление
 
@@ -379,36 +474,40 @@ sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scr
 Удалить только панель:
 
 ```sh
-sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)" -- uninstall
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+sh /tmp/ruopenray-install.sh uninstall
 ```
 
 Удалить вместе с данными RuOpenRay:
 
 ```sh
-RUOPENRAY_PURGE=1 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)" -- uninstall
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+RUOPENRAY_PURGE=1 sh /tmp/ruopenray-install.sh uninstall
 ```
 
 Обычное удаление не трогает Xray, geo-файлы и пользовательские конфиги Xray.
 
 ## Опции установки
 
+Переменные `RUOPENRAY_*` передаются при запуске скрипта. Например, установка
+на другом порту вместе с Xray, если ядро отсутствует:
+
 ```sh
-# другой порт панели
-RUOPENRAY_PORT=9091 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
+RUOPENRAY_PORT=9091 RUOPENRAY_INSTALL_XRAY=1 sh /tmp/ruopenray-install.sh
+```
 
-# поставить Xray, если его нет
-RUOPENRAY_INSTALL_XRAY=1 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
+Пример с собственным зеркалом GitHub Downloads:
 
-# задержать старт панели после загрузки
-RUOPENRAY_START_DELAY=20 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-
-# не добавлять дефолтный источник сценариев
-RUOPENRAY_INSTALL_SCENARIOS=0 sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
-
-# использовать зеркало для GitHub downloads
+```sh
+wget -O /tmp/ruopenray-install.sh \
+  https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh &&
 RUOPENRAY_DOWNLOAD_MIRROR=custom \
 RUOPENRAY_MIRROR_PREFIX='https://gh-proxy.example/?url={url}' \
-sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scripts/install-openwrt.sh)"
+sh /tmp/ruopenray-install.sh
 ```
 
 Зеркало используется для скачивания бинарника; `{url}` заменяется URL исходного файла в кодировке query-параметра. SHA-256 скачивается напрямую с настроенного `RUOPENRAY_RELEASE_BASE_URL`, независимо от зеркала. Если этот источник недоступен, передайте заранее проверенный `RUOPENRAY_SHA256`. Для собственного `RUOPENRAY_BINARY_URL` также используется checksum настроенного релиза или явно заданный SHA-256. Сам install-скрипт в примере загружается напрямую; при недоступном GitHub его нужно предварительно перенести на роутер.
@@ -419,7 +518,10 @@ sh -c "$(wget -O - https://raw.githubusercontent.com/AceAsket/RuOpenRay/main/scr
 | --- | --- | --- |
 | `RUOPENRAY_HOST` | `0.0.0.0` на OpenWrt, `127.0.0.1` локально | адрес бинда |
 | `RUOPENRAY_PORT` | `9090` | порт панели |
-| `RUOPENRAY_PASSWORD` | генерируется установщиком, локально `admin` | пароль |
+| `RUOPENRAY_PASSWORD` | генерируется при первой установке | пароль панели; существующий сохраняется при повторном запуске |
+| `RUOPENRAY_INSTALL_XRAY` | `0` | установить Xray, если ядро отсутствует |
+| `RUOPENRAY_RELEASE_BASE_URL` | GitHub Releases `latest/download` | источник бинарника и его SHA-256; для фиксированной версии — `releases/download/<тег>` |
+| `RUOPENRAY_START_DELAY` | `0` | задержка старта панели после загрузки, секунды |
 | `RUOPENRAY_DATA_DIR` | `/etc/ruopenray-ui` на OpenWrt, `./data` локально | данные панели |
 | `RUOPENRAY_ACTIVE_CONFIG` | `/etc/xray/config.json` на OpenWrt, `./data/config.json` локально | активный config Xray |
 | `RUOPENRAY_XRAY_SERVICE` | `xray` | имя сервиса Xray |
@@ -461,18 +563,25 @@ RuOpenRay UI имеет HTTP API под префиксом `/api`. Оно исп
 ```text
 GET /api/version
 GET /api/openapi.json
+POST /api/login
 ```
 
 Остальные ручки требуют cookie `openray_session` или заголовок `Authorization: Bearer <token>`. Подробности, примеры `curl`, стабильные endpoints и предупреждения по небезопасным операциям описаны в [docs/api.md](docs/api.md).
 
+В 0.6.0 добавлены авторизованный `GET /api/firewall/map` для чтения карты nftables
+и `POST /api/config/routing-api` для подготовки конфигурации локального RoutingService.
+Само применение выполняется через `POST /api/config/apply`; результат сообщает
+`restart.mode: hot-routing` либо `restart`. Контракты и ограничения — в документации API.
+
 ## Локальный запуск
 
-Node-стенд:
+Node-стенд с моками API для разработки интерфейса (Node.js 18+):
 
 ```sh
-npm install
 npm run dev
 ```
+
+Пароль демо-стенда по умолчанию — `admin`; его можно задать через `RUOPENRAY_PASSWORD`.
 
 Go-сервис:
 
@@ -480,6 +589,10 @@ Go-сервис:
 go build -o ruopenray-ui ./cmd/ruopenray-ui
 ./ruopenray-ui
 ```
+
+При первом запуске Go-сервиса без заданного пароля он генерируется и сохраняется
+в `<data_dir>/initial-password` с правами `0600`. Для стандартного локального запуска
+это `data/initial-password`. Можно заранее задать `RUOPENRAY_PASSWORD`.
 
 Локальный адрес:
 
@@ -491,8 +604,14 @@ http://127.0.0.1:9090/
 
 ```sh
 go test ./...
+go vet ./...
 npm run test:frontend
+npm run test:installer
 ```
+
+CI также запускает race detector и общую [матрицу совместимости Xray](.github/workflows/xray-compatibility.yml).
+Горячая замена проверяется настоящим ядром: старое TCP-соединение сохраняет выход,
+новое использует обновлённое правило, потерянное подтверждение вызывает откат.
 
 Перед применением на основном роутере проверьте:
 
@@ -510,7 +629,7 @@ cmd/ruopenray-ui/        основной сервис: HTTP API, OpenWrt-инт
 cmd/ruopenray-ui/web/    frontend панели: экраны, диалоги, состояние, API-клиент и стили
 internal/                backend-пакеты: DNS, firewall, geodata, routing, proxy, статистика Xray
 scripts/                 установка, проверки и регрессионные сценарии
-openwrt/                 файлы для OpenWrt-пакета и LuCI launcher
+packaging/openwrt/       recipe пакета, init, восстановление и LuCI launcher
 tools/dev-server/        локальный стенд с моками API для разработки интерфейса
 tests/                   тесты и вспомогательные проверки
 docs/                    заметки, документация и скриншоты
@@ -529,7 +648,7 @@ Linux/WSL-сборка: `sh scripts/build-openwrt-sdk.sh`; результат и
 python3-setuptools, rsync, unzip, zstd, curl и git. Workflow `OpenWrt SDK`
 также собирает и сохраняет артефакт. Другие SDK/архитектуры отдельно не сертифицированы.
 
-При свежей установке случайный пароль сохраняется в
+При свежей установке SDK-пакета случайный пароль сохраняется в
 `<data_dir>/initial-password` с правами 0600. Прочитайте его через SSH от root;
 пароль не выводится в журнал установки. Заданные UCI-настройки и пароль при
 обновлении сохраняются. Пакет обслуживает только процесс панели; DNS AdGuard
