@@ -4,11 +4,12 @@
 
 RuOpenRay UI работает как отдельный сервис через `procd`. В LuCI добавляется только ссылка на панель, а активная конфигурация Xray остается обычным JSON-файлом.
 
-**Стабильный выпуск — [v0.6.0](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.0).**
-[Что нового](docs/releases/v0.6.0.md) · [Установка](#быстрая-установка) · [Обновление](#обновление) · [API](docs/api.md).
+**Стабильный выпуск — [v0.6.1](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.1).**
+[Что нового](docs/releases/v0.6.1.md) · [Установка](#быстрая-установка) · [Обновление](#обновление) · [API](docs/api.md).
 
 В 0.6.0 появились горячее применение правил через локальный API Xray и пробная карта
 действующих цепочек nftables. На Панели все подключения доступны через пагинацию.
+В 0.6.1 исправлены таймаут горячей замены, конфликт с опросом статистики и вывод причины ошибки.
 Изменения конфигурации Xray сохраняются в черновик; кнопка «Применить изменения» проверяет и активирует его.
 
 <img src="cmd/ruopenray-ui/web/assets/ruopenray-icon-512.png" width="96" height="96" alt="RuOpenRay UI">
@@ -75,10 +76,10 @@ http://192.168.1.1:9090/
 
 ### Установка конкретной версии
 
-Чтобы установить именно 0.6.0, укажите тег и для установщика, и для бинарника:
+Чтобы установить именно 0.6.1, укажите тег и для установщика, и для бинарника:
 
 ```sh
-release_tag='v0.6.0'
+release_tag='v0.6.1'
 wget -O /tmp/ruopenray-install.sh \
   "https://raw.githubusercontent.com/AceAsket/RuOpenRay/${release_tag}/scripts/install-openwrt.sh" &&
 RUOPENRAY_RELEASE_BASE_URL="https://github.com/AceAsket/RuOpenRay/releases/download/${release_tag}" \
@@ -133,19 +134,19 @@ RUOPENRAY_INSTALL_XRAY=1 sh /tmp/ruopenray-install.sh
 ## Скачивание и архитектуры
 
 Для установки через скрипт вручную выбирать бинарник не требуется.
-В [публичном v0.6.0](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.0) доступны:
+В [публичном v0.6.1](https://github.com/AceAsket/RuOpenRay/releases/tag/v0.6.1) доступны:
 
 | Архитектура | Бинарник | Контрольная сумма |
 | --- | --- | --- |
-| x86_64 / amd64 | [Linux amd64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-amd64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-amd64.sha256) |
-| ARM64 / aarch64 | [Linux arm64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-arm64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-arm64.sha256) |
-| ARMv7 | [Linux armv7](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-armv7) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-armv7.sha256) |
-| MIPS, softfloat | [Linux mips](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mips-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mips-softfloat.sha256) |
-| MIPS little-endian, softfloat | [Linux mipsle](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mipsle-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-linux-mipsle-softfloat.sha256) |
+| x86_64 / amd64 | [Linux amd64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-amd64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-amd64.sha256) |
+| ARM64 / aarch64 | [Linux arm64](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-arm64) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-arm64.sha256) |
+| ARMv7 | [Linux armv7](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-armv7) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-armv7.sha256) |
+| MIPS, softfloat | [Linux mips](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-mips-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-mips-softfloat.sha256) |
+| MIPS little-endian, softfloat | [Linux mipsle](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-mipsle-softfloat) | [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-linux-mipsle-softfloat.sha256) |
 
-Отдельно опубликован **APK 0.6.0-r1 только для OpenWrt 25.12.4 x86/64**:
-[пакет](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-0.6.0-r1-x86_64-openwrt25.12.4.apk)
-и [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.0/ruopenray-ui-0.6.0-r1-x86_64-openwrt25.12.4.apk.sha256).
+Отдельно опубликован **APK 0.6.1-r1 только для OpenWrt 25.12.4 x86/64**:
+[пакет](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-0.6.1-r1-x86_64-openwrt25.12.4.apk)
+и [SHA-256](https://github.com/AceAsket/RuOpenRay/releases/download/v0.6.1/ruopenray-ui-0.6.1-r1-x86_64-openwrt25.12.4.apk.sha256).
 Сборка пакета описана в [разделе SDK](#пакет-openwrt-sdk).
 
 ## Возможности
