@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -158,6 +159,19 @@ func TestXrayHotRoutingKeepsConnectionsAndRollsBackLostAcknowledgement(t *testin
 	mapValue(anySlice(mapValue(next["routing"])["rules"])[0])["ruleTag"] = "green-route"
 	nextBody, _ := json.Marshal(next)
 	if runtime.GOOS == "linux" {
+		// The dashboard queries stats in a separate xray CLI process. Keep one
+		// blocked in API dialing throughout apply/verify/rollback to exercise
+		// the process guard concurrently with that ordinary background work.
+		pendingAPI, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = pendingAPI.Close() })
+		stats := exec.Command(binaryPath, "api", "statsquery", "--server="+pendingAPI.Addr().String(), "--timeout=120")
+		if err := stats.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = stats.Process.Kill(); _ = stats.Wait() })
 		// Exercise the production PID/start-time, executable and socket-owner
 		// checks as well as the RPCs in the Linux compatibility CI matrix.
 		var reason string
@@ -169,10 +183,69 @@ func TestXrayHotRoutingKeepsConnectionsAndRollsBackLostAcknowledgement(t *testin
 	if err := os.WriteFile(active, nextBody, 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Delay the AddRule response after the core accepted it. The old four-second
+	// RPC deadline falsely reported failure and restarted a healthy core here.
+	proxy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = proxy.Close() })
+	delayed := make(chan struct{})
+	go func() {
+		downstream, err := proxy.Accept()
+		if err != nil {
+			return
+		}
+		defer downstream.Close()
+		upstream, err := net.DialTimeout("tcp", server, time.Second)
+		if err != nil {
+			return
+		}
+		defer upstream.Close()
+		_ = downstream.SetDeadline(time.Now().Add(30 * time.Second))
+		_ = upstream.SetDeadline(time.Now().Add(30 * time.Second))
+		go func() { _, _ = io.Copy(upstream, downstream) }()
+		didDelay := false
+		for {
+			var header [9]byte
+			if _, err := io.ReadFull(upstream, header[:]); err != nil {
+				return
+			}
+			length := int(header[0])<<16 | int(header[1])<<8 | int(header[2])
+			if length > 1<<20 {
+				return
+			}
+			payload := make([]byte, length)
+			if _, err := io.ReadFull(upstream, payload); err != nil {
+				return
+			}
+			// HTTP/2 stream zero is the connection handshake; delay the first
+			// response frame on an RPC stream, after AddRule was executed.
+			if !didDelay && (header[5]&0x7f != 0 || header[6] != 0 || header[7] != 0 || header[8] != 0) {
+				time.Sleep(5 * time.Second)
+				didDelay = true
+				close(delayed)
+			}
+			if _, err := downstream.Write(header[:]); err != nil {
+				return
+			}
+			if _, err := downstream.Write(payload); err != nil {
+				return
+			}
+		}
+	}()
+	fastReplace := client.replace
+	client.replace = func(config map[string]any) error { return s.routingReplace(proxy.Addr().String(), config) }
 	recover := func() map[string]any { t.Fatal("valid hot routing unexpectedly restarted core"); return nil }
 	result := s.applyHotRouting(client, cfg, next, backup, nil, recover)
+	client.replace = fastReplace
 	if result["ok"] != true || result["restarted"] != false {
 		t.Fatal(result)
+	}
+	select {
+	case <-delayed:
+	default:
+		t.Fatal("AddRule acknowledgement was not delayed")
 	}
 	echo(oldConn, oldReader, "blue")
 	newConn, newReader := connect()

@@ -7,6 +7,7 @@ import { noticeView } from '../cmd/ruopenray-ui/web/notice-view.js';
 import { escapeHtml } from '../cmd/ruopenray-ui/web/formatters.js';
 import { recordServerValidation } from '../cmd/ruopenray-ui/web/server-validation-state.js';
 import { createServerActions } from '../cmd/ruopenray-ui/web/server-actions.js';
+import { applyStageProgressView } from '../cmd/ruopenray-ui/web/apply-progress-view.js';
 
 const validation = { ok: false, stdout: 'Xray 26.10.31', stderr: 'Failed to start: outbound "example-vpn": invalid <transport>', outboundErrors: [{ tag: 'example-vpn', message: 'invalid <transport>', source: 'xray' }], outboundErrorsComplete: true };
 const config = () => ({ outbounds: [{ tag: 'example-vpn', protocol: 'vless', settings: { address: 'example.test' } }], routing: { rules: [] } });
@@ -98,6 +99,28 @@ test('a failed restart shows its stderr and rollback result without presenting a
   assert.deepEqual(f.draftSnapshot(), f.before);
   assert.equal(f.refreshes(), 0);
 });
+
+for (const recovered of [true, false, undefined]) {
+  test(`hot routing failure exposes the cause before technical details and reports rollback=${recovered}`, async (t) => {
+    const reason = 'API Xray: <example> deadline exceeded';
+    const restart = { mode: 'hot-routing', ok: false, stderr: reason,
+      ...(recovered === undefined ? {} : { rollback: { ok: recovered, mode: 'restart', health: { checks: { example: { ok: true } } } } }) };
+    const f = fixture(t, async () => response(200, { ok: false, test: { ok: true }, restart }));
+    await f.apply();
+    assert.match(f.state.message, /Не удалось применить правила без перезапуска Xray/);
+    assert.doesNotMatch(f.state.message, /Не удалось перезапустить Xray/);
+    const html = applyStageProgressView([{ id: 'apply-xray', status: 'error' }], escapeHtml, { failure: f.state.messageDetails });
+    const visible = html.split('<details>')[0];
+    assert.match(visible, /API Xray: &lt;example&gt; deadline exceeded/);
+    assert.match(visible, /Черновик сохранён/);
+    assert.doesNotMatch(visible, /<example>|"health"|"checks"/);
+    if (recovered === true) assert.match(visible, /Предыдущая конфигурация восстановлена/);
+    else if (recovered === false) assert.match(visible, /Не удалось подтвердить восстановление/);
+    else assert.doesNotMatch(visible, /Предыдущая конфигурация восстановлена|Не удалось подтвердить восстановление/);
+    assert.deepEqual(f.draftSnapshot(), f.before);
+    assert.equal(f.calls.length, 1, 'a failed RPC is never retried by the client');
+  });
+}
 
 test('a transport failure leaves the draft and revisions intact and never reuses old Xray errors', async (t) => {
   const f = fixture(t, async () => { throw new TypeError('Failed to fetch'); });

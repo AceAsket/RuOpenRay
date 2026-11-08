@@ -151,7 +151,11 @@ func routingRuleSummary(cfg map[string]any) []routingRuntimeRule {
 }
 
 func (s *serverState) routingCommand(input []byte, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	return s.routingCommandWithTimeout(7*time.Second, input, args...)
+}
+
+func (s *serverState) routingCommandWithTimeout(timeout time.Duration, input []byte, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "xray", args...)
 	cmd.Env = s.xrayEnv()
@@ -196,7 +200,10 @@ func (s *serverState) routingReplace(server string, cfg map[string]any) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.routingCommand(body, "api", "adrules", "--server="+server, "--timeout=4", "--append=false", "stdin:")
+	// AddRule compiles the whole rule list, including Geo matchers. Give both
+	// apply and rollback more time than lightweight API reads, plus CLI budget
+	// for decoding the config before its RPC. A timeout still triggers rollback.
+	_, err = s.routingCommandWithTimeout(30*time.Second, body, "api", "adrules", "--server="+server, "--timeout=20", "--append=false", "stdin:")
 	return err
 }
 
@@ -270,6 +277,16 @@ func (s *serverState) routingProcess(server string) (string, error) {
 	var pid string
 	for _, item := range pids {
 		if rsystem.ProcComm(item) == "xray" {
+			body, err := os.ReadFile(filepath.Join("/proc", item, "cmdline"))
+			if os.IsNotExist(err) {
+				continue // A short-lived CLI may exit while /proc is scanned.
+			}
+			if err != nil {
+				return "", err
+			}
+			if routingCLIProcess(strings.Split(strings.TrimRight(string(body), "\x00"), "\x00")) {
+				continue
+			}
 			if pid != "" {
 				return "", fmt.Errorf("Запущено несколько Xray")
 			}
@@ -318,6 +335,20 @@ func (s *serverState) routingProcess(server string) (string, error) {
 		return "", fmt.Errorf("Не подтверждён владелец локального API Xray")
 	}
 	return pid + ":" + strconv.FormatFloat(start, 'f', 0, 64), nil
+}
+
+func routingCLIProcess(args []string) bool {
+	// API clients (including dashboard stats queries) and informational CLI
+	// commands cannot be the managed core. Keep unknown invocations subject
+	// to the existing single-process and exact-config checks.
+	if len(args) < 2 {
+		return false
+	}
+	switch args[1] {
+	case "api", "version", "help":
+		return true
+	}
+	return false
 }
 
 func routingSocketOwned(pid, server string) bool {

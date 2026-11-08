@@ -281,12 +281,16 @@ function configApplyFailure(error) {
   }
   if (payload?.restart && payload.restart.ok !== true) {
     const reason = payload.error || payload.restart.stderr || payload.restart.message || 'Сервис не подтвердил запуск';
-    const message = `Не удалось перезапустить Xray: ${reason}. Черновик сохранён.`;
+    const hotRouting = payload.restart.mode === 'hot-routing';
+    const message = `${hotRouting ? 'Не удалось применить правила без перезапуска Xray' : 'Не удалось перезапустить Xray'}: ${reason}. Черновик сохранён.`;
+    const rollback = payload.restart.rollback;
+    const recovery = rollback?.ok === true ? 'Предыдущая конфигурация восстановлена.'
+      : rollback?.ok === false ? 'Не удалось подтвердить восстановление предыдущей конфигурации. Проверьте состояние Xray.' : '';
     return { message, details: {
       forMessage: message,
       summary: 'Показать причину',
-      title: payload.restart.mode === 'hot-routing' ? 'Ошибка горячего применения правил' : 'Ошибка перезапуска Xray',
-      body: 'Применение не завершено. Ниже приведены результат и сведения об откате, если он выполнялся.',
+      title: hotRouting ? 'Ошибка горячего применения правил' : 'Ошибка перезапуска Xray',
+      body: [String(reason), recovery, 'Черновик сохранён.'].filter(Boolean).join('\n'),
       technical: JSON.stringify(payload.restart, null, 2)
     } };
   }

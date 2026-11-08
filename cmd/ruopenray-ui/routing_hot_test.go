@@ -39,6 +39,30 @@ func TestHotRoutingRequiresAnExclusiveRuleListChange(t *testing.T) {
 	}
 }
 
+func TestHotRoutingProcessGuardDistinguishesCoreAndCLI(t *testing.T) {
+	for _, args := range [][]string{
+		{"/usr/bin/xray", "api", "statsquery", "--server=127.0.0.1:10085"},
+		{"/usr/bin/xray", "api", "lsrules"},
+		{"/usr/bin/xray", "version"},
+		{"/usr/bin/xray", "help", "run"},
+	} {
+		if !routingCLIProcess(args) {
+			t.Fatalf("CLI counted as a core: %q", args)
+		}
+	}
+	for _, args := range [][]string{
+		nil, {"/usr/bin/xray"},
+		{"/usr/bin/xray", "run", "-config", "/etc/xray/config.json"},
+		{"/usr/bin/xray", "-config", "/etc/xray/other.json"},
+		{"/usr/bin/xray", "run", "-confdir", "/etc/xray"},
+		{"/usr/bin/xray", "unknown"},
+	} {
+		if routingCLIProcess(args) {
+			t.Fatalf("possible core bypassed the guard: %q", args)
+		}
+	}
+}
+
 func TestHotRoutingAPIPreparationIsLocalAndPreservesOtherServices(t *testing.T) {
 	cfg := map[string]any{}
 	if err := prepareRoutingAPI(cfg); err != nil {
