@@ -36,6 +36,8 @@ func (s *serverState) saveSubscriptionCandidateCheckResults(poolTag string, resu
 	if poolTag == "" || len(results) == 0 {
 		return nil
 	}
+	s.subscriptionChecksMu.Lock()
+	defer s.subscriptionChecksMu.Unlock()
 	path := s.subscriptionCandidateCheckResultsPath()
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -52,7 +54,7 @@ func (s *serverState) saveSubscriptionCandidateCheckResults(poolTag string, resu
 			continue
 		}
 		if stringsTrim(result["checkedAt"]) == "" {
-			result["checkedAt"] = time.Now().Format(time.RFC3339)
+			result["checkedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 		pool[fmt.Sprint(index)] = sanitizeSubscriptionCandidateCheckResult(result)
 	}

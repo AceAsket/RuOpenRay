@@ -75,4 +75,14 @@ func TestSaveGeoUserLists(t *testing.T) {
 	if len(lists) != 1 || len(lists[0].Items) != 2 {
 		t.Fatalf("unexpected lists: %#v", lists)
 	}
+	rejected := state.saveGeoUserLists(map[string]any{
+		"lists": []any{map[string]any{"id": lists[0].ID, "name": "Test", "kind": "ip", "items": "not-an-ip"}},
+	})
+	if rejected["ok"] != false {
+		t.Fatalf("invalid edit reported success: %#v", rejected)
+	}
+	lists = state.geoUserLists()
+	if len(lists) != 1 || len(lists[0].Items) != 2 || lists[0].Kind != "domain" {
+		t.Fatalf("invalid edit overwrote saved list: %#v", lists)
+	}
 }

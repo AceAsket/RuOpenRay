@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Xray writes logs concurrently with probes. Keep a bounded, synchronized tail.
@@ -115,17 +117,14 @@ func runSubscriptionProbes(targets []string, probe func(string) (int64, bool, er
 	return 0, false, results, &subscriptionProbeError{code, "Проверка трафика не пройдена. " + strings.Join(messages, "; ")}
 }
 
-func (s *serverState) subscriptionTrafficProbe(outbound map[string]any, preferred string, timeoutMs, attempts int) (int64, bool, []subscriptionProbeAttempt, error) {
-	all, err := s.isolatedProbeOutbounds(outbound)
-	if err != nil {
-		return 0, false, nil, err
-	}
-	return s.subscriptionTrafficProbeWithConfig(outbound, all, preferred, timeoutMs, attempts)
-}
-
-func (s *serverState) subscriptionTrafficProbeWithConfig(outbound map[string]any, all []any, preferred string, timeoutMs, attempts int) (int64, bool, []subscriptionProbeAttempt, error) {
-	return runSubscriptionProbes(subscriptionProbeTargets(preferred), func(target string) (int64, bool, error) {
-		return s.httpOutboundProbeStatusWithConfig(outbound, all, target, timeoutMs, attempts, true)
+func (s *serverState) subscriptionTrafficProbeWithConfig(parent context.Context, outbound map[string]any, all []any, preferred string, timeoutMs, attempts int) (int64, bool, []subscriptionProbeAttempt, error) {
+	targets := subscriptionProbeTargets(preferred)
+	// Reserve time for the secondary URL and for the API response.
+	targetBudget := 95 * time.Second / time.Duration(len(targets))
+	return runSubscriptionProbes(targets, func(target string) (int64, bool, error) {
+		ctx, cancel := context.WithTimeout(parent, targetBudget)
+		defer cancel()
+		return s.httpOutboundProbeStatusWithContext(ctx, outbound, all, target, timeoutMs, attempts, true)
 	})
 }
 

@@ -40,6 +40,13 @@ func (s *serverState) isolatedProbeOutbounds(outbound map[string]any) ([]any, er
 }
 
 func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any, all []any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
+	return s.httpOutboundProbeStatusWithContext(context.Background(), outbound, all, probeURL, timeoutMs, attempts, strict)
+}
+
+func (s *serverState) httpOutboundProbeStatusWithContext(parent context.Context, outbound map[string]any, all []any, probeURL string, timeoutMs int, attempts int, strict bool) (int64, bool, error) {
+	if err := parent.Err(); err != nil {
+		return 0, false, err
+	}
 	outs, err := runtimeProbeOutbounds(outbound, all)
 	if err != nil {
 		return 0, false, err
@@ -77,7 +84,7 @@ func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any,
 		samples = 1
 	}
 	totalSamples := samples + 1
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs*(totalSamples+2))*time.Millisecond+5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, time.Duration(timeoutMs*(totalSamples+2))*time.Millisecond+5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "xray", "run", "-config", path)
 	cmd.Env = s.xrayEnv()
@@ -94,6 +101,9 @@ func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any,
 		_ = cmd.Wait()
 	}()
 	if err := waitTCPPort("127.0.0.1", port, 2500); err != nil {
+		if ctx.Err() != nil {
+			return 0, false, ctx.Err()
+		}
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {
 			return 0, false, fmt.Errorf("%w: %s", err, lastLine(detail))
@@ -123,13 +133,17 @@ func (s *serverState) httpOutboundProbeStatusWithConfig(outbound map[string]any,
 	measuredSuccess, warmSuccess := false, false
 	var lastErr error
 	for attempt := 0; attempt < totalSamples; attempt++ {
+		if ctx.Err() != nil {
+			lastErr = ctx.Err()
+			break
+		}
 		measured := attempt > 0
 		req, err := newProbeHTTPRequest(probeURL)
 		if err != nil {
 			return 0, false, err
 		}
 		started := time.Now()
-		resp, err := client.Do(req)
+		resp, err := client.Do(req.WithContext(ctx))
 		latency := time.Since(started).Milliseconds()
 		if err == nil {
 			n, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, (64<<10)+1))
@@ -461,8 +475,7 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 	}
 	totalSamples := samples + 1
 	target := net.JoinHostPort(host, targetPort)
-	var best int64
-	var warmBest int64
+	best, warmBest := int64(-1), int64(-1)
 	var lastErr error
 	for attempt := 0; attempt < totalSamples; attempt++ {
 		measured := attempt > 0
@@ -493,16 +506,12 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 		latency := time.Since(started).Milliseconds()
 		if readErr == nil && connectOK {
 			if !measured {
-				if warmBest == 0 || latency < warmBest {
-					warmBest = latency
-				}
-				lastErr = nil
+				warmBest = latency
 				continue
 			}
-			if best == 0 || latency < best {
+			if best < 0 || latency < best {
 				best = latency
 			}
-			lastErr = nil
 			continue
 		}
 		if readErr != nil {
@@ -511,65 +520,76 @@ func (s *serverState) tcpOutboundProbe(outbound map[string]any, host string, tar
 			lastErr = errors.New(strings.TrimSpace(line))
 		}
 	}
-	if best > 0 {
+	if best >= 0 {
 		return best, true, nil
 	}
-	if warmBest > 0 {
+	if warmBest >= 0 {
 		return warmBest, true, nil
 	}
 	return 0, false, lastErr
 }
 
-func directEndpointTCPProbe(address string, portValue int, timeoutMs int, attempts int) (int64, bool, error) {
+func directEndpointTCPProbe(ctx context.Context, address string, portValue int, timeoutMs int, attempts int) (int64, bool, error) {
+	if address == "" || portValue <= 0 {
+		return 0, false, errors.New("Нет endpoint для проверки TCP")
+	}
 	samples := attempts
-	if samples < 3 {
-		samples = 3
+	if samples < 1 {
+		samples = 1
 	}
 	totalSamples := samples + 1
 	target := net.JoinHostPort(address, fmt.Sprint(portValue))
 	var best int64
 	var warmBest int64
+	measuredSuccess, warmSuccess := false, false
 	var lastErr error
 	for attempt := 0; attempt < totalSamples; attempt++ {
+		if ctx.Err() != nil {
+			lastErr = ctx.Err()
+			break
+		}
 		measured := attempt > 0
 		started := time.Now()
-		conn, err := dialTCPPreferIPv4(target, time.Duration(timeoutMs)*time.Millisecond)
+		conn, err := dialTCPPreferIPv4Context(ctx, target, time.Duration(timeoutMs)*time.Millisecond)
 		latency := time.Since(started).Milliseconds()
 		if err == nil {
 			_ = conn.Close()
 			if !measured {
-				if warmBest == 0 || latency < warmBest {
-					warmBest = latency
-				}
-				lastErr = nil
+				warmBest, warmSuccess = latency, true
 				continue
 			}
-			if best == 0 || latency < best {
+			if !measuredSuccess || latency < best {
 				best = latency
 			}
-			lastErr = nil
+			measuredSuccess = true
 			continue
 		}
 		lastErr = err
 	}
-	if best > 0 {
+	if measuredSuccess {
 		return best, true, nil
 	}
-	if warmBest > 0 {
+	if warmSuccess {
 		return warmBest, true, nil
 	}
 	return 0, false, lastErr
 }
 
 func dialTCPPreferIPv4(address string, timeout time.Duration) (net.Conn, error) {
+	return dialTCPPreferIPv4Context(context.Background(), address, timeout)
+}
+
+func dialTCPPreferIPv4Context(ctx context.Context, address string, timeout time.Duration) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
+	network := "tcp4"
 	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
-		return net.DialTimeout("tcp", address, timeout)
+		network = "tcp"
 	}
-	return net.DialTimeout("tcp4", address, timeout)
+	dialer := net.Dialer{Timeout: timeout}
+	return dialer.DialContext(ctx, network, address)
 }
 
 func freeLocalPort() (int, error) {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,49 @@ import (
 	rproxy "github.com/AceAsket/RuOpenRay/internal/proxy"
 	rsubscription "github.com/AceAsket/RuOpenRay/internal/subscription"
 )
+
+func TestSubscriptionTCPCheckAcceptsFastLocalConnections(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	_, ok, err := directEndpointTCPProbe(context.Background(), "127.0.0.1", port, 300, 1)
+	if !ok || err != nil {
+		t.Fatalf("open TCP port did not pass: %v", err)
+	}
+}
+
+func TestCheckOutboundsUsesRequestedEndpointOptions(t *testing.T) {
+	s := reliabilityState(t)
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	outbound := subscriptionTestOutbound("checked", "127.0.0.1", port)
+	if err := s.writeActiveConfig(map[string]any{"outbounds": []any{outbound}}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/outbounds/check", strings.NewReader(`{"tags":["checked"],"mode":"endpoint","timeoutMs":350,"attempts":1}`))
+	s.checkOutbounds(rec, req)
+	var response struct {
+		OK        bool
+		TimeoutMs int
+		Attempts  int
+		Results   []map[string]any
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 200 || !response.OK || response.TimeoutMs != 350 || response.Attempts != 1 ||
+		len(response.Results) != 1 || response.Results[0]["endpointOk"] != true || response.Results[0]["method"] != "endpoint" {
+		t.Fatalf("unexpected endpoint check result: %s", rec.Body.String())
+	}
+}
 
 func nativeSubscriptionMask() map[string]any {
 	return map[string]any{
@@ -166,8 +211,11 @@ func TestSubscriptionManualAndFallbackProbeEffectiveCandidate(t *testing.T) {
 				t.Fatal(err)
 			}
 			calls := 0
-			probe := func(index int, effective map[string]any, all []any, options subscriptionCandidateCheckOptions) map[string]any {
+			probe := func(_ context.Context, index int, effective map[string]any, all []any, options subscriptionCandidateCheckOptions) map[string]any {
 				calls++
+				if action == "fallback" && options.mode != "http" {
+					t.Fatalf("automatic selection must check the tunnel, got %s", options.mode)
+				}
 				if effective["tag"] != "provider-candidate" || fragmentDialerProxy(effective) != "local-hop" || transportJSON(mapValue(effective["streamSettings"])["finalmask"]) != transportJSON(mask) {
 					t.Fatalf("probe did not use effective candidate: %s", transportJSON(effective))
 				}
@@ -181,7 +229,7 @@ func TestSubscriptionManualAndFallbackProbeEffectiveCandidate(t *testing.T) {
 				return map[string]any{"index": index, "tag": effective["tag"], "ok": true}
 			}
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions/"+action, strings.NewReader(`{"tag":"pool","index":0,"restart":false}`))
+			req := httptest.NewRequest(http.MethodPost, "/api/subscriptions/"+action, strings.NewReader(`{"tag":"pool","index":0,"mode":"endpoint","restart":false}`))
 			if action == "manual" {
 				s.checkSubscriptionCandidateWithProbe(rec, req, probe)
 			} else {

@@ -73,25 +73,24 @@ function serverDisplayName(outbound) {
 function subscriptionCandidateStatus(check, checking = false) {
   if (checking) return '<span class="server-chip warn subscription-check-status"><i></i>проверяю</span>';
   if (!check) return '<span class="server-chip warn subscription-check-status"><i></i>не проверен</span>';
-  const latency = Number(check.latencyMs || check.httpLatencyMs || check.endpointLatencyMs || 0);
-  const method = check.method === 'endpoint' ? 'Порт сервера' : 'Туннель';
-  if (check.ok) {
-    const fallback = (check.probeResults || []).some((probe) => !probe.ok) ? ' · резервный адрес доступен' : '';
-    return `<span class="server-chip ok subscription-check-status"><i></i>${escapeHtml(`${method} доступен${latency ? ` · ${latency} мс` : ''}${fallback}`)}</span>`;
-  }
-  if (check.errorCode) {
-    const label = ({ dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля', connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка Xray', mixed: 'Ошибки проверки', tunnel: 'Ошибка туннеля' })[check.errorCode] || 'Ошибка проверки';
-    return `<span class="server-chip bad subscription-check-status" title="${escapeHtml(check.error || label)}"><i></i>${escapeHtml(label)}</span>`;
-  }
-  if (check.httpOk === false && check.endpointOk) {
-    const endpointLatency = Number(check.endpointLatencyMs || 0);
-    return `<span class="server-chip warn subscription-check-status"><i></i>${escapeHtml(`TCP открыт${endpointLatency ? ` · ${endpointLatency} мс` : ''} · туннель не подтверждён`)}</span>`;
-  }
-  if (check.endpointOk === false) {
-    return '<span class="server-chip bad subscription-check-status"><i></i>порт закрыт</span>';
-  }
-  const text = check.error ? `${method} нет ответа` : `${method} недоступен`;
-  return `<span class="server-chip bad subscription-check-status"><i></i>${escapeHtml(text)}</span>`;
+  const tcpOnly = check.method === 'endpoint';
+  const latency = Number(check.latencyMs || (tcpOnly ? check.endpointLatencyMs : check.httpLatencyMs) || 0);
+  const failure = ({
+    dns: 'Ошибка DNS', tls: 'Ошибка TLS', auth: 'Ошибка авторизации', timeout: 'Таймаут туннеля',
+    connect: 'Нет соединения', http: 'Ошибка проверочного сайта', core: 'Ошибка Xray', mixed: 'Ошибки проверки'
+  })[check.errorCode] || 'Туннель не подтверждён';
+  const label = check.ok
+    ? `${tcpOnly ? 'TCP открыт' : 'Туннель доступен'}${latency > 0 ? ` · ${latency} мс` : ''}`
+    : tcpOnly ? 'TCP не подтверждён' : failure;
+  const tcp = !tcpOnly && typeof check.endpointOk === 'boolean'
+    ? (check.endpointOk ? 'TCP открыт' : 'TCP не подтверждён')
+    : '';
+  const probe = (check.probeResults || []).find((item) => item.ok);
+  const detail = [check.error, probe?.target && `Ответил ${probe.target}`, tcp].filter(Boolean).join(' · ');
+  return `<div class="subscription-check-status" title="${escapeHtml(detail || label)}">
+    <span class="server-chip ${check.ok ? 'ok' : 'bad'}"><i></i>${escapeHtml(label)}</span>
+    ${tcp ? `<small>${tcp}</small>` : ''}
+  </div>`;
 }
 
 function subscriptionCandidateSearchText(candidate, index, location, address) {
@@ -175,9 +174,8 @@ function subscriptionPoolCard(pool) {
     const countryCode = location?.code || '';
     const countryTitle = countryCode ? `${countryCode} · ${location.label || countryCode}` : 'Локация не определена';
     const savedCheck = candidateChecks[index] || null;
-    const checkMatchesCandidate = savedCheck
-      && String(savedCheck.address || '') === String(candidate?.address || '')
-      && String(savedCheck.port || '') === String(candidate?.port || '');
+    const checkMatchesCandidate = savedCheck && ['tag', 'protocol', 'address', 'port', 'network', 'security']
+      .every((field) => String(savedCheck[field] ?? '') === String(candidate?.[field] ?? ''));
     const check = checkMatchesCandidate ? savedCheck : null;
     const checkKey = `${tag}:${index}`;
     const checking = state.subscriptionCandidateChecking === checkKey;
@@ -194,10 +192,11 @@ function subscriptionPoolCard(pool) {
         <span>${escapeHtml([address, candidate?.network, candidate?.security].filter(Boolean).join(' · '))}</span>
       </div>
       ${subscriptionCandidateStatus(check, checking)}
-      <button class="btn secondary compact subscription-candidate-check" data-action="checkSubscriptionCandidate" data-busy="0" data-subscription-check="${escapeHtml(tag)}" data-subscription-candidate-index="${index}" ${checking ? 'disabled' : ''}>${checking ? 'Проверяю' : 'Проверить'}</button>
+      <button class="btn secondary compact subscription-candidate-check" data-action="checkSubscriptionCandidate" data-busy="0" data-subscription-check="${escapeHtml(tag)}" data-subscription-candidate-index="${index}" ${state.subscriptionCandidateChecking ? 'disabled' : ''}>${checking ? 'Проверяю' : 'Проверить'}</button>
       ${selected
-        ? '<span class="server-chip ok">по умолчанию</span>'
+        ? '<span class="server-chip ok subscription-candidate-default">по умолчанию</span>'
         : `<button class="btn secondary compact" data-action="selectSubscriptionCandidate" data-subscription-select="${escapeHtml(tag)}" data-subscription-candidate-index="${index}">Сделать основным</button>`}
+      ${state.subscriptionCandidateError?.key === checkKey ? `<p class="subscription-candidate-error" role="alert">${escapeHtml(state.subscriptionCandidateError.text)}</p>` : ''}
     </article>`
     };
   });

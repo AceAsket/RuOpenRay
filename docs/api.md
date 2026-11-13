@@ -210,6 +210,15 @@ curl -s http://192.168.1.1:9090/api/outbounds/check \
   -d '{"tags":["proxy"],"url":"https://www.gstatic.com/generate_204"}'
 ```
 
+`mode: "http"` проверяет запрос через Xray, `mode: "endpoint"` проверяет
+доступность TCP-порта. `timeoutMs` задаёт таймаут отдельной попытки, а
+`attempts` — число измерений. В результатах HTTP-режима `endpointOk`
+показывает доступность порта, а `httpOk` подтверждает запрос через туннель.
+При достижении общего таймаута ответ содержит `ok: false` и завершённые проверки в `results`.
+Ручная проверка кандидата подписки принимает те же параметры в
+`POST /api/subscriptions/check-candidate`. Автоподбор подписки проверяет трафик
+через Xray перед переключением.
+
 ## Диагностика TLS и обслуживание
 
 `POST /api/diagnostics/tls-stability` принимает HTTPS `target`, существующий

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createRefreshTimers, loadAppSnapshot } from '../cmd/ruopenray-ui/web/refresh.js';
 import { createRuntimeController } from '../cmd/ruopenray-ui/web/runtime-controller.js';
 import { createInitialState } from '../cmd/ruopenray-ui/web/state.js';
+import { createConfigStateHelpers } from '../cmd/ruopenray-ui/web/config-state.js';
 
 function deferred() {
   let resolve, reject;
@@ -60,16 +61,35 @@ function timerFixture(overrides = {}) {
 function runtimeFixture(request, text) {
   const state = createInitialState();
   Object.assign(state, { token: 'session-a', logFollow: false, logSort: 'desc' });
+  const { syncLoggingSettings, syncServiceSettings } = createConfigStateHelpers(state);
   const runtime = createRuntimeController({
     state, request, api: { text }, render: () => {}, numberValue: (value) => Number(value || 0),
     activeProxyTag: () => '', proxyOutbounds: () => state.config.outbounds || [],
     setActiveServerTag: (tag) => { state.activeServerTag = tag; }, inferredActiveProxyTag: () => '',
     syncConfig: (config) => { state.config = config; },
-    syncLanDnsStatus: () => {}, syncLoggingSettings: () => {}, syncServiceSettings: () => {},
+    syncLanDnsStatus: () => {}, syncLoggingSettings, syncServiceSettings,
     clearAuth: () => { state.token = ''; },
   });
   return { state, runtime };
 }
+
+test('full refresh retains edited logging and service fields until they are saved', async (t) => {
+  fakeIntervals(t);
+  const { state, runtime } = runtimeFixture(async (path) => {
+    if (path === '/api/settings/logging') return { ok: true, level: 'warning' };
+    if (path === '/api/settings/service') return { ok: true, goGC: 60 };
+    return {};
+  }, async () => '');
+  Object.assign(state, { loggingSettingsEdits: 1, serviceSettingsEdits: 1, loggingLevel: 'debug', serviceGoGC: '90' });
+  await runtime.refresh({ renderAfter: false });
+  assert.equal(state.loggingLevel, 'debug');
+  assert.equal(state.serviceGoGC, '90');
+  state.loggingSettingsEdits = 0;
+  state.serviceSettingsEdits = 0;
+  await runtime.refresh({ renderAfter: false });
+  assert.equal(state.loggingLevel, 'warning');
+  assert.equal(state.serviceGoGC, '60');
+});
 
 test('initial snapshot limits router requests to four and retains every endpoint result in its field', async () => {
   const pending = [];

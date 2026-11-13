@@ -53,8 +53,8 @@ func (s *serverState) saveGeoCustomSources(payload map[string]any) map[string]an
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error()}
 	}
-	if err := os.WriteFile(s.geoSourcesPath(), body, 0o600); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "sources": sources}
+	if err := writeFileAtomic(s.geoSourcesPath(), body, 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "sources": s.geoCustomSources()}
 	}
 	return map[string]any{"ok": true, "sources": sources, "status": s.geoStatus(), "stdout": "Свои источники geodata сохранены"}
 }

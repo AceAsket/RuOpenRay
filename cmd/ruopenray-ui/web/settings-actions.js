@@ -73,6 +73,9 @@ export function createSettingsActions({
     state.setupSnapshotLoaded = false;
     state.localProxyForm = null;
     state.interfaceFormEdited = false;
+    state.loggingSettingsEdits = 0;
+    state.serviceSettingsEdits = 0;
+    state.serverCheckHistoryEdited = false;
     state.rememberPassword = false;
     clearAuthToken();
     state.message = '';
@@ -124,8 +127,11 @@ export function createSettingsActions({
   }
 
   async function saveLoggingSettings() {
+    if (state.loggingSaving) return;
+    const edits = state.loggingSettingsEdits;
+    const restart = state.loggingRestart;
     state.loggingSaving = true;
-    state.message = state.loggingRestart
+    state.message = restart
       ? 'Проверяю config.json и перезапускаю Xray для применения логирования...'
       : 'Сохраняю логирование в config.json без перезапуска Xray...';
     render();
@@ -142,35 +148,53 @@ export function createSettingsActions({
           maxSizeMb: Number(state.loggingMaxSizeMb) || 2,
           rotateCopies: Number(state.loggingRotateCopies) || 0,
           clearOnRestart: state.loggingClearOnRestart,
-          restart: state.loggingRestart
+          restart
         })
       });
-      syncLoggingSettings(result.settings);
+      if (!result.ok) {
+        const detail = result.restart?.stderr || result.restart?.message || result.stderr || result.error;
+        state.message = result.restart?.ok === false
+          ? ['Логирование записано. Xray не подтвердил применение.', detail].filter(Boolean).join(' ')
+          : detail || 'Не удалось сохранить логирование';
+        if (result.restart?.ok === false && result.settings?.ok) {
+          state.loggingSettings = result.settings;
+        }
+        return;
+      }
+      if (state.loggingSettingsEdits === edits) {
+        state.loggingSettingsEdits = 0;
+        syncLoggingSettings(result.settings);
+      }
       state.message = result.stdout || result.restart?.stdout || (
-        state.loggingRestart
+        restart
           ? 'Логирование сохранено и применено через перезапуск Xray'
           : 'Логирование сохранено в config.json и применится после перезапуска Xray'
       );
       await refreshLogs(true, true).catch(() => {});
     } finally {
       state.loggingSaving = false;
+      render();
     }
-    render();
   }
 
   async function clearLoggingFiles() {
+    if (state.loggingSaving) return;
     state.loggingSaving = true;
     state.message = 'Очищаю файлы логов...';
     render();
     try {
       const result = await request('/api/settings/logging/clear', { method: 'POST', body: '{}' });
-      syncLoggingSettings(result.settings);
-      state.logs = '';
-      state.message = result.stdout || 'Логи очищены';
+      if (!state.loggingSettingsEdits) syncLoggingSettings(result.settings);
+      if (result.ok) state.logs = '';
+      const detail = result.stderr || result.error || result.errors?.join('\n');
+      state.message = result.ok
+        ? result.stdout || 'Логи очищены'
+        : [result.stdout, detail || 'Очистка логов завершилась с ошибкой'].filter(Boolean).join('\n');
+      if (!result.ok) await refreshLogs(false).catch(() => {});
     } finally {
       state.loggingSaving = false;
+      render();
     }
-    render();
   }
 
   async function refreshDhcpLeases() {
@@ -184,6 +208,8 @@ export function createSettingsActions({
   }
 
   async function saveServiceSettings() {
+    if (state.serviceSettingsSaving) return;
+    const edits = state.serviceSettingsEdits;
     state.serviceSettingsSaving = true;
     state.message = 'Сохраняю настройки сервиса...';
     render();
@@ -199,12 +225,19 @@ export function createSettingsActions({
           mirrorPrefix: state.serviceMirrorPrefix
         })
       });
-      syncServiceSettings(result.settings);
+      if (!result.ok) {
+        state.message = result.stderr || result.error || 'Не удалось сохранить настройки сервиса';
+        return;
+      }
+      if (state.serviceSettingsEdits === edits) {
+        state.serviceSettingsEdits = 0;
+        syncServiceSettings(result.settings);
+      }
       state.message = result.stdout || 'Настройки сервиса сохранены';
     } finally {
       state.serviceSettingsSaving = false;
+      render();
     }
-    render();
   }
 
   async function refreshStorageReport() {
@@ -262,7 +295,9 @@ export function createSettingsActions({
         body: JSON.stringify({ enabled })
       });
       state.tcpFastOpen = result.status || result;
-      state.message = result.stdout || (enabled ? 'TCP Fast Open включен в системе' : 'TCP Fast Open выключен в системе');
+      state.message = result.ok
+        ? result.stdout || (enabled ? 'TCP Fast Open включен в системе' : 'TCP Fast Open выключен в системе')
+        : result.stderr || result.error || 'Не удалось настроить TCP Fast Open';
     } finally {
       state.tcpFastOpenSaving = false;
     }
@@ -272,7 +307,9 @@ export function createSettingsActions({
   async function service(action) {
     const result = await request('/api/service', { method: 'POST', body: JSON.stringify({ action }) });
     const actionLabels = { start: 'запущен', stop: 'остановлен', restart: 'перезапущен' };
-    state.message = result.stdout || result.stderr || `Сервис ${actionLabels[action] || action}`;
+    state.message = result.ok
+      ? result.stdout || `Сервис ${actionLabels[action] || action}`
+      : result.stderr || result.message || result.error || 'Не удалось выполнить команду Xray';
     await refresh();
   }
 

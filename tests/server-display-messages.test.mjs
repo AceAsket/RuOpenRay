@@ -94,14 +94,34 @@ test('subscription selection, checks and deletion clean visible names while keep
   } });
   await actions.selectSubscriptionCandidate(poolTag, 2);
   assert.equal(state.message, 'Подписка example_pool: выбран fi_example_backup');
+  state.serverCheckTimeout = '900';
+  state.serverCheckAttempts = '4';
+  state.serverCheckMode = 'http';
   await actions.checkSubscriptionCandidate(poolTag, 2);
-  assert.equal(state.message, 'Сервер подписки не ответил: fi_example_backup');
+  assert.equal(state.message, 'fi_example_backup · туннель не подтверждён');
   assert.equal(state.subscriptionCandidateChecks[poolTag][2].tag, candidateTag);
+  assert.equal(calls[1].body.timeoutMs, 900);
+  assert.equal(calls[1].body.attempts, 4);
   await actions.deleteSubscriptionPool(poolTag);
   assert.match(prompts[0], /^Удалить подписку example_pool\?/);
   assert.doesNotMatch(state.message, /\?{4}/);
   assert.deepEqual(calls.map((call) => call.body.tag), [poolTag, poolTag, poolTag]);
   assert.deepEqual(calls.slice(0, 2).map((call) => call.body.index), [2, 2]);
+});
+
+test('subscription rows distinguish a reachable TCP port from a failed tunnel and ignore another candidate’s result', () => {
+  const candidate = { tag: candidateTag, address: '203.0.113.9', port: 443, protocol: 'vless', network: 'tcp', security: 'tls' };
+  const check = { ...candidate, method: 'http', ok: false, endpointOk: true, errorCode: 'timeout' };
+  const state = { subscriptionCandidateChecks: { [poolTag]: { 0: check } } };
+  const view = createServersView({ state, escapeHtml });
+  const pool = { tag: poolTag, active: 0, candidates: [candidate] };
+  const checked = visibleText(view.subscriptionPoolCard(pool));
+  assert.match(checked, /Таймаут туннеля/);
+  assert.match(checked, /TCP открыт/);
+  pool.candidates = [{ ...candidate, tag: 'different-candidate' }];
+  const replaced = visibleText(view.subscriptionPoolCard(pool));
+  assert.match(replaced, /не проверен/);
+  assert.doesNotMatch(replaced, /Таймаут туннеля|TCP открыт/);
 });
 
 test('subscription fallback progress cleans a server name without rewriting progress or selection identifiers', async (t) => {

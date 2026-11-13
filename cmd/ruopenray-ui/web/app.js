@@ -103,6 +103,9 @@ function clearAuth() {
   state.setupSnapshotRevision = '';
   state.setupSnapshotLoaded = false;
   state.localProxyForm = null;
+  state.loggingSettingsEdits = 0;
+  state.serviceSettingsEdits = 0;
+  state.serverCheckHistoryEdited = false;
   clearAuthToken({ preserveRemember: true });
   state.message = 'Сессия устарела. Войдите заново.';
   render();
@@ -186,7 +189,9 @@ function saveRouteNamesToServer(names) {
   routeNamesSaveQueue = routeNamesSaveQueue.then(() => request('/api/routing/names', {
     method: 'POST',
     body
-  })).catch((error) => {
+  })).then((result) => {
+    if (!result.ok) throw new Error(result.error || 'Не удалось сохранить названия маршрутов на роутере');
+  }).catch((error) => {
     state.message = error.message || 'Не удалось сохранить названия маршрутов на роутере';
     render();
   });
@@ -541,7 +546,17 @@ const {
 } = routeBalancerActions;
 
 function checkForTag(tag) {
-  return state.serverChecks[tag] || null;
+  const result = state.serverChecks[tag];
+  if (!result) return null;
+  const outbound = configOutbounds().find((item) => item?.tag === tag);
+  if (!outbound) return null;
+  const endpoint = outbound.settings?.servers?.[0] || outbound.settings?.vnext?.[0];
+  if (result.protocol !== undefined && result.protocol !== outbound.protocol) return null;
+  if (result.address !== undefined && result.address !== (endpoint?.address || '')) return null;
+  if (result.port !== undefined && Number(result.port || 0) !== Number(endpoint?.port || 0)) return null;
+  if (result.network !== undefined && result.network !== (outbound.streamSettings?.network || 'tcp')) return null;
+  if (result.security !== undefined && result.security !== (outbound.streamSettings?.security || 'none')) return null;
+  return result;
 }
 
 function checkLabel(result) {

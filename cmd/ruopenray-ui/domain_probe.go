@@ -114,8 +114,7 @@ func directTCPProbe(host string, port string, timeoutMs int, attempts int) map[s
 		attempts = 3
 	}
 	address := net.JoinHostPort(host, port)
-	var best int64
-	var warmBest int64
+	best, warmBest := int64(-1), int64(-1)
 	var lastLatency int64
 	var lastErr error
 	for attempt := 0; attempt < attempts+1; attempt++ {
@@ -130,21 +129,17 @@ func directTCPProbe(host string, port string, timeoutMs int, attempts int) map[s
 		}
 		_ = conn.Close()
 		if !measured {
-			if warmBest == 0 || latency < warmBest {
-				warmBest = latency
-			}
-			lastErr = nil
+			warmBest = latency
 			continue
 		}
-		if best == 0 || latency < best {
+		if best < 0 || latency < best {
 			best = latency
 		}
-		lastErr = nil
 	}
-	if best > 0 {
+	if best >= 0 {
 		return map[string]any{"ok": true, "latencyMs": best, "address": address, "attempts": attempts}
 	}
-	if warmBest > 0 {
+	if warmBest >= 0 {
 		return map[string]any{"ok": true, "latencyMs": warmBest, "address": address, "attempts": attempts}
 	}
 	result := map[string]any{"ok": false, "latencyMs": lastLatency, "address": address, "attempts": attempts}
@@ -280,7 +275,7 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 	if outbound != nil {
 		tcpLatency, tcpOK, tcpErr := s.tcpOutboundProbe(outbound, host, port, timeoutMs, directAttempts)
 		proxyTCP = map[string]any{"ok": tcpOK, "tag": tag, "address": net.JoinHostPort(host, port), "attempts": directAttempts}
-		if tcpLatency > 0 {
+		if tcpOK {
 			proxyTCP["latencyMs"] = tcpLatency
 		}
 		if tcpErr != nil {
@@ -288,7 +283,7 @@ func (s *serverState) domainProxyProbe(payload map[string]any) map[string]any {
 		}
 		latency, ok, probeErr := s.httpOutboundProbe(outbound, rawURL, timeoutMs, directAttempts)
 		proxy = map[string]any{"ok": ok, "tag": tag, "attempts": directAttempts}
-		if latency > 0 {
+		if ok {
 			proxy["latencyMs"] = latency
 		}
 		if probeErr != nil {

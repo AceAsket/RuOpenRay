@@ -56,8 +56,8 @@ func (s *serverState) saveGeoSchedule(payload map[string]any) map[string]any {
 		"geoipUrl": strings.TrimSpace(fmt.Sprint(payload["geoipUrl"])), "geositeUrl": strings.TrimSpace(fmt.Sprint(payload["geositeUrl"])),
 	}
 	body, _ := json.MarshalIndent(schedule, "", "  ")
-	if err := os.WriteFile(s.geoSchedulePath(), body, 0o600); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "schedule": schedule}
+	if err := writeFileAtomic(s.geoSchedulePath(), body, 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "schedule": s.geoSchedule()}
 	}
 	cron := s.installGeoCron(schedule)
 	return map[string]any{"ok": cron["ok"], "schedule": schedule, "cron": cron, "status": s.geoStatus(), "stdout": cron["stdout"], "stderr": cron["stderr"]}
@@ -100,7 +100,7 @@ func (s *serverState) installGeoCron(schedule map[string]any) map[string]any {
 	}
 	restart := exec.Command("/etc/init.d/cron", "restart").Run()
 	if restart != nil {
-		return map[string]any{"ok": true, "stdout": "cron-файл обновлен, но cron не удалось перезапустить: " + restart.Error()}
+		return map[string]any{"ok": false, "stderr": "Расписание записано. Не удалось перезапустить cron: " + restart.Error()}
 	}
 	return map[string]any{"ok": true, "stdout": "Расписание geo обновлено"}
 }

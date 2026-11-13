@@ -680,7 +680,7 @@ body[data-theme] .server-edit-dialog :is(.server-edit-layout, .server-edit-form,
     grid-row: 2;
   }
 
-  body[data-theme] .subscription-candidate > :last-child {
+  body[data-theme] .subscription-candidate > :is([data-subscription-select], .subscription-candidate-default) {
     grid-column: 5;
     grid-row: 2;
   }
@@ -783,7 +783,7 @@ body[data-theme] .server-edit-dialog :is(.server-edit-layout, .server-edit-form,
     grid-template-columns: 28px 24px minmax(0, 1fr);
   }
 
-  body[data-theme] .subscription-candidate > :is(.subscription-check-status, .subscription-candidate-check, :last-child) {
+  body[data-theme] .subscription-candidate > :is(.subscription-check-status, .subscription-candidate-check, [data-subscription-select], .subscription-candidate-default) {
     grid-column: 1 / -1;
     grid-row: auto;
   }

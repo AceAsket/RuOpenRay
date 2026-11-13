@@ -68,6 +68,8 @@ type serverState struct {
 	firewallMapMu      sync.Mutex
 	firewallMapCache   *firewallMapSnapshot
 	firewallMapAt      time.Time
+
+	subscriptionChecksMu sync.Mutex
 }
 
 func (s *serverState) addSession(token string) {

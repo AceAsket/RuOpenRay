@@ -505,9 +505,15 @@ const settingsActionState = {
   downloadMirror: 'github',
   mirrorPrefix: '',
 };
+let rejectSettingsAction = false;
 const settingsActions = createSettingsActions({
   state: settingsActionState,
   request: async (path) => {
+    if (rejectSettingsAction && path === '/api/settings/logging') {
+      return { ok: false, stdout: 'Логирование применено', restart: { ok: false, stderr: 'Xray не запустился' } };
+    }
+    if (rejectSettingsAction && path === '/api/settings/service') return { ok: false, stderr: 'UCI commit failed', settings: { goGC: 60 } };
+    if (rejectSettingsAction && path === '/api/service') return { ok: false, stdout: 'Устанавливаю параметры', stderr: 'Xray не запустился' };
     if (path === '/api/settings/service') return { ok: true, stdout: 'saved', settings: { goGC: 80 } };
     if (path === '/api/service') return { ok: true, stdout: 'service ok' };
     return { ok: true, settings: {} };
@@ -523,6 +529,14 @@ const settingsActions = createSettingsActions({
 });
 await settingsActions.saveServiceSettings();
 await settingsActions.service('restart');
+rejectSettingsAction = true;
+settingsActionState.loggingRestart = true;
+await settingsActions.saveLoggingSettings();
+const loggingRestartFailureVisible = settingsActionState.message.includes('Xray не запустился') && !settingsActionState.logging;
+await settingsActions.saveServiceSettings();
+const serviceSettingsFailureVisible = settingsActionState.message === 'UCI commit failed' && settingsActionState.service?.goGC === 80;
+await settingsActions.service('restart');
+const serviceCommandFailureVisible = settingsActionState.message === 'Xray не запустился';
 settingsActionState.token = 'test-token';
 localStorage.setItem('openray_token', 'test-token');
 localStorage.setItem(authRememberStorageKey, '1');
@@ -879,12 +893,25 @@ const updatesState = {
   geoSourceUrl: '',
   geoSourceTarget: '',
 };
+let geoOverrideRequest;
+let rejectGeoOverride = true;
+let rejectGeoList = true;
 const updatesActions = createUpdatesActions({
   state: updatesState,
   request: async (path, options = {}) => {
     if (path === '/api/geo/sources') {
       const payload = JSON.parse(options.body || '{}');
       return { ok: true, sources: payload.sources || [], status: {} };
+    }
+    if (path === '/api/geo/preset-overrides') {
+      geoOverrideRequest = JSON.parse(options.body);
+      return rejectGeoOverride
+        ? { ok: false, stderr: 'read-only file system' }
+        : { ok: true, overrides: geoOverrideRequest.overrides };
+    }
+    if (path === '/api/geo/lists') {
+      const { lists } = JSON.parse(options.body);
+      return rejectGeoList ? { ok: false, stderr: 'disk full', lists: [] } : { ok: true, lists };
     }
     return { ok: true, sources: [], status: {} };
   },
@@ -893,6 +920,32 @@ const updatesActions = createUpdatesActions({
   geoSelectedPresetIds: () => ['loyalsoldier'],
 });
 await updatesActions.addGeoSource();
+updatesState.geoStatus = { presets: [{
+  id: 'loyalsoldier', name: 'Loyalsoldier', mode: 'replace',
+  geoipUrl: 'https://example.test/geoip.dat', geositeUrl: 'https://example.test/geosite.dat'
+}] };
+updatesActions.editGeoPreset('loyalsoldier');
+updatesState.geoSourceGeositeUrl = 'https://mirror.example.test/geosite.dat';
+await updatesActions.addGeoSource();
+const geoOverrideFailurePreserved = updatesState.geoPresetEditingId === 'loyalsoldier'
+  && updatesState.geoSourceGeositeUrl === 'https://mirror.example.test/geosite.dat'
+  && updatesState.geoSourceNotice?.error && updatesState.geoSourceNotice.text === 'read-only file system';
+rejectGeoOverride = false;
+await updatesActions.addGeoSource();
+const geoOverrideSaved = updatesState.geoPresetEditingId === ''
+  && geoOverrideRequest.overrides.loyalsoldier.geositeUrl === 'https://mirror.example.test/geosite.dat'
+  && updatesState.geoSourceNotice?.text.includes('Обновить geo');
+updatesState.geoUserLists = [{ id: 'work', name: 'Work', kind: 'domain', items: ['old.example'] }];
+updatesActions.editGeoList('work');
+updatesState.geoListItems = 'new.example';
+await updatesActions.addGeoList();
+const geoListFailurePreserved = updatesState.geoListEditingId === 'work'
+  && updatesState.geoListItems === 'new.example'
+  && updatesState.geoUserLists[0].items[0] === 'old.example'
+  && updatesState.geoListNotice?.text === 'disk full';
+rejectGeoList = false;
+await updatesActions.addGeoList();
+const geoListRetrySaved = updatesState.geoListEditingId === '' && updatesState.geoUserLists[0].items[0] === 'new.example';
 
 const sni = createSniView({
   state,
@@ -1984,7 +2037,7 @@ const subscriptionCardHtml = serversView.subscriptionPoolCard({
 const subscriptionDetailsKeyPersists = subscriptionCardHtml.includes('data-details-key="subscription-candidates-test_subs"');
 const subscriptionCandidateBusyIsLocal = subscriptionCardHtml.includes('data-busy="0"')
   && subscriptionCardHtml.includes('data-subscription-candidate-index="0" disabled>Проверяю</button>')
-  && subscriptionCardHtml.includes('data-subscription-candidate-index="1" >Проверить</button>');
+  && subscriptionCardHtml.includes('data-subscription-candidate-index="1" disabled>Проверить</button>');
 const serverEditDialogHtml = serversView.serverEditDialog();
 const serverEditFingerprintSelectWorks = serverEditDialogHtml.includes('id="serverEdit_fingerprint"')
   && serverEditDialogHtml.includes('<option value="chrome" selected>Chrome</option>')
@@ -2082,6 +2135,13 @@ const checks = [
   ['config anonymized export', anonymizedConfig.outbounds[0]?.tag === 'proxy-1' && anonymizedConfig.routing.rules[0]?.outboundTag === 'proxy-1' && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.address?.startsWith('[masked') && anonymizedConfig.outbounds[0]?.settings?.vnext?.[0]?.users?.[0]?.id?.startsWith('[masked')],
   ['updates actions geo payload', updatesActions.cleanGeoSourcePayload({ name: ' Custom ', geoipUrl: ' https://x/geoip.dat ', geositeUrl: ' https://x/geosite.dat ' }).geoipUrl === 'https://x/geoip.dat'],
   ['updates actions geo save', updatesState.geoCustomSources[0]?.name === 'Custom Geo' && updatesState.geoCustomSources[0]?.enabled],
+  ['geo preset save preserves edited URLs on write failure', geoOverrideFailurePreserved],
+  ['geo preset save confirms the saved URL and explains how to download DAT', geoOverrideSaved],
+  ['geo list save preserves the editor and saved list on write failure', geoListFailurePreserved],
+  ['geo list save retries with the preserved text', geoListRetrySaved],
+  ['logging reports a rejected restart', loggingRestartFailureVisible],
+  ['service settings preserve fields on save failure', serviceSettingsFailureVisible],
+  ['service command reports error before preparation output', serviceCommandFailureVisible],
   ['sni actions scan', sniActionState.sniScan?.results?.length === 1 && sniActionState.sniTarget === 'cloudone.example'],
   ['sni panel', sni.sniPanel().includes('SNI')],
   ['formatters bytes', formatByteSize(1536) === '2 KB'],

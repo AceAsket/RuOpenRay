@@ -404,16 +404,17 @@ export function createRoutingActions({
               timeoutMs: Math.max(1500, Number(state.serverCheckTimeout || 5000))
             })
           });
+          if (result.ok === false) throw new Error(result.stderr || result.error || 'Не удалось проверить домен');
           results.push({ host: probeHost, ...result });
         }
-        const passed = results.filter((result) => Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok));
+        const passed = results.filter((result) => result.proxy?.ok);
         const proxyOk = passed.length === results.length;
-        const firstFailed = results.find((result) => !Boolean(result?.proxy?.ok || result?.checks?.tcpProxy?.ok));
+        const firstFailed = results.find((result) => !result.proxy?.ok);
         state.routeRuleTestResult = {
           ok: proxyOk,
           tone: proxyOk ? 'both-ok' : 'bad',
           title: hosts.length === 1
-            ? `${host}: ${results[0]?.verdict?.label || (proxyOk ? 'работает через сервер' : 'нет ответа через сервер')}`
+            ? `${host}: ${proxyOk ? 'HTTP через прокси работает' : 'HTTP через прокси не подтверждён'}`
             : `Список: ${passed.length}/${results.length} работает через ${name}`,
           detail: hosts.length === 1
             ? routeRuleTestDetail(tag, results[0])
@@ -425,21 +426,23 @@ export function createRoutingActions({
           method: 'POST',
           body: JSON.stringify({
             tags: [tag],
-            timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
-            attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
+            timeoutMs: Number(state.serverCheckTimeout) || 5000,
+            attempts: Number(state.serverCheckAttempts) || 1,
             mode: state.serverCheckMode || 'http',
             url: state.serverCheckUrl || 'https://www.gstatic.com/generate_204'
           })
         });
         const item = (result.results || [])[0] || {};
-        const ok = Boolean(item.ok || item.endpointOk);
+        if (result.ok === false && !item.tag) throw new Error(result.error || 'Не удалось проверить прокси');
+        const ok = Boolean(item.ok);
+        const tcpOnly = (item.method || result.mode) === 'endpoint';
         state.routeRuleTestResult = {
           ok,
           tone: ok ? 'both-ok' : 'bad',
-          title: `${name}: ${ok ? 'сервер отвечает' : 'сервер не ответил'}`,
+          title: `${name}: ${tcpOnly ? (ok ? 'TCP открыт' : 'TCP не подтверждён') : (ok ? 'туннель доступен' : 'туннель не подтверждён')}`,
           detail: ok
             ? `Проверка ${item.method || result.mode || 'http'} ${latencyText(item.latencyMs || item.endpointLatencyMs) || 'ok'}`
-            : (item.error || 'У этого типа правила нет одного домена для HTTP-теста')
+            : ([item.endpointOk ? 'TCP открыт.' : '', item.error].filter(Boolean).join(' ') || 'У этого типа правила нет одного домена для HTTP-теста')
         };
         state.message = state.routeRuleTestResult.title;
       }
@@ -942,7 +945,9 @@ export function createRoutingActions({
         body: JSON.stringify({ id, enabled })
       });
       applyRoutePresetSourceResult(result);
-      state.message = enabled ? 'Источник сценариев включен' : 'Источник сценариев выключен';
+      state.message = result.ok
+        ? (enabled ? 'Источник сценариев включен' : 'Источник сценариев выключен')
+        : result.error || 'Не удалось изменить источник сценариев';
     } catch (error) {
       state.message = error.message || 'Не удалось изменить источник сценариев';
     } finally {
@@ -950,15 +955,20 @@ export function createRoutingActions({
     }
   }
 
-  function saveCustomRoutePresets() {
-    if (!state.token) return;
-    request('/api/routing/presets', {
-      method: 'POST',
-      body: JSON.stringify({ presets: state.customRoutePresets })
-    }).catch((error) => {
+  async function saveCustomRoutePresets(presets = state.customRoutePresets) {
+    if (!state.token) return true;
+    try {
+      const result = await request('/api/routing/presets', {
+        method: 'POST',
+        body: JSON.stringify({ presets })
+      });
+      if (!result.ok) throw new Error(result.error || 'Не удалось сохранить подборки правил на роутере');
+      return true;
+    } catch (error) {
       state.message = error.message || 'Не удалось сохранить подборки правил на роутере';
       render();
-    });
+      return false;
+    }
   }
 
   function scenarioIdFromTitle(title) {
@@ -1113,7 +1123,7 @@ export function createRoutingActions({
     render();
   }
 
-  function saveRoutePresetEdit() {
+  async function saveRoutePresetEdit() {
     const parsed = parseRoutePresetEditor();
     state.routePresetEditPreview = parsed;
     state.routePresetEditChecked = true;
@@ -1127,15 +1137,17 @@ export function createRoutingActions({
     const existingId = key.startsWith('custom:') && key !== 'custom:new' ? key.slice(7) : '';
     const id = existingId || scenarioIdFromTitle(title);
     const icon = routePresetIconForSave(key);
-    state.customRoutePresets[id] = {
+    const preset = {
       title,
       detail: state.routePresetEditDetail.trim(),
       rules: parsed.rules.map((rule) => JSON.parse(JSON.stringify(rule))),
       preserveMixed: true,
       updatedAt: new Date().toISOString()
     };
-    if (icon) state.customRoutePresets[id].icon = icon;
-    saveCustomRoutePresets();
+    if (icon) preset.icon = icon;
+    const next = { ...state.customRoutePresets, [id]: preset };
+    if (state.token && !(await saveCustomRoutePresets(next))) return;
+    state.customRoutePresets = next;
     state.routePresetEditor = '';
     state.routePresetDialog = false;
     state.selectedRoutePresets = [`custom:${id}`];
@@ -1143,13 +1155,15 @@ export function createRoutingActions({
     render();
   }
 
-  function deleteCustomRoutePreset(key) {
+  async function deleteCustomRoutePreset(key) {
     const id = String(key || '').startsWith('custom:') ? String(key).slice(7) : '';
     if (!id || !state.customRoutePresets[id]) return;
     const title = state.customRoutePresets[id].title || id;
-    delete state.customRoutePresets[id];
+    const next = { ...state.customRoutePresets };
+    delete next[id];
+    if (state.token && !(await saveCustomRoutePresets(next))) return;
+    state.customRoutePresets = next;
     state.selectedRoutePresets = state.selectedRoutePresets.filter((item) => item !== key);
-    saveCustomRoutePresets();
     state.message = `Подборка удалена: ${title}`;
     render();
   }

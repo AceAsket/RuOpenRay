@@ -330,6 +330,23 @@
 
 .subscription-check-status {
   justify-self: start;
+  max-width: 100%;
+}
+
+div.subscription-check-status {
+  display: grid;
+  gap: 4px;
+}
+
+.subscription-check-status small {
+  color: var(--muted);
+}
+
+.subscription-candidate-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger);
+  overflow-wrap: anywhere;
 }
 
 .subscription-candidate-check {
@@ -1621,6 +1638,10 @@
 }
 
 .geo-source-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
@@ -1662,6 +1683,16 @@
 .geo-source-list {
   display: grid;
   gap: 8px;
+}
+
+.geo-source-notice {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ok);
+}
+
+.geo-source-notice.error {
+  color: var(--danger);
 }
 
 .geo-source-list article {
@@ -1714,6 +1745,10 @@
 }
 
 .geo-list-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 160px 180px;
   gap: 10px;

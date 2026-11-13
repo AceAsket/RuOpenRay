@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -174,8 +175,11 @@ func TestTLSSubscriptionTunnelProbe(t *testing.T) {
 			} else {
 				bad["settings"].(map[string]any)["vnext"].([]any)[0].(map[string]any)["users"].([]any)[0].(map[string]any)["id"] = "11111111-1111-1111-1111-111111111111"
 			}
-			if _, ok, _ := s.httpOutboundProbe(bad, origin.URL, 700, 1); ok {
-				t.Fatal("incorrect credentials must not pass the tunnel check")
+			failed := s.checkSubscriptionCandidateResult(context.Background(), 0, bad, nil, subscriptionCandidateCheckOptions{
+				mode: "http", probeURL: origin.URL, timeoutMs: 700, attempts: 1,
+			})
+			if failed["ok"] != false || failed["httpOk"] != false || failed["endpointOk"] != true {
+				t.Fatalf("TCP reachability and tunnel failure must be reported independently: %v", failed)
 			}
 		})
 	}

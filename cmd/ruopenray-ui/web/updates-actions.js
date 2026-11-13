@@ -196,7 +196,9 @@ export function createUpdatesActions({
     });
     state.geoUpdate = result;
     state.geoStatus = result.status || state.geoStatus;
-    state.message = result.stdout || 'Расписание geo сохранено';
+    state.message = result.ok
+      ? result.stdout || 'Расписание geo сохранено'
+      : result.stderr || result.error || 'Не удалось сохранить расписание geo';
     render();
   }
 
@@ -223,7 +225,9 @@ export function createUpdatesActions({
     const result = await request('/api/geo/cleanup', { method: 'POST', body: '{}' });
     state.geoUpdate = result;
     state.geoStatus = result.status || state.geoStatus;
-    state.message = result.stdout || 'Резервные копии geo очищены';
+    state.message = result.ok
+      ? result.stdout || 'Резервные копии geo очищены'
+      : result.stderr || result.error || 'Не удалось завершить очистку geo-бэкапов';
     render();
   }
 
@@ -324,10 +328,10 @@ export function createUpdatesActions({
       method: 'POST',
       body: JSON.stringify({ sources })
     });
+    if (!result.ok) throw new Error(result.stderr || result.error || 'Не удалось сохранить источники geodata');
     state.geoCustomSources = result.sources || [];
     state.geoStatus = result.status || state.geoStatus;
     state.message = result.stdout || 'Свои источники geodata сохранены';
-    render();
   }
 
   async function saveGeoPresetOverrides(overrides) {
@@ -335,19 +339,20 @@ export function createUpdatesActions({
       method: 'POST',
       body: JSON.stringify({ overrides })
     });
+    if (!result.ok) throw new Error(result.stderr || result.error || 'Не удалось сохранить переопределение');
     state.geoPresetOverrides = result.overrides || {};
     state.geoStatus = result.status || state.geoStatus;
     state.message = result.stdout || 'Переопределения geo-источников сохранены';
-    render();
   }
 
   async function addGeoSource() {
+    if (state.geoSourceSaving) return;
     const editingId = String(state.geoSourceEditingId || '').trim();
     const presetEditingId = String(state.geoPresetEditingId || '').trim();
     const presetEditing = presetEditingId
       ? (state.geoStatus?.presets || []).find((item) => item.id === presetEditingId)
       : null;
-    const presetMode = String(presetEditing?.mode || '');
+    const mode = sourceMode(state.geoSourceKind, presetEditing?.mode);
     const source = cleanGeoSourcePayload({
       id: editingId || presetEditingId,
       name: state.geoSourceName,
@@ -358,48 +363,81 @@ export function createUpdatesActions({
       target: state.geoSourceTarget,
       enabled: true
     });
-    if (!source.name) {
-      state.message = 'Укажите название источника geodata';
+    const error = geoSourceValidationError(source, mode);
+    if (error) {
+      state.geoSourceNotice = { error: true, text: error };
       render();
       return;
     }
-    if ((source.kind === 'base' || source.kind === 'separate') && (!source.geoipUrl || (!source.geositeUrl && presetMode !== 'geoip-only'))) {
-      state.message = 'Для базового источника нужны ссылки на geoip.dat и geosite.dat';
-      render();
-      return;
-    }
-    if (source.kind === 'separate' && !source.target) {
-      state.message = 'Для отдельного источника задайте короткое имя, например runet. RuOpenRay сохранит runet-geoip.dat и runet-geosite.dat';
-      render();
-      return;
-    }
-    if (source.kind === 'extra' && (!source.url || !source.target)) {
-      state.message = 'Для дополнительного dat-файла нужны URL и имя файла';
-      render();
-      return;
-    }
-    if (presetEditingId) {
-      const override = {
-        name: source.name,
-        mode: source.kind === 'extra' ? 'extra-geosite' : source.kind === 'separate' ? 'separate' : presetMode || 'replace',
-        geoipUrl: source.geoipUrl,
-        geositeUrl: source.geositeUrl,
-        url: source.url,
-        target: source.target,
-        enabled: true
-      };
+    await changeGeoSources(async () => {
+      if (presetEditingId) {
+        const override = { name: source.name, mode, enabled: true };
+        if (mode === 'extra-geosite') {
+          override.geositeUrl = source.url;
+          override.target = source.target;
+        } else {
+          override.geoipUrl = source.geoipUrl;
+          if (mode !== 'geoip-only') override.geositeUrl = source.geositeUrl;
+          if (mode === 'separate') override.target = source.target;
+        }
+        await saveGeoPresetOverrides({ ...(state.geoPresetOverrides || {}), [presetEditingId]: override });
+      } else {
+        const next = editingId
+          ? state.geoCustomSources.map((item) => (item.id === editingId ? { ...source, enabled: item.enabled !== false } : item))
+          : [...state.geoCustomSources, source];
+        await saveGeoSources(next);
+      }
       resetGeoSourceForm();
-      await saveGeoPresetOverrides({ ...(state.geoPresetOverrides || {}), [presetEditingId]: override });
-      return;
+    }, 'Источник сохранён. Чтобы скачать DAT, выберите источник и нажмите «Обновить geo».');
+  }
+
+  function sourceMode(kind, presetMode) {
+    if (kind === 'extra') return 'extra-geosite';
+    if (kind === 'separate') return 'separate';
+    return presetMode === 'geoip-only' ? 'geoip-only' : 'replace';
+  }
+
+  function geoSourceValidationError(source, mode) {
+    if (!source.name) return 'Укажите название источника geodata';
+    if (source.kind !== 'base' && !source.target) {
+      return source.kind === 'extra' ? 'Укажите имя DAT-файла' : 'Задайте короткое имя источника, например runet';
     }
-    const next = editingId
-      ? state.geoCustomSources.map((item) => (item.id === editingId ? { ...source, enabled: item.enabled !== false } : item))
-      : [...state.geoCustomSources, source];
-    resetGeoSourceForm();
-    await saveGeoSources(next);
+    const urls = mode === 'extra-geosite' ? [source.url] : [source.geoipUrl];
+    if (mode === 'separate' || mode === 'replace') urls.push(source.geositeUrl);
+    if (!urls.every(validGeoSourceURL)) {
+      return 'Укажите прямые HTTP(S)-ссылки на DAT-файлы';
+    }
+    return '';
+  }
+
+  function validGeoSourceURL(value) {
+    if (!/^https?:\/\//i.test(value)) return false;
+    try {
+      return Boolean(new URL(value).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  async function changeGeoSources(save, successText) {
+    if (state.geoSourceSaving) return;
+    state.geoSourceSaving = true;
+    state.geoSourceNotice = null;
+    render();
+    try {
+      await save();
+      state.geoSourceNotice = { text: successText || state.message };
+    } catch (error) {
+      state.message = error.message;
+      state.geoSourceNotice = { error: true, text: error.message };
+    } finally {
+      state.geoSourceSaving = false;
+      render();
+    }
   }
 
   function resetGeoSourceForm() {
+    state.geoSourceNotice = null;
     state.geoPresetEditingId = '';
     state.geoSourceEditingId = '';
     state.geoSourceName = '';
@@ -411,29 +449,34 @@ export function createUpdatesActions({
   }
 
   function editGeoPreset(id) {
+    if (state.geoSourceSaving) return;
     const preset = (state.geoStatus?.presets || []).find((item) => item.id === id);
     if (!preset) return;
+    resetGeoSourceForm();
     state.geoPresetEditingId = preset.id;
-    state.geoSourceEditingId = '';
     state.geoSourceName = preset.name || '';
     state.geoSourceKind = preset.mode === 'extra-geosite' ? 'extra' : preset.mode === 'separate' ? 'separate' : 'base';
     state.geoSourceGeoipUrl = preset.geoipUrl || '';
     state.geoSourceGeositeUrl = preset.geositeUrl || '';
-    state.geoSourceUrl = preset.url || preset.geositeUrl || '';
+    state.geoSourceUrl = preset.mode === 'extra-geosite' ? preset.geositeUrl || '' : '';
     state.geoSourceTarget = preset.target || '';
     render();
   }
 
   async function resetGeoPresetOverride(id) {
-    const next = { ...(state.geoPresetOverrides || {}) };
-    delete next[id];
-    if (state.geoPresetEditingId === id) resetGeoSourceForm();
-    await saveGeoPresetOverrides(next);
+    await changeGeoSources(async () => {
+      const next = { ...(state.geoPresetOverrides || {}) };
+      delete next[id];
+      await saveGeoPresetOverrides(next);
+      if (state.geoPresetEditingId === id) resetGeoSourceForm();
+    });
   }
 
   function editGeoSource(id) {
+    if (state.geoSourceSaving) return;
     const source = state.geoCustomSources.find((item) => item.id === id);
     if (!source) return;
+    resetGeoSourceForm();
     state.geoSourceEditingId = source.id;
     state.geoSourceName = source.name || '';
     state.geoSourceKind = source.kind === 'extra' || source.kind === 'separate' ? source.kind : 'base';
@@ -445,18 +488,21 @@ export function createUpdatesActions({
   }
 
   function cancelGeoSourceEdit() {
+    if (state.geoSourceSaving) return;
     resetGeoSourceForm();
     render();
   }
 
   async function removeGeoSource(id) {
-    state.geoCustomSourceIds = state.geoCustomSourceIds.filter((item) => item !== id);
-    if (state.geoSourceEditingId === id) resetGeoSourceForm();
-    await saveGeoSources(state.geoCustomSources.filter((source) => source.id !== id));
+    await changeGeoSources(async () => {
+      await saveGeoSources(state.geoCustomSources.filter((source) => source.id !== id));
+      state.geoCustomSourceIds = state.geoCustomSourceIds.filter((item) => item !== id);
+      if (state.geoSourceEditingId === id) resetGeoSourceForm();
+    });
   }
 
   async function toggleGeoSourceEnabled(id, enabled) {
-    await saveGeoSources(state.geoCustomSources.map((source) => (source.id === id ? { ...source, enabled } : source)));
+    await changeGeoSources(() => saveGeoSources(state.geoCustomSources.map((source) => (source.id === id ? { ...source, enabled } : source))));
   }
 
   function cleanGeoListPayload(list = {}) {
@@ -478,13 +524,31 @@ export function createUpdatesActions({
       method: 'POST',
       body: JSON.stringify({ lists })
     });
+    if (!result.ok) throw new Error(result.stderr || result.error || 'Не удалось сохранить geo-списки');
     state.geoUserLists = result.lists || [];
     state.geoStatus = result.status || state.geoStatus;
     state.message = result.stdout || 'Пользовательские geo-списки сохранены';
+  }
+
+  async function changeGeoLists(save) {
+    if (state.geoListSaving) return;
+    state.geoListSaving = true;
+    state.geoListNotice = null;
     render();
+    try {
+      await save();
+      state.geoListNotice = { text: state.message };
+    } catch (error) {
+      state.message = error.message;
+      state.geoListNotice = { error: true, text: error.message };
+    } finally {
+      state.geoListSaving = false;
+      render();
+    }
   }
 
   async function addGeoList() {
+    if (state.geoListSaving || state.geoCatalogLoading || state.geoUpdating) return;
     const editingId = String(state.geoListEditingId || '').trim();
     const list = cleanGeoListPayload({
       id: editingId,
@@ -495,23 +559,26 @@ export function createUpdatesActions({
       enabled: true
     });
     if (!list.name) {
-      state.message = 'Укажите название geo-списка';
+      state.geoListNotice = { error: true, text: 'Укажите название geo-списка' };
       render();
       return;
     }
     if (!list.items.length) {
-      state.message = 'Добавьте хотя бы один домен, IP или подсеть';
+      state.geoListNotice = { error: true, text: 'Добавьте хотя бы один домен, IP или подсеть' };
       render();
       return;
     }
     const next = editingId
       ? state.geoUserLists.map((item) => (item.id === editingId ? { ...list, enabled: item.enabled !== false } : item))
       : [...state.geoUserLists, list];
-    resetGeoListForm();
-    await saveGeoLists(next);
+    await changeGeoLists(async () => {
+      await saveGeoLists(next);
+      resetGeoListForm();
+    });
   }
 
   function resetGeoListForm() {
+    state.geoListNotice = null;
     state.geoListEditingId = '';
     state.geoListName = '';
     state.geoListKind = 'domain';
@@ -524,8 +591,10 @@ export function createUpdatesActions({
   }
 
   function editGeoList(id) {
+    if (state.geoListSaving) return;
     const list = state.geoUserLists.find((item) => item.id === id);
     if (!list) return;
+    state.geoListNotice = null;
     state.geoListEditingId = list.id || '';
     state.geoListName = list.name || '';
     state.geoListKind = list.kind === 'ip' ? 'ip' : 'domain';
@@ -539,6 +608,7 @@ export function createUpdatesActions({
   }
 
   function cancelGeoListEdit() {
+    if (state.geoListSaving) return;
     resetGeoListForm();
     render();
   }
@@ -568,6 +638,7 @@ export function createUpdatesActions({
   }
 
   async function openGeoCatalogCategory(kind, code, full = false, file = '') {
+    if (state.geoListSaving) return;
     const safeKind = kind === 'geoip' ? 'geoip' : 'geosite';
     const safeCode = String(code || '').trim();
     if (!safeCode) return;
@@ -575,6 +646,7 @@ export function createUpdatesActions({
       return;
     }
     state.geoCatalogLoading = true;
+    state.geoListNotice = null;
     render();
     try {
       const fullFlag = full ? '&full=1' : '';
@@ -646,12 +718,14 @@ export function createUpdatesActions({
   }
 
   async function removeGeoList(id) {
-    if (state.geoListEditingId === id) resetGeoListForm();
-    await saveGeoLists(state.geoUserLists.filter((list) => list.id !== id));
+    await changeGeoLists(async () => {
+      await saveGeoLists(state.geoUserLists.filter((list) => list.id !== id));
+      if (state.geoListEditingId === id) resetGeoListForm();
+    });
   }
 
   async function toggleGeoListEnabled(id, enabled) {
-    await saveGeoLists(state.geoUserLists.map((list) => (list.id === id ? { ...list, enabled } : list)));
+    await changeGeoLists(() => saveGeoLists(state.geoUserLists.map((list) => (list.id === id ? { ...list, enabled } : list))));
   }
 
   return {

@@ -1,6 +1,22 @@
 package main
 
-import "testing"
+import (
+	"net"
+	"strconv"
+	"testing"
+)
+
+func TestDirectTCPProbeAcceptsFastLocalConnections(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+	if result := directTCPProbe("127.0.0.1", port, 500, 3); result["ok"] != true {
+		t.Fatalf("open TCP port did not pass: %v", result)
+	}
+}
 
 func TestDomainProbeURL(t *testing.T) {
 	tests := []struct {

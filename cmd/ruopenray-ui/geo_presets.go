@@ -118,6 +118,11 @@ func (s *serverState) geoPresets() []map[string]any {
 				merged[key] = value
 			}
 		}
+		// Older editors stored the changed URL in "url" and left
+		// "geositeUrl" set to the original value for extra DAT files.
+		if legacyURL, _ := override["url"].(string); merged["mode"] == "extra-geosite" && legacyURL != "" {
+			merged["geositeUrl"] = legacyURL
+		}
 		if enabled, ok := override["enabled"].(bool); ok {
 			merged["enabled"] = enabled
 			merged["installable"] = enabled && merged["installable"] != false

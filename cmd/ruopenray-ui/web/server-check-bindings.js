@@ -13,9 +13,11 @@ export function bindServerCheckControls({ state, render }) {
     state.serverCheckUrl = event.target.value;
   });
   document.querySelector('#serverCheckHistoryLimit')?.addEventListener('input', (event) => {
+    state.serverCheckHistoryEdited = true;
     state.serverCheckHistoryLimit = event.target.value;
   });
   document.querySelector('#serverCheckHistoryRetentionHours')?.addEventListener('input', (event) => {
+    state.serverCheckHistoryEdited = true;
     state.serverCheckHistoryRetentionHours = event.target.value;
   });
   document.querySelector('#observatoryCheckUrl')?.addEventListener('input', (event) => {

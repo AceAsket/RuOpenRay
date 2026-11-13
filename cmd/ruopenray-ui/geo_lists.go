@@ -59,8 +59,11 @@ func (s *serverState) saveGeoUserLists(payload map[string]any) map[string]any {
 	seen := map[string]bool{}
 	for index, item := range raw {
 		list := normalizeGeoUserList(item, index)
-		if list.Name == "" || len(list.Items) == 0 {
-			continue
+		if len(list.Items) == 0 {
+			return map[string]any{
+				"ok": false, "stderr": fmt.Sprintf("В списке «%s» нет допустимых записей", list.Name),
+				"lists": s.geoUserLists(),
+			}
 		}
 		if seen[list.ID] {
 			list.ID = fmt.Sprintf("%s-%d", list.ID, index+1)
@@ -70,10 +73,10 @@ func (s *serverState) saveGeoUserLists(payload map[string]any) map[string]any {
 	}
 	body, _ := json.MarshalIndent(lists, "", "  ")
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "lists": lists}
+		return map[string]any{"ok": false, "stderr": err.Error(), "lists": s.geoUserLists()}
 	}
-	if err := os.WriteFile(s.geoListsPath(), body, 0o600); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "lists": lists}
+	if err := writeFileAtomic(s.geoListsPath(), body, 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "lists": s.geoUserLists()}
 	}
 	return map[string]any{"ok": true, "lists": lists, "status": s.geoStatus(), "stdout": "Пользовательские geo-списки сохранены"}
 }

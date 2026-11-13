@@ -168,7 +168,7 @@ func (s *serverState) writeServiceRuntimeSettings(settings map[string]any) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.serviceSettingsPath(), body, 0o600)
+	return writeFileAtomic(s.serviceSettingsPath(), body, 0o600)
 }
 
 func clampSeconds(value any, fallback int, max int) int {
@@ -267,6 +267,7 @@ func (s *serverState) saveServiceSettings(payload map[string]any) map[string]any
 
 	steps := []map[string]any{}
 	persisted := false
+	stdout, stderr := "Настройки сервиса сохранены", ""
 	if runtime.GOOS != "windows" && commandExists("uci") {
 		steps = append(steps, run("uci", "set", fmt.Sprintf("ruopenray-ui.main.start_delay=%d", settings["startupDelaySec"])))
 		steps = append(steps, run("uci", "set", fmt.Sprintf("ruopenray-ui.main.apply_delay=%d", settings["applyDelaySec"])))
@@ -279,13 +280,18 @@ func (s *serverState) saveServiceSettings(payload map[string]any) map[string]any
 		for _, step := range steps {
 			persisted = persisted && step["ok"] == true
 		}
+		if !persisted {
+			stdout = ""
+			stderr = "Настройки записаны в файл панели. Не удалось сохранить их в UCI: " + concatCommandOutput(steps...)
+		}
 	}
 	return map[string]any{
-		"ok":        true,
+		"ok":        stderr == "",
 		"settings":  s.serviceSettings(),
 		"persisted": persisted,
 		"steps":     steps,
-		"stdout":    "Настройки сервиса сохранены",
+		"stdout":    stdout,
+		"stderr":    stderr,
 	}
 }
 
@@ -542,6 +548,9 @@ func (s *serverState) saveLoggingSettings(payload map[string]any) map[string]any
 	stdout := "Логирование сохранено и применено через перезапуск Xray"
 	if boolPayload(payload, "restart", true) {
 		restart = s.serviceAction("restart")
+		if restart["ok"] != true {
+			stdout = "Логирование сохранено в конфигурацию Xray"
+		}
 	} else {
 		stdout = "Логирование сохранено в конфигурацию Xray. Работающий Xray применит его после перезапуска."
 		restart = map[string]any{"ok": true, "stdout": "Xray не перезапускался"}

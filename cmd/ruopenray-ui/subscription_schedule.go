@@ -54,8 +54,8 @@ func (s *serverState) saveSubscriptionSchedule(payload map[string]any) map[strin
 		"lastResult": current["lastResult"],
 	}
 	body, _ := json.MarshalIndent(schedule, "", "  ")
-	if err := os.WriteFile(s.subscriptionSchedulePath(), body, 0o600); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "schedule": schedule}
+	if err := writeFileAtomic(s.subscriptionSchedulePath(), body, 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "schedule": current}
 	}
 	cron := s.installSubscriptionCron(schedule)
 	return map[string]any{"ok": cron["ok"], "schedule": schedule, "cron": cron, "subscriptions": s.subscriptionReport(), "stdout": cron["stdout"], "stderr": cron["stderr"]}
@@ -93,7 +93,7 @@ func (s *serverState) installSubscriptionCron(schedule map[string]any) map[strin
 	}
 	restart := exec.Command("/etc/init.d/cron", "restart").Run()
 	if restart != nil {
-		return map[string]any{"ok": true, "stdout": "cron-файл обновлен, но cron не удалось перезапустить: " + restart.Error()}
+		return map[string]any{"ok": false, "stderr": "Расписание записано. Не удалось перезапустить cron: " + restart.Error()}
 	}
 	return map[string]any{"ok": true, "stdout": "Расписание подписок обновлено"}
 }

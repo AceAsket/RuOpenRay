@@ -489,7 +489,7 @@ function geoUserListEditorPanel() {
           ? `Категория из ${escapeHtml(datFile)} открыта частично. Ее можно сохранить как новый список RuOpenRay, но перезапись DAT заблокирована, чтобы не обрезать файл.`
           : `Открыта категория из ${escapeHtml(datFile)}. Можно сохранить ее как отдельный список RuOpenRay или изменить эту категорию прямо в установленном DAT.`}</span>
       </div>` : ''}
-      <div class="geo-list-form">
+      <fieldset class="geo-list-form" ${state.geoListSaving ? 'disabled aria-busy="true"' : ''}>
         <div class="form-row">
           <label>Название</label>
           <input id="geoListName" value="${escapeHtml(state.geoListName)}" placeholder="Например: Рабочие сервисы, Telegram IP, Игры" />
@@ -516,10 +516,11 @@ function geoUserListEditorPanel() {
         </div>
         <div class="geo-list-form-actions">
           ${datEditing ? `<button class="btn warning ${state.geoUpdating ? 'is-busy' : ''}" data-action="saveGeoCatalogCategory" ${datSaveDisabled ? 'disabled' : ''}>${state.geoUpdating ? 'Сохраняю DAT...' : `Изменить ${escapeHtml(datFile)}`}</button>` : ''}
-          <button class="btn ${editing ? 'warning' : 'secondary'}" data-action="addGeoList">${editing ? 'Сохранить список' : 'Добавить список'}</button>
+          <button class="btn ${editing ? 'warning' : 'secondary'}" data-action="addGeoList" data-busy="0" ${state.geoCatalogLoading || state.geoUpdating ? 'disabled' : ''}>${state.geoListSaving ? 'Сохраняю…' : editing ? 'Сохранить список' : 'Добавить список'}</button>
           ${editing ? '<button class="btn secondary" data-geo-list-cancel="1">Отмена</button>' : ''}
         </div>
-      </div>
+      </fieldset>
+      ${state.geoListNotice ? `<p class="geo-source-notice ${state.geoListNotice.error ? 'error' : ''}" role="${state.geoListNotice.error ? 'alert' : 'status'}">${escapeHtml(state.geoListNotice.text)}</p>` : ''}
       <div class="geo-list-saved">
         ${lists.map((list) => {
           const preview = geoListRulePreview(list);
@@ -635,6 +636,7 @@ function geoPanel() {
   const customSelected = state.geoCustomSourceIds.length > 0;
   const editingSource = state.geoCustomSources.find((source) => source.id === state.geoSourceEditingId);
   const editingPreset = presets.find((preset) => preset.id === state.geoPresetEditingId);
+  const sourceNotice = state.geoSourceNotice;
   const canUpdate = custom || selected?.installable || customSelected;
   return `
     <section class="route-hero">
@@ -675,7 +677,7 @@ function geoPanel() {
           ${selected && !custom ? `<button class="btn secondary" data-geo-preset-edit="${escapeHtml(selected.id)}">Переопределить</button>` : ''}
           ${selected?.customized ? `<button class="btn secondary" data-geo-preset-reset="${escapeHtml(selected.id)}">Вернуть стандартный</button>` : ''}
           <button class="btn secondary ${state.busyAction === 'cleanupGeoBackups' ? 'is-busy' : ''}" data-action="cleanupGeoBackups" ${state.busyAction === 'cleanupGeoBackups' ? 'disabled' : ''}>${state.busyAction === 'cleanupGeoBackups' ? 'Очищаю...' : 'Очистить geo-бэкапы'}</button>
-          <button class="btn warning ${state.geoUpdating ? 'is-busy' : ''}" data-action="updateGeo" ${state.geoUpdating || !canUpdate ? 'disabled' : ''}>${state.geoUpdating ? 'Обновляю...' : geoActionLabel(selected)}</button>
+          <button class="btn warning ${state.geoUpdating ? 'is-busy' : ''}" data-action="updateGeo" ${state.geoUpdating || state.geoSourceSaving || !canUpdate ? 'disabled' : ''}>${state.geoUpdating ? 'Обновляю...' : geoActionLabel(selected)}</button>
         </div>
       </div>
       <div class="geo-presets">
@@ -731,7 +733,7 @@ function geoPanel() {
       </div>` : ''}
       <div class="geo-manager">
         <div class="geo-group-title">${editingPreset ? `Редактор встроенного источника · ${escapeHtml(editingPreset.name || '')}` : editingSource ? `Редактор источника · ${escapeHtml(editingSource.name || '')}` : 'Свои источники'}</div>
-        <div class="geo-source-form">
+        <fieldset class="geo-source-form" ${state.geoSourceSaving ? 'disabled aria-busy="true"' : ''}>
           <div class="form-row geo-source-name-row">
             <label>Название</label>
             <input id="geoSourceName" value="${escapeHtml(state.geoSourceName)}" placeholder="Мой geosite / офисный список" />
@@ -743,9 +745,10 @@ function geoPanel() {
             </select>
           </div>
           ${geoSourceFormFields()}
-          <button class="btn ${editingSource || editingPreset ? 'warning' : 'secondary'}" data-action="addGeoSource">${editingPreset ? 'Сохранить переопределение' : editingSource ? 'Сохранить источник' : 'Добавить источник'}</button>
+          <button class="btn ${editingSource || editingPreset ? 'warning' : 'secondary'}" data-action="addGeoSource" data-busy="0">${state.geoSourceSaving ? 'Сохраняю…' : editingPreset ? 'Сохранить переопределение' : editingSource ? 'Сохранить источник' : 'Добавить источник'}</button>
           ${editingSource || editingPreset ? '<button class="btn secondary" data-geo-source-cancel="1">Отмена</button>' : ''}
-        </div>
+        </fieldset>
+        ${sourceNotice ? `<p class="geo-source-notice ${sourceNotice.error ? 'error' : ''}" role="${sourceNotice.error ? 'alert' : 'status'}">${escapeHtml(sourceNotice.text)}</p>` : ''}
         <div class="geo-source-list">
           ${state.geoCustomSources.map((source) => `<article class="${state.geoCustomSourceIds.includes(source.id) ? 'active' : ''} ${state.geoSourceEditingId === source.id ? 'editing' : ''}">
             <label class="toggle-row">

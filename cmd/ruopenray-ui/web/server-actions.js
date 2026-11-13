@@ -305,6 +305,7 @@ export function createServerActions({
   }
 
   async function checkServers(tags = [], options = {}) {
+    if (state.serverChecking) return;
     const startedAt = Date.now();
     const renderAfter = options.renderAfter !== false;
     const requestedTags = tags.length
@@ -319,28 +320,32 @@ export function createServerActions({
         method: 'POST',
         body: JSON.stringify({
           tags: requestedTags,
-          timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
-          attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
+          timeoutMs: Number(state.serverCheckTimeout) || 5000,
+          attempts: Number(state.serverCheckAttempts) || 1,
           mode: state.serverCheckMode,
           url: state.serverCheckUrl
         })
       });
-      for (const item of result.results || []) {
+      const results = result.results || [];
+      if (result.ok === false && !results.length) throw new Error(result.error || 'Сервер не вернул результаты');
+      for (const item of results) {
         if (item.tag) state.serverChecks[item.tag] = item;
       }
-      const alive = (result.results || []).filter((item) => item.ok).length;
+      const alive = results.filter((item) => item.ok).length;
+      const tcpOnly = (result.mode || state.serverCheckMode) === 'endpoint';
       state.serverCheckHistory = [
         {
           at: new Date().toISOString(),
-          total: result.results?.length || 0,
+          total: results.length,
           alive,
-          results: result.results || []
+          results
         },
         ...state.serverCheckHistory
       ].slice(0, 12);
-      state.message = requestedTags.length === 1
-        ? `Проверка сервера: ${alive ? 'доступен' : 'нет ответа'}`
-        : `Проверено серверов: ${result.results?.length || 0}, доступны: ${alive}`;
+      const summary = requestedTags.length === 1 && results.length === 1
+        ? (tcpOnly ? (alive ? 'TCP-порт открыт' : 'TCP-порт не подтвердился') : (alive ? 'Туннель доступен' : 'Туннель не подтвердился'))
+        : `Проверено серверов: ${results.length}, ${tcpOnly ? 'открыт TCP-порт' : 'работает туннель'} у ${alive}`;
+      state.message = [result.ok === false ? result.error : '', summary, result.saved === false ? 'Историю проверок не удалось записать.' : ''].filter(Boolean).join(' ');
     } catch (error) {
       state.message = `Проверка прокси не завершилась: ${error.message || error}`;
     } finally {
@@ -363,6 +368,8 @@ export function createServerActions({
           retentionHours: Math.max(1, Number(state.serverCheckHistoryRetentionHours) || 168)
         })
       });
+      if (!result?.ok) throw new Error(result?.error || 'Не удалось сохранить настройки истории проверок');
+      state.serverCheckHistoryEdited = false;
       if (result?.settings) {
         state.serverCheckHistoryLimit = String(result.settings.limit ?? state.serverCheckHistoryLimit);
         state.serverCheckHistoryRetentionHours = String(result.settings.retentionHours ?? state.serverCheckHistoryRetentionHours);
@@ -370,9 +377,9 @@ export function createServerActions({
       if (result?.history && typeof result.history === 'object') {
         state.serverCheckHistoryByTag = result.history;
       }
-      state.message = result?.ok
-        ? 'История проверок серверов сохранена'
-        : `Не удалось сохранить историю проверок: ${result?.error || 'ошибка'}`;
+      state.message = 'История проверок серверов сохранена';
+    } catch (error) {
+      state.message = error.message;
     } finally {
       state.serverCheckHistorySaving = false;
       render();
@@ -390,8 +397,8 @@ export function createServerActions({
     state.subscriptionFallbackChecked = 0;
     state.subscriptionFallbackCurrent = '';
     state.subscriptionFallbackMessage = total
-      ? `Проверяю кандидатов по очереди: до ${total}`
-      : 'Проверяю кандидатов подписки';
+      ? `Проверяю туннели кандидатов по очереди: до ${total}`
+      : 'Проверяю туннели подписки';
     render();
     subscriptionFallbackTimer = setInterval(() => {
       state.subscriptionFallbackTick += 1;
@@ -414,7 +421,6 @@ export function createServerActions({
         signal: subscriptionFallbackAbort.signal,
         body: JSON.stringify({
           tag,
-          mode: state.serverCheckMode,
           url: state.serverCheckUrl,
           timeoutMs: Math.max(5000, Number(state.serverCheckTimeout) || 5000),
           attempts: Math.max(3, Number(state.serverCheckAttempts) || 3),
@@ -461,10 +467,11 @@ export function createServerActions({
   async function checkSubscriptionCandidate(tag, index) {
     if (!tag) return;
     const numericIndex = Number(index);
-    if (!Number.isFinite(numericIndex) || numericIndex < 0) return;
+    if (!Number.isInteger(numericIndex) || numericIndex < 0) return;
     const key = `${tag}:${numericIndex}`;
     if (state.subscriptionCandidateChecking) return;
     state.subscriptionCandidateChecking = key;
+    state.subscriptionCandidateError = null;
     render();
     try {
       const result = await request('/api/subscriptions/check-candidate', {
@@ -474,18 +481,23 @@ export function createServerActions({
           index: numericIndex,
           mode: state.serverCheckMode,
           url: state.serverCheckUrl,
-          timeoutMs: Math.max(2500, Number(state.serverCheckTimeout) || 5000),
-          attempts: 1
+          timeoutMs: Number(state.serverCheckTimeout) || 5000,
+          attempts: Number(state.serverCheckAttempts) || 1
         })
       });
       if (result?.result) {
         rememberSubscriptionCandidateChecks(tag, [result.result]);
+        const label = candidateName(result.result, numericIndex + 1);
+        const tcpOnly = (result.result.method || state.serverCheckMode) === 'endpoint';
         state.message = result.result.ok
-          ? `Сервер подписки доступен: ${candidateName(result.result, numericIndex + 1)}`
-          : `Сервер подписки не ответил: ${candidateName(result.result, numericIndex + 1)}`;
+          ? `${label} · ${tcpOnly ? 'TCP открыт' : 'туннель доступен'}`
+          : `${label} · ${result.result.error || (tcpOnly ? 'TCP не подтверждён' : 'туннель не подтверждён')}`;
       } else {
-        state.message = `Не удалось проверить сервер подписки ${serverName(tag)}`;
+        throw new Error(result?.error || `Не удалось проверить сервер подписки ${serverName(tag)}`);
       }
+    } catch (error) {
+      state.message = error.message;
+      state.subscriptionCandidateError = { key, text: error.message };
     } finally {
       state.subscriptionCandidateChecking = '';
       render();

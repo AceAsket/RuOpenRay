@@ -124,7 +124,9 @@ export function createRuntimeController({
         })
       });
       state.domainProbeResults = { ...state.domainProbeResults, [probeKey]: result };
-      state.message = `${cleanHost}: ${result.verdict?.label || 'проверено'}`;
+      state.message = result.ok
+        ? `${cleanHost}: ${result.verdict?.label || 'проверено'}`
+        : result.stderr || result.error || 'Не удалось проверить домен';
     } catch (error) {
       state.domainProbeResults = {
         ...state.domainProbeResults,
@@ -214,12 +216,16 @@ export function createRuntimeController({
       if (profiles.mode) state.amneziaIntegrationMode = profiles.mode;
     }
     if (status?.serverChecks?.results && typeof status.serverChecks.results === 'object' && !Array.isArray(status.serverChecks.results)) {
-      state.serverChecks = { ...state.serverChecks, ...status.serverChecks.results };
+      const next = { ...state.serverChecks };
+      for (const [tag, check] of Object.entries(status.serverChecks.results)) {
+        if (!next[tag] || Date.parse(check?.checkedAt) > (Date.parse(next[tag].checkedAt) || 0)) next[tag] = check;
+      }
+      state.serverChecks = next;
     }
     if (status?.serverChecks?.history && typeof status.serverChecks.history === 'object' && !Array.isArray(status.serverChecks.history)) {
       state.serverCheckHistoryByTag = status.serverChecks.history;
     }
-    if (status?.serverChecks?.historySettings && typeof status.serverChecks.historySettings === 'object') {
+    if (!state.serverCheckHistorySaving && !state.serverCheckHistoryEdited && status?.serverChecks?.historySettings && typeof status.serverChecks.historySettings === 'object') {
       const settings = status.serverChecks.historySettings;
       state.serverCheckHistoryLimit = String(settings.limit ?? state.serverCheckHistoryLimit ?? '24');
       state.serverCheckHistoryRetentionHours = String(settings.retentionHours ?? state.serverCheckHistoryRetentionHours ?? '168');
@@ -228,7 +234,14 @@ export function createRuntimeController({
       const next = { ...(state.subscriptionCandidateChecks || {}) };
       Object.entries(status.serverChecks.subscriptionCandidates).forEach(([tag, checks]) => {
         if (!checks || typeof checks !== 'object' || Array.isArray(checks)) return;
-        next[tag] = { ...(next[tag] || {}), ...checks };
+        const poolChecks = { ...next[tag] };
+        for (const [index, check] of Object.entries(checks)) {
+          const current = poolChecks[index];
+          if (!current || Date.parse(check?.checkedAt) > (Date.parse(current.checkedAt) || 0)) {
+            poolChecks[index] = check;
+          }
+        }
+        next[tag] = poolChecks;
       });
       state.subscriptionCandidateChecks = next;
     }
@@ -276,6 +289,8 @@ export function createRuntimeController({
     const snapshotLogSort = state.logSort;
     const snapshotLogGeneration = ++logRequestGeneration;
     const snapshotDomainGeneration = ++domainRequestGeneration;
+    const previousLoggingSettings = state.loggingSettings;
+    const previousServiceSettings = state.serviceSettings;
     activeRefreshes++;
     const renderAfter = options.renderAfter !== false;
     const background = Boolean(options.background);
@@ -388,8 +403,12 @@ export function createRuntimeController({
             }])
         );
       }
-      syncLoggingSettings(logging);
-      syncServiceSettings(serviceSettings);
+      if (!state.loggingSaving && !state.loggingSettingsEdits && previousLoggingSettings === state.loggingSettings) {
+        syncLoggingSettings(logging);
+      }
+      if (!state.serviceSettingsSaving && !state.serviceSettingsEdits && previousServiceSettings === state.serviceSettings) {
+        syncServiceSettings(serviceSettings);
+      }
       state.geoCustomSources = Array.isArray(geo?.customSources) ? geo.customSources : state.geoCustomSources;
       state.geoPresetOverrides = geo?.presetOverrides && typeof geo.presetOverrides === 'object' && !Array.isArray(geo.presetOverrides) ? geo.presetOverrides : state.geoPresetOverrides;
       state.geoUserLists = Array.isArray(geo?.userLists) ? geo.userLists : state.geoUserLists;

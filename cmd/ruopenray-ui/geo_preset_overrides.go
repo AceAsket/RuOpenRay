@@ -66,8 +66,8 @@ func (s *serverState) saveGeoPresetOverrides(payload map[string]any) map[string]
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return map[string]any{"ok": false, "stderr": err.Error(), "overrides": s.geoPresetOverrides()}
 	}
-	if err := os.WriteFile(s.geoPresetOverridesPath(), body, 0o600); err != nil {
-		return map[string]any{"ok": false, "stderr": err.Error(), "overrides": overrides}
+	if err := writeFileAtomic(s.geoPresetOverridesPath(), body, 0o600); err != nil {
+		return map[string]any{"ok": false, "stderr": err.Error(), "overrides": s.geoPresetOverrides()}
 	}
 	return map[string]any{"ok": true, "overrides": overrides, "status": s.geoStatus(), "stdout": "Переопределения geo-источников сохранены"}
 }

@@ -126,6 +126,26 @@ test('dashboard does not count configured device rules as DHCP devices', () => {
   assert.doesNotMatch(html, /1 в списке DHCP|1 в локальной сети/);
 });
 
+test('dashboard shows configured rotation and warns about real log pressure', () => {
+  const { state, view } = dashboardFixture();
+  state.config.log = { access: '/tmp/access.log', dnsLog: true, loglevel: 'warning' };
+  state.domainMonitor = { running: true };
+  state.loggingSettings = {
+    accessLog: true, accessPath: '/tmp/access.log', accessSize: 1024 * 1024,
+    maxSizeMb: 2, rotateCopies: 1, maintenanceEvery: '15 мин'
+  };
+  assert.match(view.dashboard(), /dashboard-health-panel is-ok/);
+  assert.match(view.dashboard(), /Ротация журналов Xray: порог 2 МиБ.*проверка раз в 15 мин/);
+
+  state.loggingSettings.accessSize = 3 * 1024 * 1024;
+  assert.match(view.dashboard(), /dashboard-health-panel is-warn/);
+  assert.match(view.dashboard(), /Журнал доступа Xray вырос до .*при пороге ротации 2 МиБ/);
+
+  state.loggingSettings.rotateCopies = 0;
+  assert.match(view.dashboard(), /Файловые журналы Xray включены, ротация выключена/);
+  assert.doesNotMatch(view.dashboard(), /проверка раз в 15 мин/);
+});
+
 function addDashboardServers(state, count = 8) {
   state.config.outbounds = [
     ...Array.from({ length: count }, (_, index) => ({ tag: `server-${index + 1}`, protocol: 'vless',

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -182,7 +183,7 @@ type subscriptionCandidateCheckOptions struct {
 	robust    bool
 }
 
-type subscriptionCandidateProbe func(int, map[string]any, []any, subscriptionCandidateCheckOptions) map[string]any
+type subscriptionCandidateProbe func(context.Context, int, map[string]any, []any, subscriptionCandidateCheckOptions) map[string]any
 
 func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscriptionCandidateCheckOptions {
 	checkMode := strings.ToLower(firstNonEmpty(fmt.Sprint(payload["mode"]), "http"))
@@ -220,26 +221,25 @@ func normalizeSubscriptionCandidateCheckOptions(payload map[string]any) subscrip
 	}
 }
 
-func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[string]any, all []any, options subscriptionCandidateCheckOptions) map[string]any {
+func (s *serverState) checkSubscriptionCandidateResult(ctx context.Context, index int, candidate map[string]any, all []any, options subscriptionCandidateCheckOptions) map[string]any {
 	summary := rproxy.OutboundSummary(candidate)
 	result := map[string]any{
-		"index":     index,
-		"tag":       summary["tag"],
-		"protocol":  summary["protocol"],
-		"address":   summary["address"],
-		"port":      summary["port"],
-		"network":   summary["network"],
-		"security":  summary["security"],
-		"method":    options.mode,
-		"url":       options.probeURL,
-		"checkedAt": time.Now().Format(time.RFC3339),
+		"index":    index,
+		"tag":      summary["tag"],
+		"protocol": summary["protocol"],
+		"address":  summary["address"],
+		"port":     summary["port"],
+		"network":  summary["network"],
+		"security": summary["security"],
+		"method":   options.mode,
+		"url":      options.probeURL,
 	}
 	ok := false
 	var err error
 	address := fmt.Sprint(summary["address"])
 	portValue := number(summary["port"], 0)
 	endpointTimeoutMs := options.timeoutMs
-	if endpointTimeoutMs > 3000 {
+	if options.mode != "endpoint" && endpointTimeoutMs > 3000 {
 		endpointTimeoutMs = 3000
 	}
 	if portValue > 0 && address != "" {
@@ -255,24 +255,24 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 		}
 	}
 	if options.mode == "endpoint" {
-		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, endpointTimeoutMs, options.attempts)
+		latency, endpointOK, endpointErr := directEndpointTCPProbe(ctx, address, portValue, endpointTimeoutMs, options.attempts)
 		ok = endpointOK
 		err = endpointErr
 		result["endpointOk"] = endpointOK
-		if latency > 0 {
+		if endpointOK {
 			result["endpointLatencyMs"] = latency
 			result["latencyMs"] = latency
 		}
 	} else {
-		latency, endpointOK, endpointErr := directEndpointTCPProbe(address, portValue, endpointTimeoutMs, 1)
+		latency, endpointOK, endpointErr := directEndpointTCPProbe(ctx, address, portValue, endpointTimeoutMs, 1)
 		result["endpointOk"] = endpointOK
-		if latency > 0 {
+		if endpointOK {
 			result["endpointLatencyMs"] = latency
 		}
 		if endpointErr != nil {
 			result["endpointError"] = endpointErr.Error()
 		}
-		latency, httpOK, probeResults, httpErr := s.subscriptionTrafficProbeWithConfig(candidate, all, options.probeURL, options.timeoutMs, options.attempts)
+		latency, httpOK, probeResults, httpErr := s.subscriptionTrafficProbeWithConfig(ctx, candidate, all, options.probeURL, options.timeoutMs, options.attempts)
 		result["probeResults"] = probeResults
 		if httpErr != nil {
 			result["errorCode"] = subscriptionProbeCode(httpErr)
@@ -280,12 +280,13 @@ func (s *serverState) checkSubscriptionCandidateResult(index int, candidate map[
 		ok = httpOK
 		err = httpErr
 		result["httpOk"] = httpOK
-		if latency > 0 {
+		if httpOK {
 			result["httpLatencyMs"] = latency
 			result["latencyMs"] = latency
 		}
 	}
 	result["ok"] = ok
+	result["checkedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	if err != nil {
 		result["error"] = err.Error()
 	}
@@ -318,7 +319,10 @@ func (s *serverState) checkSubscriptionCandidateWithProbe(w http.ResponseWriter,
 	}
 	outbounds := asArray(cfg["outbounds"])
 	candidate := cloneSubscriptionOutbound(pool.Candidates[index], activeOutboundByTag(outbounds, pool.Tag), fmt.Sprint(pool.Candidates[index]["tag"]))
-	result := probe(index, candidate, outbounds, normalizeSubscriptionCandidateCheckOptions(payload))
+	result := probe(r.Context(), index, candidate, outbounds, normalizeSubscriptionCandidateCheckOptions(payload))
+	if r.Context().Err() != nil {
+		return
+	}
 	saveError := ""
 	if err := s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result}); err != nil {
 		saveError = err.Error()
@@ -494,7 +498,7 @@ func (s *serverState) applySubscriptionActiveOutbounds(store rsubscription.Store
 			continue
 		}
 		if checkTraffic {
-			if _, ok, probes, probeErr := s.subscriptionTrafficProbeWithConfig(candidate, outbounds, "", 5000, 1); !ok {
+			if _, ok, probes, probeErr := s.subscriptionTrafficProbeWithConfig(context.Background(), candidate, outbounds, "", 5000, 1); !ok {
 				return map[string]any{"ok": false, "error": "Рабочая конфигурация сохранена. " + probeErr.Error(), "errorCode": subscriptionProbeCode(probeErr), "probeResults": probes}
 			}
 		}
@@ -653,6 +657,7 @@ func (s *serverState) fallbackSubscription(w http.ResponseWriter, r *http.Reques
 func (s *serverState) fallbackSubscriptionWithProbe(w http.ResponseWriter, r *http.Request, probe subscriptionCandidateProbe) {
 	payload, _ := readJSON(w, r)
 	payload["robust"] = true
+	payload["mode"] = "http"
 	tag := strings.TrimSpace(fmt.Sprint(payload["tag"]))
 	store := s.readSubscriptionStore()
 	poolIndex := rsubscription.FindPoolIndex(store, tag)
@@ -694,15 +699,13 @@ func (s *serverState) fallbackSubscriptionWithProbe(w http.ResponseWriter, r *ht
 			"currentStep": step, "currentIndex": index, "currentTag": summary["tag"],
 			"currentAddress": summary["address"], "currentPort": summary["port"],
 		})
-		result := probe(index, candidate, outbounds, options)
+		result := probe(r.Context(), index, candidate, outbounds, options)
+		if r.Context().Err() != nil {
+			return
+		}
 		ok := result["ok"] == true
 		results = append(results, result)
 		_ = s.saveSubscriptionCandidateCheckResults(tag, []map[string]any{result})
-		select {
-		case <-r.Context().Done():
-			return
-		default:
-		}
 		s.setSubscriptionFallbackProgress(map[string]any{
 			"tag": tag, "total": len(pool.Candidates), "checked": len(results),
 			"currentStep": step, "currentIndex": index, "currentTag": summary["tag"],
@@ -744,38 +747,20 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	checkMode := strings.ToLower(firstNonEmpty(fmt.Sprint(payload["mode"]), "http"))
-	if checkMode != "endpoint" && checkMode != "http" {
-		checkMode = "http"
-	}
-	probeURL := firstNonEmpty(fmt.Sprint(payload["url"]), "https://www.gstatic.com/generate_204")
-	timeoutMs := number(payload["timeoutMs"], 5000)
-	if timeoutMs < 300 {
-		timeoutMs = 300
-	}
-	if checkMode == "http" && timeoutMs < 5000 {
-		timeoutMs = 5000
-	}
-	if timeoutMs > 15000 {
-		timeoutMs = 15000
-	}
-	attempts := number(payload["attempts"], 1)
-	if attempts < 1 {
-		attempts = 1
-	}
-	if (checkMode == "http" || checkMode == "endpoint") && attempts < 3 {
-		attempts = 3
-	}
-	if attempts > 5 {
-		attempts = 5
-	}
+	options := normalizeSubscriptionCandidateCheckOptions(payload)
 	filter := map[string]bool{}
 	for _, tag := range asArray(payload["tags"]) {
 		filter[fmt.Sprint(tag)] = true
 	}
 
 	results := []map[string]any{}
-	for _, item := range asArray(cfg["outbounds"]) {
+	outbounds := asArray(cfg["outbounds"])
+	ctx, cancel := context.WithTimeout(r.Context(), 105*time.Second)
+	defer cancel()
+	for _, item := range outbounds {
+		if ctx.Err() != nil {
+			break
+		}
 		outbound, ok := item.(map[string]any)
 		if !ok {
 			continue
@@ -786,73 +771,30 @@ func (s *serverState) checkOutbounds(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		protocol := fmt.Sprint(summary["protocol"])
-		address := fmt.Sprint(summary["address"])
-		portValue := number(summary["port"], 0)
 		system := protocol == "freedom" || protocol == "blackhole" || protocol == "dns" || tag == "direct" || tag == "block" || tag == "dns-out"
 		if system && len(filter) == 0 {
 			continue
 		}
-		result := map[string]any{
-			"tag": summary["tag"], "protocol": protocol, "address": address, "port": portValue,
-			"network": summary["network"], "security": summary["security"], "checkedAt": time.Now().Format(time.RFC3339), "method": checkMode,
-		}
-		if system || address == "" || portValue <= 0 {
-			result["ok"] = false
-			result["skipped"] = true
-			result["error"] = "Нет endpoint для проверки"
-			results = append(results, result)
+		if system || stringsTrim(summary["address"]) == "" || number(summary["port"], 0) <= 0 {
+			summary["method"] = options.mode
+			summary["checkedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+			summary["ok"] = false
+			summary["skipped"] = true
+			summary["error"] = "Нет endpoint для проверки"
+			results = append(results, summary)
 			continue
 		}
-		pingTimeoutMs := timeoutMs
-		if pingTimeoutMs > 2000 {
-			pingTimeoutMs = 2000
+		result := s.checkSubscriptionCandidateResult(ctx, -1, outbound, outbounds, options)
+		if ctx.Err() != nil {
+			break
 		}
-		ping := directPingProbe(address, pingTimeoutMs)
-		result["ping"] = ping
-		result["pingOk"] = ping["ok"] == true
-		if latency := number(ping["latencyMs"], 0); latency > 0 {
-			result["pingLatencyMs"] = latency
-		}
-		best, checkOK, lastErr := directEndpointTCPProbe(address, portValue, timeoutMs, attempts)
-		if best > 0 {
-			result["endpointLatencyMs"] = best
-		}
-		result["endpointOk"] = checkOK
-		if checkMode == "endpoint" {
-			result["ok"] = checkOK
-			if best > 0 {
-				result["latencyMs"] = best
-			}
-			if !checkOK && lastErr != nil {
-				result["error"] = lastErr.Error()
-			}
-			results = append(results, result)
-			continue
-		}
-		httpBest, httpOK, probeResults, httpErr := s.subscriptionTrafficProbe(outbound, probeURL, timeoutMs, attempts)
-		result["probeResults"] = probeResults
-		if httpErr != nil {
-			result["errorCode"] = subscriptionProbeCode(httpErr)
-		}
-		result["url"] = probeURL
-		result["httpOk"] = httpOK
-		result["ok"] = httpOK
-		if httpBest > 0 {
-			result["httpLatencyMs"] = httpBest
-			result["latencyMs"] = httpBest
-		}
-		if !httpOK {
-			if httpErr != nil {
-				result["error"] = httpErr.Error()
-			} else if lastErr != nil {
-				result["error"] = lastErr.Error()
-			} else {
-				result["error"] = "HTTP probe failed"
-			}
-		}
+		delete(result, "index")
 		results = append(results, result)
 	}
-	response := map[string]any{"ok": true, "timeoutMs": timeoutMs, "attempts": attempts, "mode": checkMode, "url": probeURL, "results": results, "saved": true}
+	response := map[string]any{"ok": ctx.Err() == nil, "timeoutMs": options.timeoutMs, "attempts": options.attempts, "mode": options.mode, "url": options.probeURL, "results": results, "saved": true}
+	if ctx.Err() != nil {
+		response["error"] = "Истекло общее время проверки прокси. Показаны завершённые проверки."
+	}
 	if err := s.saveOutboundCheckResults(results); err != nil {
 		response["saved"] = false
 		response["saveError"] = err.Error()

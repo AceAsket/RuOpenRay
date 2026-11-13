@@ -102,6 +102,29 @@ test('explicit destinations override the picker; malformed rows never partially 
   assert.ok(state.routePresetEditPreview.errors.length);
 });
 
+test('a rejected preset save leaves the editor and saved catalog intact', async () => {
+  const { state, actions } = fixture({ request: async () => ({ ok: false, error: 'disk full' }) });
+  state.token = 'test-only';
+  state.routePresetDialog = true;
+  state.routePresetEditTitle = 'Plain';
+  state.routePresetEditDsl = 'ghcr.io';
+  await actions.saveRoutePresetEdit();
+  assert.equal(state.routePresetDialog, true);
+  assert.equal(state.routePresetEditDsl, 'ghcr.io');
+  assert.deepEqual(state.customRoutePresets, {});
+  assert.equal(state.message, 'disk full');
+});
+
+test('route target check reports HTTP failure when only TCP succeeds', async () => {
+  const { state, actions } = fixture({ request: async () => ({
+    ok: true, proxy: { ok: false }, checks: { tcpProxy: { ok: true, latencyMs: 7 } }
+  }) });
+  Object.assign(state, { routeKind: 'domain', routeValue: 'example.test', routeOutbound: 'proxy' });
+  await actions.testRouteRuleTarget();
+  assert.equal(state.routeRuleTestResult.ok, false);
+  assert.match(state.routeRuleTestResult.detail, /TCP 7 ms, HTTP не ответил/);
+});
+
 test('installed preset remains one group when conditions overlap another preset or destinations change', () => {
   const { state, actions } = fixture();
   state.customRoutePresets.unraid = { title: 'unraid', preserveMixed: true, rules: ['ghcr.io', 'lscr.io', ...Array.from({ length: 11 }, (_, i) => `service${i}.test`)].map((domain) => ({ type: 'field', domain: [`domain:${domain}`], outboundTag: 'proxy' })) };

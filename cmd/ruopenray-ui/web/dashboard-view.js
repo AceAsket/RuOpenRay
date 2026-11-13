@@ -132,8 +132,6 @@ function dashboard() {
 function dashboardWarningItems() {
   const items = [];
   const level = String(state.loggingSettings?.appliedLevel || state.loggingSettings?.level || state.config?.log?.loglevel || '').toLowerCase();
-  const accessLog = Boolean(state.loggingAccessLog || state.config?.log?.access);
-  const dnsLog = Boolean(state.loggingDnsLog || state.config?.log?.dnsLog);
   const monitor = state.domainMonitor || {};
   const dnsmasqLogqueries = monitor?.dnsmasq?.logqueries === true;
   const b4 = state.status?.b4 || {};
@@ -142,9 +140,6 @@ function dashboardWarningItems() {
   } else if (level === 'info') {
     items.push('Xray пишет info-log. Для постоянной работы обычно тише warning или error.');
   }
-  if (accessLog) items.push('Access-log включен: на активном трафике он быстро растет.');
-  if (dnsLog) items.push('DNS-лог Xray включен: доменные ответы могут добавлять много строк.');
-  if (monitor.running) items.push('SNI-монитор запущен: RuOpenRay читает access/DNS-логи для доменных событий.');
   if (dnsmasqLogqueries) items.push('dnsmasq logqueries включен: DNS-запросы пишутся в системный logread.');
   if (b4.active && !b4.managedDirectOnly) items.push(`B4 активен: ${b4CompatDetail(b4)}. Не накладывайте его routing/DNS redirect на тот же перехват без явной схемы.`);
   else if (b4.service?.enabled && !b4.externalConfigSafe) items.push('B4 включен в автозапуск: конфигурация внешнего перехвата не подтверждена. Проверьте настройки B4 до совместного запуска с RuOpenRay.');
@@ -192,6 +187,28 @@ function dashboardHealthPanel({ serviceRunning, coreReady, configDirty }) {
   else if (!serviceRunning) items.push('Xray остановлен. Запустите сервис или откройте диагностику.');
   if (configDirty) items.push('Есть неприменённые изменения конфигурации.');
   items.push(...dashboardWarningItems());
+  const logging = state.loggingSettings;
+  const files = [
+    { label: 'Журнал доступа', enabled: logging?.accessLog, path: logging?.accessPath, size: logging?.accessSize },
+    { label: 'Журнал ошибок', enabled: logging?.errorLog, path: logging?.errorPath, size: logging?.errorSize }
+  ].filter((file) => file.enabled && file.path !== 'none');
+  const limitMiB = Number(logging?.maxSizeMb);
+  const copies = Number(logging?.rotateCopies);
+  let rotation = '';
+  if (files.length && Number.isFinite(limitMiB) && Number.isFinite(copies)) {
+    if (limitMiB <= 0 || copies <= 0) {
+      items.push('Файловые журналы Xray включены, ротация выключена.');
+    } else {
+      const interval = logging.maintenanceEvery;
+      const retention = copies === 1 ? '1 архивной копии' : `${copies} архивных копий`;
+      rotation = `Ротация журналов Xray: порог ${limitMiB} МиБ · до ${retention}${interval ? ` · проверка раз в ${interval}` : ''}`;
+      for (const file of files) {
+        if (Number(file.size) > limitMiB * 1024 * 1024) {
+          items.push(`${file.label} Xray вырос до ${byteSize(file.size)} при пороге ротации ${limitMiB} МиБ.`);
+        }
+      }
+    }
+  }
   const visible = items.slice(0, 4);
   const healthy = visible.length === 0;
   return `
@@ -207,6 +224,7 @@ function dashboardHealthPanel({ serviceRunning, coreReady, configDirty }) {
         <ul class="dashboard-health-list">${visible.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
         ${items.length > visible.length ? `<small class="dashboard-health-more">Ещё ${items.length - visible.length} в диагностике</small>` : ''}
       `}
+      ${rotation ? `<small class="dashboard-health-more">${escapeHtml(rotation)}</small>` : ''}
     </section>
   `;
 }
